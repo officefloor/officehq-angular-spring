@@ -1,39 +1,33 @@
 # What this STACK is, for the harness (~/ui-long-degradation-test). Read at `base-empty`, never
 # from the working tree, so a run always measures the layers the base declared.
 #
-# This is the FRAMEWORK CONTROL for the front-end comparison: Angular instead of React, with the
-# backend, the tests and the checkpoints held constant. It answers the sharpest objection to the
-# React-vs-React result — that a React page component bloating is a property of the agent rather
-# than of the framework. Angular makes that harder (one component per file, DI instead of
-# prop-drilling, routing declared as config), so if its routed components still bloat the finding
-# generalises; if they do not, the finding becomes "framework conventions do the work", which is
-# equally worth reporting.
+# This is the ECOLOGICAL BASELINE: Angular on plain Spring Boot, the stack a typical enterprise
+# team ships. It varies BOTH dimensions against the additive arms — framework and backend — so on
+# its own it attributes nothing. Read it as external validity ("how does the study compare with
+# what teams actually build"), not as a one-variable control; those are
+# officehq-angular-officefloor (framework held against React) and the React pair (architecture).
 #
-# Lizard does NOT class-qualify TypeScript, so an Angular component's methods land at FILE scope
-# exactly like React's free functions — and since Angular's convention is one component per file,
-# file scope is component scope. `wmc_max`, `erosion` and `container_stats` therefore stay directly
-# comparable with the React arms (DESIGN.md §8).
+# Its backend pairs with the `spring` arm of ~/spring-petclinic-rest-long-degradation-test, so the
+# two studies line up on the mutative side.
+#
+# Lizard does not class-qualify TypeScript, so an Angular component's methods land at FILE scope
+# like React's free functions, and one component per file makes file scope component scope — the
+# front-end numbers stay comparable with every other UI arm (DESIGN.md §8).
 layers:
   frontend:
     root: src/main/frontend/src
     ext: [ts]
     jscpd_format: typescript
-    # Angular and React share an extension, so the unit vocabulary cannot be inferred from it:
-    # say which idiom this stack is written in (harness.class_shape).
+    # Angular and React share an extension, so the idiom cannot be inferred from it.
     unit_vocabulary: angular
-    # The layer's ENTRY SURFACE: the routed component a feature is reached through. Anchors the
-    # role-comparable handler metrics (entry_cc, wmc_handler, erosion_handler) to the same ROLE the
-    # other arms measure, which `wmc_max` cannot do across stacks.
     handler_pattern: "/features/[^:]*::"
-    # The declared additive unit: count rising while size stays flat is the healthy shape.
     function_package_glob: "src/main/frontend/src/app/features/**/*.ts"
   backend:
     root: src/main/java
     ext: [java]
     jscpd_format: java
-    handler_pattern: "::service$"
-    config_globs: ["src/main/resources/officefloor/**/*.yml"]
-    node_roots:
-      wiring_glob: "src/main/resources/officefloor/rest/**/*.yml"
-      class_regex: 'class:\s*([\w.]+)'
-      node_method: service
+    # The entry surface is the Spring controller a request routes through. Unlike the OfficeFloor
+    # arms there is no per-endpoint wiring unit, so there are no `node_roots` and no
+    # `config_globs`: the node-closure and config_loc columns are BLANK for this arm, which is the
+    # architecture's own answer rather than a gap.
+    handler_pattern: "Controller[^:]*::"

@@ -2,7 +2,7 @@
 
 You are making ONE change to this application in response to the change request you were given.
 Implement it as a **full-stack change**: whatever the request needs across the database schema, the
-server (OfficeFloor REST on a Spring Boot host), and the Angular front-end — as a small, additive,
+server (Spring MVC REST on a Spring Boot host), and the Angular front-end — as a small, additive,
 local change.
 
 ## Rules
@@ -45,14 +45,10 @@ local change.
   - `src/app/app.ts`, `src/app/app.config.ts` — the shell and the app's wiring. Do not edit.
   - `src/app/ui/**` — shared presentational components, *composed*, never branched with
     per-feature `if`s.
-- `src/main/resources/officefloor/rest/api/<path>.<METHOD>.yml` — a REST endpoint = a **new YAML
-  file** (`service: { class: net.officefloor.hq.app.<Logic> }`) + a **new logic class** whose
-  `service(...)` method takes injected Spring beans/data + `ObjectResponse<T>` (and, for a body,
-  a param with `@RequestBody`). Additive: one file per endpoint, never a central router. **Put
-  domain routes under `rest/api/`** so their paths start with `/api/` — `SpaConfig` only lets
-  `/api/*` bypass the SPA deep-link fallback; a non-`/api/` route is swallowed and returns the
-  SPA HTML instead of your endpoint.
-- `src/main/java/**` — logic classes and Spring `@Service`/`@Repository` beans (business logic +
-  data access). `Application`, `SpaConfig`, `TestSupportController` are base infrastructure.
+- `src/main/java/**` — the Spring backend: `@RestController` classes exposing the REST endpoints
+  the front end calls (put them under `/api/` — `SpaConfig` only lets `/api/*` bypass the SPA
+  deep-link fallback, so a non-`/api/` path returns the SPA HTML instead of your endpoint), plus
+  `@Service`/`@Repository` beans for business logic and data access. `Application`, `SpaConfig`
+  and `TestSupportController` are base infrastructure.
 - `src/main/resources/db/migration/**` — Flyway migrations (new `V<n>__*.sql` per schema change).
 - `bin/e2e` — build, start the app, run your test, stop. Run it to check your work.

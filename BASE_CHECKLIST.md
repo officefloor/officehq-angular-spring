@@ -6,10 +6,10 @@ This is a **base repository** for `ui-long-degradation-test` (see that repo's `D
 one full-stack English change request per checkpoint — committing each checkpoint on that run
 branch. The base branch is only ever read.
 
-This stack is **Angular (front-end) + OfficeFloor (backend)** on in-memory H2 — hence the name
-`officehq-angular-officefloor`. It is the FRAMEWORK CONTROL: same backend, same tests, same agent
-rules as the React arm, different front-end framework. Node is pinned to v22.12.0 because Angular
-21's CLI requires `^20.19 || ^22.12 || >=24` and rejects the React arms' v20.11.1.
+This stack is **Angular (front-end) + plain Spring Boot (backend)** on in-memory H2 — hence the
+name `officehq-angular-spring`. It is the ECOLOGICAL BASELINE, not a one-variable control: domain
+endpoints are `@RestController` methods, there is no OfficeFloor, and §B's OfficeFloor items below
+do not apply to it. Node is pinned to v22.12.0 for Angular 21's CLI.
 
 **This folder is green** (§A–§H verified). Because the harness only depends on the *contract* (not the tech), you create a
 new stack as a **home-level sibling** `~/officehq-<frontend>-<backend>` (name both layers, since
@@ -37,8 +37,9 @@ boot, a static-served SPA, an `/actuator/health` readiness probe, and the `/__te
 - [ ] **Single JVM, no daemon/container.** Spring Boot 4 (`spring-boot-starter-parent` 4.1.0) is the
       host; OfficeFloor REST is added via `net.officefloor.springboot:officefloor-rest-spring-boot-4-
       starter`. Standard `@SpringBootApplication` main; `spring-boot-maven-plugin` repackage.
-- [ ] **Domain REST is additive OfficeFloor YAML** — `officefloor/rest/<path>.GET.yml`
-      (`service: { class: … }`) + a logic class per endpoint (the additive backend property, §8).
+- [x] **Domain REST is Spring MVC** — `@RestController` classes under `/api/`, the mutative
+      baseline. There is no per-endpoint wiring unit, so the harness's node-closure and config_loc
+      columns are blank for this arm (see `stack.yaml`).
 - [ ] **In-memory H2** (`spring.datasource.url=jdbc:h2:mem:officehq;DB_CLOSE_DELAY=-1`); dies with
       the JVM.
 - [ ] **Flyway on boot** (`spring.flyway.enabled=true`, `ddl-auto=none`), from
