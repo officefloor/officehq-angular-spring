@@ -76,3 +76,9 @@ You are an expert in TypeScript, Angular, and scalable web application developme
 - Use the `providedIn: 'root'` option for singleton services
 - Prefer the `@Service` decorator over `@Injectable({providedIn: 'root'})` for new singleton services (Angular v22+)
 - Use the `inject()` function instead of constructor injection
+
+---
+
+*Spring's official reference documentation is the guidance for this stack — consult it when
+working on the server: Spring Boot <https://docs.spring.io/spring-boot/4.1/reference/> and Spring
+Framework (web MVC, the `@RestController` layer) <https://docs.spring.io/spring-framework/reference/>.*
