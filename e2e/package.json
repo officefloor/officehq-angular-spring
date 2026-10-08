@@ -1,6 +1,5 @@
 {
-  "//": "Playwright project for the harness. The harness copies authored cpNN specs into e2e/specs/",
-  "//specs": "(config.yaml -> acceptance.dest_subpath). Specs bind to data-testid and assert via the UI only.",
+  "//": "Playwright end-to-end project. Specs in e2e/specs bind to data-testid and assert via the UI only.",
   "name": "officehq-e2e",
   "private": true,
   "scripts": {

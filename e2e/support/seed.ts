@@ -1,14 +1,12 @@
-// Shared per-spec data setup (DESIGN.md §9, BASE_CHECKLIST.md §D). Each spec's beforeEach RESETS
-// then SEEDS via the app's /__test__ endpoint — this is Arrange, not Assert. Specs still ASSERT
-// only through the UI (data-testid).
+// Shared per-spec data setup. Each spec's beforeEach RESETS then SEEDS via the app's /__test__
+// endpoint — this is Arrange, not Assert. Specs still ASSERT only through the UI (data-testid).
 //
 // FAIL LOUD: /__test__/reset and /__test__/seed are the Arrange for EVERY spec, so they are a hard
 // precondition — if either does not return 2xx the data is not in the state the test assumes, and a
 // silent failure would surface later as confusing, misattributed assertion failures on unrelated
 // specs (e.g. leftover rows because reset could not clear an FK-referenced table). We throw here so
-// the break is attributed to the seed contract, and so an implementer running its own spec sees the
-// broken endpoint immediately instead of shipping it. This helper is fixed test infrastructure — the
-// evolving surface is the server-side /__test__ endpoint, not this client.
+// the break is attributed to the seed contract, and so a developer running its own spec sees the
+// broken endpoint immediately instead of shipping it.
 import { request, type APIResponse } from '@playwright/test';
 
 const BASE = process.env.BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;

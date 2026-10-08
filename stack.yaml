@@ -1,24 +1,9 @@
-# What this STACK is, for the harness (~/ui-long-degradation-test). Read at `base-empty`, never
-# from the working tree, so a run always measures the layers the base declared.
-#
-# This is the ECOLOGICAL BASELINE: Angular on plain Spring Boot, the stack a typical enterprise
-# team ships. It varies BOTH dimensions against the additive arms — framework and backend — so on
-# its own it attributes nothing. Read it as external validity ("how does the study compare with
-# what teams actually build"), not as a one-variable control; those are
-# officehq-angular-officefloor (framework held against React) and the React pair (architecture).
-#
-# Its backend pairs with the `spring` arm of ~/spring-petclinic-rest-long-degradation-test, so the
-# two studies line up on the mutative side.
-#
-# Lizard does not class-qualify TypeScript, so an Angular component's methods land at FILE scope
-# like React's free functions, and one component per file makes file scope component scope — the
-# front-end numbers stay comparable with every other UI arm (DESIGN.md §8).
+# Per-layer source roots and tooling settings for this project.
 layers:
   frontend:
     root: src/main/frontend/src
     ext: [ts]
     jscpd_format: typescript
-    # Angular and React share an extension, so the idiom cannot be inferred from it.
     unit_vocabulary: angular
     handler_pattern: "/features/[^:]*::"
     function_package_glob: "src/main/frontend/src/app/features/**/*.ts"
@@ -26,8 +11,4 @@ layers:
     root: src/main/java
     ext: [java]
     jscpd_format: java
-    # The entry surface is the Spring controller a request routes through. Unlike the OfficeFloor
-    # arms there is no per-endpoint wiring unit, so there are no `node_roots` and no
-    # `config_globs`: the node-closure and config_loc columns are BLANK for this arm, which is the
-    # architecture's own answer rather than a gap.
     handler_pattern: "Controller[^:]*::"

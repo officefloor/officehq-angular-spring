@@ -1,21 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  angular-spring base app — the ECOLOGICAL BASELINE: the stack a typical enterprise team ships.
-  Plain Spring Boot 4 on both layers, no OfficeFloor: domain endpoints are @RestController methods,
-  Spring serves the Angular SPA from static/, H2 + Flyway + Actuator.
-
-  This arm deliberately varies BOTH dimensions against officehq-tanstack-officefloor (framework AND
-  backend), so it attributes nothing on its own — it is external validity, not a one-variable
-  control. The one-variable controls are officehq-angular-officefloor (framework) and the React
-  pair (architecture).
+  OfficeHQ — a Spring Boot app. Domain REST endpoints are Spring @RestController methods. Spring
+  serves the Angular SPA (static/), with H2 + Flyway + Actuator.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <!-- Standard Spring Boot app parent. Held at 4.1.0 — the same version the OfficeFloor arms run
-       under — so the host is identical across every arm and only the architecture differs. -->
+  <!-- Standard Spring Boot app parent (4.1.0). -->
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
@@ -23,8 +16,6 @@
     <relativePath/>
   </parent>
 
-  <!-- groupId/package kept identical to the other arms so only the architecture differs in
-       the diffs and the metrics; it names the study, not the framework. -->
   <groupId>net.officefloor.hq</groupId>
   <artifactId>officehq-app</artifactId>
   <version>0.0.1-SNAPSHOT</version>
@@ -37,8 +28,7 @@
   </properties>
 
   <dependencies>
-    <!-- No OfficeFloor. Domain endpoints are Spring @RestController methods — the mutative
-         baseline this study is measured against. -->
+    <!-- Domain endpoints are Spring @RestController methods. -->
     <!-- Spring Boot hosts: web (serves the SPA from static/ + hosts the HTTP server),
          data-jpa (H2 access for services), actuator (health probe). -->
     <dependency>
@@ -53,7 +43,7 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
-    <!-- Bean Validation provider (Hibernate Validator) — OfficeFloor REST / Spring bind + @Valid. -->
+    <!-- Bean Validation provider (Hibernate Validator) — REST bind + @Valid. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-validation</artifactId>
@@ -72,8 +62,8 @@
     <!-- REQUIRED under Spring Boot 4: FlywayAutoConfiguration was extracted from
          spring-boot-autoconfigure into this module. Without it, flyway-core is on the classpath but
          migrations NEVER run on boot (silently — no error, the table is just missing). Version is
-         managed by the parent BOM. Found via the cp01 dry run. flyway-core 12.x has H2 support
-         built in, so no flyway-database-h2 module is needed. -->
+         managed by the parent BOM. flyway-core 12.x has H2 support built in, so no
+         flyway-database-h2 module is needed. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-flyway</artifactId>

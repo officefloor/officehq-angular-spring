@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stop the app and free $PORT. Kills the JVM (in-memory H2 dies with it = clean reset).
-# IDEMPOTENT: exit 0 whether or not anything was running. PINNED — do not edit. Contract: §C.
+# IDEMPOTENT: exit 0 whether or not anything was running.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 

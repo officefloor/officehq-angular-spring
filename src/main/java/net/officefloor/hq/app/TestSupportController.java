@@ -8,12 +8,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Per-spec data setup for the harness (DESIGN.md §9). Profile-guarded so it exists ONLY under the
- * harness launch (bin/start sets spring.profiles.active=harness) — never in a real deploy. This is
- * APP CODE and EVOLVES with the schema (NOT pinned); a change that breaks a prior spec's seed is a
- * seed-path regression. Tests call these to ARRANGE data; they ASSERT only through the UI.
+ * Per-spec data setup for the end-to-end tests. Profile-guarded so it exists ONLY under the test
+ * launch (bin/start sets spring.profiles.active=e2e) — never in a real deploy. Tests call these to
+ * ARRANGE data; they ASSERT only through the UI.
  */
-@Profile("harness")
+@Profile("e2e")
 @RestController
 @RequestMapping("/__test__")
 public class TestSupportController {
@@ -28,7 +27,7 @@ public class TestSupportController {
     @PostMapping("/reset")
     public void reset() {
         audit.clear();
-        // TODO: TRUNCATE the domain tables that exist at this checkpoint (inject a JdbcTemplate/repo).
+        // TODO: TRUNCATE the domain tables that currently exist (inject a JdbcTemplate/repo).
     }
 
     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */

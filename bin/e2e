@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# The agent's test loop (DESIGN.md §15): build, start the whole app, run ONLY the specs currently
-# present in e2e/specs (the agent sees only its own checkpoint's spec — blind), then stop.
-# PINNED — do not edit. Contract: BASE_CHECKLIST.md §C, §D.
+# Build, start the whole app, run the Playwright specs present in e2e/specs, then stop.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

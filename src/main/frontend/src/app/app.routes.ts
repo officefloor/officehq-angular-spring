@@ -1,10 +1,7 @@
 import { Routes } from '@angular/router';
 
-// SHARED SURFACE (config.yaml -> app.shared_surfaces.frontend): the route table.
-//
-// A page is a new component file, registered here with ONE entry that lazily imports it. Give the
-// entry `data: { section, label }` and it appears in the nav bar automatically — the shell reads
-// the router's own config, so a page is never a second edit to a nav component.
+// The route table. A page is a new component file registered here with one entry that lazily
+// imports it; an entry's `data: { section, label }` is read by the shell to build the nav bar.
 export const routes: Routes = [
   { path: '', redirectTo: 'home', pathMatch: 'full' },
   {

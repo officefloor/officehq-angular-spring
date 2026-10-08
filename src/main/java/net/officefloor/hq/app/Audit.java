@@ -12,9 +12,8 @@ import org.springframework.stereotype.Service;
 /**
  * Audit sink: appends one record per line to a KNOWN FILE (app.audit.file, default .run/audit.log)
  * so tests can assert side-effects by reading that file — the second test-assertion channel
- * alongside the UI (DESIGN.md §3, docs/SUT_CONTRACT.md §4). The file path + one-record-per-line
- * format is a declared, stable contract, like data-testid: features may be rewritten as long as
- * they keep emitting the agreed records.
+ * alongside the UI. The file path + one-record-per-line format is a stable contract, like
+ * data-testid: features may be rewritten as long as they keep emitting the agreed records.
  *
  * Inject this bean into any feature that must record an audit entry. Each write flushes (append +
  * SYNC) so a test reads the record immediately.
@@ -28,7 +27,7 @@ public class Audit {
         this.file = Path.of(path);
     }
 
-    /** Append one audit record. Checkpoints assert the exact line(s) in the file. */
+    /** Append one audit record. Tests assert the exact line(s) in the file. */
     public synchronized void record(String entry) {
         try {
             Path parent = file.toAbsolutePath().getParent();

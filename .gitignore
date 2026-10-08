@@ -1,4 +1,4 @@
-# Build output — the agent's committed delta is source only (BASE_CHECKLIST.md §G).
+# Build output.
 target/
 *.jar
 node_modules/
@@ -9,7 +9,7 @@ src/main/resources/static/*
 # Playwright
 e2e/test-results/
 e2e/playwright-report/
-# The harness copies cpNN specs in per checkpoint; don't commit them to the base.
+# Test specs are provided at run time; keep them out of version control.
 e2e/specs/*
 !e2e/specs/.gitkeep
 /.idea/
