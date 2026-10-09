@@ -1,0 +1,695 @@
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index 0601bf3..6e3f8d5 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -21,6 +21,8 @@ export const routes: Routes = [
+   },
+   {
+     path: 'clients/:id',
++    // Wait for a payment being recorded to be saved before leaving, so other pages see it.
++    canDeactivate: [(page: { canLeave(): Promise<boolean> }) => page.canLeave()],
+     loadComponent: () => import('./features/clients/client-detail').then((m) => m.ClientDetail),
+   },
+   {
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index f22a1b6..7271f77 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -1,15 +1,16 @@
+-import { Component, computed, inject, input } from '@angular/core';
++import { Component, computed, inject, input, signal, viewChild } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { ClientContacts } from '../contacts/client-contacts';
+ import { Contact } from '../contacts/contact.service';
++import { ClientPaymentForm } from '../payments/client-payment';
+ import { ClientProjects } from '../projects/client-projects';
+ import { ClientService } from './client.service';
+ 
+-// A single client's page: their name, email and main contact, a link to their statement, counts of their projects and contacts, their contacts, and the projects being done for them.
++// A single client's page: their name, email and main contact, a link to their statement, a form to record a lump payment split across their invoices, counts of their projects and contacts, their contacts, and the projects being done for them.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [RouterLink, ClientContacts, ClientProjects],
++  imports: [RouterLink, ClientContacts, ClientProjects, ClientPaymentForm],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -46,6 +47,25 @@ import { ClientService } from './client.service';
+       <p>
+         <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="client-statement-open">View statement</a>
+       </p>
++      <p>
++        <button
++          type="button"
++          data-testid="client-record-payment"
++          aria-controls="client-payment-panel"
++          [attr.aria-expanded]="recordingPayment()"
++          (click)="recordingPayment.set(!recordingPayment())"
++        >
++          {{ recordingPayment() ? 'Close payment form' : 'Record a payment' }}
++        </button>
++      </p>
++      <div id="client-payment-panel">
++        @if (recordingPayment()) {
++          <app-client-payment [clientId]="clientId()" (recorded)="paymentRecorded()" />
++        }
++        @if (paymentSaved()) {
++          <p role="status" data-testid="client-payment-recorded">Payment recorded.</p>
++        }
++      </div>
+       <app-client-contacts
+         [clientId]="clientId()"
+         (contactAdded)="contactAdded()"
+@@ -72,6 +92,22 @@ export class ClientDetail {
+     stream: ({ params }) => this.service.summary(params),
+   });
+ 
++  protected readonly recordingPayment = signal(false);
++  protected readonly paymentSaved = signal(false);
++  private readonly paymentForm = viewChild(ClientPaymentForm);
++
++  /** Resolves to true once any payment being recorded has been saved, so the page can be left safely. */
++  async canLeave(): Promise<boolean> {
++    await this.paymentForm()?.settled();
++    return true;
++  }
++
++  protected paymentRecorded(): void {
++    this.recordingPayment.set(false);
++    this.paymentSaved.set(true);
++    this.client.reload();
++  }
++
+   protected contactAdded(): void {
+     this.summary.reload();
+     // The first contact added becomes the main contact.
+diff --git a/src/main/frontend/src/app/features/payments/client-payment.ts b/src/main/frontend/src/app/features/payments/client-payment.ts
+new file mode 100644
+index 0000000..c09e86a
+--- /dev/null
++++ b/src/main/frontend/src/app/features/payments/client-payment.ts
+@@ -0,0 +1,237 @@
++import { CurrencyPipe } from '@angular/common';
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, computed, inject, input, output, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { InvoiceService } from '../invoices/invoice.service';
++import { PaymentService } from './payment.service';
++
++const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
++
++/** Whole cents for an entered amount, or null when it is not a valid amount. */
++function toCents(value: string | number): number | null {
++  const trimmed = String(value).trim();
++  return TWO_DECIMALS.test(trimmed) ? Math.round(Number(trimmed) * 100) : null;
++}
++
++// Records one lump payment from a client and splits it across their invoices that are still owed.
++// The shares must account for the whole payment before it is recorded.
++@Component({
++  selector: 'app-client-payment',
++  imports: [ReactiveFormsModule, CurrencyPipe],
++  template: `
++    <section aria-labelledby="client-payment-heading" data-testid="client-payment">
++      <h2 id="client-payment-heading">Record a payment</h2>
++      @if (statement.error()) {
++        <p role="alert" data-testid="client-payment-load-error">Could not load the client's invoices.</p>
++      } @else if (statement.hasValue()) {
++        @if (owing().length === 0) {
++          <p data-testid="client-payment-none-owing">This client has no invoices waiting to be paid.</p>
++        } @else {
++          <form [formGroup]="form" (ngSubmit)="submit()" data-testid="payment-form" novalidate>
++            <div>
++              <label for="client-payment-amount">Amount received</label>
++              <input
++                id="client-payment-amount"
++                type="number"
++                inputmode="decimal"
++                min="0.01"
++                step="0.01"
++                formControlName="amount"
++                data-testid="payment-form-amount"
++                [attr.aria-invalid]="invalid('amount')"
++                [attr.aria-describedby]="invalid('amount') ? 'client-payment-amount-error' : null"
++              />
++              @if (invalid('amount')) {
++                <p id="client-payment-amount-error" role="alert" data-testid="payment-form-amount-error">
++                  Enter an amount greater than zero with at most two decimal places.
++                </p>
++              }
++            </div>
++            <div>
++              <label for="client-payment-date">Date paid</label>
++              <input
++                id="client-payment-date"
++                type="date"
++                formControlName="date"
++                data-testid="payment-form-date"
++                [attr.aria-invalid]="invalid('date')"
++                [attr.aria-describedby]="invalid('date') ? 'client-payment-date-error' : null"
++              />
++              @if (invalid('date')) {
++                <p id="client-payment-date-error" role="alert" data-testid="payment-form-date-error">
++                  Enter the date the payment was made.
++                </p>
++              }
++            </div>
++            <table data-testid="payment-alloc-table">
++              <caption>Split the payment across the invoices still owed</caption>
++              <thead>
++                <tr>
++                  <th scope="col">Invoice</th>
++                  <th scope="col">Job</th>
++                  <th scope="col">Balance due</th>
++                  <th scope="col">Pay</th>
++                </tr>
++              </thead>
++              <tbody>
++                @for (i of owing(); track i.id) {
++                  <tr [attr.data-testid]="'payment-alloc-row-' + i.id">
++                    <td>#{{ i.id }}</td>
++                    <td>{{ i.projectName }}</td>
++                    <td data-testid="payment-alloc-due">{{ i.amountDue | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                    <td>
++                      <input
++                        type="number"
++                        inputmode="decimal"
++                        min="0"
++                        step="0.01"
++                        [attr.aria-label]="'Amount to pay on invoice ' + i.id"
++                        [attr.data-testid]="'payment-alloc-' + i.id"
++                        [value]="allocations()[i.id] ?? ''"
++                        (input)="allocate(i.id, $any($event.target).value)"
++                      />
++                    </td>
++                  </tr>
++                }
++              </tbody>
++              <tfoot>
++                <tr>
++                  <th scope="row" colspan="3">Allocated</th>
++                  <td data-testid="payment-alloc-total">{{ allocatedCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                </tr>
++              </tfoot>
++            </table>
++            <button type="submit" data-testid="payment-form-submit" [disabled]="saving()">Record payment</button>
++            @if (saveError()) {
++              <p role="alert" data-testid="payment-form-error">{{ saveError() }}</p>
++            }
++          </form>
++        }
++      }
++    </section>
++  `,
++})
++export class ClientPaymentForm {
++  private readonly invoices = inject(InvoiceService);
++  private readonly payments = inject(PaymentService);
++
++  readonly clientId = input.required<number>();
++  /** Emits once the payment has been recorded. */
++  readonly recorded = output<void>();
++
++  protected readonly statement = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.invoices.statementForClient(params),
++  });
++
++  /** The client's sent invoices that still have something left to pay. */
++  protected readonly owing = computed(() =>
++    (this.statement.hasValue() ? this.statement.value().invoices : []).filter(
++      (i) => (i.status === 'SENT' || i.status === 'PARTIAL') && i.amountDue > 0,
++    ),
++  );
++
++  /** What has been typed against each invoice, keyed by invoice id. */
++  protected readonly allocations = signal<Record<number, string>>({});
++
++  protected readonly allocatedCents = computed(() =>
++    Object.values(this.allocations()).reduce((sum, v) => sum + (toCents(v) ?? 0), 0),
++  );
++
++  protected readonly saving = signal(false);
++  /** Settles once the payment being saved has been recorded or refused; null when nothing is being saved. */
++  private inFlight: Promise<void> | null = null;
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    date: ['', [Validators.required]],
++  });
++
++  protected invalid(name: 'amount' | 'date'): boolean {
++    const control = this.form.controls[name];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected allocate(invoiceId: number, value: string): void {
++    this.allocations.update((a) => ({ ...a, [invoiceId]: value }));
++  }
++
++  protected submit(): void {
++    this.saveError.set(null);
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    const shares: { invoiceId: number; amount: number }[] = [];
++    for (const invoice of this.owing()) {
++      const entered = (this.allocations()[invoice.id] ?? '').trim();
++      if (entered === '') {
++        continue;
++      }
++      const cents = toCents(entered);
++      if (cents === null) {
++        this.saveError.set(`Enter the amount for invoice #${invoice.id} with at most two decimal places.`);
++        return;
++      }
++      if (cents > Math.round(invoice.amountDue * 100)) {
++        this.saveError.set(`The amount for invoice #${invoice.id} is more than its balance due.`);
++        return;
++      }
++      if (cents > 0) {
++        shares.push({ invoiceId: invoice.id, amount: cents / 100 });
++      }
++    }
++    const { amount, date } = this.form.getRawValue();
++    const totalCents = toCents(amount) ?? 0;
++    if (shares.length === 0) {
++      this.saveError.set('Allocate the payment to at least one invoice.');
++      return;
++    }
++    if (this.allocatedCents() !== totalCents) {
++      this.saveError.set(
++        `The amounts allocated add up to ${this.format(this.allocatedCents())}, ` +
++          `but the payment is ${this.format(totalCents)}. Allocate the whole payment.`,
++      );
++      return;
++    }
++    this.saving.set(true);
++    let settle!: () => void;
++    this.inFlight = new Promise((resolve) => (settle = resolve));
++    const done = () => {
++      this.inFlight = null;
++      settle();
++    };
++    this.payments.recordForClient(this.clientId(), { amount: totalCents / 100, date, allocations: shares }).subscribe({
++      next: () => {
++        this.saving.set(false);
++        done();
++        this.form.reset();
++        this.allocations.set({});
++        this.statement.reload();
++        this.recorded.emit();
++      },
++      error: (err: HttpErrorResponse) => {
++        this.saveError.set(
++          err.status === 409
++            ? 'One of the amounts is more than that invoice’s balance due.'
++            : err.status === 400
++              ? 'The amounts allocated must add up to the whole payment.'
++              : 'Could not record the payment. Please try again.',
++        );
++        this.saving.set(false);
++        done();
++      },
++    });
++  }
++
++  /** Resolves once any payment being saved has been recorded or refused, so leaving the page does not race it. */
++  settled(): Promise<void> {
++    return this.inFlight ?? Promise.resolve();
++  }
++
++  private format(cents: number): string {
++    return `$${(cents / 100).toFixed(2)}`;
++  }
++}
+diff --git a/src/main/frontend/src/app/features/payments/payment.service.ts b/src/main/frontend/src/app/features/payments/payment.service.ts
+index 52e6fc8..e8b77ba 100644
+--- a/src/main/frontend/src/app/features/payments/payment.service.ts
++++ b/src/main/frontend/src/app/features/payments/payment.service.ts
+@@ -16,6 +16,22 @@ export interface NewPayment {
+   date: string;
+ }
+ 
++/** A lump payment from a client, split across several of their invoices; the shares add up to the amount. */
++export interface NewClientPayment {
++  amount: number;
++  date: string;
++  allocations: { invoiceId: number; amount: number }[];
++}
++
++/** A recorded lump payment and the payment it made against each invoice. */
++export interface ClientPayment {
++  id: number;
++  clientId: number;
++  amount: number;
++  date: string;
++  allocations: Payment[];
++}
++
+ @Injectable({ providedIn: 'root' })
+ export class PaymentService {
+   private readonly http = inject(HttpClient);
+@@ -28,4 +44,9 @@ export class PaymentService {
+   record(projectId: number, invoiceId: number, payment: NewPayment): Observable<Payment> {
+     return this.http.post<Payment>(`/api/projects/${projectId}/invoices/${invoiceId}/payments`, payment);
+   }
++
++  /** Records one lump payment from a client, split across the given invoices. */
++  recordForClient(clientId: number, payment: NewClientPayment): Observable<ClientPayment> {
++    return this.http.post<ClientPayment>(`/api/clients/${clientId}/payments`, payment);
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index c581c59..feba8f7 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -55,6 +55,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE client_payment RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPayment.java b/src/main/java/net/officefloor/hq/app/payment/ClientPayment.java
+new file mode 100644
+index 0000000..cd8aff6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPayment.java
+@@ -0,0 +1,54 @@
++package net.officefloor.hq.app.payment;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A lump sum a client paid on a given day, split across several of their invoices. */
++@Entity
++@Table(name = "client_payment")
++public class ClientPayment {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "client_id", nullable = false)
++    private Long clientId;
++
++    @Column(nullable = false, precision = 12, scale = 2)
++    private BigDecimal amount;
++
++    @Column(name = "paid_date", nullable = false)
++    private LocalDate date;
++
++    protected ClientPayment() {
++    }
++
++    public ClientPayment(Long clientId, BigDecimal amount, LocalDate date) {
++        this.clientId = clientId;
++        this.amount = amount.setScale(2);
++        this.date = date;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public LocalDate getDate() {
++        return date;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentController.java b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentController.java
+new file mode 100644
+index 0000000..05c3738
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentController.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app.payment;
++
++import jakarta.validation.Valid;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** A lump payment from a client, split across several of their invoices. */
++@RestController
++@RequestMapping("/api/clients/{clientId}/payments")
++public class ClientPaymentController {
++
++    private final PaymentService service;
++
++    public ClientPaymentController(PaymentService service) {
++        this.service = service;
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public ClientPaymentResponse record(@PathVariable Long clientId, @Valid @RequestBody ClientPaymentRequest request) {
++        return service.recordForClient(clientId, request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java
+new file mode 100644
+index 0000000..c30c680
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.payment;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface ClientPaymentRepository extends JpaRepository<ClientPayment, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRequest.java b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRequest.java
+new file mode 100644
+index 0000000..79c85d7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRequest.java
+@@ -0,0 +1,23 @@
++package net.officefloor.hq.app.payment;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotEmpty;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++
++/** Payload to record one lump payment from a client, split across their invoices. */
++public record ClientPaymentRequest(
++        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
++        @NotNull LocalDate date,
++        @NotEmpty List<@Valid @NotNull Allocation> allocations) {
++
++    /** The share of the lump paid against one invoice. */
++    public record Allocation(
++            @NotNull Long invoiceId,
++            @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount) {
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentResponse.java b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentResponse.java
+new file mode 100644
+index 0000000..03178e8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentResponse.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app.payment;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++
++/** A lump payment from a client and the payment recorded against each invoice it was split across. */
++public record ClientPaymentResponse(Long id, Long clientId, BigDecimal amount, LocalDate date,
++        List<PaymentResponse> allocations) {
++
++    static ClientPaymentResponse from(ClientPayment lump, List<PaymentResponse> allocations) {
++        return new ClientPaymentResponse(lump.getId(), lump.getClientId(), lump.getAmount(), lump.getDate(),
++                allocations);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/payment/Payment.java b/src/main/java/net/officefloor/hq/app/payment/Payment.java
+index fdf390e..1b20c8e 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/payment/Payment.java
+@@ -27,6 +27,10 @@ public class Payment {
+     @Column(name = "paid_date", nullable = false)
+     private LocalDate date;
+ 
++    /** The lump payment this was split from; null when paid against the invoice on its own. */
++    @Column(name = "client_payment_id")
++    private Long clientPaymentId;
++
+     protected Payment() {
+     }
+ 
+@@ -36,6 +40,11 @@ public class Payment {
+         this.date = date;
+     }
+ 
++    public Payment(Long invoiceId, BigDecimal amount, LocalDate date, Long clientPaymentId) {
++        this(invoiceId, amount, date);
++        this.clientPaymentId = clientPaymentId;
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -51,4 +60,8 @@ public class Payment {
+     public LocalDate getDate() {
+         return date;
+     }
++
++    public Long getClientPaymentId() {
++        return clientPaymentId;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+index d26c303..3bfda8b 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+@@ -1,8 +1,12 @@
+ package net.officefloor.hq.app.payment;
+ 
+ import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.HashSet;
+ import java.util.List;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+@@ -16,11 +20,16 @@ public class PaymentService {
+ 
+     private final PaymentRepository payments;
+     private final InvoiceRepository invoices;
++    private final ClientPaymentRepository clientPayments;
++    private final ClientRepository clients;
+     private final Audit audit;
+ 
+-    public PaymentService(PaymentRepository payments, InvoiceRepository invoices, Audit audit) {
++    public PaymentService(PaymentRepository payments, InvoiceRepository invoices,
++            ClientPaymentRepository clientPayments, ClientRepository clients, Audit audit) {
+         this.payments = payments;
+         this.invoices = invoices;
++        this.clientPayments = clientPayments;
++        this.clients = clients;
+         this.audit = audit;
+     }
+ 
+@@ -37,7 +46,40 @@ public class PaymentService {
+      */
+     @Transactional
+     public PaymentResponse record(Long projectId, Long invoiceId, PaymentRequest request) {
+-        Invoice invoice = find(projectId, invoiceId);
++        return apply(find(projectId, invoiceId), request.amount(), request.date(), null);
++    }
++
++    /**
++     * Records one lump payment from a client split across several of their owing invoices. The
++     * shares must add up to the whole lump, each invoice may appear once, and each share is recorded
++     * as a payment against its own invoice under the same rules as a payment made on its own.
++     */
++    @Transactional
++    public ClientPaymentResponse recordForClient(Long clientId, ClientPaymentRequest request) {
++        if (!clients.existsById(clientId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
++        }
++        BigDecimal allocated = request.allocations().stream()
++                .map(ClientPaymentRequest.Allocation::amount)
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++        if (allocated.compareTo(request.amount()) != 0) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "The shares must add up to the whole payment");
++        }
++        Set<Long> seen = new HashSet<>();
++        for (ClientPaymentRequest.Allocation a : request.allocations()) {
++            if (!seen.add(a.invoiceId())) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Each invoice may be paid only once");
++            }
++        }
++        ClientPayment lump = clientPayments.saveAndFlush(new ClientPayment(clientId, request.amount(), request.date()));
++        List<PaymentResponse> shares = request.allocations().stream()
++                .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(), request.date(), lump.getId()))
++                .toList();
++        return ClientPaymentResponse.from(lump, shares);
++    }
++
++    private PaymentResponse apply(Invoice invoice, BigDecimal amount, LocalDate date, Long clientPaymentId) {
+         if (invoice.getStatus() == InvoiceStatus.DRAFT) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "Send the invoice before recording a payment");
+         }
+@@ -47,17 +89,23 @@ public class PaymentService {
+         if (!invoice.getStatus().isOwing()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice is already paid");
+         }
+-        BigDecimal paid = payments.sumAmountByInvoiceId(invoiceId).add(request.amount());
++        BigDecimal paid = payments.sumAmountByInvoiceId(invoice.getId()).add(amount);
+         if (paid.compareTo(invoice.getAmount()) > 0) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment is more than the balance due");
+         }
+-        Payment saved = payments.saveAndFlush(new Payment(invoiceId, request.amount(), request.date()));
++        Payment saved = payments.saveAndFlush(new Payment(invoice.getId(), amount, date, clientPaymentId));
+         invoice.applyPaidTotal(paid);
+         invoices.flush();
+         audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount=" + saved.getAmount().toPlainString());
+         return PaymentResponse.from(saved);
+     }
+ 
++    private Invoice findForClient(Long clientId, Long invoiceId) {
++        return invoices.findById(invoiceId)
++                .filter(i -> i.getProject().getClient().getId().equals(clientId))
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown invoice"));
++    }
++
+     private Invoice find(Long projectId, Long invoiceId) {
+         return invoices.findById(invoiceId)
+                 .filter(i -> i.getProject().getId().equals(projectId))
+diff --git a/src/main/resources/db/migration/V28__client_payment.sql b/src/main/resources/db/migration/V28__client_payment.sql
+new file mode 100644
+index 0000000..de1373a
+--- /dev/null
++++ b/src/main/resources/db/migration/V28__client_payment.sql
+@@ -0,0 +1,16 @@
++-- A lump sum a client pays in one go, split across several of their invoices. Each share is still
++-- recorded as an ordinary payment against its invoice, linked back to the lump it came from.
++CREATE TABLE client_payment (
++    id        BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    client_id BIGINT         NOT NULL,
++    amount    DECIMAL(12, 2) NOT NULL,
++    paid_date DATE           NOT NULL,
++    CONSTRAINT client_payment_client_fk FOREIGN KEY (client_id) REFERENCES client (id),
++    CONSTRAINT client_payment_amount_positive CHECK (amount > 0)
++);
++
++CREATE INDEX client_payment_client_idx ON client_payment (client_id, paid_date);
++
++ALTER TABLE payment ADD COLUMN client_payment_id BIGINT;
++ALTER TABLE payment ADD CONSTRAINT payment_client_payment_fk
++    FOREIGN KEY (client_payment_id) REFERENCES client_payment (id);
