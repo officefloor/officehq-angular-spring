@@ -16,6 +16,22 @@ export interface NewPayment {
   date: string;
 }
 
+/** A lump payment from a client, split across several of their invoices; the shares add up to the amount. */
+export interface NewClientPayment {
+  amount: number;
+  date: string;
+  allocations: { invoiceId: number; amount: number }[];
+}
+
+/** A recorded lump payment and the payment it made against each invoice. */
+export interface ClientPayment {
+  id: number;
+  clientId: number;
+  amount: number;
+  date: string;
+  allocations: Payment[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class PaymentService {
   private readonly http = inject(HttpClient);
@@ -27,5 +43,10 @@ export class PaymentService {
 
   record(projectId: number, invoiceId: number, payment: NewPayment): Observable<Payment> {
     return this.http.post<Payment>(`/api/projects/${projectId}/invoices/${invoiceId}/payments`, payment);
+  }
+
+  /** Records one lump payment from a client, split across the given invoices. */
+  recordForClient(clientId: number, payment: NewClientPayment): Observable<ClientPayment> {
+    return this.http.post<ClientPayment>(`/api/clients/${clientId}/payments`, payment);
   }
 }

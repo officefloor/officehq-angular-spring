@@ -9,17 +9,17 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** An amount a client has paid against an invoice on a given day. */
+/** A lump sum a client paid on a given day, split across several of their invoices. */
 @Entity
-@Table(name = "payment")
-public class Payment {
+@Table(name = "client_payment")
+public class ClientPayment {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "invoice_id", nullable = false)
-    private Long invoiceId;
+    @Column(name = "client_id", nullable = false)
+    private Long clientId;
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;
@@ -27,30 +27,21 @@ public class Payment {
     @Column(name = "paid_date", nullable = false)
     private LocalDate date;
 
-    /** The lump payment this was split from; null when paid against the invoice on its own. */
-    @Column(name = "client_payment_id")
-    private Long clientPaymentId;
-
-    protected Payment() {
+    protected ClientPayment() {
     }
 
-    public Payment(Long invoiceId, BigDecimal amount, LocalDate date) {
-        this.invoiceId = invoiceId;
+    public ClientPayment(Long clientId, BigDecimal amount, LocalDate date) {
+        this.clientId = clientId;
         this.amount = amount.setScale(2);
         this.date = date;
-    }
-
-    public Payment(Long invoiceId, BigDecimal amount, LocalDate date, Long clientPaymentId) {
-        this(invoiceId, amount, date);
-        this.clientPaymentId = clientPaymentId;
     }
 
     public Long getId() {
         return id;
     }
 
-    public Long getInvoiceId() {
-        return invoiceId;
+    public Long getClientId() {
+        return clientId;
     }
 
     public BigDecimal getAmount() {
@@ -59,9 +50,5 @@ public class Payment {
 
     public LocalDate getDate() {
         return date;
-    }
-
-    public Long getClientPaymentId() {
-        return clientPaymentId;
     }
 }

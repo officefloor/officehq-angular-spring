@@ -21,6 +21,8 @@ export const routes: Routes = [
   },
   {
     path: 'clients/:id',
+    // Wait for a payment being recorded to be saved before leaving, so other pages see it.
+    canDeactivate: [(page: { canLeave(): Promise<boolean> }) => page.canLeave()],
     loadComponent: () => import('./features/clients/client-detail').then((m) => m.ClientDetail),
   },
   {

@@ -1,15 +1,16 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, computed, inject, input, signal, viewChild } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { ClientContacts } from '../contacts/client-contacts';
 import { Contact } from '../contacts/contact.service';
+import { ClientPaymentForm } from '../payments/client-payment';
 import { ClientProjects } from '../projects/client-projects';
 import { ClientService } from './client.service';
 
-// A single client's page: their name, email and main contact, a link to their statement, counts of their projects and contacts, their contacts, and the projects being done for them.
+// A single client's page: their name, email and main contact, a link to their statement, a form to record a lump payment split across their invoices, counts of their projects and contacts, their contacts, and the projects being done for them.
 @Component({
   selector: 'app-client-detail',
-  imports: [RouterLink, ClientContacts, ClientProjects],
+  imports: [RouterLink, ClientContacts, ClientProjects, ClientPaymentForm],
   styles: `
     .client-badges {
       display: flex;
@@ -46,6 +47,25 @@ import { ClientService } from './client.service';
       <p>
         <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="client-statement-open">View statement</a>
       </p>
+      <p>
+        <button
+          type="button"
+          data-testid="client-record-payment"
+          aria-controls="client-payment-panel"
+          [attr.aria-expanded]="recordingPayment()"
+          (click)="recordingPayment.set(!recordingPayment())"
+        >
+          {{ recordingPayment() ? 'Close payment form' : 'Record a payment' }}
+        </button>
+      </p>
+      <div id="client-payment-panel">
+        @if (recordingPayment()) {
+          <app-client-payment [clientId]="clientId()" (recorded)="paymentRecorded()" />
+        }
+        @if (paymentSaved()) {
+          <p role="status" data-testid="client-payment-recorded">Payment recorded.</p>
+        }
+      </div>
       <app-client-contacts
         [clientId]="clientId()"
         (contactAdded)="contactAdded()"
@@ -71,6 +91,22 @@ export class ClientDetail {
     params: () => this.clientId(),
     stream: ({ params }) => this.service.summary(params),
   });
+
+  protected readonly recordingPayment = signal(false);
+  protected readonly paymentSaved = signal(false);
+  private readonly paymentForm = viewChild(ClientPaymentForm);
+
+  /** Resolves to true once any payment being recorded has been saved, so the page can be left safely. */
+  async canLeave(): Promise<boolean> {
+    await this.paymentForm()?.settled();
+    return true;
+  }
+
+  protected paymentRecorded(): void {
+    this.recordingPayment.set(false);
+    this.paymentSaved.set(true);
+    this.client.reload();
+  }
 
   protected contactAdded(): void {
     this.summary.reload();
