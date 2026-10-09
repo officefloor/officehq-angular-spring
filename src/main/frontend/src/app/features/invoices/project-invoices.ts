@@ -1,0 +1,125 @@
+import { DecimalPipe } from '@angular/common';
+import { Component, computed, inject, input, signal } from '@angular/core';
+import { rxResource } from '@angular/core/rxjs-interop';
+import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { InvoiceService } from './invoice.service';
+
+// A project's invoices: lists them, shows what they add up to, and adds a new one by amount.
+@Component({
+  selector: 'app-project-invoices',
+  imports: [ReactiveFormsModule, DecimalPipe],
+  template: `
+    <section aria-labelledby="project-invoices-heading" data-testid="project-invoices">
+      <h2 id="project-invoices-heading">Invoices</h2>
+
+      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="invoice-form" novalidate>
+        <div>
+          <label for="invoice-amount">Amount</label>
+          <input
+            id="invoice-amount"
+            type="number"
+            inputmode="decimal"
+            min="0.01"
+            step="0.01"
+            formControlName="amount"
+            data-testid="invoice-form-amount"
+            [attr.aria-invalid]="showError()"
+            [attr.aria-describedby]="showError() ? 'invoice-amount-error' : null"
+          />
+          @if (showError()) {
+            <p id="invoice-amount-error" role="alert" data-testid="invoice-form-amount-error">
+              Enter an amount greater than zero with at most two decimal places.
+            </p>
+          }
+        </div>
+        <button type="submit" data-testid="invoice-form-submit" [disabled]="saving()">
+          Add invoice
+        </button>
+        @if (saveError()) {
+          <p role="alert" data-testid="invoice-form-error">{{ saveError() }}</p>
+        }
+      </form>
+
+      @if (invoices.error()) {
+        <p role="alert" data-testid="project-invoices-error">Could not load the invoices.</p>
+      } @else if (list().length === 0) {
+        <p data-testid="project-invoices-empty">No invoices yet.</p>
+      } @else {
+        <table data-testid="project-invoices-table">
+          <caption>Invoices for this project</caption>
+          <thead>
+            <tr>
+              <th scope="col">Invoice</th>
+              <th scope="col">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (i of list(); track i.id) {
+              <tr [attr.data-testid]="'invoice-row-' + i.id">
+                <td data-testid="invoice-id">#{{ i.id }}</td>
+                <td data-testid="invoice-amount">{{ i.amount | number: '1.2-2' : 'en-US' }}</td>
+              </tr>
+            }
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row">Total</th>
+              <td data-testid="project-invoices-total">{{ totalCents() / 100 | number: '1.2-2' : 'en-US' }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      }
+    </section>
+  `,
+})
+export class ProjectInvoices {
+  private readonly service = inject(InvoiceService);
+
+  readonly projectId = input.required<number>();
+
+  protected readonly invoices = rxResource({
+    params: () => this.projectId(),
+    stream: ({ params }) => this.service.listForProject(params),
+  });
+  protected readonly list = computed(() => (this.invoices.hasValue() ? this.invoices.value() : []));
+  // Sum in whole cents so the total is exact rather than accumulating floating-point error.
+  protected readonly totalCents = computed(() =>
+    this.list().reduce((sum, i) => sum + Math.round(i.amount * 100), 0),
+  );
+
+  protected readonly saving = signal(false);
+  protected readonly saveError = signal<string | null>(null);
+
+  protected readonly form = inject(NonNullableFormBuilder).group({
+    amount: [
+      '',
+      [Validators.required, Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)],
+    ],
+  });
+
+  protected showError(): boolean {
+    const control = this.form.controls.amount;
+    return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected submit(): void {
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
+    this.saving.set(true);
+    this.saveError.set(null);
+    const amount = Number(this.form.getRawValue().amount);
+    this.service.create(this.projectId(), { amount }).subscribe({
+      next: (created) => {
+        this.invoices.update((list) => [...(list ?? []), created]);
+        this.form.reset();
+        this.saving.set(false);
+      },
+      error: () => {
+        this.saveError.set('Could not save the invoice. Please try again.');
+        this.saving.set(false);
+      },
+    });
+  }
+}

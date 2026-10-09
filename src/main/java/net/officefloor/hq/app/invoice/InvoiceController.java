@@ -1,4 +1,4 @@
-package net.officefloor.hq.app.project;
+package net.officefloor.hq.app.invoice;
 
 import jakarta.validation.Valid;
 import java.util.List;
@@ -12,28 +12,23 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/projects")
-public class ProjectController {
+@RequestMapping("/api/projects/{projectId}/invoices")
+public class InvoiceController {
 
-    private final ProjectService service;
+    private final InvoiceService service;
 
-    public ProjectController(ProjectService service) {
+    public InvoiceController(InvoiceService service) {
         this.service = service;
     }
 
     @GetMapping
-    public List<ProjectResponse> list() {
-        return service.list();
-    }
-
-    @GetMapping("/{id}")
-    public ProjectResponse get(@PathVariable Long id) {
-        return service.get(id);
+    public List<InvoiceResponse> list(@PathVariable Long projectId) {
+        return service.listForProject(projectId);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ProjectResponse create(@Valid @RequestBody ProjectRequest request) {
-        return service.create(request);
+    public InvoiceResponse create(@PathVariable Long projectId, @Valid @RequestBody InvoiceRequest request) {
+        return service.create(projectId, request);
     }
 }

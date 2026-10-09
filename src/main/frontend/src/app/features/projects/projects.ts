@@ -1,12 +1,14 @@
 import { Component, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { Client, ClientService } from '../clients/client.service';
 import { Project, ProjectService } from './project.service';
 
-// Projects page: add a project for a client and list all projects with their client's name.
+// Projects page: add a project for a client and list all projects with their client's name; each
+// project opens its detail page.
 @Component({
   selector: 'app-projects',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, RouterLink],
   template: `
     <h1>Projects</h1>
 
@@ -64,6 +66,7 @@ import { Project, ProjectService } from './project.service';
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Client</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -71,6 +74,14 @@ import { Project, ProjectService } from './project.service';
             <tr [attr.data-testid]="'project-row-' + p.id">
               <td data-testid="project-name">{{ p.name }}</td>
               <td data-testid="project-client">{{ p.clientName }}</td>
+              <td>
+                <a
+                  [routerLink]="['/projects', p.id]"
+                  [attr.data-testid]="'project-open-' + p.id"
+                  [attr.aria-label]="'Open ' + p.name"
+                  >Open</a
+                >
+              </td>
             </tr>
           }
         </tbody>

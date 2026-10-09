@@ -24,6 +24,12 @@ public class ProjectService {
         return projects.findAllWithClient().stream().map(ProjectResponse::from).toList();
     }
 
+    @Transactional(readOnly = true)
+    public ProjectResponse get(Long id) {
+        return projects.findByIdWithClient(id).map(ProjectResponse::from)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+    }
+
     @Transactional
     public ProjectResponse create(ProjectRequest request) {
         Client client = clients.findById(request.clientId())

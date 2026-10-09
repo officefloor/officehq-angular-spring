@@ -1,5 +1,6 @@
 package net.officefloor.hq.app;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
@@ -37,6 +38,7 @@ public class TestSupportController {
         // referential checks for the duration of the truncates.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
         try {
+            jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
         } finally {
@@ -57,9 +59,15 @@ public class TestSupportController {
                     ((Number) p.get("id")).longValue(), p.get("name"),
                     ((Number) p.get("clientId")).longValue());
         }
+        for (Map<String, Object> i : rows(fixture, "invoices")) {
+            jdbc.update("INSERT INTO invoice (id, project_id, amount) VALUES (?, ?, ?)",
+                    ((Number) i.get("id")).longValue(), ((Number) i.get("projectId")).longValue(),
+                    new BigDecimal(i.get("amount").toString()));
+        }
         // Continue generated ids after the explicitly seeded ones.
         restartIdentity("client");
         restartIdentity("project");
+        restartIdentity("invoice");
     }
 
     private void restartIdentity(String table) {
