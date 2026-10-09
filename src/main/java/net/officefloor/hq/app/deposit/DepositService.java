@@ -13,11 +13,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class DepositService {
 
     private final DepositRepository deposits;
+    private final DepositApplicationRepository applications;
     private final ClientRepository clients;
     private final Audit audit;
 
-    public DepositService(DepositRepository deposits, ClientRepository clients, Audit audit) {
+    public DepositService(DepositRepository deposits, DepositApplicationRepository applications,
+            ClientRepository clients, Audit audit) {
         this.deposits = deposits;
+        this.applications = applications;
         this.clients = clients;
         this.audit = audit;
     }
@@ -27,9 +30,10 @@ public class DepositService {
         requireClient(clientId);
         List<DepositResponse> held = deposits.findByClientIdOrderByDateAscIdAsc(clientId).stream()
                 .map(DepositResponse::from).toList();
-        BigDecimal total = held.stream().map(DepositResponse::amount)
+        BigDecimal paid = held.stream().map(DepositResponse::amount)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        return new ClientDepositsResponse(total, held);
+        BigDecimal applied = applications.sumAmountByClientId(clientId).setScale(2);
+        return new ClientDepositsResponse(paid.subtract(applied), applied, held);
     }
 
     /** Records money a client paid up front, before any invoice; it is held against the client. */

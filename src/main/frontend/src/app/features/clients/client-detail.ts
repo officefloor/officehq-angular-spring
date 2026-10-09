@@ -5,12 +5,12 @@ import { RouterLink } from '@angular/router';
 import { ClientContacts } from '../contacts/client-contacts';
 import { Contact } from '../contacts/contact.service';
 import { ClientDeposits } from '../deposits/client-deposits';
-import { ClientPaymentForm } from '../payments/client-payment';
+import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
 import { ClientProjects } from '../projects/client-projects';
 import { ClientCurrency } from './client-currency';
 import { Client, ClientService } from './client.service';
 
-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
+// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
 @Component({
   selector: 'app-client-detail',
   imports: [CurrencyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits],
@@ -101,18 +101,30 @@ import { Client, ClientService } from './client.service';
           type="button"
           data-testid="client-record-payment"
           aria-controls="client-payment-panel"
-          [attr.aria-expanded]="recordingPayment()"
-          (click)="recordingPayment.set(!recordingPayment())"
+          [attr.aria-expanded]="recordingPayment() === 'payment'"
+          (click)="toggle('payment')"
         >
-          {{ recordingPayment() ? 'Close payment form' : 'Record a payment' }}
+          {{ recordingPayment() === 'payment' ? 'Close payment form' : 'Record a payment' }}
+        </button>
+        <button
+          type="button"
+          data-testid="client-allocate-deposit"
+          aria-controls="client-payment-panel"
+          [attr.aria-expanded]="recordingPayment() === 'deposit'"
+          (click)="toggle('deposit')"
+        >
+          {{ recordingPayment() === 'deposit' ? 'Close deposit form' : 'Put a deposit toward invoices' }}
         </button>
       </p>
       <div id="client-payment-panel">
-        @if (recordingPayment()) {
-          <app-client-payment [clientId]="clientId()" (recorded)="paymentRecorded()" />
+        @if (recordingPayment(); as source) {
+          <app-client-payment [clientId]="clientId()" [source]="source" (recorded)="paymentRecorded(source)" />
         }
         @if (paymentSaved()) {
           <p role="status" data-testid="client-payment-recorded">Payment recorded.</p>
+        }
+        @if (depositApplied()) {
+          <p role="status" data-testid="client-deposit-applied">Deposit applied.</p>
         }
       </div>
       <app-client-deposits [clientId]="clientId()" [currency]="c.currency" />
@@ -142,9 +154,12 @@ export class ClientDetail {
     stream: ({ params }) => this.service.summary(params),
   });
 
-  protected readonly recordingPayment = signal(false);
+  /** Which split form is open, if any: a payment received, or the client's held deposits. */
+  protected readonly recordingPayment = signal<PaymentSource | null>(null);
   protected readonly paymentSaved = signal(false);
+  protected readonly depositApplied = signal(false);
   private readonly paymentForm = viewChild(ClientPaymentForm);
+  private readonly depositsPanel = viewChild(ClientDeposits);
 
   /** Resolves to true once any payment being recorded has been saved, so the page can be left safely. */
   async canLeave(): Promise<boolean> {
@@ -152,9 +167,17 @@ export class ClientDetail {
     return true;
   }
 
-  protected paymentRecorded(): void {
-    this.recordingPayment.set(false);
-    this.paymentSaved.set(true);
+  protected toggle(source: PaymentSource): void {
+    this.recordingPayment.update((open) => (open === source ? null : source));
+  }
+
+  protected paymentRecorded(source: PaymentSource): void {
+    this.recordingPayment.set(null);
+    this.paymentSaved.set(source === 'payment');
+    this.depositApplied.set(source === 'deposit');
+    if (source === 'deposit') {
+      this.depositsPanel()?.reload();
+    }
     this.client.reload();
   }
 

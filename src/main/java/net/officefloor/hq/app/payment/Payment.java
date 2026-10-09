@@ -31,6 +31,10 @@ public class Payment {
     @Column(name = "client_payment_id")
     private Long clientPaymentId;
 
+    /** The deposit application this was put toward the invoice from; null when it was not paid from deposits. */
+    @Column(name = "deposit_application_id")
+    private Long depositApplicationId;
+
     protected Payment() {
     }
 
@@ -43,6 +47,13 @@ public class Payment {
     public Payment(Long invoiceId, BigDecimal amount, LocalDate date, Long clientPaymentId) {
         this(invoiceId, amount, date);
         this.clientPaymentId = clientPaymentId;
+    }
+
+    /** A share of a client's held deposits put toward an invoice. */
+    public static Payment fromDeposits(Long invoiceId, BigDecimal amount, LocalDate date, Long depositApplicationId) {
+        Payment payment = new Payment(invoiceId, amount, date);
+        payment.depositApplicationId = depositApplicationId;
+        return payment;
     }
 
     public Long getId() {
@@ -63,5 +74,9 @@ public class Payment {
 
     public Long getClientPaymentId() {
         return clientPaymentId;
+    }
+
+    public Long getDepositApplicationId() {
+        return depositApplicationId;
     }
 }

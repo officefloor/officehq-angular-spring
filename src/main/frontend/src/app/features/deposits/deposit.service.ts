@@ -16,9 +16,15 @@ export interface NewDeposit {
   date: string;
 }
 
-/** The deposits held for a client, oldest first, and their total. */
+/** Part of a client's held deposits to put toward their invoices, split across them. */
+export interface NewDepositApplication {
+  allocations: { invoiceId: number; amount: number }[];
+}
+
+/** The deposits a client has paid, oldest first; `total` is what is still held after `applied` was put toward invoices. */
 export interface ClientDeposits {
   total: number;
+  applied: number;
   deposits: Deposit[];
 }
 
@@ -32,5 +38,10 @@ export class DepositService {
 
   record(clientId: number, deposit: NewDeposit): Observable<Deposit> {
     return this.http.post<Deposit>(`/api/clients/${clientId}/deposits`, deposit);
+  }
+
+  /** Puts part of the client's held deposits toward the given invoices. */
+  apply(clientId: number, application: NewDepositApplication): Observable<unknown> {
+    return this.http.post(`/api/clients/${clientId}/deposits/applications`, application);
   }
 }

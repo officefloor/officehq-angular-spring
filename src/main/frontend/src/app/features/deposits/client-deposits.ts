@@ -7,7 +7,7 @@ import { DepositService } from './deposit.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
-// The deposits a client has paid up front, before any invoice, with their total and a form to record another.
+// The deposits a client has paid up front, before any invoice, with what is still held, how much has been put toward invoices, and a form to record another.
 @Component({
   selector: 'app-client-deposits',
   imports: [ReactiveFormsModule, CurrencyPipe],
@@ -20,6 +20,12 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
         <p>
           Held: <span data-testid="client-deposit-total">{{ deposits.value().total | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
         </p>
+        @if (deposits.value().applied > 0) {
+          <p>
+            Put toward invoices:
+            <span data-testid="client-deposit-applied">{{ deposits.value().applied | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
+          </p>
+        }
         @if (deposits.value().deposits.length > 0) {
           <ul data-testid="client-deposit-list">
             @for (d of deposits.value().deposits; track d.id) {
@@ -102,6 +108,11 @@ export class ClientDeposits {
   protected invalid(name: 'amount' | 'date'): boolean {
     const control = this.form.controls[name];
     return control.invalid && (control.touched || control.dirty);
+  }
+
+  /** Loads the deposits again, e.g. after some were put toward invoices elsewhere on the page. */
+  reload(): void {
+    this.deposits.reload();
   }
 
   protected submit(): void {

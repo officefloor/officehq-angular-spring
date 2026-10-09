@@ -1,13 +1,21 @@
 package net.officefloor.hq.app.payment;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+import net.officefloor.hq.app.deposit.DepositApplication;
+import net.officefloor.hq.app.deposit.DepositApplicationRepository;
+import net.officefloor.hq.app.deposit.DepositApplicationRequest;
+import net.officefloor.hq.app.deposit.DepositApplicationResponse;
+import net.officefloor.hq.app.deposit.DepositRepository;
 import net.officefloor.hq.app.invoice.Invoice;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
@@ -23,16 +31,23 @@ public class PaymentService {
     private final CreditNoteRepository creditNotes;
     private final InvoiceRepository invoices;
     private final ClientPaymentRepository clientPayments;
+    private final DepositRepository deposits;
+    private final DepositApplicationRepository depositApplications;
     private final ClientRepository clients;
+    private final Clock clock;
     private final Audit audit;
 
     public PaymentService(PaymentRepository payments, CreditNoteRepository creditNotes, InvoiceRepository invoices,
-            ClientPaymentRepository clientPayments, ClientRepository clients, Audit audit) {
+            ClientPaymentRepository clientPayments, DepositRepository deposits,
+            DepositApplicationRepository depositApplications, ClientRepository clients, Clock clock, Audit audit) {
         this.payments = payments;
         this.creditNotes = creditNotes;
         this.invoices = invoices;
         this.clientPayments = clientPayments;
+        this.deposits = deposits;
+        this.depositApplications = depositApplications;
         this.clients = clients;
+        this.clock = clock;
         this.audit = audit;
     }
 
@@ -49,7 +64,8 @@ public class PaymentService {
      */
     @Transactional
     public PaymentResponse record(Long projectId, Long invoiceId, PaymentRequest request) {
-        return apply(find(projectId, invoiceId), request.amount(), request.date(), null);
+        Invoice invoice = find(projectId, invoiceId);
+        return apply(invoice, request.amount(), () -> new Payment(invoice.getId(), request.amount(), request.date()));
     }
 
     /**
@@ -59,30 +75,69 @@ public class PaymentService {
      */
     @Transactional
     public ClientPaymentResponse recordForClient(Long clientId, ClientPaymentRequest request) {
-        if (!clients.existsById(clientId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
-        }
-        BigDecimal allocated = request.allocations().stream()
-                .map(ClientPaymentRequest.Allocation::amount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        requireClient(clientId);
+        BigDecimal allocated = total(request.allocations(), ClientPaymentRequest.Allocation::amount);
         if (allocated.compareTo(request.amount()) != 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "The shares must add up to the whole payment");
         }
-        Set<Long> seen = new HashSet<>();
-        for (ClientPaymentRequest.Allocation a : request.allocations()) {
-            if (!seen.add(a.invoiceId())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Each invoice may be paid only once");
-            }
-        }
+        requireDistinct(request.allocations(), ClientPaymentRequest.Allocation::invoiceId);
         ClientPayment lump = clientPayments.saveAndFlush(new ClientPayment(clientId, request.amount(), request.date()));
         List<PaymentResponse> shares = request.allocations().stream()
-                .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(), request.date(), lump.getId()))
+                .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(),
+                        () -> new Payment(a.invoiceId(), a.amount(), request.date(), lump.getId())))
                 .toList();
         return ClientPaymentResponse.from(lump, shares);
     }
 
-    private PaymentResponse apply(Invoice invoice, BigDecimal amount, LocalDate date, Long clientPaymentId) {
+    /**
+     * Puts part of a client's held deposits toward several of their owing invoices, today. The
+     * shares may not add up to more than is still held, each invoice may appear once, and each share
+     * is recorded as a payment against its own invoice under the same rules as a lump payment's.
+     */
+    @Transactional
+    public DepositApplicationResponse applyDeposits(Long clientId, DepositApplicationRequest request) {
+        requireClient(clientId);
+        BigDecimal allocated = total(request.allocations(), DepositApplicationRequest.Allocation::amount);
+        BigDecimal held = deposits.sumAmountByClientId(clientId)
+                .subtract(depositApplications.sumAmountByClientId(clientId));
+        if (allocated.compareTo(held) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The shares add up to more than the deposits held");
+        }
+        requireDistinct(request.allocations(), DepositApplicationRequest.Allocation::invoiceId);
+        LocalDate today = LocalDate.now(clock);
+        DepositApplication application = depositApplications.saveAndFlush(
+                new DepositApplication(clientId, allocated, today));
+        List<PaymentResponse> shares = request.allocations().stream()
+                .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(),
+                        () -> Payment.fromDeposits(a.invoiceId(), a.amount(), today, application.getId())))
+                .toList();
+        audit.record("DEPOSIT_APPLIED id=" + application.getId() + " client=" + clientId
+                + " amount=" + application.getAmount().toPlainString());
+        return DepositApplicationResponse.from(application, shares);
+    }
+
+    private void requireClient(Long clientId) {
+        if (!clients.existsById(clientId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+        }
+    }
+
+    private static <A> BigDecimal total(List<A> allocations, Function<A, BigDecimal> amount) {
+        return allocations.stream().map(amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static <A> void requireDistinct(List<A> allocations, Function<A, Long> invoiceId) {
+        Set<Long> seen = new HashSet<>();
+        for (A a : allocations) {
+            if (!seen.add(invoiceId.apply(a))) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Each invoice may be paid only once");
+            }
+        }
+    }
+
+    private PaymentResponse apply(Invoice invoice, BigDecimal amount, Supplier<Payment> payment) {
         if (invoice.getStatus() == InvoiceStatus.DRAFT) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Send the invoice before recording a payment");
         }
@@ -101,7 +156,7 @@ public class PaymentService {
         if (settled.compareTo(invoice.getAmount()) > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment is more than the balance due");
         }
-        Payment saved = payments.saveAndFlush(new Payment(invoice.getId(), amount, date, clientPaymentId));
+        Payment saved = payments.saveAndFlush(payment.get());
         invoice.applySettledTotals(paid, credited);
         invoices.flush();
         audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount=" + saved.getAmount().toPlainString());
