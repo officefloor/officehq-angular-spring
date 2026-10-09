@@ -1,0 +1,368 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index f768ca9..f41c378 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -1,5 +1,5 @@
+ import { CurrencyPipe, DecimalPipe } from '@angular/common';
+-import { Component, Injector, afterNextRender, computed, inject, input, signal } from '@angular/core';
++import { Component, Injector, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+@@ -10,7 +10,8 @@ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ 
+ // A single invoice: the things it charges for (description, how many and of what, price each), each line's
+-// amount, and the invoice total worked out from them. Lines can be added while it is a draft.
++// amount, their subtotal, any percentage discount, and the final total after it. Lines and the
++// discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments],
+@@ -148,9 +149,25 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+             }
+           </tbody>
+           <tfoot>
++            <tr>
++              <th scope="row" colspan="4">Subtotal</th>
++              <td data-testid="invoice-subtotal">{{ inv.subtotal | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              @if (inv.status === 'DRAFT') {
++                <td></td>
++              }
++            </tr>
++            <tr>
++              <th scope="row" colspan="4">
++                Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%)
++              </th>
++              <td data-testid="invoice-discount">{{ inv.discount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              @if (inv.status === 'DRAFT') {
++                <td></td>
++              }
++            </tr>
+             <tr>
+               <th scope="row" colspan="4">Total</th>
+-              <td data-testid="invoice-amount">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-amount">{{ inv.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+@@ -163,6 +180,34 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+       </section>
+ 
+       @if (inv.status === 'DRAFT') {
++        <form [formGroup]="discountForm" (ngSubmit)="applyDiscount()" data-testid="discount-form" novalidate>
++          <h2>Discount</h2>
++          <div>
++            <label for="discount-pct">Percentage off the subtotal</label>
++            <input
++              id="discount-pct"
++              type="number"
++              inputmode="decimal"
++              min="0"
++              max="100"
++              step="0.01"
++              formControlName="discountPct"
++              data-testid="discount-form-pct"
++              [attr.aria-invalid]="discountInvalid()"
++              [attr.aria-describedby]="discountInvalid() ? 'discount-pct-error' : null"
++            />
++            @if (discountInvalid()) {
++              <p id="discount-pct-error" role="alert" data-testid="discount-form-pct-error">
++                Enter a percentage from 0 to 100 with at most two decimal places.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="discount-form-submit" [disabled]="discountSaving()">Apply discount</button>
++          @if (discountError()) {
++            <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
++          }
++        </form>
++
+         <form [formGroup]="form" (ngSubmit)="submit()" data-testid="lineitem-form" novalidate>
+           <h2>Add a line item</h2>
+           <div>
+@@ -245,7 +290,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+       <app-invoice-payments
+         [projectId]="projectIdNumber()"
+         [invoiceId]="inv.id"
+-        [invoiceAmount]="totalCents() / 100"
++        [invoiceAmount]="inv.amount"
+         [canRecord]="inv.status === 'SENT' || inv.status === 'PARTIAL'"
+         (recorded)="invoice.reload()"
+       />
+@@ -272,12 +317,45 @@ export class InvoiceDetailPage {
+   protected lineCents(qty: number, unitPrice: number): number {
+     return Math.round(Math.round(qty * 100) * Math.round(unitPrice * 100) / 100);
+   }
+-  protected readonly totalCents = computed(() =>
+-    (this.invoice.hasValue() ? this.invoice.value().lineItems : []).reduce(
+-      (sum, l) => sum + this.lineCents(l.qty, l.unitPrice),
+-      0,
+-    ),
+-  );
++
++  protected readonly discountSaving = signal(false);
++  protected readonly discountError = signal<string | null>(null);
++
++  protected readonly discountForm = this.fb.group({
++    discountPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
++  });
++
++  // Starts the discount field from the invoice's current percentage whenever the invoice loads.
++  private readonly syncDiscount = effect(() => {
++    if (this.invoice.hasValue()) {
++      this.discountForm.setValue({ discountPct: String(this.invoice.value().discountPct) });
++    }
++  });
++
++  protected discountInvalid(): boolean {
++    const control = this.discountForm.controls.discountPct;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected applyDiscount(): void {
++    if (this.discountForm.invalid) {
++      this.discountForm.markAllAsTouched();
++      return;
++    }
++    this.discountSaving.set(true);
++    this.discountError.set(null);
++    const discountPct = Number(this.discountForm.getRawValue().discountPct);
++    this.service.applyDiscount(this.projectIdNumber(), Number(this.invoiceId()), discountPct).subscribe({
++      next: (updated) => {
++        this.invoice.set(updated);
++        this.discountSaving.set(false);
++      },
++      error: () => {
++        this.discountError.set('Could not apply the discount. Please try again.');
++        this.discountSaving.set(false);
++      },
++    });
++  }
+ 
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 106ba8b..fdaf4ae 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -60,8 +60,14 @@ export interface LineItem {
+   amount: number;
+ }
+ 
+-/** A single invoice with the line items it is built from. */
++/**
++ * A single invoice with the line items it is built from: their subtotal, the percentage discount and
++ * what it takes off; its amount is the subtotal less the discount.
++ */
+ export interface InvoiceDetail extends Invoice {
++  subtotal: number;
++  discountPct: number;
++  discount: number;
+   lineItems: LineItem[];
+ }
+ 
+@@ -122,6 +128,11 @@ export class InvoiceService {
+     return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`);
+   }
+ 
++  /** Sets the percentage taken off a draft invoice; zero removes the discount. */
++  applyDiscount(projectId: number, invoiceId: number, discountPct: number): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discount`, { discountPct });
++  }
++
+   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 50fff78..d995e9c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -133,10 +133,15 @@ public class TestSupportController {
+                 amount = amount.add(new BigDecimal(l.get("qty").toString())
+                         .multiply(new BigDecimal(l.get("unitPrice").toString())));
+             }
+-            jdbc.update("INSERT INTO invoice (id, project_id, amount, status, issued_date, due_date)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?)",
++            // A discount takes a percentage off the line items' subtotal; the amount is what is left.
++            BigDecimal subtotal = amount.setScale(2, RoundingMode.HALF_UP);
++            BigDecimal discountPct = i.get("discountPct") == null ? BigDecimal.ZERO
++                    : new BigDecimal(i.get("discountPct").toString());
++            BigDecimal discount = subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
++            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, status, issued_date, due_date)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, ((Number) i.get("projectId")).longValue(),
+-                    amount.setScale(2, RoundingMode.HALF_UP),
++                    subtotal.subtract(discount), discountPct,
+                     seedStatus(i.get("status")), issued, due);
+             for (Map<String, Object> l : lineItems) {
+                 if (l.get("id") != null) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/DiscountRequest.java b/src/main/java/net/officefloor/hq/app/invoice/DiscountRequest.java
+new file mode 100644
+index 0000000..a60872c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/DiscountRequest.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.constraints.DecimalMax;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/** Payload to set the percentage taken off a draft invoice; zero removes the discount. */
++public record DiscountRequest(
++        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal discountPct) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 67fa7b2..d93b3f4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -15,6 +15,7 @@ import jakarta.persistence.OneToMany;
+ import jakarta.persistence.OrderBy;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+@@ -22,8 +23,8 @@ import java.util.Optional;
+ import net.officefloor.hq.app.project.Project;
+ 
+ /**
+- * An invoice raised against a project. It is built from line items, and its stored amount is always
+- * the sum of what each line charges.
++ * An invoice raised against a project. It is built from line items, and can take a percentage off
++ * their sum as a discount; its stored amount is always that subtotal less the discount.
+  */
+ @Entity
+ @Table(name = "invoice")
+@@ -40,6 +41,9 @@ public class Invoice {
+     @Column(nullable = false, precision = 12, scale = 2)
+     private BigDecimal amount = BigDecimal.ZERO.setScale(2);
+ 
++    @Column(name = "discount_pct", nullable = false, precision = 5, scale = 2)
++    private BigDecimal discountPct = BigDecimal.ZERO.setScale(2);
++
+     @Enumerated(EnumType.STRING)
+     @Column(nullable = false, length = 16)
+     private InvoiceStatus status = InvoiceStatus.DRAFT;
+@@ -75,6 +79,22 @@ public class Invoice {
+         return amount;
+     }
+ 
++    /** The percentage taken off the subtotal; zero when there is no discount. */
++    public BigDecimal getDiscountPct() {
++        return discountPct;
++    }
++
++    /** What the line items add up to, before any discount. */
++    public BigDecimal getSubtotal() {
++        return lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add)
++                .setScale(2, RoundingMode.HALF_UP);
++    }
++
++    /** How much the discount takes off the subtotal, to the cent. */
++    public BigDecimal getDiscount() {
++        return discountOn(getSubtotal());
++    }
++
+     public InvoiceStatus getStatus() {
+         return status;
+     }
+@@ -117,9 +137,19 @@ public class Invoice {
+         return lineItems.stream().filter(l -> l.getId().equals(lineItemId)).findFirst();
+     }
+ 
++    /** Sets the percentage taken off this invoice and reworks its amount to match. */
++    public void applyDiscount(BigDecimal discountPct) {
++        this.discountPct = discountPct.setScale(2, RoundingMode.HALF_UP);
++        recalculateAmount();
++    }
++
++    private BigDecimal discountOn(BigDecimal subtotal) {
++        return subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
++    }
++
+     private void recalculateAmount() {
+-        this.amount = lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add)
+-                .setScale(2);
++        BigDecimal subtotal = getSubtotal();
++        this.amount = subtotal.subtract(discountOn(subtotal));
+     }
+ 
+     /** Marks this invoice as sent to the client. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index 0a9ad82..83ee758 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -58,6 +58,12 @@ public class InvoiceController {
+         return service.removeLineItem(projectId, invoiceId, lineItemId);
+     }
+ 
++    @PutMapping("/{invoiceId}/discount")
++    public InvoiceDetailResponse applyDiscount(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody DiscountRequest request) {
++        return service.applyDiscount(projectId, invoiceId, request);
++    }
++
+     @PostMapping("/{invoiceId}/send")
+     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.send(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index bae23ab..00463b7 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -4,12 +4,17 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ 
+-/** A single invoice together with the line items it is built from. */
+-public record InvoiceDetailResponse(Long id, Long projectId, BigDecimal amount, InvoiceStatus status,
+-        LocalDate issuedDate, LocalDate dueDate, List<LineItemResponse> lineItems) {
++/**
++ * A single invoice together with the line items it is built from: their subtotal, the percentage
++ * discount and what it takes off, and the amount owed after it.
++ */
++public record InvoiceDetailResponse(Long id, Long projectId, BigDecimal amount, BigDecimal subtotal,
++        BigDecimal discountPct, BigDecimal discount, InvoiceStatus status, LocalDate issuedDate,
++        LocalDate dueDate, List<LineItemResponse> lineItems) {
+ 
+     static InvoiceDetailResponse from(Invoice invoice) {
+         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(), invoice.getAmount(),
++                invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscount(),
+                 invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+                 invoice.getLineItems().stream().map(LineItemResponse::from).toList());
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 0aaf761..f4eb621 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -143,6 +143,15 @@ public class InvoiceService {
+         return InvoiceDetailResponse.from(invoice);
+     }
+ 
++    /** Sets the percentage discount on a draft invoice and reworks the invoice amount to match. */
++    @Transactional
++    public InvoiceDetailResponse applyDiscount(Long projectId, Long invoiceId, DiscountRequest request) {
++        Invoice invoice = findDraft(projectId, invoiceId);
++        invoice.applyDiscount(request.discountPct());
++        invoices.flush();
++        return InvoiceDetailResponse.from(invoice);
++    }
++
+     /** Sends a draft invoice and records the sending in the audit log. */
+     @Transactional
+     public InvoiceResponse send(Long projectId, Long invoiceId) {
+diff --git a/src/main/resources/db/migration/V24__invoice_discount.sql b/src/main/resources/db/migration/V24__invoice_discount.sql
+new file mode 100644
+index 0000000..bc3900a
+--- /dev/null
++++ b/src/main/resources/db/migration/V24__invoice_discount.sql
+@@ -0,0 +1,5 @@
++-- An invoice can take a percentage off what its line items add up to. The stored amount remains what
++-- is owed, so it is now the subtotal less the discount; existing invoices have no discount.
++ALTER TABLE invoice ADD COLUMN discount_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_discount_pct_range CHECK (discount_pct >= 0 AND discount_pct <= 100);
