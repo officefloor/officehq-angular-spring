@@ -1,7 +1,7 @@
-import { Component, inject, input, signal } from '@angular/core';
+import { Component, inject, input, output, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ContactService } from './contact.service';
+import { Contact, ContactService } from './contact.service';
 
 type ContactField = 'name' | 'email' | 'role';
 
@@ -107,6 +107,8 @@ export class ClientContacts {
   private readonly service = inject(ContactService);
 
   readonly clientId = input.required<number>();
+  /** Emits each contact once it has been saved. */
+  readonly contactAdded = output<Contact>();
 
   protected readonly contacts = rxResource({
     params: () => this.clientId(),
@@ -148,6 +150,7 @@ export class ClientContacts {
       .subscribe({
         next: (created) => {
           this.contacts.update((list) => [...(list ?? []), created]);
+          this.contactAdded.emit(created);
           this.form.reset();
           this.saving.set(false);
         },

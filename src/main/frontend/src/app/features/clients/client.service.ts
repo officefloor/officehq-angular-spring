@@ -8,6 +8,12 @@ export interface Client {
   email: string;
 }
 
+/** At-a-glance counts of what one client has. */
+export interface ClientSummary {
+  projectCount: number;
+  contactCount: number;
+}
+
 export type NewClient = Omit<Client, 'id'>;
 
 @Injectable({ providedIn: 'root' })
@@ -20,6 +26,10 @@ export class ClientService {
 
   get(id: number): Observable<Client> {
     return this.http.get<Client>(`/api/clients/${id}`);
+  }
+
+  summary(id: number): Observable<ClientSummary> {
+    return this.http.get<ClientSummary>(`/api/clients/${id}/summary`);
   }
 
   create(client: NewClient): Observable<Client> {

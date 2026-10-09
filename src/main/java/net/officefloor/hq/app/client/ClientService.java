@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.client;
 
 import java.util.List;
+import net.officefloor.hq.app.contact.ContactRepository;
+import net.officefloor.hq.app.project.ProjectRepository;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -11,9 +13,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class ClientService {
 
     private final ClientRepository clients;
+    private final ProjectRepository projects;
+    private final ContactRepository contacts;
 
-    public ClientService(ClientRepository clients) {
+    public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts) {
         this.clients = clients;
+        this.projects = projects;
+        this.contacts = contacts;
     }
 
     @Transactional(readOnly = true)
@@ -25,6 +31,15 @@ public class ClientService {
     public ClientResponse get(Long id) {
         return clients.findById(id).map(ClientResponse::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+    }
+
+    /** At-a-glance counts of what one client has. */
+    @Transactional(readOnly = true)
+    public ClientSummaryResponse summary(Long id) {
+        if (!clients.existsById(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+        }
+        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientId(id));
     }
 
     @Transactional

@@ -18,4 +18,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
     /** One project with its client loaded in the same query. */
     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
     Optional<Project> findByIdWithClient(Long id);
+
+    /** How many projects a client has. */
+    long countByClientId(Long clientId);
 }

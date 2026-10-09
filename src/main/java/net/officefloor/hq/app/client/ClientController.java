@@ -31,6 +31,11 @@ public class ClientController {
         return service.get(id);
     }
 
+    @GetMapping("/{id}/summary")
+    public ClientSummaryResponse summary(@PathVariable Long id) {
+        return service.summary(id);
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ClientResponse create(@Valid @RequestBody ClientRequest request) {
