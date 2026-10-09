@@ -64,6 +64,12 @@ public class InvoiceController {
         return service.applyDiscount(projectId, invoiceId, request);
     }
 
+    @PutMapping("/{invoiceId}/tax")
+    public InvoiceDetailResponse applyTax(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @Valid @RequestBody TaxRequest request) {
+        return service.applyTax(projectId, invoiceId, request);
+    }
+
     @PostMapping("/{invoiceId}/send")
     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.send(projectId, invoiceId);

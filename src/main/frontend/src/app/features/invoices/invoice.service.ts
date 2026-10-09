@@ -62,12 +62,15 @@ export interface LineItem {
 
 /**
  * A single invoice with the line items it is built from: their subtotal, the percentage discount and
- * what it takes off; its amount is the subtotal less the discount.
+ * what it takes off, and the sales tax percentage and what it adds after the discount; its amount is
+ * the subtotal less the discount plus the tax.
  */
 export interface InvoiceDetail extends Invoice {
   subtotal: number;
   discountPct: number;
   discount: number;
+  taxPct: number;
+  tax: number;
   lineItems: LineItem[];
 }
 
@@ -131,6 +134,11 @@ export class InvoiceService {
   /** Sets the percentage taken off a draft invoice; zero removes the discount. */
   applyDiscount(projectId: number, invoiceId: number, discountPct: number): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discount`, { discountPct });
+  }
+
+  /** Sets the sales tax percentage added to a draft invoice after its discount; zero removes the tax. */
+  applyTax(projectId: number, invoiceId: number, taxPct: number): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/tax`, { taxPct });
   }
 
   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {

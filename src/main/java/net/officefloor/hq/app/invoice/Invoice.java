@@ -24,7 +24,8 @@ import net.officefloor.hq.app.project.Project;
 
 /**
  * An invoice raised against a project. It is built from line items, and can take a percentage off
- * their sum as a discount; its stored amount is always that subtotal less the discount.
+ * their sum as a discount, then add a percentage sales tax on what is left; its stored amount is always
+ * that subtotal less the discount plus the tax.
  */
 @Entity
 @Table(name = "invoice")
@@ -43,6 +44,9 @@ public class Invoice {
 
     @Column(name = "discount_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal discountPct = BigDecimal.ZERO.setScale(2);
+
+    @Column(name = "tax_pct", nullable = false, precision = 5, scale = 2)
+    private BigDecimal taxPct = BigDecimal.ZERO.setScale(2);
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
@@ -95,6 +99,17 @@ public class Invoice {
         return discountOn(getSubtotal());
     }
 
+    /** The sales tax percentage added after the discount; zero when there is no tax. */
+    public BigDecimal getTaxPct() {
+        return taxPct;
+    }
+
+    /** How much sales tax is added to the discounted subtotal, to the cent. */
+    public BigDecimal getTax() {
+        BigDecimal subtotal = getSubtotal();
+        return taxOn(subtotal.subtract(discountOn(subtotal)));
+    }
+
     public InvoiceStatus getStatus() {
         return status;
     }
@@ -143,13 +158,24 @@ public class Invoice {
         recalculateAmount();
     }
 
+    /** Sets the sales tax percentage added to this invoice and reworks its amount to match. */
+    public void applyTax(BigDecimal taxPct) {
+        this.taxPct = taxPct.setScale(2, RoundingMode.HALF_UP);
+        recalculateAmount();
+    }
+
     private BigDecimal discountOn(BigDecimal subtotal) {
         return subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
+    private BigDecimal taxOn(BigDecimal discounted) {
+        return discounted.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    }
+
     private void recalculateAmount() {
         BigDecimal subtotal = getSubtotal();
-        this.amount = subtotal.subtract(discountOn(subtotal));
+        BigDecimal discounted = subtotal.subtract(discountOn(subtotal));
+        this.amount = discounted.add(taxOn(discounted));
     }
 
     /** Marks this invoice as sent to the client. */

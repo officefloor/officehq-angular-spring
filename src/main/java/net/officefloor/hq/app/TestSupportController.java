@@ -133,15 +133,20 @@ public class TestSupportController {
                 amount = amount.add(new BigDecimal(l.get("qty").toString())
                         .multiply(new BigDecimal(l.get("unitPrice").toString())));
             }
-            // A discount takes a percentage off the line items' subtotal; the amount is what is left.
+            // A discount takes a percentage off the line items' subtotal, then sales tax adds a percentage
+            // of what is left; the amount is the discounted subtotal plus the tax.
             BigDecimal subtotal = amount.setScale(2, RoundingMode.HALF_UP);
             BigDecimal discountPct = i.get("discountPct") == null ? BigDecimal.ZERO
                     : new BigDecimal(i.get("discountPct").toString());
             BigDecimal discount = subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, status, issued_date, due_date)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            BigDecimal discounted = subtotal.subtract(discount);
+            BigDecimal taxPct = i.get("taxPct") == null ? BigDecimal.ZERO
+                    : new BigDecimal(i.get("taxPct").toString());
+            BigDecimal tax = discounted.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, status, issued_date, due_date)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, ((Number) i.get("projectId")).longValue(),
-                    subtotal.subtract(discount), discountPct,
+                    discounted.add(tax), discountPct, taxPct,
                     seedStatus(i.get("status")), issued, due);
             for (Map<String, Object> l : lineItems) {
                 if (l.get("id") != null) {

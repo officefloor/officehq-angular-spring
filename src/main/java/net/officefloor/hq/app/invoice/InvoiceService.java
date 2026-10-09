@@ -152,6 +152,15 @@ public class InvoiceService {
         return InvoiceDetailResponse.from(invoice);
     }
 
+    /** Sets the sales tax percentage on a draft invoice and reworks the invoice amount to match. */
+    @Transactional
+    public InvoiceDetailResponse applyTax(Long projectId, Long invoiceId, TaxRequest request) {
+        Invoice invoice = findDraft(projectId, invoiceId);
+        invoice.applyTax(request.taxPct());
+        invoices.flush();
+        return InvoiceDetailResponse.from(invoice);
+    }
+
     /** Sends a draft invoice and records the sending in the audit log. */
     @Transactional
     public InvoiceResponse send(Long projectId, Long invoiceId) {

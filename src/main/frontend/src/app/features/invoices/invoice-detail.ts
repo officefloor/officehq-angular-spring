@@ -10,8 +10,8 @@ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
 // A single invoice: the things it charges for (description, how many and of what, price each), each line's
-// amount, their subtotal, any percentage discount, and the final total after it. Lines and the
-// discount can be changed while it is a draft.
+// amount, their subtotal, any percentage discount, any sales tax added after it, and the final total
+// including the tax. Lines, the discount and the tax rate can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments],
@@ -166,6 +166,15 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
               }
             </tr>
             <tr>
+              <th scope="row" colspan="4">
+                Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)
+              </th>
+              <td data-testid="invoice-tax">{{ inv.tax | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              @if (inv.status === 'DRAFT') {
+                <td></td>
+              }
+            </tr>
+            <tr>
               <th scope="row" colspan="4">Total</th>
               <td data-testid="invoice-amount">{{ inv.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
@@ -205,6 +214,34 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
           <button type="submit" data-testid="discount-form-submit" [disabled]="discountSaving()">Apply discount</button>
           @if (discountError()) {
             <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
+          }
+        </form>
+
+        <form [formGroup]="taxForm" (ngSubmit)="applyTax()" data-testid="tax-form" novalidate>
+          <h2>Sales tax</h2>
+          <div>
+            <label for="tax-pct">Tax percentage added after the discount</label>
+            <input
+              id="tax-pct"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              max="100"
+              step="0.01"
+              formControlName="taxPct"
+              data-testid="tax-form-pct"
+              [attr.aria-invalid]="taxInvalid()"
+              [attr.aria-describedby]="taxInvalid() ? 'tax-pct-error' : null"
+            />
+            @if (taxInvalid()) {
+              <p id="tax-pct-error" role="alert" data-testid="tax-form-pct-error">
+                Enter a percentage from 0 to 100 with at most two decimal places.
+              </p>
+            }
+          </div>
+          <button type="submit" data-testid="tax-form-submit" [disabled]="taxSaving()">Apply tax</button>
+          @if (taxError()) {
+            <p role="alert" data-testid="tax-form-error">{{ taxError() }}</p>
           }
         </form>
 
@@ -353,6 +390,45 @@ export class InvoiceDetailPage {
       error: () => {
         this.discountError.set('Could not apply the discount. Please try again.');
         this.discountSaving.set(false);
+      },
+    });
+  }
+
+  protected readonly taxSaving = signal(false);
+  protected readonly taxError = signal<string | null>(null);
+
+  protected readonly taxForm = this.fb.group({
+    taxPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
+  });
+
+  // Starts the tax field from the invoice's current rate whenever the invoice loads.
+  private readonly syncTax = effect(() => {
+    if (this.invoice.hasValue()) {
+      this.taxForm.setValue({ taxPct: String(this.invoice.value().taxPct) });
+    }
+  });
+
+  protected taxInvalid(): boolean {
+    const control = this.taxForm.controls.taxPct;
+    return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected applyTax(): void {
+    if (this.taxForm.invalid) {
+      this.taxForm.markAllAsTouched();
+      return;
+    }
+    this.taxSaving.set(true);
+    this.taxError.set(null);
+    const taxPct = Number(this.taxForm.getRawValue().taxPct);
+    this.service.applyTax(this.projectIdNumber(), Number(this.invoiceId()), taxPct).subscribe({
+      next: (updated) => {
+        this.invoice.set(updated);
+        this.taxSaving.set(false);
+      },
+      error: () => {
+        this.taxError.set('Could not apply the tax. Please try again.');
+        this.taxSaving.set(false);
       },
     });
   }
