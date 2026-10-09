@@ -1,0 +1,194 @@
+$ bin/build
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610100208/gated-chain1/.run/pw-artifacts
+
+Running 56 tests using 1 worker
+
+[1A[2K[1/56] [chromium] › cp01_clients.spec.ts:7:7 › clients › lists seeded clients, excluding archived
+[1A[2K  1) [chromium] › cp01_clients.spec.ts:7:7 › clients › lists seeded clients, excluding archived ────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveCount[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId(/^client-row-/)
+    Expected: [32m2[39m
+    Received: [31m3[39m
+    Call log:
+      [2m- expect.toHaveCount with timeout 5000ms[22m
+    [2m  - waiting for getByTestId(/^client-row-/)[22m
+    [2m  -   locator resolved to 0 elements[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to 0 elements[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+
+
+      15 |     await page.goto('/');
+      16 |     await page.getByTestId('nav-clients').click();
+    > 17 |     await expect(page.getByTestId(/^client-row-/)).toHaveCount(2);
+         |                                                    ^
+      18 |     await expect(page.getByTestId('client-row-3')).toHaveCount(0);
+      19 |   });
+      20 |
+
+        at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp01_clients.spec.ts:17:52
+
+
+[1A[2K[2/56] [chromium] › cp01_clients.spec.ts:21:7 › clients › creates a client with a unique email
+[1A[2K[3/56] [chromium] › cp02_client_email_validation.spec.ts:7:7 › client email validation › rejects a blank email
+[1A[2K[4/56] [chromium] › cp02_client_email_validation.spec.ts:20:7 › client email validation › rejects a malformed email
+[1A[2K[5/56] [chromium] › cp02_client_email_validation.spec.ts:33:7 › client email validation › accepts a valid email
+[1A[2K[6/56] [chromium] › cp03_projects.spec.ts:6:7 › projects › lists projects with their client name, excluding archived
+[1A[2K[7/56] [chromium] › cp03_projects.spec.ts:24:7 › projects › creates a project for a client
+[1A[2K[8/56] [chromium] › cp04_project_invoices.spec.ts:8:7 › project invoices › a project shows its invoices and their total
+[1A[2K[9/56] [chromium] › cp04_project_invoices.spec.ts:27:7 › project invoices › adding a line item to a new invoice sets its amount
+[1A[2K[10/56] [chromium] › cp05_invoice_pay_audit.spec.ts:8:7 › invoice payment › recording a full payment marks the invoice paid
+[1A[2K[11/56] [chromium] › cp06_client_search.spec.ts:6:7 › client search › filters clients by name and skips archived matches
+[1A[2K  2) [chromium] › cp06_client_search.spec.ts:6:7 › client search › filters clients by name and skips archived matches 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveCount[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId(/^client-row-/)
+    Expected: [32m3[39m
+    Received: [31m4[39m
+    Call log:
+      [2m- expect.toHaveCount with timeout 5000ms[22m
+    [2m  - waiting for getByTestId(/^client-row-/)[22m
+    [2m  -   locator resolved to 0 elements[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to 0 elements[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+
+
+      15 |     await page.goto('/');
+      16 |     await page.getByTestId('nav-clients').click();
+    > 17 |     await expect(page.getByTestId(/^client-row-/)).toHaveCount(3); // archived excluded from the list
+         |                                                    ^
+      18 |
+      19 |     await page.getByTestId('client-search').fill('glob');
+      20 |     await expect(page.getByTestId(/^client-row-/)).toHaveCount(1);
+
+        at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp06_client_search.spec.ts:17:52
+
+
+[1A[2K[12/56] [chromium] › cp07_client_detail_projects.spec.ts:7:7 › client detail › lists the client's active projects by default
+[1A[2K[13/56] [chromium] › cp08_dashboard.spec.ts:7:7 › dashboard › shows counts and the outstanding total
+[1A[2K[14/56] [chromium] › cp09_currency_format.spec.ts:6:7 › currency formatting › invoice amounts and totals show commas
+[1A[2K[15/56] [chromium] › cp10_invoice_amount_positive.spec.ts:7:7 › invoice amount validation › rejects a non-positive amount
+[1A[2K[16/56] [chromium] › cp10_invoice_amount_positive.spec.ts:24:7 › invoice amount validation › accepts a positive amount
+[1A[2K[17/56] [chromium] › cp11_invoice_dates.spec.ts:6:7 › invoice dates › an invoice shows its issue and due dates
+[1A[2K[18/56] [chromium] › cp12_invoice_sort_due.spec.ts:6:7 › sort invoices by due date › sorts the invoices earliest due first
+[1A[2K[19/56] [chromium] › cp13_invoice_lifecycle.spec.ts:8:7 › invoice lifecycle › sending a draft invoice moves it to sent and records it
+[1A[2K[20/56] [chromium] › cp13_invoice_lifecycle.spec.ts:24:7 › invoice lifecycle › a sent invoice becomes paid once a covering payment is recorded
+[1A[2K[21/56] [chromium] › cp14_all_invoices.spec.ts:6:7 › all invoices › lists invoices from every project with project and status
+[1A[2K[22/56] [chromium] › cp15_invoice_status_filter.spec.ts:6:7 › filter invoices by status › shows only invoices at the chosen stage
+[1A[2K[23/56] [chromium] › cp16_client_contacts.spec.ts:6:7 › client contacts › lists a client's contacts
+[1A[2K[24/56] [chromium] › cp16_client_contacts.spec.ts:31:7 › client contacts › adds a contact to a client
+[1A[2K[25/56] [chromium] › cp17_outstanding_sent_only.spec.ts:7:7 › outstanding counts sent invoices only › the outstanding total excludes drafts
+[1A[2K[26/56] [chromium] › cp18_contact_email_validation.spec.ts:6:7 › contact email validation › rejects a bad contact email
+[1A[2K[27/56] [chromium] › cp19_client_badges.spec.ts:6:7 › client badges › shows project and contact counts
+[1A[2K[28/56] [chromium] › cp20_project_tasks.spec.ts:7:7 › project tasks › lists tasks and lets me tick one off
+[1A[2K[29/56] [chromium] › cp21_invoice_line_items.spec.ts:6:7 › invoice line items › invoice amount is the sum of its line items, with commas
+[1A[2K[30/56] [chromium] › cp22_line_items_edit.spec.ts:6:7 › edit line items › removing a line item lowers the total
+[1A[2K[31/56] [chromium] › cp23_task_filter.spec.ts:6:7 › filter tasks › shows only open or only done tasks
+[1A[2K[32/56] [chromium] › cp24_project_delete_audit.spec.ts:8:7 › remove a project › removing archives the project and records it
+[1A[2K[33/56] [chromium] › cp25_project_archive.spec.ts:8:7 › archive a project › archiving hides the project but keeps it
+[1A[2K[34/56] [chromium] › cp26_project_tags.spec.ts:8:7 › project tags › shows, adds and removes tags on a project
+[1A[2K[35/56] [chromium] › cp27_project_tag_filter.spec.ts:6:7 › filter projects by tag › shows only projects with the chosen tag
+[1A[2K[36/56] [chromium] › cp28_project_notes.spec.ts:6:7 › project notes › shows notes newest first and adds a new one on top
+[1A[2K[37/56] [chromium] › cp29_client_archive.spec.ts:8:7 › archive a client › archiving hides the client but keeps it
+[1A[2K[38/56] [chromium] › cp30_invoice_payments.spec.ts:6:7 › invoice payments › shows and records payments on an invoice
+[1A[2K[39/56] [chromium] › cp31_invoice_amount_due.spec.ts:7:7 › invoice amount due › shows the amount due and a partial status when part paid
+[1A[2K  3) [chromium] › cp31_invoice_amount_due.spec.ts:7:7 › invoice amount due › shows the amount due and a partial status when part paid 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('invoice-row-1').getByTestId('invoice-status')
+    Expected string: [32m"PARTIAL"[39m
+    Received string: [31m"SENT"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('invoice-row-1').getByTestId('invoice-status')[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+
+
+      17 |
+      18 |     await expect(page.getByTestId('invoice-row-1').getByTestId('invoice-due-amount')).toHaveText('$60.00');
+    > 19 |     await expect(page.getByTestId('invoice-row-1').getByTestId('invoice-status')).toHaveText('PARTIAL');
+         |                                                                                   ^
+      20 |   });
+      21 | });
+      22 |
+
+        at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp31_invoice_amount_due.spec.ts:19:83
+
+
+[1A[2K[40/56] [chromium] › cp32_invoice_status_derived.spec.ts:9:7 › derived invoice status › a part payment then full payment drive the status
+[1A[2K[41/56] [chromium] › cp33_client_statement.spec.ts:6:7 › client statement › shows the total owed with commas
+[1A[2K[42/56] [chromium] › cp34_project_status.spec.ts:6:7 › project status › shows a project's status
+[1A[2K[43/56] [chromium] › cp34_project_status.spec.ts:16:7 › project status › sets the status when creating a project
+[1A[2K[44/56] [chromium] › cp35_project_status_filter.spec.ts:6:7 › filter projects by status › shows only projects at the chosen status
+[1A[2K[45/56] [chromium] › cp36_client_active_projects_default.spec.ts:7:7 › client active projects by default › shows active projects, with a toggle for the rest
+[1A[2K[46/56] [chromium] › cp37_project_budget.spec.ts:7:7 › project budget › shows budget, invoiced and remaining
+[1A[2K[47/56] [chromium] › cp38_dashboard_overdue.spec.ts:7:7 › dashboard overdue › counts sent invoices past their due date
+[1A[2K[48/56] [chromium] › cp39_invoice_pagination.spec.ts:6:7 › invoice pagination › pages through the invoice list ten at a time
+[1A[2K[49/56] [chromium] › cp40_thousands_separator.spec.ts:6:7 › thousands separators › shows commas in large amounts
+[1A[2K[50/56] [chromium] › cp41_invoice_cancel_audit.spec.ts:8:7 › cancel invoice › cancelling voids the invoice and records it
+[1A[2K[51/56] [chromium] › cp41_invoice_cancel_audit.spec.ts:23:7 › cancel invoice › a voided invoice is excluded from outstanding
+[1A[2K[52/56] [chromium] › cp42_client_primary_contact.spec.ts:6:7 › primary contact › shows and changes the main contact
+[1A[2K[53/56] [chromium] › cp43_global_search.spec.ts:6:7 › global search › finds matching clients and projects
+[1A[2K[54/56] [chromium] › cp44_client_unique_email.spec.ts:7:7 › client unique email › rejects a duplicate email
+[1A[2K[55/56] [chromium] › cp45_client_edit.spec.ts:6:7 › edit client › updates a client name and email
+[1A[2K[56/56] [chromium] › cp46_line_item_qty_unit.spec.ts:6:7 › line item quantity and unit › shows quantity, unit and per-line amount
+[1A[2K  3 failed
+    [chromium] › cp01_clients.spec.ts:7:7 › clients › lists seeded clients, excluding archived ─────
+    [chromium] › cp06_client_search.spec.ts:6:7 › client search › filters clients by name and skips archived matches 
+    [chromium] › cp31_invoice_amount_due.spec.ts:7:7 › invoice amount due › shows the amount due and a partial status when part paid 
+  53 passed (42.7s)

@@ -1,0 +1,338 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index b2ee9e3..f768ca9 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -9,7 +9,7 @@ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+ 
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ 
+-// A single invoice: the things it charges for (description, how many, price each), each line's
++// A single invoice: the things it charges for (description, how many and of what, price each), each line's
+ // amount, and the invoice total worked out from them. Lines can be added while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+@@ -37,6 +37,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+             <tr>
+               <th scope="col">Description</th>
+               <th scope="col">Quantity</th>
++              <th scope="col">Unit</th>
+               <th scope="col">Unit price</th>
+               <th scope="col">Amount</th>
+               @if (inv.status === 'DRAFT') {
+@@ -74,6 +75,17 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                       (keydown.escape)="cancelEdit(l.id)"
+                     />
+                   </td>
++                  <td>
++                    <input
++                      type="text"
++                      [formControl]="editForm.controls.unit"
++                      data-testid="lineitem-edit-unit"
++                      aria-label="Unit"
++                      [attr.aria-invalid]="editForm.controls.unit.invalid"
++                      (keydown.enter)="saveEdit(l.id)"
++                      (keydown.escape)="cancelEdit(l.id)"
++                    />
++                  </td>
+                   <td>
+                     <input
+                       type="number"
+@@ -105,6 +117,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                 } @else {
+                   <td data-testid="lineitem-description">{{ l.description }}</td>
+                   <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
++                  <td data-testid="lineitem-unit">{{ l.unit ?? '' }}</td>
+                   <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                   <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                   @if (inv.status === 'DRAFT') {
+@@ -136,7 +149,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+           </tbody>
+           <tfoot>
+             <tr>
+-              <th scope="row" colspan="3">Total</th>
++              <th scope="row" colspan="4">Total</th>
+               <td data-testid="invoice-amount">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+@@ -187,6 +200,22 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+               </p>
+             }
+           </div>
++          <div>
++            <label for="lineitem-unit">Unit (optional, e.g. hours)</label>
++            <input
++              id="lineitem-unit"
++              type="text"
++              formControlName="unit"
++              data-testid="lineitem-form-unit"
++              [attr.aria-invalid]="invalid('unit')"
++              [attr.aria-describedby]="invalid('unit') ? 'lineitem-unit-error' : null"
++            />
++            @if (invalid('unit')) {
++              <p id="lineitem-unit-error" role="alert" data-testid="lineitem-form-unit-error">
++                Unit must be at most 50 characters.
++              </p>
++            }
++          </div>
+           <div>
+             <label for="lineitem-unitprice">Unit price</label>
+             <input
+@@ -256,10 +285,11 @@ export class InvoiceDetailPage {
+   protected readonly form = this.fb.group({
+     description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
+     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    unit: ['', [Validators.maxLength(50)]],
+     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+   });
+ 
+-  protected invalid(name: 'description' | 'qty' | 'unitPrice'): boolean {
++  protected invalid(name: 'description' | 'qty' | 'unit' | 'unitPrice'): boolean {
+     const control = this.form.controls[name];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -271,8 +301,8 @@ export class InvoiceDetailPage {
+     }
+     this.saving.set(true);
+     this.saveError.set(null);
+-    const { description, qty, unitPrice } = this.form.getRawValue();
+-    const item = { description: description.trim(), qty: Number(qty), unitPrice: Number(unitPrice) };
++    const { description, qty, unit, unitPrice } = this.form.getRawValue();
++    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice) };
+     this.service.addLineItem(this.projectIdNumber(), Number(this.invoiceId()), item).subscribe({
+       next: (updated) => {
+         this.invoice.set(updated);
+@@ -294,6 +324,7 @@ export class InvoiceDetailPage {
+   protected readonly editForm = this.fb.group({
+     description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
+     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    unit: ['', [Validators.maxLength(50)]],
+     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+   });
+ 
+@@ -302,6 +333,7 @@ export class InvoiceDetailPage {
+     this.editForm.setValue({
+       description: line.description,
+       qty: String(line.qty),
++      unit: line.unit ?? '',
+       unitPrice: String(line.unitPrice),
+     });
+     this.editingId.set(line.id);
+@@ -319,8 +351,8 @@ export class InvoiceDetailPage {
+       this.editForm.markAllAsTouched();
+       return;
+     }
+-    const { description, qty, unitPrice } = this.editForm.getRawValue();
+-    const item = { description: description.trim(), qty: Number(qty), unitPrice: Number(unitPrice) };
++    const { description, qty, unit, unitPrice } = this.editForm.getRawValue();
++    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice) };
+     this.run(
+       this.service.updateLineItem(this.projectIdNumber(), Number(this.invoiceId()), lineItemId, item),
+       'Could not save the line item. Please try again.',
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index c6aa9f5..106ba8b 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -54,6 +54,8 @@ export interface LineItem {
+   id: number;
+   description: string;
+   qty: number;
++  /** What the quantity counts, such as hours; null when the line does not say. */
++  unit: string | null;
+   unitPrice: number;
+   amount: number;
+ }
+@@ -66,6 +68,7 @@ export interface InvoiceDetail extends Invoice {
+ export interface NewLineItem {
+   description: string;
+   qty: number;
++  unit: string | null;
+   unitPrice: number;
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index dae770c..50fff78 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -140,15 +140,15 @@ public class TestSupportController {
+                     seedStatus(i.get("status")), issued, due);
+             for (Map<String, Object> l : lineItems) {
+                 if (l.get("id") != null) {
+-                    jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit_price)"
+-                            + " VALUES (?, ?, ?, ?, ?)",
++                    jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit, unit_price)"
++                            + " VALUES (?, ?, ?, ?, ?, ?)",
+                             ((Number) l.get("id")).longValue(), invoiceId, l.get("description"),
+-                            new BigDecimal(l.get("qty").toString()), new BigDecimal(l.get("unitPrice").toString()));
++                            new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()));
+                 } else {
+-                    jdbc.update("INSERT INTO invoice_line_item (invoice_id, description, qty, unit_price)"
+-                            + " VALUES (?, ?, ?, ?)",
++                    jdbc.update("INSERT INTO invoice_line_item (invoice_id, description, qty, unit, unit_price)"
++                            + " VALUES (?, ?, ?, ?, ?)",
+                             invoiceId, l.get("description"),
+-                            new BigDecimal(l.get("qty").toString()), new BigDecimal(l.get("unitPrice").toString()));
++                            new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()));
+                 }
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index ea71dc5..67fa7b2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -92,16 +92,17 @@ public class Invoice {
+     }
+ 
+     /** Adds a line to this invoice and reworks its amount to include what the line charges. */
+-    public InvoiceLineItem addLineItem(String description, BigDecimal qty, BigDecimal unitPrice) {
+-        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unitPrice);
++    public InvoiceLineItem addLineItem(String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
++        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unit, unitPrice);
+         lineItems.add(item);
+         recalculateAmount();
+         return item;
+     }
+ 
+     /** Changes one of this invoice's lines and reworks its amount to match. */
+-    public void updateLineItem(InvoiceLineItem item, String description, BigDecimal qty, BigDecimal unitPrice) {
+-        item.update(description, qty, unitPrice);
++    public void updateLineItem(InvoiceLineItem item, String description, BigDecimal qty, String unit,
++            BigDecimal unitPrice) {
++        item.update(description, qty, unit, unitPrice);
+         recalculateAmount();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
+index d3f20d4..bb42c17 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
+@@ -12,7 +12,7 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ 
+-/** One thing an invoice charges for: a description, how many, and the price of each. */
++/** One thing an invoice charges for: a description, how many (in what unit), and the price of each. */
+ @Entity
+ @Table(name = "invoice_line_item")
+ public class InvoiceLineItem {
+@@ -31,22 +31,27 @@ public class InvoiceLineItem {
+     @Column(nullable = false, precision = 10, scale = 2)
+     private BigDecimal qty;
+ 
++    @Column(length = 50)
++    private String unit;
++
+     @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
+     private BigDecimal unitPrice;
+ 
+     protected InvoiceLineItem() {
+     }
+ 
+-    InvoiceLineItem(Invoice invoice, String description, BigDecimal qty, BigDecimal unitPrice) {
++    InvoiceLineItem(Invoice invoice, String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
+         this.invoice = invoice;
+         this.description = description;
+         this.qty = qty;
++        this.unit = unit;
+         this.unitPrice = unitPrice;
+     }
+ 
+-    void update(String description, BigDecimal qty, BigDecimal unitPrice) {
++    void update(String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
+         this.description = description;
+         this.qty = qty;
++        this.unit = unit;
+         this.unitPrice = unitPrice;
+     }
+ 
+@@ -66,6 +71,11 @@ public class InvoiceLineItem {
+         return qty;
+     }
+ 
++    /** What the quantity counts, such as hours; null when the line does not say. */
++    public String getUnit() {
++        return unit;
++    }
++
+     public BigDecimal getUnitPrice() {
+         return unitPrice;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index a9536da..0aaf761 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -101,7 +101,7 @@ public class InvoiceService {
+         }
+         Invoice invoice = new Invoice(project, issued, due);
+         if (request.amount() != null) {
+-            invoice.addLineItem(InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION, BigDecimal.ONE, request.amount());
++            invoice.addLineItem(InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION, BigDecimal.ONE, null, request.amount());
+         }
+         Invoice saved = invoices.save(invoice);
+         return InvoiceResponse.from(saved, BigDecimal.ZERO);
+@@ -117,7 +117,7 @@ public class InvoiceService {
+     @Transactional
+     public InvoiceDetailResponse addLineItem(Long projectId, Long invoiceId, LineItemRequest request) {
+         Invoice invoice = findDraft(projectId, invoiceId);
+-        invoice.addLineItem(request.description().strip(), request.qty(), request.unitPrice());
++        invoice.addLineItem(request.description().strip(), request.qty(), request.normalizedUnit(), request.unitPrice());
+         invoices.flush();
+         return InvoiceDetailResponse.from(invoice);
+     }
+@@ -128,7 +128,8 @@ public class InvoiceService {
+             LineItemRequest request) {
+         Invoice invoice = findDraft(projectId, invoiceId);
+         InvoiceLineItem item = findLineItem(invoice, lineItemId);
+-        invoice.updateLineItem(item, request.description().strip(), request.qty(), request.unitPrice());
++        invoice.updateLineItem(item, request.description().strip(), request.qty(), request.normalizedUnit(),
++                request.unitPrice());
+         invoices.flush();
+         return InvoiceDetailResponse.from(invoice);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java b/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
+index c4ab5f8..2f1c375 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
+@@ -7,9 +7,15 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ 
+-/** Payload to add, or change, a line item on a draft invoice. */
++/** Payload to add, or change, a line item on a draft invoice. The unit is optional. */
+ public record LineItemRequest(
+         @NotBlank @Size(max = 255) String description,
+         @NotNull @DecimalMin("0.01") @Digits(integer = 8, fraction = 2) BigDecimal qty,
++        @Size(max = 50) String unit,
+         @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal unitPrice) {
++
++    /** The unit with surrounding blanks removed, or null when none was given. */
++    String normalizedUnit() {
++        return unit == null || unit.isBlank() ? null : unit.strip();
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java b/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java
+index b7df694..3614386 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java
+@@ -2,11 +2,11 @@ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
+ 
+-public record LineItemResponse(Long id, String description, BigDecimal qty, BigDecimal unitPrice,
++public record LineItemResponse(Long id, String description, BigDecimal qty, String unit, BigDecimal unitPrice,
+         BigDecimal amount) {
+ 
+     static LineItemResponse from(InvoiceLineItem item) {
+-        return new LineItemResponse(item.getId(), item.getDescription(), item.getQty(), item.getUnitPrice(),
++        return new LineItemResponse(item.getId(), item.getDescription(), item.getQty(), item.getUnit(), item.getUnitPrice(),
+                 item.getAmount());
+     }
+ }
+diff --git a/src/main/resources/db/migration/V23__line_item_unit.sql b/src/main/resources/db/migration/V23__line_item_unit.sql
+new file mode 100644
+index 0000000..93e5677
+--- /dev/null
++++ b/src/main/resources/db/migration/V23__line_item_unit.sql
+@@ -0,0 +1,3 @@
++-- A line item can say what its quantity counts (hours, days, items, ...). Optional: lines raised
++-- before units existed, or charged as a single figure, have none.
++ALTER TABLE invoice_line_item ADD COLUMN unit VARCHAR(50);
