@@ -4,6 +4,7 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
+import { InvoicePayments } from '../payments/invoice-payments';
 import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
@@ -12,7 +13,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 // amount, and the invoice total worked out from them. Lines can be added while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
-  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink],
+  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments],
   template: `
     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to project</a>
     @if (invoice.error()) {
@@ -211,6 +212,13 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
           }
         </form>
       }
+
+      <app-invoice-payments
+        [projectId]="projectIdNumber()"
+        [invoiceId]="inv.id"
+        [invoiceAmount]="totalCents() / 100"
+        [canRecord]="inv.status !== 'DRAFT'"
+      />
     }
   `,
 })

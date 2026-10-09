@@ -49,6 +49,7 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
@@ -132,6 +133,11 @@ public class TestSupportController {
                 }
             }
         }
+        for (Map<String, Object> p : rows(fixture, "payments")) {
+            jdbc.update("INSERT INTO payment (id, invoice_id, amount, paid_date) VALUES (?, ?, ?, ?)",
+                    ((Number) p.get("id")).longValue(), ((Number) p.get("invoiceId")).longValue(),
+                    new BigDecimal(p.get("amount").toString()), LocalDate.parse(p.get("date").toString()));
+        }
         // Continue generated ids after the explicitly seeded ones.
         restartIdentity("client");
         restartIdentity("contact");
@@ -141,6 +147,7 @@ public class TestSupportController {
         restartIdentity("task");
         restartIdentity("tag");
         restartIdentity("note");
+        restartIdentity("payment");
     }
 
     /**
