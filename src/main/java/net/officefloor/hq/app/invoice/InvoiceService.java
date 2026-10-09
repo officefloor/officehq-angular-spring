@@ -3,7 +3,10 @@ package net.officefloor.hq.app.invoice;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.Project;
 import net.officefloor.hq.app.project.ProjectRepository;
 import org.springframework.http.HttpStatus;
@@ -16,11 +19,14 @@ public class InvoiceService {
 
     private final InvoiceRepository invoices;
     private final ProjectRepository projects;
+    private final PaymentRepository payments;
     private final Audit audit;
 
-    public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, Audit audit) {
+    public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
+            Audit audit) {
         this.invoices = invoices;
         this.projects = projects;
+        this.payments = payments;
         this.audit = audit;
     }
 
@@ -29,7 +35,14 @@ public class InvoiceService {
         if (!projects.existsById(projectId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
         }
-        return invoices.findByProjectIdOrderById(projectId).stream().map(InvoiceResponse::from).toList();
+        List<Invoice> found = invoices.findByProjectIdOrderById(projectId);
+        Map<Long, BigDecimal> paid = found.isEmpty() ? Map.of()
+                : payments.sumAmountByInvoiceIds(found.stream().map(Invoice::getId).toList()).stream()
+                        .collect(Collectors.toMap(PaymentRepository.InvoicePaidTotal::getInvoiceId,
+                                PaymentRepository.InvoicePaidTotal::getPaid));
+        return found.stream()
+                .map(i -> InvoiceResponse.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                .toList();
     }
 
     /**
@@ -57,7 +70,7 @@ public class InvoiceService {
             invoice.addLineItem(InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION, BigDecimal.ONE, request.amount());
         }
         Invoice saved = invoices.save(invoice);
-        return InvoiceResponse.from(saved);
+        return InvoiceResponse.from(saved, BigDecimal.ZERO);
     }
 
     /** A single invoice with its line items. */
@@ -108,7 +121,7 @@ public class InvoiceService {
         invoice.markSent();
         invoices.flush();
         audit.record("INVOICE_SENT id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
-        return InvoiceResponse.from(invoice);
+        return toResponse(invoice);
     }
 
     /** Marks a sent invoice paid and records the payment in the audit log. */
@@ -121,7 +134,11 @@ public class InvoiceService {
         invoice.markPaid();
         invoices.flush();
         audit.record("INVOICE_PAID id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
-        return InvoiceResponse.from(invoice);
+        return toResponse(invoice);
+    }
+
+    private InvoiceResponse toResponse(Invoice invoice) {
+        return InvoiceResponse.from(invoice, payments.sumAmountByInvoiceId(invoice.getId()));
     }
 
     private Invoice find(Long projectId, Long invoiceId) {

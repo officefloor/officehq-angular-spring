@@ -9,7 +9,7 @@ import {
   ValidationErrors,
   Validators,
 } from '@angular/forms';
-import { Invoice, InvoiceService } from './invoice.service';
+import { InvoiceService, ProjectInvoice } from './invoice.service';
 
 // ISO yyyy-MM-dd strings compare correctly as plain strings.
 function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
@@ -17,7 +17,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
   return issuedDate && dueDate && dueDate < issuedDate ? { dueBeforeIssued: true } : null;
 }
 
-// A project's invoices: lists them with their issue and due dates, shows what they add up to, adds a
+// A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each is still left to pay, adds a
 // new draft, sends a draft, and marks a sent one as paid. Each invoice opens onto its line items.
 @Component({
   selector: 'app-project-invoices',
@@ -85,6 +85,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
             <tr>
               <th scope="col">Invoice</th>
               <th scope="col">Amount</th>
+              <th scope="col">Left to pay</th>
               <th scope="col">Status</th>
               <th scope="col">Issued</th>
               <th scope="col" [attr.aria-sort]="sortByDue() ? 'ascending' : null">
@@ -112,6 +113,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
                   >
                 </td>
                 <td data-testid="invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                <td data-testid="invoice-due-amount">{{ i.amountDue | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
                 <td data-testid="invoice-status">{{ i.status }}</td>
                 <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
                 <td data-testid="invoice-due">{{ i.dueDate }}</td>
@@ -145,7 +147,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
             <tr>
               <th scope="row">Total</th>
               <td data-testid="project-invoices-total">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
-              <td colspan="4"></td>
+              <td colspan="5"></td>
             </tr>
           </tfoot>
         </table>
@@ -263,7 +265,7 @@ export class ProjectInvoices {
     });
   }
 
-  private replace(updated: Invoice): void {
+  private replace(updated: ProjectInvoice): void {
     this.invoices.update((list) => (list ?? []).map((i) => (i.id === updated.id ? updated : i)));
   }
 }

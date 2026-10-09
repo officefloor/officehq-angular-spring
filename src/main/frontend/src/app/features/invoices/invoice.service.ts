@@ -17,6 +17,11 @@ export interface Invoice {
   dueDate: string;
 }
 
+/** An invoice as listed for its project, with how much is still left to pay after any payments. */
+export interface ProjectInvoice extends Invoice {
+  amountDue: number;
+}
+
 /** An invoice as listed across all projects, with the name of the project it is for. */
 export interface InvoiceSummary extends Invoice {
   projectName: string;
@@ -61,12 +66,12 @@ export class InvoiceService {
     return this.http.get<InvoiceSummary[]>('/api/invoices', { params });
   }
 
-  listForProject(projectId: number): Observable<Invoice[]> {
-    return this.http.get<Invoice[]>(`/api/projects/${projectId}/invoices`);
+  listForProject(projectId: number): Observable<ProjectInvoice[]> {
+    return this.http.get<ProjectInvoice[]>(`/api/projects/${projectId}/invoices`);
   }
 
-  create(projectId: number, invoice: NewInvoice): Observable<Invoice> {
-    return this.http.post<Invoice>(`/api/projects/${projectId}/invoices`, invoice);
+  create(projectId: number, invoice: NewInvoice): Observable<ProjectInvoice> {
+    return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices`, invoice);
   }
 
   get(projectId: number, invoiceId: number): Observable<InvoiceDetail> {
@@ -88,11 +93,11 @@ export class InvoiceService {
     return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`);
   }
 
-  send(projectId: number, invoiceId: number): Observable<Invoice> {
-    return this.http.post<Invoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+  send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
+    return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
   }
 
-  pay(projectId: number, invoiceId: number): Observable<Invoice> {
-    return this.http.post<Invoice>(`/api/projects/${projectId}/invoices/${invoiceId}/pay`, null);
+  pay(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
+    return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/pay`, null);
   }
 }
