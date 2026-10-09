@@ -1,0 +1,270 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index c6bb5ce..3ede036 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -60,6 +60,9 @@ import { Client, ClientService } from './client.service';
+       <p>
+         Tax exempt: <span data-testid="client-tax-exempt">{{ c.taxExempt ? 'Yes' : 'No' }}</span>
+       </p>
++      <p>
++        Key account: <span data-testid="client-key-account-flag">{{ c.keyAccount ? 'Yes' : 'No' }}</span>
++      </p>
+       <p>
+         Main contact:
+         @if (c.primaryContact; as primary) {
+diff --git a/src/main/frontend/src/app/features/clients/client-edit-form.ts b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+index 210bbe3..ea483fd 100644
+--- a/src/main/frontend/src/app/features/clients/client-edit-form.ts
++++ b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+@@ -117,6 +117,12 @@ import { Client, ClientService } from './client.service';
+           Tax exempt (no tax on any invoice)
+         </label>
+       </div>
++      <div>
++        <label>
++          <input type="checkbox" formControlName="keyAccount" data-testid="client-edit-form-key-account" />
++          Key account
++        </label>
++      </div>
+       <button type="submit" data-testid="client-edit-form-submit" [disabled]="saving()">Save</button>
+       <button type="button" data-testid="client-edit-form-cancel" (click)="cancelled.emit()">Cancel</button>
+       @if (saveError()) {
+@@ -153,6 +159,7 @@ export class ClientEditForm implements OnInit {
+     billingAddress: ['', Validators.maxLength(500)],
+     taxInclusive: false,
+     taxExempt: false,
++    keyAccount: false,
+   });
+ 
+   constructor() {
+@@ -160,8 +167,8 @@ export class ClientEditForm implements OnInit {
+   }
+ 
+   ngOnInit(): void {
+-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt } = this.client();
+-    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt });
++    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount } = this.client();
++    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt, keyAccount });
+   }
+ 
+   protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress'): boolean {
+@@ -174,10 +181,10 @@ export class ClientEditForm implements OnInit {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt } = this.form.getRawValue();
++    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt }).subscribe({
++    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount }).subscribe({
+       next: (updated) => {
+         this.saving.set(false);
+         this.saved.emit(updated);
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 2d52a95..4f187d9 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -21,6 +21,8 @@ export interface Client {
+   taxInclusive: boolean;
+   /** Whether the client is tax exempt, so none of their invoices carry any tax whatever the lines say. */
+   taxExempt: boolean;
++  /** Whether the client is one of the office's key accounts, marked out wherever they are listed. */
++  keyAccount: boolean;
+   archived: boolean;
+   /** The client's main contact; null until one is chosen. */
+   primaryContact: { id: number; name: string } | null;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 7f0d968..a216a2b 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -9,10 +9,21 @@ import { Client, ClientService } from './client.service';
+ // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
+ // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
+ // list and search unless the archived toggle is on, where it can be restored. A client's name or email
+-// can be corrected in place from its row. The list can be sorted by name or by how much each client owes.
++// can be corrected in place from its row. Key accounts carry a marker beside their name. The list can be sorted by name or by how much each client owes.
+ @Component({
+   selector: 'app-clients',
+   imports: [CurrencyPipe, ReactiveFormsModule, RouterLink, ClientEditForm],
++  styles: `
++    .key-account {
++      margin-inline-start: 0.5em;
++      padding: 0 0.4em;
++      border: 1px solid #7a5200;
++      border-radius: 0.25em;
++      color: #5c3d00;
++      background: #fff4d6;
++      font-size: 0.85em;
++    }
++  `,
+   template: `
+     <h1>Clients</h1>
+ 
+@@ -118,6 +129,12 @@ import { Client, ClientService } from './client.service';
+           Tax exempt (no tax on any invoice)
+         </label>
+       </div>
++      <div>
++        <label>
++          <input type="checkbox" formControlName="keyAccount" data-testid="client-form-key-account" />
++          Key account
++        </label>
++      </div>
+       <button type="submit" data-testid="client-form-submit" [disabled]="saving()">Add client</button>
+       @if (saveError()) {
+         <p role="alert" data-testid="client-form-error">{{ saveError() }}</p>
+@@ -179,6 +196,9 @@ import { Client, ClientService } from './client.service';
+               <tr [attr.data-testid]="'client-row-' + c.id">
+                 <td data-testid="client-name">
+                   {{ c.name }}
++                  @if (c.keyAccount) {
++                    <span class="key-account" data-testid="client-key-account">Key account</span>
++                  }
+                   @if (c.archived) {
+                     <span [attr.data-testid]="'client-archived-' + c.id">(archived)</span>
+                   }
+@@ -275,6 +295,7 @@ export class Clients {
+     billingAddress: ['', Validators.maxLength(500)],
+     taxInclusive: false,
+     taxExempt: false,
++    keyAccount: false,
+   });
+ 
+   constructor() {
+@@ -299,10 +320,10 @@ export class Clients {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt } = this.form.getRawValue();
++    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt }).subscribe({
++    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount }).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created]);
+         this.form.reset();
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index fd004d7..1e4c36e 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -76,10 +76,11 @@ public class TestSupportController {
+             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, archived, currency)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, key_account, archived, currency)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"),
+                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
++                    Boolean.TRUE.equals(c.get("keyAccount")),
+                     Boolean.TRUE.equals(c.get("archived")),
+                     c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString());
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index 9dc2e04..07f4df8 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -42,6 +42,9 @@ public class Client {
+     /** Whether the client is tax exempt, so none of their invoices carry any tax whatever the lines say. */
+     private boolean taxExempt;
+ 
++    /** Whether the client is one of the office's key accounts, marked out wherever they are listed. */
++    private boolean keyAccount;
++
+     /** The currency the client is billed in; all of their money is in it. */
+     @Enumerated(EnumType.STRING)
+     private Currency currency = Currency.USD;
+@@ -111,6 +114,14 @@ public class Client {
+         this.taxExempt = taxExempt;
+     }
+ 
++    public boolean isKeyAccount() {
++        return keyAccount;
++    }
++
++    public void setKeyAccount(boolean keyAccount) {
++        this.keyAccount = keyAccount;
++    }
++
+     public boolean isArchived() {
+         return archived;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+index 2489012..8d53c2f 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
+ 
+ /**
+  * Payload to create a client, or to correct an existing client's name, email, phone number, tax number and billing address,
+- * whether their prices already include tax and whether they are tax exempt (each left as it is when not given).
++ * whether their prices already include tax and whether they are tax exempt and whether they are a key account (each left as it is when not given).
+  */
+ public record ClientRequest(
+         @NotBlank @Size(max = 255) String name,
+@@ -15,7 +15,8 @@ public record ClientRequest(
+         @Size(max = 50) String taxNumber,
+         @Size(max = 500) String billingAddress,
+         Boolean taxInclusive,
+-        Boolean taxExempt) {
++        Boolean taxExempt,
++        Boolean keyAccount) {
+ 
+     /** Requires a dotted domain, which plain {@code @Email} does not (it accepts {@code a@b}). */
+     public static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index a4aea59..b8ef1de 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -3,7 +3,7 @@ package net.officefloor.hq.app.client;
+ import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+-public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, boolean taxInclusive, boolean taxExempt, boolean archived, PrimaryContact primaryContact,
++public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, boolean taxInclusive, boolean taxExempt, boolean keyAccount, boolean archived, PrimaryContact primaryContact,
+         Currency currency, BigDecimal outstanding) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+@@ -13,7 +13,7 @@ public record ClientResponse(Long id, String name, String email, String phone, S
+     /** A client with what they still owe, in their currency: what is left to pay on their sent, not yet fully paid invoices. */
+     public static ClientResponse from(Client client, BigDecimal outstanding) {
+         Contact primary = client.getPrimaryContact();
+-        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.isTaxInclusive(), client.isTaxExempt(), client.isArchived(),
++        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.isTaxInclusive(), client.isTaxExempt(), client.isKeyAccount(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
+                 client.getCurrency(), outstanding);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 4b08e04..3e9e9df 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -71,6 +71,7 @@ public class ClientService {
+             Client client = new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber(), request.trimmedBillingAddress());
+             client.setTaxInclusive(Boolean.TRUE.equals(request.taxInclusive()));
+             client.setTaxExempt(Boolean.TRUE.equals(request.taxExempt()));
++            client.setKeyAccount(Boolean.TRUE.equals(request.keyAccount()));
+             return respond(clients.saveAndFlush(client));
+         } catch (DataIntegrityViolationException e) {
+             // Lost a race with a concurrent add of the same email; the unique constraint caught it.
+@@ -104,6 +105,9 @@ public class ClientService {
+             invoices.findByClientIdAndStatus(id, InvoiceStatus.DRAFT)
+                     .forEach(i -> i.applyTaxExempt(request.taxExempt()));
+         }
++        if (request.keyAccount() != null) {
++            client.setKeyAccount(request.keyAccount());
++        }
+         try {
+             clients.flush();
+         } catch (DataIntegrityViolationException e) {
+diff --git a/src/main/resources/db/migration/V42__client_key_account.sql b/src/main/resources/db/migration/V42__client_key_account.sql
+new file mode 100644
+index 0000000..c43de99
+--- /dev/null
++++ b/src/main/resources/db/migration/V42__client_key_account.sql
+@@ -0,0 +1,3 @@
++-- A client can be flagged a key account, so the office can pick out its most important clients at a
++-- glance. Existing clients are not key accounts.
++ALTER TABLE client ADD COLUMN key_account BOOLEAN DEFAULT FALSE NOT NULL;
