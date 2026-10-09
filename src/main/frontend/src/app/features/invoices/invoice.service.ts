@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-export type InvoiceStatus = 'UNPAID' | 'PAID';
+export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID';
 
 export interface Invoice {
   id: number;
@@ -33,6 +33,10 @@ export class InvoiceService {
 
   create(projectId: number, invoice: NewInvoice): Observable<Invoice> {
     return this.http.post<Invoice>(`/api/projects/${projectId}/invoices`, invoice);
+  }
+
+  send(projectId: number, invoiceId: number): Observable<Invoice> {
+    return this.http.post<Invoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
   }
 
   pay(projectId: number, invoiceId: number): Observable<Invoice> {

@@ -22,10 +22,10 @@ public class DashboardService {
         this.invoices = invoices;
     }
 
-    /** Counts of clients and projects, and the total still owed (sum of unpaid invoices). */
+    /** Counts of clients and projects, and the total still owed (sum of sent, unpaid invoices). */
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
-        BigDecimal outstanding = invoices.sumAmountByStatus(InvoiceStatus.UNPAID).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal outstanding = invoices.sumAmountByStatus(InvoiceStatus.SENT).setScale(2, RoundingMode.HALF_UP);
         return new DashboardResponse(clients.count(), projects.count(), outstanding);
     }
 }

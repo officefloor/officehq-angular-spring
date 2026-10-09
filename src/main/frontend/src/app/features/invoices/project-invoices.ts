@@ -8,7 +8,7 @@ import {
   ValidationErrors,
   Validators,
 } from '@angular/forms';
-import { InvoiceService } from './invoice.service';
+import { Invoice, InvoiceService } from './invoice.service';
 
 // ISO yyyy-MM-dd strings compare correctly as plain strings.
 function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
@@ -17,7 +17,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
 }
 
 // A project's invoices: lists them with their issue and due dates, shows what they add up to, adds a
-// new one, and marks one as paid.
+// new draft, sends a draft, and marks a sent one as paid.
 @Component({
   selector: 'app-project-invoices',
   imports: [ReactiveFormsModule, CurrencyPipe],
@@ -108,12 +108,22 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
                 <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
                 <td data-testid="invoice-due">{{ i.dueDate }}</td>
                 <td>
-                  @if (i.status === 'UNPAID') {
+                  @if (i.status === 'DRAFT') {
+                    <button
+                      type="button"
+                      [attr.data-testid]="'invoice-send-' + i.id"
+                      [attr.aria-label]="'Send invoice #' + i.id"
+                      [disabled]="busy() === i.id"
+                      (click)="send(i.id)"
+                    >
+                      Send
+                    </button>
+                  } @else if (i.status === 'SENT') {
                     <button
                       type="button"
                       [attr.data-testid]="'invoice-pay-' + i.id"
                       [attr.aria-label]="'Mark invoice #' + i.id + ' as paid'"
-                      [disabled]="paying() === i.id"
+                      [disabled]="busy() === i.id"
                       (click)="pay(i.id)"
                     >
                       Mark paid
@@ -133,6 +143,9 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
         </table>
         @if (payError()) {
           <p role="alert" data-testid="invoice-pay-error">{{ payError() }}</p>
+        }
+        @if (sendError()) {
+          <p role="alert" data-testid="invoice-send-error">{{ sendError() }}</p>
         }
       }
     </section>
@@ -163,7 +176,9 @@ export class ProjectInvoices {
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
 
-  protected readonly paying = signal<number | null>(null);
+  // The invoice whose send or pay request is in flight.
+  protected readonly busy = signal<number | null>(null);
+  protected readonly sendError = signal<string | null>(null);
   protected readonly payError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group(
@@ -213,18 +228,37 @@ export class ProjectInvoices {
     });
   }
 
+  protected send(invoiceId: number): void {
+    this.busy.set(invoiceId);
+    this.sendError.set(null);
+    this.service.send(this.projectId(), invoiceId).subscribe({
+      next: (sent) => {
+        this.replace(sent);
+        this.busy.set(null);
+      },
+      error: () => {
+        this.sendError.set('Could not send the invoice. Please try again.');
+        this.busy.set(null);
+      },
+    });
+  }
+
   protected pay(invoiceId: number): void {
-    this.paying.set(invoiceId);
+    this.busy.set(invoiceId);
     this.payError.set(null);
     this.service.pay(this.projectId(), invoiceId).subscribe({
       next: (paid) => {
-        this.invoices.update((list) => (list ?? []).map((i) => (i.id === paid.id ? paid : i)));
-        this.paying.set(null);
+        this.replace(paid);
+        this.busy.set(null);
       },
       error: () => {
         this.payError.set('Could not mark the invoice as paid. Please try again.');
-        this.paying.set(null);
+        this.busy.set(null);
       },
     });
+  }
+
+  private replace(updated: Invoice): void {
+    this.invoices.update((list) => (list ?? []).map((i) => (i.id === updated.id ? updated : i)));
   }
 }

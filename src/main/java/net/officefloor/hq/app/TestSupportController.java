@@ -80,12 +80,15 @@ public class TestSupportController {
     }
 
     /**
-     * Fixtures may describe an issued-but-unpaid invoice as "SENT"; this domain models that state
-     * as UNPAID.
+     * Invoices without a status are seeded as new drafts. Older fixtures may describe an
+     * issued-but-unpaid invoice as "UNPAID"; this domain models that state as SENT.
      */
     private static String seedStatus(Object status) {
-        if (status == null || "SENT".equals(status)) {
-            return InvoiceStatus.UNPAID.name();
+        if (status == null) {
+            return InvoiceStatus.DRAFT.name();
+        }
+        if ("UNPAID".equals(status)) {
+            return InvoiceStatus.SENT.name();
         }
         return status.toString();
     }

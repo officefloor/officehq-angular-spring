@@ -1,7 +1,8 @@
 package net.officefloor.hq.app.invoice;
 
-/** Payment state of an invoice. */
+/** Lifecycle stage of an invoice: DRAFT -> SENT -> PAID. */
 public enum InvoiceStatus {
-    UNPAID,
+    DRAFT,
+    SENT,
     PAID
 }

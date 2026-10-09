@@ -33,7 +33,7 @@ public class Invoice {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
-    private InvoiceStatus status = InvoiceStatus.UNPAID;
+    private InvoiceStatus status = InvoiceStatus.DRAFT;
 
     @Column(name = "issued_date", nullable = false)
     private LocalDate issuedDate;
@@ -73,6 +73,11 @@ public class Invoice {
 
     public LocalDate getDueDate() {
         return dueDate;
+    }
+
+    /** Marks this invoice as sent to the client. */
+    public void markSent() {
+        this.status = InvoiceStatus.SENT;
     }
 
     /** Marks this invoice as paid. */

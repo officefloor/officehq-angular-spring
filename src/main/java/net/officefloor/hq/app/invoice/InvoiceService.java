@@ -44,18 +44,35 @@ public class InvoiceService {
         return InvoiceResponse.from(saved);
     }
 
-    /** Marks the invoice paid and records the payment in the audit log. */
+    /** Sends a draft invoice and records the sending in the audit log. */
+    @Transactional
+    public InvoiceResponse send(Long projectId, Long invoiceId) {
+        Invoice invoice = find(projectId, invoiceId);
+        if (invoice.getStatus() != InvoiceStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft invoice can be sent");
+        }
+        invoice.markSent();
+        invoices.flush();
+        audit.record("INVOICE_SENT id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
+        return InvoiceResponse.from(invoice);
+    }
+
+    /** Marks a sent invoice paid and records the payment in the audit log. */
     @Transactional
     public InvoiceResponse pay(Long projectId, Long invoiceId) {
-        Invoice invoice = invoices.findById(invoiceId)
-                .filter(i -> i.getProject().getId().equals(projectId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown invoice"));
-        if (invoice.getStatus() == InvoiceStatus.PAID) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Invoice is already paid");
+        Invoice invoice = find(projectId, invoiceId);
+        if (invoice.getStatus() != InvoiceStatus.SENT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a sent invoice can be paid");
         }
         invoice.markPaid();
         invoices.flush();
         audit.record("INVOICE_PAID id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
         return InvoiceResponse.from(invoice);
+    }
+
+    private Invoice find(Long projectId, Long invoiceId) {
+        return invoices.findById(invoiceId)
+                .filter(i -> i.getProject().getId().equals(projectId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown invoice"));
     }
 }
