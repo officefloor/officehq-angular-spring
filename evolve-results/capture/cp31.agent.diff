@@ -1,0 +1,233 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 667e07f..753b966 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -17,6 +17,11 @@ export interface Invoice {
+   dueDate: string;
+ }
+ 
++/** An invoice as listed for its project, with how much is still left to pay after any payments. */
++export interface ProjectInvoice extends Invoice {
++  amountDue: number;
++}
++
+ /** An invoice as listed across all projects, with the name of the project it is for. */
+ export interface InvoiceSummary extends Invoice {
+   projectName: string;
+@@ -61,12 +66,12 @@ export class InvoiceService {
+     return this.http.get<InvoiceSummary[]>('/api/invoices', { params });
+   }
+ 
+-  listForProject(projectId: number): Observable<Invoice[]> {
+-    return this.http.get<Invoice[]>(`/api/projects/${projectId}/invoices`);
++  listForProject(projectId: number): Observable<ProjectInvoice[]> {
++    return this.http.get<ProjectInvoice[]>(`/api/projects/${projectId}/invoices`);
+   }
+ 
+-  create(projectId: number, invoice: NewInvoice): Observable<Invoice> {
+-    return this.http.post<Invoice>(`/api/projects/${projectId}/invoices`, invoice);
++  create(projectId: number, invoice: NewInvoice): Observable<ProjectInvoice> {
++    return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices`, invoice);
+   }
+ 
+   get(projectId: number, invoiceId: number): Observable<InvoiceDetail> {
+@@ -88,11 +93,11 @@ export class InvoiceService {
+     return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`);
+   }
+ 
+-  send(projectId: number, invoiceId: number): Observable<Invoice> {
+-    return this.http.post<Invoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
++  send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
++    return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+   }
+ 
+-  pay(projectId: number, invoiceId: number): Observable<Invoice> {
+-    return this.http.post<Invoice>(`/api/projects/${projectId}/invoices/${invoiceId}/pay`, null);
++  pay(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
++    return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/pay`, null);
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index 161d424..51a75ef 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -9,7 +9,7 @@ import {
+   ValidationErrors,
+   Validators,
+ } from '@angular/forms';
+-import { Invoice, InvoiceService } from './invoice.service';
++import { InvoiceService, ProjectInvoice } from './invoice.service';
+ 
+ // ISO yyyy-MM-dd strings compare correctly as plain strings.
+ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+@@ -17,7 +17,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+   return issuedDate && dueDate && dueDate < issuedDate ? { dueBeforeIssued: true } : null;
+ }
+ 
+-// A project's invoices: lists them with their issue and due dates, shows what they add up to, adds a
++// A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each is still left to pay, adds a
+ // new draft, sends a draft, and marks a sent one as paid. Each invoice opens onto its line items.
+ @Component({
+   selector: 'app-project-invoices',
+@@ -85,6 +85,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+             <tr>
+               <th scope="col">Invoice</th>
+               <th scope="col">Amount</th>
++              <th scope="col">Left to pay</th>
+               <th scope="col">Status</th>
+               <th scope="col">Issued</th>
+               <th scope="col" [attr.aria-sort]="sortByDue() ? 'ascending' : null">
+@@ -112,6 +113,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+                   >
+                 </td>
+                 <td data-testid="invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                <td data-testid="invoice-due-amount">{{ i.amountDue | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                 <td data-testid="invoice-status">{{ i.status }}</td>
+                 <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
+                 <td data-testid="invoice-due">{{ i.dueDate }}</td>
+@@ -145,7 +147,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+             <tr>
+               <th scope="row">Total</th>
+               <td data-testid="project-invoices-total">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+-              <td colspan="4"></td>
++              <td colspan="5"></td>
+             </tr>
+           </tfoot>
+         </table>
+@@ -263,7 +265,7 @@ export class ProjectInvoices {
+     });
+   }
+ 
+-  private replace(updated: Invoice): void {
++  private replace(updated: ProjectInvoice): void {
+     this.invoices.update((list) => (list ?? []).map((i) => (i.id === updated.id ? updated : i)));
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+index 45bec50..4f9bec9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+@@ -3,11 +3,13 @@ package net.officefloor.hq.app.invoice;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
++/** An invoice, with how much of it is still left to pay after the payments made against it. */
+ public record InvoiceResponse(Long id, Long projectId, BigDecimal amount, InvoiceStatus status,
+-        LocalDate issuedDate, LocalDate dueDate) {
++        LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue) {
+ 
+-    static InvoiceResponse from(Invoice invoice) {
++    static InvoiceResponse from(Invoice invoice, BigDecimal paid) {
+         return new InvoiceResponse(invoice.getId(), invoice.getProject().getId(), invoice.getAmount(),
+-                invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate());
++                invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
++                invoice.getAmount().subtract(paid));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index adf4438..470a245 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -3,7 +3,10 @@ package net.officefloor.hq.app.invoice;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Map;
++import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.project.Project;
+ import net.officefloor.hq.app.project.ProjectRepository;
+ import org.springframework.http.HttpStatus;
+@@ -16,11 +19,14 @@ public class InvoiceService {
+ 
+     private final InvoiceRepository invoices;
+     private final ProjectRepository projects;
++    private final PaymentRepository payments;
+     private final Audit audit;
+ 
+-    public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, Audit audit) {
++    public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
++            Audit audit) {
+         this.invoices = invoices;
+         this.projects = projects;
++        this.payments = payments;
+         this.audit = audit;
+     }
+ 
+@@ -29,7 +35,14 @@ public class InvoiceService {
+         if (!projects.existsById(projectId)) {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
+         }
+-        return invoices.findByProjectIdOrderById(projectId).stream().map(InvoiceResponse::from).toList();
++        List<Invoice> found = invoices.findByProjectIdOrderById(projectId);
++        Map<Long, BigDecimal> paid = found.isEmpty() ? Map.of()
++                : payments.sumAmountByInvoiceIds(found.stream().map(Invoice::getId).toList()).stream()
++                        .collect(Collectors.toMap(PaymentRepository.InvoicePaidTotal::getInvoiceId,
++                                PaymentRepository.InvoicePaidTotal::getPaid));
++        return found.stream()
++                .map(i -> InvoiceResponse.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
++                .toList();
+     }
+ 
+     /**
+@@ -57,7 +70,7 @@ public class InvoiceService {
+             invoice.addLineItem(InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION, BigDecimal.ONE, request.amount());
+         }
+         Invoice saved = invoices.save(invoice);
+-        return InvoiceResponse.from(saved);
++        return InvoiceResponse.from(saved, BigDecimal.ZERO);
+     }
+ 
+     /** A single invoice with its line items. */
+@@ -108,7 +121,7 @@ public class InvoiceService {
+         invoice.markSent();
+         invoices.flush();
+         audit.record("INVOICE_SENT id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
+-        return InvoiceResponse.from(invoice);
++        return toResponse(invoice);
+     }
+ 
+     /** Marks a sent invoice paid and records the payment in the audit log. */
+@@ -121,7 +134,11 @@ public class InvoiceService {
+         invoice.markPaid();
+         invoices.flush();
+         audit.record("INVOICE_PAID id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
+-        return InvoiceResponse.from(invoice);
++        return toResponse(invoice);
++    }
++
++    private InvoiceResponse toResponse(Invoice invoice) {
++        return InvoiceResponse.from(invoice, payments.sumAmountByInvoiceId(invoice.getId()));
+     }
+ 
+     private Invoice find(Long projectId, Long invoiceId) {
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+index 1084e18..a0741a4 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.payment;
+ 
+ import java.math.BigDecimal;
++import java.util.Collection;
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Query;
+@@ -13,4 +14,16 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
+     /** Total paid against an invoice (zero when nothing has been paid). */
+     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.invoiceId = :invoiceId")
+     BigDecimal sumAmountByInvoiceId(Long invoiceId);
++
++    /** Total paid against each of the given invoices; invoices with no payments are left out. */
++    @Query("SELECT p.invoiceId AS invoiceId, SUM(p.amount) AS paid FROM Payment p"
++            + " WHERE p.invoiceId IN :invoiceIds GROUP BY p.invoiceId")
++    List<InvoicePaidTotal> sumAmountByInvoiceIds(Collection<Long> invoiceIds);
++
++    /** How much has been paid against one invoice. */
++    interface InvoicePaidTotal {
++        Long getInvoiceId();
++
++        BigDecimal getPaid();
++    }
+ }
