@@ -1,0 +1,42 @@
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index ca5127f..b01dc90 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -86,12 +86,21 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+               <th scope="col">Amount</th>
+               <th scope="col">Status</th>
+               <th scope="col">Issued</th>
+-              <th scope="col">Due</th>
++              <th scope="col" [attr.aria-sort]="sortByDue() ? 'ascending' : null">
++                <button
++                  type="button"
++                  data-testid="invoice-sort-due"
++                  [attr.aria-pressed]="sortByDue()"
++                  (click)="sortByDue.set(!sortByDue())"
++                >
++                  Due<span class="visually-hidden">, sort earliest first</span>
++                </button>
++              </th>
+               <th scope="col"><span class="visually-hidden">Actions</span></th>
+             </tr>
+           </thead>
+           <tbody>
+-            @for (i of list(); track i.id) {
++            @for (i of rows(); track i.id) {
+               <tr [attr.data-testid]="'invoice-row-' + i.id">
+                 <td data-testid="invoice-id">#{{ i.id }}</td>
+                 <td data-testid="invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+@@ -139,6 +148,13 @@ export class ProjectInvoices {
+     stream: ({ params }) => this.service.listForProject(params),
+   });
+   protected readonly list = computed(() => (this.invoices.hasValue() ? this.invoices.value() : []));
++  // Earliest due first when sorting by due date (ties by invoice number); otherwise invoice-number order.
++  protected readonly sortByDue = signal(false);
++  protected readonly rows = computed(() =>
++    this.sortByDue()
++      ? [...this.list()].sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.id - b.id)
++      : this.list(),
++  );
+   // Sum in whole cents so the total is exact rather than accumulating floating-point error.
+   protected readonly totalCents = computed(() =>
+     this.list().reduce((sum, i) => sum + Math.round(i.amount * 100), 0),
