@@ -60,6 +60,11 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
         BigDecimal getTotal();
     }
 
+    /** Invoices with any of the given statuses whose due date is before the given date, with their project and client. */
+    @Query("SELECT i FROM Invoice i JOIN FETCH i.project p JOIN FETCH p.client"
+            + " WHERE i.status IN :statuses AND i.dueDate < :date ORDER BY i.id")
+    List<Invoice> findByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);
+
     /** Number of invoices with any of the given statuses whose due date is before the given date. */
     @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status IN :statuses AND i.dueDate < :date")
     long countByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);

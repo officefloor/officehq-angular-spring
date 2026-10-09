@@ -23,6 +23,10 @@ export interface DashboardSummary {
   /** What is still owed, one total per currency anything is owed in. */
   outstanding: CurrencyTotal[];
   overdue: number;
+  /** The currency the overdue amount is given in. */
+  homeCurrency: CurrencyCode;
+  /** What is left to pay on overdue invoices plus the late fees they have accrued, in the home currency. */
+  overdueAmount: number;
   topClients: TopClient[];
 }
 

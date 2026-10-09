@@ -5,7 +5,8 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
 // Dashboard page: how many clients and projects there are, and the total still owed in each currency
 // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
 // counted; amounts in different currencies are never added together), and how many of those sent
-// invoices are past their due date. Also lists the top five clients ranked by what they still owe,
+// invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees,
+// in the home currency). Also lists the top five clients ranked by what they still owe,
 // each in their own currency.
 @Component({
   selector: 'app-dashboard',
@@ -36,6 +37,10 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
         <div>
           <dt>Overdue invoices</dt>
           <dd data-testid="dashboard-overdue-count">{{ s.overdue }}</dd>
+        </div>
+        <div>
+          <dt>Overdue amount (including late fees)</dt>
+          <dd data-testid="dashboard-overdue-amount">{{ s.overdueAmount | money: s.homeCurrency }}</dd>
         </div>
       </dl>
 
