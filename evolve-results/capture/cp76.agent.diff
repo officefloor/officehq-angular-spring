@@ -1,0 +1,144 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index fc92641..b071920 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -5,7 +5,7 @@ import { RouterLink } from '@angular/router';
+ import { InvoiceService } from './invoice.service';
+ 
+ // A client's statement: every invoice across the client's projects grouped by job, how much is left to
+-// pay on each, a subtotal still owed per job, and the total the client still owes. Drafts are listed but do not count towards what is owed.
++// pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
+ // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
+ // with the app's navigation and the page's controls left off the printed copy.
+ @Component({
+@@ -68,6 +68,8 @@ import { InvoiceService } from './invoice.service';
+           <dl class="statement-summary">
+             <dt>Total invoiced</dt>
+             <dd data-testid="statement-total-invoiced">{{ s.invoiced | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
++            <dt>Tax</dt>
++            <dd data-testid="client-statement-tax-total">{{ s.tax | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+             <dt>Less paid</dt>
+             <dd data-testid="statement-total-paid">{{ s.paid | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+             <dt class="statement-grand-total">Grand total owed</dt>
+@@ -87,13 +89,14 @@ import { InvoiceService } from './invoice.service';
+                 <th scope="col">Issued</th>
+                 <th scope="col">Due</th>
+                 <th scope="col">Amount</th>
++                <th scope="col">Tax</th>
+                 <th scope="col">Left to pay</th>
+               </tr>
+             </thead>
+             @for (job of s.jobs; track job.projectId) {
+               <tbody [attr.data-testid]="'statement-project-' + job.projectId">
+                 <tr>
+-                  <th scope="colgroup" colspan="7" data-testid="statement-project-name">{{ job.projectName }}</th>
++                  <th scope="colgroup" colspan="8" data-testid="statement-project-name">{{ job.projectName }}</th>
+                 </tr>
+                 @for (i of job.invoices; track i.id) {
+                   <tr [attr.data-testid]="'statement-invoice-row-' + i.id">
+@@ -110,11 +113,17 @@ import { InvoiceService } from './invoice.service';
+                     <td data-testid="statement-invoice-issued">{{ i.issuedDate }}</td>
+                     <td data-testid="statement-invoice-due">{{ i.dueDate }}</td>
+                     <td data-testid="statement-invoice-amount">{{ i.amount | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                    <td data-testid="statement-invoice-tax">{{ i.tax | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                     <td data-testid="statement-invoice-due-amount">{{ i.amountDue | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                   </tr>
+                 }
+                 <tr>
+-                  <th scope="row" colspan="6">Subtotal owed on {{ job.projectName }}</th>
++                  <th scope="row" colspan="6">Tax on {{ job.projectName }}</th>
++                  <td data-testid="statement-project-tax">{{ job.tax | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  <td></td>
++                </tr>
++                <tr>
++                  <th scope="row" colspan="7">Subtotal owed on {{ job.projectName }}</th>
+                   <td data-testid="statement-project-subtotal">{{ job.subtotal | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                 </tr>
+               </tbody>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 35ba5fa..977394c 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -42,6 +42,8 @@ export interface InvoicePage {
+ /** An invoice as listed on a client's statement: its project's name and how much is left to pay. */
+ export interface StatementInvoice extends ProjectInvoice {
+   projectName: string;
++  /** The sales tax and levy on the invoice. */
++  tax: number;
+ }
+ 
+ /** One job on a client's statement: its invoices and what is still owed on them. */
+@@ -50,6 +52,8 @@ export interface StatementJob {
+   projectName: string;
+   invoices: StatementInvoice[];
+   subtotal: number;
++  /** The tax on the job's sent invoices (drafts and void ones are left out). */
++  tax: number;
+ }
+ 
+ /** A client's invoices across all their projects, also grouped by job, with the total they still owe. */
+@@ -66,6 +70,8 @@ export interface ClientStatement {
+   paid: number;
+   /** The grand total still owed: what was invoiced less what was paid. */
+   outstanding: number;
++  /** The tax across the client's sent invoices (drafts and void ones are left out). */
++  tax: number;
+ }
+ 
+ /** One thing an invoice charges for; its amount is quantity times unit price. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+index 21eb386..2fb09f3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -15,21 +15,23 @@ import net.officefloor.hq.app.client.Currency;
+  * to pay, the same invoices grouped by job with what is owed on each job, and the total still owed
+  * (what is left to pay across their sent invoices; drafts and void ones are not owed). For the printable
+  * summary it also gives the total invoiced on those owed invoices and how much of that has been paid,
+- * so the total still owed is what was invoiced less what was paid. All of it is in the client's currency.
++ * so the total still owed is what was invoiced less what was paid. It also shows the tax (sales tax and
++ * levy) on each job and across the whole statement, again leaving out drafts and void invoices. All of it
++ * is in the client's currency.
+  */
+ public record ClientStatementResponse(Long clientId, String clientName, Currency currency, List<Line> invoices, List<Job> jobs,
+-        BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding) {
++        BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax) {
+ 
+     static ClientStatementResponse from(Long clientId, String clientName, Currency currency, List<Line> invoices) {
+         Map<Long, List<Line>> byProject = new LinkedHashMap<>();
+         invoices.forEach(l -> byProject.computeIfAbsent(l.projectId(), id -> new ArrayList<>()).add(l));
+         List<Job> jobs = byProject.values().stream()
+-                .map(lines -> new Job(lines.get(0).projectId(), lines.get(0).projectName(), lines, owed(lines)))
++                .map(lines -> new Job(lines.get(0).projectId(), lines.get(0).projectName(), lines, owed(lines), sum(lines, Line::tax)))
+                 .toList();
+         BigDecimal outstanding = owed(invoices);
+         BigDecimal invoiced = sum(invoices, Line::amount);
+         return new ClientStatementResponse(clientId, clientName, currency, invoices, jobs, invoiced,
+-                invoiced.subtract(outstanding), outstanding);
++                invoiced.subtract(outstanding), outstanding, sum(invoices, Line::tax));
+     }
+ 
+     /** What is left to pay across the given invoices, leaving out drafts and void ones. */
+@@ -46,18 +48,18 @@ public record ClientStatementResponse(Long clientId, String clientName, Currency
+                 .setScale(2, RoundingMode.HALF_UP);
+     }
+ 
+-    /** One job on a statement: its invoices and the subtotal still owed on them. */
+-    public record Job(Long projectId, String projectName, List<Line> invoices, BigDecimal subtotal) {
++    /** One job on a statement: its invoices, the subtotal still owed on them and the tax charged on them. */
++    public record Job(Long projectId, String projectName, List<Line> invoices, BigDecimal subtotal, BigDecimal tax) {
+     }
+ 
+-    /** One invoice on a statement. */
++    /** One invoice on a statement; its tax is the sales tax and levy on it. */
+     public record Line(Long id, Long projectId, String projectName, BigDecimal amount, InvoiceStatus status,
+-            LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue) {
++            LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue, BigDecimal tax) {
+ 
+         static Line from(Invoice invoice, BigDecimal paid) {
+             return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
+                     invoice.getAmount(), invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+-                    invoice.amountDue(paid));
++                    invoice.amountDue(paid), invoice.getTax().add(invoice.getLevy()));
+         }
+     }
+ }
