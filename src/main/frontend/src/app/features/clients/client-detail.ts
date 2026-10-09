@@ -4,16 +4,17 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { ClientContacts } from '../contacts/client-contacts';
 import { Contact } from '../contacts/contact.service';
+import { ClientCredit } from '../credit/client-credit';
 import { ClientDeposits } from '../deposits/client-deposits';
 import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
 import { ClientProjects } from '../projects/client-projects';
 import { ClientCurrency } from './client-currency';
 import { Client, ClientService } from './client.service';
 
-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
+// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes), the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
 @Component({
   selector: 'app-client-detail',
-  imports: [CurrencyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits],
+  imports: [CurrencyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit],
   styles: `
     .client-badges {
       display: flex;
@@ -127,6 +128,7 @@ import { Client, ClientService } from './client.service';
           <p role="status" data-testid="client-deposit-applied">Deposit applied.</p>
         }
       </div>
+      <app-client-credit [clientId]="clientId()" [currency]="c.currency" />
       <app-client-deposits [clientId]="clientId()" [currency]="c.currency" />
       <app-client-contacts
         [clientId]="clientId()"
@@ -160,6 +162,7 @@ export class ClientDetail {
   protected readonly depositApplied = signal(false);
   private readonly paymentForm = viewChild(ClientPaymentForm);
   private readonly depositsPanel = viewChild(ClientDeposits);
+  private readonly creditPanel = viewChild(ClientCredit);
 
   /** Resolves to true once any payment being recorded has been saved, so the page can be left safely. */
   async canLeave(): Promise<boolean> {
@@ -177,6 +180,7 @@ export class ClientDetail {
     this.depositApplied.set(source === 'deposit');
     if (source === 'deposit') {
       this.depositsPanel()?.reload();
+      this.creditPanel()?.reload();
     }
     this.client.reload();
   }
