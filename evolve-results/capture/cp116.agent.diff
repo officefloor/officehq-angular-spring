@@ -1,0 +1,179 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 59acfc8..0d18ea4 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -23,6 +23,10 @@ export interface DashboardSummary {
+   /** What is still owed, one total per currency anything is owed in. */
+   outstanding: CurrencyTotal[];
+   overdue: number;
++  /** The currency the overdue amount is given in. */
++  homeCurrency: CurrencyCode;
++  /** What is left to pay on overdue invoices plus the late fees they have accrued, in the home currency. */
++  overdueAmount: number;
+   topClients: TopClient[];
+ }
+ 
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 3a2692f..cc7abba 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -5,7 +5,8 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
+ // Dashboard page: how many clients and projects there are, and the total still owed in each currency
+ // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
+ // counted; amounts in different currencies are never added together), and how many of those sent
+-// invoices are past their due date. Also lists the top five clients ranked by what they still owe,
++// invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees,
++// in the home currency). Also lists the top five clients ranked by what they still owe,
+ // each in their own currency.
+ @Component({
+   selector: 'app-dashboard',
+@@ -37,6 +38,10 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
+           <dt>Overdue invoices</dt>
+           <dd data-testid="dashboard-overdue-count">{{ s.overdue }}</dd>
+         </div>
++        <div>
++          <dt>Overdue amount (including late fees)</dt>
++          <dd data-testid="dashboard-overdue-amount">{{ s.overdueAmount | money: s.homeCurrency }}</dd>
++        </div>
+       </dl>
+ 
+       <section data-testid="dashboard-top-clients" aria-labelledby="dashboard-top-clients-heading">
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+index 30973b1..c40ec09 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+@@ -5,10 +5,11 @@ import java.util.List;
+ 
+ /**
+  * Summary figures for the dashboard, with the clients who owe the most. What is outstanding is
+- * given per currency, since amounts in different currencies cannot be added together.
++ * given per currency, since amounts in different currencies cannot be added together. What is overdue
++ * (left to pay on overdue invoices plus the late fees they have accrued) is one total in the home currency.
+  */
+ public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding, long overdue,
+-        List<TopClient> topClients) {
++        String homeCurrency, BigDecimal overdueAmount, List<TopClient> topClients) {
+ 
+     /** What is still owed in one currency. */
+     public record CurrencyTotal(String currency, BigDecimal amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 3f5023b..c896dcb 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -7,12 +7,18 @@ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.TreeMap;
++import java.util.stream.Collectors;
+ import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.client.ClientService;
++import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+ import net.officefloor.hq.app.currency.Currency;
++import net.officefloor.hq.app.fx.FxRateService;
++import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
++import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.project.ProjectRepository;
++import net.officefloor.hq.app.settings.SettingsService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -23,24 +29,33 @@ public class DashboardService {
+     private final ProjectRepository projects;
+     private final InvoiceRepository invoices;
+     private final ClientService clientService;
++    private final PaymentRepository payments;
++    private final CreditNoteRepository creditNotes;
++    private final SettingsService settings;
++    private final FxRateService fxRates;
+     private final Clock clock;
+ 
+     /** How many of the biggest debtors the dashboard lists. */
+     static final int TOP_CLIENTS = 5;
+ 
+     public DashboardService(ClientRepository clients, ProjectRepository projects, InvoiceRepository invoices,
+-            ClientService clientService, Clock clock) {
++            ClientService clientService, PaymentRepository payments, CreditNoteRepository creditNotes,
++            SettingsService settings, FxRateService fxRates, Clock clock) {
+         this.clients = clients;
+         this.projects = projects;
+         this.invoices = invoices;
+         this.clientService = clientService;
++        this.payments = payments;
++        this.creditNotes = creditNotes;
++        this.settings = settings;
++        this.fxRates = fxRates;
+         this.clock = clock;
+     }
+ 
+     /**
+      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
+-     * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices are past their due date, and
+-     * the top clients ranked by what they owe.
++     * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices are past their due date and
++     * what is overdue on them (see {@link #overdueAmount}), and the top clients ranked by what they owe.
+      */
+     @Transactional(readOnly = true)
+     public DashboardResponse summary() {
+@@ -54,10 +69,42 @@ public class DashboardService {
+         List<DashboardResponse.CurrencyTotal> outstanding = owed.entrySet().stream()
+                 .map(e -> new DashboardResponse.CurrencyTotal(e.getKey(), e.getValue().setScale(2, RoundingMode.HALF_UP)))
+                 .toList();
+-        long overdue = invoices.countByStatusInAndDueDateBefore(owing, LocalDate.now(clock));
++        LocalDate today = LocalDate.now(clock);
++        long overdue = invoices.countByStatusInAndDueDateBefore(owing, today);
++        String home = settings.homeCurrency();
++        BigDecimal overdueAmount = overdueAmount(invoices.findByStatusInAndDueDateBefore(owing, today), home, today);
+         List<DashboardResponse.TopClient> top = clientService.topByOutstanding(TOP_CLIENTS).stream()
+                 .map(c -> new DashboardResponse.TopClient(c.id(), c.name(), c.currency(), c.outstanding()))
+                 .toList();
+-        return new DashboardResponse(clients.count(), projects.count(), outstanding, overdue, top);
++        return new DashboardResponse(clients.count(), projects.count(), outstanding, overdue, home, overdueAmount, top);
++    }
++
++    /**
++     * What is overdue, in the home currency: what is left to pay on each overdue invoice plus the late fee it
++     * has accrued by today. A foreign invoice converts at the exchange rate from its issue date; one whose
++     * currency has no rate by then cannot be converted and is left out.
++     */
++    private BigDecimal overdueAmount(List<Invoice> found, String home, LocalDate today) {
++        if (found.isEmpty()) {
++            return BigDecimal.ZERO.setScale(2);
++        }
++        List<Long> ids = found.stream().map(Invoice::getId).toList();
++        Map<Long, BigDecimal> paid = payments.sumAmountByInvoiceIds(ids).stream()
++                .collect(Collectors.toMap(PaymentRepository.InvoicePaidTotal::getInvoiceId,
++                        PaymentRepository.InvoicePaidTotal::getPaid));
++        Map<Long, BigDecimal> credited = creditNotes.sumAmountByInvoiceIds(ids).stream()
++                .collect(Collectors.toMap(CreditNoteRepository.InvoiceCreditedTotal::getInvoiceId,
++                        CreditNoteRepository.InvoiceCreditedTotal::getCredited));
++        BigDecimal total = BigDecimal.ZERO;
++        for (Invoice invoice : found) {
++            BigDecimal due = invoice.amountDue(paid.getOrDefault(invoice.getId(), BigDecimal.ZERO),
++                    credited.getOrDefault(invoice.getId(), BigDecimal.ZERO))
++                    .add(invoice.lateFee(invoice.getStatus(), today));
++            String currency = invoice.getProject().getClient().getCurrency();
++            BigDecimal inHome = currency.equals(home) ? due
++                    : fxRates.toHome(currency, invoice.getIssuedDate(), due).orElse(BigDecimal.ZERO);
++            total = total.add(inHome);
++        }
++        return total.setScale(2, RoundingMode.HALF_UP);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+index fc15ee5..d2efc7e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -60,6 +60,11 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+         BigDecimal getTotal();
+     }
+ 
++    /** Invoices with any of the given statuses whose due date is before the given date, with their project and client. */
++    @Query("SELECT i FROM Invoice i JOIN FETCH i.project p JOIN FETCH p.client"
++            + " WHERE i.status IN :statuses AND i.dueDate < :date ORDER BY i.id")
++    List<Invoice> findByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);
++
+     /** Number of invoices with any of the given statuses whose due date is before the given date. */
+     @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status IN :statuses AND i.dueDate < :date")
+     long countByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);
