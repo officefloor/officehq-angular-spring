@@ -1,0 +1,635 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 08c80ef..d50e71d 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -186,10 +186,9 @@ export class ClientDetail {
+     this.recordingPayment.set(null);
+     this.paymentSaved.set(source === 'payment');
+     this.depositApplied.set(source === 'deposit');
+-    if (source === 'deposit') {
+-      this.depositsPanel()?.reload();
+-      this.creditPanel()?.reload();
+-    }
++    // A payment may use up the client's credit or leave some over as credit, so both panels can change.
++    this.depositsPanel()?.reload();
++    this.creditPanel()?.reload();
+     this.client.reload();
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/payments/client-payment.ts b/src/main/frontend/src/app/features/payments/client-payment.ts
+index 48d9898..4444646 100644
+--- a/src/main/frontend/src/app/features/payments/client-payment.ts
++++ b/src/main/frontend/src/app/features/payments/client-payment.ts
+@@ -2,8 +2,9 @@ import { CurrencyPipe, formatCurrency, getCurrencySymbol } from '@angular/common
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { Observable } from 'rxjs';
+-import { rxResource } from '@angular/core/rxjs-interop';
++import { rxResource, toSignal } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { CreditService } from '../credit/credit.service';
+ import { DepositService } from '../deposits/deposit.service';
+ import { InvoiceService } from '../invoices/invoice.service';
+ import { PaymentService } from './payment.service';
+@@ -20,7 +21,9 @@ function toCents(value: string | number): number | null {
+ export type PaymentSource = 'payment' | 'deposit';
+ 
+ // Records one lump payment from a client and splits it across their invoices that are still owed.
+-// The shares must account for the whole payment before it is recorded. With the deposit source it
++// The client's credit (held deposits, then unused credit notes) can be used up first; the shares may
++// add up to no more than the payment plus that credit, and whatever of the payment is left over is
++// kept as credit for the client. With the deposit source it
+ // instead puts part of the client's held deposits toward those invoices, split the same way; the
+ // shares may not add up to more than is held.
+ @Component({
+@@ -29,7 +32,7 @@ export type PaymentSource = 'payment' | 'deposit';
+   template: `
+     <section aria-labelledby="client-payment-heading" data-testid="client-payment">
+       <h2 id="client-payment-heading">{{ fromDeposit() ? 'Put a deposit toward invoices' : 'Record a payment' }}</h2>
+-      @if (statement.error() || (fromDeposit() && deposits.error())) {
++      @if (statement.error() || (fromDeposit() && deposits.error()) || (useCredit() && credit.error())) {
+         <p role="alert" data-testid="client-payment-load-error">Could not load the client's invoices.</p>
+       } @else if (statement.hasValue() && (!fromDeposit() || deposits.hasValue())) {
+         @if (owing().length === 0) {
+@@ -77,6 +80,24 @@ export type PaymentSource = 'payment' | 'deposit';
+                   </p>
+                 }
+               </div>
++              <div>
++                <input
++                  id="client-payment-use-credit"
++                  type="checkbox"
++                  data-testid="payment-use-credit"
++                  [checked]="useCredit()"
++                  (change)="useCredit.set($any($event.target).checked)"
++                  aria-describedby="client-payment-credit-note"
++                />
++                <label for="client-payment-use-credit">Use the client's deposits and credit first</label>
++                <p id="client-payment-credit-note">
++                  @if (useCredit()) {
++                    Credit available:
++                    <span data-testid="payment-credit-available">{{ creditCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>.
++                  }
++                  Any of the payment not allocated is kept as credit for the client.
++                </p>
++              </div>
+             }
+             <table data-testid="payment-alloc-table">
+               <caption>Split the {{ fromDeposit() ? 'deposit' : 'payment' }} across the invoices still owed</caption>
+@@ -114,6 +135,16 @@ export type PaymentSource = 'payment' | 'deposit';
+                   <th scope="row" colspan="3">Allocated</th>
+                   <td data-testid="payment-alloc-total">{{ allocatedCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                 </tr>
++                @if (!fromDeposit()) {
++                  <tr>
++                    <th scope="row" colspan="3">From credit</th>
++                    <td data-testid="payment-from-credit">{{ fromCreditCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  </tr>
++                  <tr>
++                    <th scope="row" colspan="3">Kept as credit</th>
++                    <td data-testid="payment-to-credit">{{ toCreditCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  </tr>
++                }
+               </tfoot>
+             </table>
+             <button type="submit" data-testid="payment-form-submit" [disabled]="saving()">
+@@ -132,6 +163,7 @@ export class ClientPaymentForm {
+   private readonly invoices = inject(InvoiceService);
+   private readonly payments = inject(PaymentService);
+   private readonly depositService = inject(DepositService);
++  private readonly creditService = inject(CreditService);
+ 
+   readonly clientId = input.required<number>();
+   readonly source = input<PaymentSource>('payment');
+@@ -155,6 +187,28 @@ export class ClientPaymentForm {
+     this.deposits.hasValue() ? Math.round(this.deposits.value().total * 100) : 0,
+   );
+ 
++  /** Whether the client's credit (held deposits, then unused credit notes) is used up before the payment. */
++  protected readonly useCredit = signal(false);
++
++  /** The client's credit, loaded only when a payment is to use it up. */
++  protected readonly credit = rxResource({
++    params: () => (!this.fromDeposit() && this.useCredit() ? this.clientId() : undefined),
++    stream: ({ params }) => this.creditService.available(params),
++  });
++
++  /** Whole cents of credit the client has to spend, or zero when it is not being used. */
++  protected readonly creditCents = computed(() =>
++    !this.fromDeposit() && this.useCredit() && this.credit.hasValue() ? Math.round(this.credit.value().total * 100) : 0,
++  );
++
++  /** Whole cents of the allocations covered by the client's credit; it is used up before the payment. */
++  protected readonly fromCreditCents = computed(() => Math.min(this.allocatedCents(), this.creditCents()));
++
++  /** Whole cents of the payment left over once the allocations not covered by credit are paid; kept as credit. */
++  protected readonly toCreditCents = computed(() =>
++    Math.max(0, (toCents(this.amount()) ?? 0) - (this.allocatedCents() - this.fromCreditCents())),
++  );
++
+   /** The client's currency; the payment and its allocations are in it. */
+   protected readonly currency = computed(() => (this.statement.hasValue() ? this.statement.value().currency : 'USD'));
+ 
+@@ -182,6 +236,9 @@ export class ClientPaymentForm {
+     date: ['', [Validators.required]],
+   });
+ 
++  /** The amount received as typed, as a signal so what is kept as credit follows it. */
++  private readonly amount = toSignal(this.form.controls.amount.valueChanges, { initialValue: '' });
++
+   protected invalid(name: 'amount' | 'date'): boolean {
+     const control = this.form.controls[name];
+     return control.invalid && (control.touched || control.dirty);
+@@ -229,10 +286,15 @@ export class ClientPaymentForm {
+       );
+       return;
+     }
+-    if (!this.fromDeposit() && this.allocatedCents() !== totalCents) {
++    if (!this.fromDeposit() && this.useCredit() && !this.credit.hasValue()) {
++      this.saveError.set('The client’s credit is still loading. Please try again.');
++      return;
++    }
++    if (!this.fromDeposit() && this.allocatedCents() - this.fromCreditCents() > totalCents) {
+       this.saveError.set(
+         `The amounts allocated add up to ${this.format(this.allocatedCents())}, ` +
+-          `but the payment is ${this.format(totalCents)}. Allocate the whole payment.`,
++          `but the payment is ${this.format(totalCents)}` +
++          (this.useCredit() ? ` and the credit available is ${this.format(this.creditCents())}.` : '.'),
+       );
+       return;
+     }
+@@ -245,13 +307,19 @@ export class ClientPaymentForm {
+     };
+     const request: Observable<unknown> = this.fromDeposit()
+       ? this.depositService.apply(this.clientId(), { allocations: shares })
+-      : this.payments.recordForClient(this.clientId(), { amount: totalCents / 100, date, allocations: shares });
++      : this.payments.recordForClient(this.clientId(), {
++          amount: totalCents / 100,
++          date,
++          allocations: shares,
++          useCredit: this.useCredit(),
++        });
+     request.subscribe({
+       next: () => {
+         this.saving.set(false);
+         done();
+         this.form.reset();
+         this.allocations.set({});
++        this.useCredit.set(false);
+         this.statement.reload();
+         if (this.fromDeposit()) {
+           this.deposits.reload();
+@@ -265,7 +333,7 @@ export class ClientPaymentForm {
+             : err.status === 400
+               ? this.fromDeposit()
+                 ? 'The amounts allocated add up to more than the deposits held.'
+-                : 'The amounts allocated must add up to the whole payment.'
++                : 'The amounts allocated add up to more than the payment and any credit used.'
+               : `Could not ${this.fromDeposit() ? 'apply the deposit' : 'record the payment'}. Please try again.`,
+         );
+         this.saving.set(false);
+diff --git a/src/main/frontend/src/app/features/payments/payment.service.ts b/src/main/frontend/src/app/features/payments/payment.service.ts
+index e8b77ba..4c6e5db 100644
+--- a/src/main/frontend/src/app/features/payments/payment.service.ts
++++ b/src/main/frontend/src/app/features/payments/payment.service.ts
+@@ -16,19 +16,26 @@ export interface NewPayment {
+   date: string;
+ }
+ 
+-/** A lump payment from a client, split across several of their invoices; the shares add up to the amount. */
++/**
++ * A lump payment from a client, split across several of their invoices. With `useCredit` the client's credit is used
++ * up first; the shares may add up to no more than the amount plus any credit used, and the rest is kept as credit.
++ */
+ export interface NewClientPayment {
+   amount: number;
+   date: string;
+   allocations: { invoiceId: number; amount: number }[];
++  useCredit: boolean;
+ }
+ 
+-/** A recorded lump payment and the payment it made against each invoice. */
++/** A recorded lump payment, the credit it used up, what was kept as credit, and the payment it made against each invoice. */
+ export interface ClientPayment {
+   id: number;
+   clientId: number;
+   amount: number;
+   date: string;
++  fromDeposits: number;
++  fromCreditNotes: number;
++  toCredit: number;
+   allocations: Payment[];
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java b/src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java
+index c6df1f7..c2119bd 100644
+--- a/src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java
++++ b/src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java
+@@ -11,6 +11,7 @@ import net.officefloor.hq.app.deposit.DepositRepository;
+ import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
++import net.officefloor.hq.app.payment.ClientPaymentRepository;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.refund.RefundRepository;
+ import org.springframework.http.HttpStatus;
+@@ -30,10 +31,11 @@ public class ClientCreditService {
+     private final PaymentRepository payments;
+     private final CreditNoteRepository creditNotes;
+     private final RefundRepository refunds;
++    private final ClientPaymentRepository clientPayments;
+ 
+     public ClientCreditService(ClientRepository clients, DepositRepository deposits,
+             DepositApplicationRepository applications, InvoiceRepository invoices, PaymentRepository payments,
+-            CreditNoteRepository creditNotes, RefundRepository refunds) {
++            CreditNoteRepository creditNotes, RefundRepository refunds, ClientPaymentRepository clientPayments) {
+         this.clients = clients;
+         this.deposits = deposits;
+         this.applications = applications;
+@@ -41,27 +43,41 @@ public class ClientCreditService {
+         this.payments = payments;
+         this.creditNotes = creditNotes;
+         this.refunds = refunds;
++        this.clientPayments = clientPayments;
+     }
+ 
+     /**
+      * Works out how much credit a client has to spend. A deposit is unused until it is put toward invoices. A credit
+      * note is used only as far as it was needed to settle its invoice once payments are counted; anything beyond
+      * that (say, a credit on an invoice already paid in full, or on one since cancelled) is still the client's to spend.
+-     * Whatever has been refunded to the client is no longer theirs to spend.
++     * Whatever has been refunded to the client, or used up by a payment of theirs, is no longer theirs to spend; what
++     * a payment brought in beyond what its invoices needed is held for them alongside their deposits.
+      */
+     @Transactional(readOnly = true)
+     public ClientCreditResponse available(Long clientId) {
+         if (!clients.existsById(clientId)) {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+         }
+-        BigDecimal held = deposits.sumAmountByClientId(clientId)
+-                .subtract(applications.sumAmountByClientId(clientId))
+-                .subtract(refunds.sumFromDepositsByClientId(clientId)).setScale(2).max(ZERO);
++        BigDecimal held = heldDeposits(clientId);
+         BigDecimal unusedCredit = unusedCreditNotes(clientId)
+-                .subtract(refunds.sumFromCreditNotesByClientId(clientId)).setScale(2).max(ZERO);
++                .subtract(refunds.sumFromCreditNotesByClientId(clientId))
++                .subtract(clientPayments.sumFromCreditNotesByClientId(clientId)).setScale(2).max(ZERO);
+         return new ClientCreditResponse(held, unusedCredit, held.add(unusedCredit));
+     }
+ 
++    /**
++     * What a client still has held in deposits: everything paid up front plus whatever their payments brought in
++     * beyond what their invoices needed, less what has been put toward invoices, used up by payments or refunded.
++     */
++    @Transactional(readOnly = true)
++    public BigDecimal heldDeposits(Long clientId) {
++        return deposits.sumAmountByClientId(clientId)
++                .add(clientPayments.sumToCreditByClientId(clientId))
++                .subtract(applications.sumAmountByClientId(clientId))
++                .subtract(clientPayments.sumFromDepositsByClientId(clientId))
++                .subtract(refunds.sumFromDepositsByClientId(clientId)).setScale(2).max(ZERO);
++    }
++
+     private BigDecimal unusedCreditNotes(Long clientId) {
+         List<Invoice> clientInvoices = invoices.findByClientIdWithProject(clientId);
+         List<Long> ids = clientInvoices.stream().map(Invoice::getId).toList();
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java b/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java
+index 65e8b44..0d6fe74 100644
+--- a/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java
++++ b/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java
+@@ -4,8 +4,9 @@ import java.math.BigDecimal;
+ import java.util.List;
+ 
+ /**
+- * The deposits a client has paid, oldest first; {@code total} is what is still held once any
+- * already put toward invoices ({@code applied}) or refunded to the client ({@code refunded}) is taken off.
++ * The deposits a client has paid, oldest first; {@code total} is what is still held (including anything their
++ * payments brought in beyond what their invoices needed) once any already put toward invoices or used up by a
++ * payment ({@code applied}) or refunded to the client ({@code refunded}) is taken off.
+  */
+ public record ClientDepositsResponse(BigDecimal total, BigDecimal applied, BigDecimal refunded, List<DepositResponse> deposits) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/DepositService.java b/src/main/java/net/officefloor/hq/app/deposit/DepositService.java
+index afc534e..44985ca 100644
+--- a/src/main/java/net/officefloor/hq/app/deposit/DepositService.java
++++ b/src/main/java/net/officefloor/hq/app/deposit/DepositService.java
+@@ -4,6 +4,7 @@ import java.math.BigDecimal;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.payment.ClientPaymentRepository;
+ import net.officefloor.hq.app.refund.RefundRepository;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -16,14 +17,16 @@ public class DepositService {
+     private final DepositRepository deposits;
+     private final DepositApplicationRepository applications;
+     private final RefundRepository refunds;
++    private final ClientPaymentRepository clientPayments;
+     private final ClientRepository clients;
+     private final Audit audit;
+ 
+     public DepositService(DepositRepository deposits, DepositApplicationRepository applications,
+-            RefundRepository refunds, ClientRepository clients, Audit audit) {
++            RefundRepository refunds, ClientPaymentRepository clientPayments, ClientRepository clients, Audit audit) {
+         this.deposits = deposits;
+         this.applications = applications;
+         this.refunds = refunds;
++        this.clientPayments = clientPayments;
+         this.clients = clients;
+         this.audit = audit;
+     }
+@@ -35,9 +38,13 @@ public class DepositService {
+                 .map(DepositResponse::from).toList();
+         BigDecimal paid = held.stream().map(DepositResponse::amount)
+                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+-        BigDecimal applied = applications.sumAmountByClientId(clientId).setScale(2);
++        // Overpayments kept as credit are held alongside the deposits; deposits used up by payments count as applied.
++        BigDecimal overpaid = clientPayments.sumToCreditByClientId(clientId).setScale(2);
++        BigDecimal applied = applications.sumAmountByClientId(clientId)
++                .add(clientPayments.sumFromDepositsByClientId(clientId)).setScale(2);
+         BigDecimal refunded = refunds.sumFromDepositsByClientId(clientId).setScale(2);
+-        return new ClientDepositsResponse(paid.subtract(applied).subtract(refunded), applied, refunded, held);
++        return new ClientDepositsResponse(paid.add(overpaid).subtract(applied).subtract(refunded), applied, refunded,
++                held);
+     }
+ 
+     /** Records money a client paid up front, before any invoice; it is held against the client. */
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPayment.java b/src/main/java/net/officefloor/hq/app/payment/ClientPayment.java
+index cd8aff6..74fcbff 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/ClientPayment.java
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPayment.java
+@@ -9,7 +9,11 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
+-/** A lump sum a client paid on a given day, split across several of their invoices. */
++/**
++ * A lump sum a client paid on a given day, split across several of their invoices. It may also use up the client's
++ * credit first (held deposits, then unused credit notes); whatever of the money received is not needed is kept as
++ * credit for the client.
++ */
+ @Entity
+ @Table(name = "client_payment")
+ public class ClientPayment {
+@@ -27,6 +31,18 @@ public class ClientPayment {
+     @Column(name = "paid_date", nullable = false)
+     private LocalDate date;
+ 
++    /** Held deposits used up toward the invoices along with the money received. */
++    @Column(name = "from_deposits", nullable = false, precision = 12, scale = 2)
++    private BigDecimal fromDeposits = BigDecimal.ZERO.setScale(2);
++
++    /** Unused credit notes used up toward the invoices along with the money received. */
++    @Column(name = "from_credit_notes", nullable = false, precision = 12, scale = 2)
++    private BigDecimal fromCreditNotes = BigDecimal.ZERO.setScale(2);
++
++    /** Money received beyond what the invoices needed, kept as credit for the client. */
++    @Column(name = "to_credit", nullable = false, precision = 12, scale = 2)
++    private BigDecimal toCredit = BigDecimal.ZERO.setScale(2);
++
+     protected ClientPayment() {
+     }
+ 
+@@ -36,6 +52,14 @@ public class ClientPayment {
+         this.date = date;
+     }
+ 
++    public ClientPayment(Long clientId, BigDecimal amount, LocalDate date, BigDecimal fromDeposits,
++            BigDecimal fromCreditNotes, BigDecimal toCredit) {
++        this(clientId, amount, date);
++        this.fromDeposits = fromDeposits.setScale(2);
++        this.fromCreditNotes = fromCreditNotes.setScale(2);
++        this.toCredit = toCredit.setScale(2);
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -51,4 +75,16 @@ public class ClientPayment {
+     public LocalDate getDate() {
+         return date;
+     }
++
++    public BigDecimal getFromDeposits() {
++        return fromDeposits;
++    }
++
++    public BigDecimal getFromCreditNotes() {
++        return fromCreditNotes;
++    }
++
++    public BigDecimal getToCredit() {
++        return toCredit;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java
+index c30c680..5d5a09e 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java
+@@ -1,6 +1,20 @@
+ package net.officefloor.hq.app.payment;
+ 
++import java.math.BigDecimal;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface ClientPaymentRepository extends JpaRepository<ClientPayment, Long> {
++
++    /** Total of a client's held deposits used up by their lump payments (zero when none). */
++    @Query("SELECT COALESCE(SUM(p.fromDeposits), 0) FROM ClientPayment p WHERE p.clientId = :clientId")
++    BigDecimal sumFromDepositsByClientId(Long clientId);
++
++    /** Total of a client's unused credit notes used up by their lump payments (zero when none). */
++    @Query("SELECT COALESCE(SUM(p.fromCreditNotes), 0) FROM ClientPayment p WHERE p.clientId = :clientId")
++    BigDecimal sumFromCreditNotesByClientId(Long clientId);
++
++    /** Total a client has overpaid in lump payments, kept as credit for them (zero when none). */
++    @Query("SELECT COALESCE(SUM(p.toCredit), 0) FROM ClientPayment p WHERE p.clientId = :clientId")
++    BigDecimal sumToCreditByClientId(Long clientId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRequest.java b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRequest.java
+index 79c85d7..eb1e9fd 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRequest.java
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRequest.java
+@@ -9,11 +9,20 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ 
+-/** Payload to record one lump payment from a client, split across their invoices. */
++/**
++ * Payload to record one lump payment from a client, split across their invoices. With {@code useCredit} the client's
++ * credit (held deposits, then unused credit notes) is used up toward the invoices before the money received; any of
++ * the money received that the invoices do not need is kept as credit for the client.
++ */
+ public record ClientPaymentRequest(
+         @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
+         @NotNull LocalDate date,
+-        @NotEmpty List<@Valid @NotNull Allocation> allocations) {
++        @NotEmpty List<@Valid @NotNull Allocation> allocations,
++        Boolean useCredit) {
++
++    public boolean usesCredit() {
++        return Boolean.TRUE.equals(useCredit);
++    }
+ 
+     /** The share of the lump paid against one invoice. */
+     public record Allocation(
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentResponse.java b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentResponse.java
+index 03178e8..f92d499 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentResponse.java
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentResponse.java
+@@ -4,12 +4,16 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ 
+-/** A lump payment from a client and the payment recorded against each invoice it was split across. */
++/**
++ * A lump payment from a client and the payment recorded against each invoice it was split across, with how much of
++ * the client's credit it used up ({@code fromDeposits}, {@code fromCreditNotes}) and how much of the money received
++ * was kept as credit for them ({@code toCredit}).
++ */
+ public record ClientPaymentResponse(Long id, Long clientId, BigDecimal amount, LocalDate date,
+-        List<PaymentResponse> allocations) {
++        BigDecimal fromDeposits, BigDecimal fromCreditNotes, BigDecimal toCredit, List<PaymentResponse> allocations) {
+ 
+     static ClientPaymentResponse from(ClientPayment lump, List<PaymentResponse> allocations) {
+         return new ClientPaymentResponse(lump.getId(), lump.getClientId(), lump.getAmount(), lump.getDate(),
+-                allocations);
++                lump.getFromDeposits(), lump.getFromCreditNotes(), lump.getToCredit(), allocations);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+index c720e9c..525bc04 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+@@ -10,16 +10,16 @@ import java.util.function.Function;
+ import java.util.function.Supplier;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.credit.ClientCreditResponse;
++import net.officefloor.hq.app.credit.ClientCreditService;
+ import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+ import net.officefloor.hq.app.deposit.DepositApplication;
+ import net.officefloor.hq.app.deposit.DepositApplicationRepository;
+ import net.officefloor.hq.app.deposit.DepositApplicationRequest;
+ import net.officefloor.hq.app.deposit.DepositApplicationResponse;
+-import net.officefloor.hq.app.deposit.DepositRepository;
+ import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+-import net.officefloor.hq.app.refund.RefundRepository;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -32,24 +32,21 @@ public class PaymentService {
+     private final CreditNoteRepository creditNotes;
+     private final InvoiceRepository invoices;
+     private final ClientPaymentRepository clientPayments;
+-    private final DepositRepository deposits;
+     private final DepositApplicationRepository depositApplications;
+-    private final RefundRepository refunds;
++    private final ClientCreditService credit;
+     private final ClientRepository clients;
+     private final Clock clock;
+     private final Audit audit;
+ 
+     public PaymentService(PaymentRepository payments, CreditNoteRepository creditNotes, InvoiceRepository invoices,
+-            ClientPaymentRepository clientPayments, DepositRepository deposits,
+-            DepositApplicationRepository depositApplications, RefundRepository refunds, ClientRepository clients,
+-            Clock clock, Audit audit) {
++            ClientPaymentRepository clientPayments, DepositApplicationRepository depositApplications,
++            ClientCreditService credit, ClientRepository clients, Clock clock, Audit audit) {
+         this.payments = payments;
+         this.creditNotes = creditNotes;
+         this.invoices = invoices;
+         this.clientPayments = clientPayments;
+-        this.deposits = deposits;
+         this.depositApplications = depositApplications;
+-        this.refunds = refunds;
++        this.credit = credit;
+         this.clients = clients;
+         this.clock = clock;
+         this.audit = audit;
+@@ -73,24 +70,46 @@ public class PaymentService {
+     }
+ 
+     /**
+-     * Records one lump payment from a client split across several of their owing invoices. The
+-     * shares must add up to the whole lump, each invoice may appear once, and each share is recorded
+-     * as a payment against its own invoice under the same rules as a payment made on its own.
++     * Records one lump payment from a client split across several of their owing invoices. With
++     * {@code useCredit} the client's credit is used up first (held deposits, then unused credit
++     * notes) and the money received covers the rest; otherwise the money received covers it all.
++     * The shares may not add up to more than the money received plus any credit used, and whatever
++     * of the money received is left over is kept as credit for the client, so the money received
++     * plus the credit used always equals the shares plus what is kept. Each invoice may appear
++     * once, and each share is recorded as a payment against its own invoice under the same rules
++     * as a payment made on its own.
+      */
+     @Transactional
+     public ClientPaymentResponse recordForClient(Long clientId, ClientPaymentRequest request) {
+         requireClient(clientId);
+-        BigDecimal allocated = total(request.allocations(), ClientPaymentRequest.Allocation::amount);
+-        if (allocated.compareTo(request.amount()) != 0) {
+-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+-                    "The shares must add up to the whole payment");
++        BigDecimal allocated = total(request.allocations(), ClientPaymentRequest.Allocation::amount).setScale(2);
++        BigDecimal received = request.amount().setScale(2);
++        BigDecimal fromDeposits = BigDecimal.ZERO.setScale(2);
++        BigDecimal fromCreditNotes = BigDecimal.ZERO.setScale(2);
++        if (request.usesCredit()) {
++            ClientCreditResponse available = credit.available(clientId);
++            fromDeposits = allocated.min(available.deposits());
++            fromCreditNotes = allocated.subtract(fromDeposits).min(available.creditNotes());
++        }
++        BigDecimal fromReceived = allocated.subtract(fromDeposits).subtract(fromCreditNotes);
++        if (fromReceived.compareTo(received) > 0) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, request.usesCredit()
++                    ? "The shares add up to more than the payment and the credit available"
++                    : "The shares add up to more than the payment");
+         }
++        BigDecimal toCredit = received.subtract(fromReceived);
+         requireDistinct(request.allocations(), ClientPaymentRequest.Allocation::invoiceId);
+-        ClientPayment lump = clientPayments.saveAndFlush(new ClientPayment(clientId, request.amount(), request.date()));
++        ClientPayment lump = clientPayments.saveAndFlush(new ClientPayment(clientId, received, request.date(),
++                fromDeposits, fromCreditNotes, toCredit));
+         List<PaymentResponse> shares = request.allocations().stream()
+                 .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(),
+                         () -> new Payment(a.invoiceId(), a.amount(), request.date(), lump.getId())))
+                 .toList();
++        audit.record("CLIENT_PAYMENT_RECORDED id=" + lump.getId() + " client=" + clientId
++                + " amount=" + lump.getAmount().toPlainString()
++                + " fromDeposits=" + lump.getFromDeposits().toPlainString()
++                + " fromCreditNotes=" + lump.getFromCreditNotes().toPlainString()
++                + " toCredit=" + lump.getToCredit().toPlainString());
+         return ClientPaymentResponse.from(lump, shares);
+     }
+ 
+@@ -103,9 +122,7 @@ public class PaymentService {
+     public DepositApplicationResponse applyDeposits(Long clientId, DepositApplicationRequest request) {
+         requireClient(clientId);
+         BigDecimal allocated = total(request.allocations(), DepositApplicationRequest.Allocation::amount);
+-        BigDecimal held = deposits.sumAmountByClientId(clientId)
+-                .subtract(depositApplications.sumAmountByClientId(clientId))
+-                .subtract(refunds.sumFromDepositsByClientId(clientId));
++        BigDecimal held = credit.heldDeposits(clientId);
+         if (allocated.compareTo(held) > 0) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                     "The shares add up to more than the deposits held");
+diff --git a/src/main/resources/db/migration/V61__payment_consumes_credit.sql b/src/main/resources/db/migration/V61__payment_consumes_credit.sql
+new file mode 100644
+index 0000000..e94cf4c
+--- /dev/null
++++ b/src/main/resources/db/migration/V61__payment_consumes_credit.sql
+@@ -0,0 +1,10 @@
++-- A lump payment can now use up the client's credit first: part of what it settles may come out of their held
++-- deposits (from_deposits) and then their unused credit notes (from_credit_notes), on top of the money received.
++-- Whatever of the money received is not needed for the invoices is kept as credit for the client (to_credit) and
++-- is held alongside their deposits. The payments recorded against the invoices always add up to
++-- amount + from_deposits + from_credit_notes - to_credit.
++ALTER TABLE client_payment ADD COLUMN from_deposits DECIMAL(12, 2) DEFAULT 0 NOT NULL;
++ALTER TABLE client_payment ADD COLUMN from_credit_notes DECIMAL(12, 2) DEFAULT 0 NOT NULL;
++ALTER TABLE client_payment ADD COLUMN to_credit DECIMAL(12, 2) DEFAULT 0 NOT NULL;
++ALTER TABLE client_payment ADD CONSTRAINT client_payment_credit_split CHECK (from_deposits >= 0
++    AND from_credit_notes >= 0 AND to_credit >= 0 AND to_credit <= amount);
