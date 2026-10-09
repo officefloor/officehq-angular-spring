@@ -1,0 +1,424 @@
+diff --git a/src/main/frontend/src/app/features/credit-notes/invoice-credit-notes.ts b/src/main/frontend/src/app/features/credit-notes/invoice-credit-notes.ts
+index 972cdc3..cb03440 100644
+--- a/src/main/frontend/src/app/features/credit-notes/invoice-credit-notes.ts
++++ b/src/main/frontend/src/app/features/credit-notes/invoice-credit-notes.ts
+@@ -1,6 +1,6 @@
+ import { CurrencyPipe, DatePipe } from '@angular/common';
+ import { HttpErrorResponse } from '@angular/common/http';
+-import { Component, computed, inject, input, signal } from '@angular/core';
++import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { CreditNoteService } from './credit-note.service';
+@@ -88,6 +88,8 @@ export class InvoiceCreditNotes {
+   readonly currency = input.required<CurrencyCode>();
+   /** Credit notes can be raised once the invoice has been sent, unless it has been cancelled. */
+   readonly canIssue = input.required<boolean>();
++  /** Emits once a credit note has been raised, as it changes what is left to pay on the invoice. */
++  readonly issued = output<void>();
+ 
+   protected readonly creditNotes = rxResource({
+     params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
+@@ -124,6 +126,7 @@ export class InvoiceCreditNotes {
+         this.creditNotes.update((list) => [...(list ?? []), created]);
+         this.form.reset();
+         this.saving.set(false);
++        this.issued.emit();
+       },
+       error: (err: HttpErrorResponse) => {
+         this.saveError.set(
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index d90fa39..3432390 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -7,6 +7,7 @@ import { Observable } from 'rxjs';
+ import { Notes } from '../notes/notes';
+ import { InvoicePayments } from '../payments/invoice-payments';
+ import { InvoiceCreditNotes } from '../credit-notes/invoice-credit-notes';
++import { CreditNoteService } from '../credit-notes/credit-note.service';
+ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+ 
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+@@ -704,6 +705,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+         [projectId]="projectIdNumber()"
+         [invoiceId]="inv.id"
+         [invoiceAmount]="inv.amount"
++        [credited]="credited()"
+         [currency]="inv.currency"
+         [canRecord]="inv.status === 'SENT' || inv.status === 'PARTIAL'"
+         (recorded)="invoice.reload()"
+@@ -714,6 +716,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+         [invoiceId]="inv.id"
+         [currency]="inv.currency"
+         [canIssue]="inv.status !== 'DRAFT' && inv.status !== 'VOID'"
++        (issued)="creditNotes.reload()"
+       />
+ 
+       <app-notes [projectId]="projectIdNumber()" [invoiceId]="inv.id" />
+@@ -722,6 +725,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ })
+ export class InvoiceDetailPage {
+   private readonly service = inject(InvoiceService);
++  private readonly creditNoteService = inject(CreditNoteService);
+   private readonly injector = inject(Injector);
+   private readonly fb = inject(NonNullableFormBuilder);
+ 
+@@ -736,6 +740,17 @@ export class InvoiceDetailPage {
+     stream: ({ params }) => this.service.get(params.projectId, params.invoiceId),
+   });
+ 
++  // The credit notes reduce what is left to pay alongside the payments.
++  protected readonly creditNotes = rxResource({
++    params: () => ({ projectId: this.projectIdNumber(), invoiceId: Number(this.invoiceId()) }),
++    stream: ({ params }) => this.creditNoteService.list(params.projectId, params.invoiceId),
++  });
++  protected readonly credited = computed(
++    () =>
++      (this.creditNotes.hasValue() ? this.creditNotes.value() : []).reduce((sum, c) => sum + Math.round(c.amount * 100), 0) /
++      100,
++  );
++
+   // Work in whole cents (and ten-thousandths of a unit price) so the line is exact rather than
+   // accumulating floating-point error; each line, and then its own discount, is rounded to the cent on its own.
+   protected lineCents(qty: number, unitPrice: number, discountPct: number): number {
+diff --git a/src/main/frontend/src/app/features/payments/invoice-payments.ts b/src/main/frontend/src/app/features/payments/invoice-payments.ts
+index 43dae79..09f4ca1 100644
+--- a/src/main/frontend/src/app/features/payments/invoice-payments.ts
++++ b/src/main/frontend/src/app/features/payments/invoice-payments.ts
+@@ -105,6 +105,8 @@ export class InvoicePayments {
+   readonly invoiceId = input.required<number>();
+   /** The invoice total, which the payments count down. */
+   readonly invoiceAmount = input.required<number>();
++  /** The total of the credit notes raised against the invoice, which also count it down. */
++  readonly credited = input(0);
+   /** The currency of the client the job is for; the money shown is in it. */
+   readonly currency = input.required<CurrencyCode>();
+   /** Payments can be recorded once the invoice has been sent, until it is fully paid. */
+@@ -121,7 +123,9 @@ export class InvoicePayments {
+   protected readonly paidCents = computed(() =>
+     (this.payments.hasValue() ? this.payments.value() : []).reduce((sum, p) => sum + Math.round(p.amount * 100), 0),
+   );
+-  protected readonly balanceCents = computed(() => Math.round(this.invoiceAmount() * 100) - this.paidCents());
++  protected readonly balanceCents = computed(() =>
++    Math.round(this.invoiceAmount() * 100) - Math.round(this.credited() * 100) - this.paidCents(),
++  );
+ 
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index c8262d6..3f88965 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -284,6 +284,12 @@ public class TestSupportController {
+                     ((Number) p.get("id")).longValue(), ((Number) p.get("invoiceId")).longValue(),
+                     new BigDecimal(p.get("amount").toString()), LocalDate.parse(p.get("date").toString()));
+         }
++        for (Map<String, Object> c : rows(fixture, "creditNotes")) {
++            jdbc.update("INSERT INTO credit_note (id, invoice_id, amount, issued_at) VALUES (?, ?, ?, ?)",
++                    ((Number) c.get("id")).longValue(), ((Number) c.get("invoiceId")).longValue(),
++                    new BigDecimal(c.get("amount").toString()),
++                    Timestamp.from(seedInstant(c.get("date").toString())));
++        }
+         // Continue generated ids after the explicitly seeded ones.
+         restartIdentity("client");
+         restartIdentity("contact");
+@@ -295,6 +301,7 @@ public class TestSupportController {
+         restartIdentity("tag");
+         restartIdentity("note");
+         restartIdentity("payment");
++        restartIdentity("credit_note");
+     }
+ 
+     /** A fixture timestamp, either a full instant or a bare date taken as the start of that day (UTC). */
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 0ca112d..7373bc1 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -8,6 +8,7 @@ import java.util.List;
+ import java.util.Map;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.contact.ContactRepository;
++import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+@@ -27,15 +28,17 @@ public class ClientService {
+     private final ContactRepository contacts;
+     private final InvoiceRepository invoices;
+     private final PaymentRepository payments;
++    private final CreditNoteRepository creditNotes;
+     private final Audit audit;
+ 
+     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
+-            InvoiceRepository invoices, PaymentRepository payments, Audit audit) {
++            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes, Audit audit) {
+         this.clients = clients;
+         this.projects = projects;
+         this.contacts = contacts;
+         this.invoices = invoices;
+         this.payments = payments;
++        this.creditNotes = creditNotes;
+         this.audit = audit;
+     }
+ 
+@@ -219,7 +222,7 @@ public class ClientService {
+ 
+     /**
+      * What each client still owes: what is left to pay on their sent invoices that are not yet fully
+-     * paid. Clients owing nothing are left out.
++     * paid, after the payments and credit notes against them. Clients owing nothing are left out.
+      */
+     private Map<Long, BigDecimal> outstandingByClient() {
+         List<InvoiceStatus> owing = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL);
+@@ -228,6 +231,8 @@ public class ClientService {
+                 BigDecimal::add));
+         payments.sumAmountByInvoiceStatusInPerClient(owing).forEach(t -> owed.merge(t.getClientId(),
+                 t.getTotal().negate(), BigDecimal::add));
++        creditNotes.sumAmountByInvoiceStatusInPerClient(owing).forEach(t -> owed.merge(t.getClientId(),
++                t.getTotal().negate(), BigDecimal::add));
+         owed.replaceAll((id, amount) -> amount.setScale(2, RoundingMode.HALF_UP));
+         return owed;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java
+index 2657f3f..2e71abb 100644
+--- a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java
++++ b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java
+@@ -1,7 +1,10 @@
+ package net.officefloor.hq.app.creditnote;
+ 
+ import java.math.BigDecimal;
++import java.util.Collection;
+ import java.util.List;
++import net.officefloor.hq.app.invoice.InvoiceRepository;
++import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Query;
+ 
+@@ -13,4 +16,21 @@ public interface CreditNoteRepository extends JpaRepository<CreditNote, Long> {
+     /** Total credited against an invoice (zero when nothing has been credited). */
+     @Query("SELECT COALESCE(SUM(c.amount), 0) FROM CreditNote c WHERE c.invoiceId = :invoiceId")
+     BigDecimal sumAmountByInvoiceId(Long invoiceId);
++
++    /** Total credited against invoices with any of the given statuses, per client; clients with none are left out. */
++    @Query("SELECT pr.client.id AS clientId, SUM(c.amount) AS total FROM CreditNote c, Invoice i JOIN i.project pr"
++            + " WHERE c.invoiceId = i.id AND i.status IN :statuses GROUP BY pr.client.id")
++    List<InvoiceRepository.ClientTotal> sumAmountByInvoiceStatusInPerClient(Collection<InvoiceStatus> statuses);
++
++    /** Total credited against each of the given invoices; invoices with no credit notes are left out. */
++    @Query("SELECT c.invoiceId AS invoiceId, SUM(c.amount) AS credited FROM CreditNote c"
++            + " WHERE c.invoiceId IN :invoiceIds GROUP BY c.invoiceId")
++    List<InvoiceCreditedTotal> sumAmountByInvoiceIds(Collection<Long> invoiceIds);
++
++    /** How much has been credited against one invoice. */
++    interface InvoiceCreditedTotal {
++        Long getInvoiceId();
++
++        BigDecimal getCredited();
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+index 2fb09f3..540ac60 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -56,10 +56,10 @@ public record ClientStatementResponse(Long clientId, String clientName, Currency
+     public record Line(Long id, Long projectId, String projectName, BigDecimal amount, InvoiceStatus status,
+             LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue, BigDecimal tax) {
+ 
+-        static Line from(Invoice invoice, BigDecimal paid) {
++        static Line from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
+             return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
+                     invoice.getAmount(), invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+-                    invoice.amountDue(paid), invoice.getTax().add(invoice.getLevy()));
++                    invoice.amountDue(paid, credited), invoice.getTax().add(invoice.getLevy()));
+         }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index afd7ffc..9fe4e83 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -570,9 +570,9 @@ public class Invoice {
+         this.status = InvoiceStatus.VOID;
+     }
+ 
+-    /** What is left to pay on this invoice given the total paid against it; nothing once it is void. */
+-    public BigDecimal amountDue(BigDecimal paid) {
+-        return status == InvoiceStatus.VOID ? BigDecimal.ZERO.setScale(2) : amount.subtract(paid);
++    /** What is left to pay on this invoice given the totals paid and credited against it; nothing once it is void. */
++    public BigDecimal amountDue(BigDecimal paid, BigDecimal credited) {
++        return status == InvoiceStatus.VOID ? BigDecimal.ZERO.setScale(2) : amount.subtract(paid).subtract(credited);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+index c5dad7f..b8834c3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+@@ -4,14 +4,17 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import net.officefloor.hq.app.client.Currency;
+ 
+-/** An invoice, with how much of it is still left to pay after the payments made against it (nothing once void). */
++/**
++ * An invoice, with how much of it is still left to pay after the payments made and credit notes raised against
++ * it (nothing once void).
++ */
+ public record InvoiceResponse(Long id, Long projectId, Currency currency, BigDecimal amount, InvoiceStatus status,
+         LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue) {
+ 
+-    static InvoiceResponse from(Invoice invoice, BigDecimal paid) {
++    static InvoiceResponse from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
+         return new InvoiceResponse(invoice.getId(), invoice.getProject().getId(),
+                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(),
+                 invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+-                invoice.amountDue(paid));
++                invoice.amountDue(paid, credited));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index c661160..4548450 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.Client;
+ import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.project.Project;
+ import net.officefloor.hq.app.project.ProjectRepository;
+@@ -25,16 +26,18 @@ public class InvoiceService {
+     private final InvoiceRepository invoices;
+     private final ProjectRepository projects;
+     private final PaymentRepository payments;
++    private final CreditNoteRepository creditNotes;
+     private final ClientRepository clients;
+     private final SettingsService settings;
+     private final Audit audit;
+ 
+     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
+-            ClientRepository clients, SettingsService settings, Audit audit) {
++            CreditNoteRepository creditNotes, ClientRepository clients, SettingsService settings, Audit audit) {
+         this.invoices = invoices;
+         this.projects = projects;
+         this.clients = clients;
+         this.payments = payments;
++        this.creditNotes = creditNotes;
+         this.settings = settings;
+         this.audit = audit;
+     }
+@@ -46,8 +49,10 @@ public class InvoiceService {
+         }
+         List<Invoice> found = invoices.findByProjectIdOrderById(projectId);
+         Map<Long, BigDecimal> paid = paidByInvoice(found);
++        Map<Long, BigDecimal> credited = creditedByInvoice(found);
+         return found.stream()
+-                .map(i -> InvoiceResponse.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
++                .map(i -> InvoiceResponse.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO),
++                        credited.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                 .toList();
+     }
+ 
+@@ -62,8 +67,10 @@ public class InvoiceService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+         List<Invoice> found = invoices.findByClientIdWithProject(clientId);
+         Map<Long, BigDecimal> paid = paidByInvoice(found);
++        Map<Long, BigDecimal> credited = creditedByInvoice(found);
+         List<ClientStatementResponse.Line> lines = found.stream()
+-                .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
++                .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO),
++                        credited.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                 .toList();
+         return ClientStatementResponse.from(client.getId(), client.getName(), client.getCurrency(), lines);
+     }
+@@ -75,6 +82,13 @@ public class InvoiceService {
+                                 PaymentRepository.InvoicePaidTotal::getPaid));
+     }
+ 
++    private Map<Long, BigDecimal> creditedByInvoice(List<Invoice> found) {
++        return found.isEmpty() ? Map.of()
++                : creditNotes.sumAmountByInvoiceIds(found.stream().map(Invoice::getId).toList()).stream()
++                        .collect(Collectors.toMap(CreditNoteRepository.InvoiceCreditedTotal::getInvoiceId,
++                                CreditNoteRepository.InvoiceCreditedTotal::getCredited));
++    }
++
+     /**
+      * One page of the invoices across all projects, with the name of the project each one is for,
+      * narrowed to the given status when one is supplied. Pages are numbered from zero.
+@@ -107,7 +121,7 @@ public class InvoiceService {
+             invoice.addDiscount(defaultDiscountPct, BigDecimal.ZERO);
+         }
+         Invoice saved = invoices.save(invoice);
+-        return InvoiceResponse.from(saved, BigDecimal.ZERO);
++        return InvoiceResponse.from(saved, BigDecimal.ZERO, BigDecimal.ZERO);
+     }
+ 
+     /** A single invoice with its line items. */
+@@ -257,7 +271,8 @@ public class InvoiceService {
+     }
+ 
+     private InvoiceResponse toResponse(Invoice invoice) {
+-        return InvoiceResponse.from(invoice, payments.sumAmountByInvoiceId(invoice.getId()));
++        return InvoiceResponse.from(invoice, payments.sumAmountByInvoiceId(invoice.getId()),
++                creditNotes.sumAmountByInvoiceId(invoice.getId()));
+     }
+ 
+     private Invoice find(Long projectId, Long invoiceId) {
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+index 3bfda8b..fa3687c 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+@@ -7,6 +7,7 @@ import java.util.List;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+ import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+@@ -19,14 +20,16 @@ import org.springframework.web.server.ResponseStatusException;
+ public class PaymentService {
+ 
+     private final PaymentRepository payments;
++    private final CreditNoteRepository creditNotes;
+     private final InvoiceRepository invoices;
+     private final ClientPaymentRepository clientPayments;
+     private final ClientRepository clients;
+     private final Audit audit;
+ 
+-    public PaymentService(PaymentRepository payments, InvoiceRepository invoices,
++    public PaymentService(PaymentRepository payments, CreditNoteRepository creditNotes, InvoiceRepository invoices,
+             ClientPaymentRepository clientPayments, ClientRepository clients, Audit audit) {
+         this.payments = payments;
++        this.creditNotes = creditNotes;
+         this.invoices = invoices;
+         this.clientPayments = clientPayments;
+         this.clients = clients;
+@@ -41,8 +44,8 @@ public class PaymentService {
+ 
+     /**
+      * Records a payment against an invoice that has been sent to the client and is still owing, and
+-     * works out the invoice's status from what has now been paid. A payment may not take the total
+-     * paid beyond the invoice amount.
++     * works out the invoice's status from what has now been paid and credited. A payment may not take
++     * the total paid and credited beyond the invoice amount.
+      */
+     @Transactional
+     public PaymentResponse record(Long projectId, Long invoiceId, PaymentRequest request) {
+@@ -89,12 +92,13 @@ public class PaymentService {
+         if (!invoice.getStatus().isOwing()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice is already paid");
+         }
+-        BigDecimal paid = payments.sumAmountByInvoiceId(invoice.getId()).add(amount);
+-        if (paid.compareTo(invoice.getAmount()) > 0) {
++        BigDecimal settled = payments.sumAmountByInvoiceId(invoice.getId())
++                .add(creditNotes.sumAmountByInvoiceId(invoice.getId())).add(amount);
++        if (settled.compareTo(invoice.getAmount()) > 0) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment is more than the balance due");
+         }
+         Payment saved = payments.saveAndFlush(new Payment(invoice.getId(), amount, date, clientPaymentId));
+-        invoice.applyPaidTotal(paid);
++        invoice.applyPaidTotal(settled);
+         invoices.flush();
+         audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount=" + saved.getAmount().toPlainString());
+         return PaymentResponse.from(saved);
