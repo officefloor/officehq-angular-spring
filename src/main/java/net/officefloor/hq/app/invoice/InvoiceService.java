@@ -12,6 +12,8 @@ import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.Project;
 import net.officefloor.hq.app.project.ProjectRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -76,14 +78,15 @@ public class InvoiceService {
     }
 
     /**
-     * Every invoice across all projects, with the name of the project each one is for, narrowed to
-     * the given status when one is supplied.
+     * One page of the invoices across all projects, with the name of the project each one is for,
+     * narrowed to the given status when one is supplied. Pages are numbered from zero.
      */
     @Transactional(readOnly = true)
-    public List<InvoiceSummaryResponse> listAll(InvoiceStatus status) {
-        List<Invoice> found =
-                status == null ? invoices.findAllWithProject() : invoices.findAllWithProjectByStatus(status);
-        return found.stream().map(InvoiceSummaryResponse::from).toList();
+    public InvoicePageResponse listAll(InvoiceStatus status, int page, int size) {
+        PageRequest request = PageRequest.of(page, size);
+        Page<Invoice> found = status == null ? invoices.findPageWithProject(request)
+                : invoices.findPageWithProjectByStatus(status, request);
+        return InvoicePageResponse.from(found);
     }
 
     @Transactional

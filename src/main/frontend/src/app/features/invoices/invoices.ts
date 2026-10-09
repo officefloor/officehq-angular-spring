@@ -1,11 +1,11 @@
 import { CurrencyPipe } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { INVOICE_STATUSES, InvoiceService, InvoiceStatus } from './invoice.service';
+import { INVOICE_STATUSES, InvoicePage, InvoiceService, InvoiceStatus } from './invoice.service';
 
-// Invoices page: every invoice from every project in one list, showing the project each is for and
-// the stage it is at. The list can be narrowed to a single stage.
+// Invoices page: every invoice from every project, a page at a time, showing the project each is for
+// and the stage it is at. The list can be narrowed to a single stage.
 @Component({
   selector: 'app-invoices',
   imports: [CurrencyPipe, RouterLink],
@@ -27,7 +27,7 @@ import { INVOICE_STATUSES, InvoiceService, InvoiceStatus } from './invoice.servi
 
     @if (invoices.error()) {
       <p role="alert" data-testid="all-invoices-error">Could not load the invoices.</p>
-    } @else if (invoices.isLoading()) {
+    } @else if (!shown()) {
       <p data-testid="all-invoices-loading">Loading invoices…</p>
     } @else if (list().length === 0) {
       <p data-testid="all-invoices-empty">
@@ -61,6 +61,37 @@ import { INVOICE_STATUSES, InvoiceService, InvoiceStatus } from './invoice.servi
           }
         </tbody>
       </table>
+
+      <nav aria-label="Invoice pages" class="invoice-pager">
+        <button
+          type="button"
+          data-testid="invoice-page-prev"
+          [disabled]="!hasPrev()"
+          (click)="page.set(page() - 1)"
+        >
+          Previous
+        </button>
+        <span aria-live="polite">
+          Page <span data-testid="invoice-page-label">{{ page() + 1 }}</span>
+          of <span data-testid="invoice-page-count">{{ totalPages() }}</span>
+        </span>
+        <button
+          type="button"
+          data-testid="invoice-page-next"
+          [disabled]="!hasNext()"
+          (click)="page.set(page() + 1)"
+        >
+          Next
+        </button>
+      </nav>
+    }
+  `,
+  styles: `
+    .invoice-pager {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
     }
   `,
 })
@@ -71,11 +102,25 @@ export class Invoices {
   /** The stage the list is narrowed to; empty for every stage. */
   protected readonly status = signal<InvoiceStatus | ''>('');
 
+  /** The page shown, numbered from zero; back to the first page whenever the stage changes. */
+  protected readonly page = linkedSignal({ source: this.status, computation: () => 0 });
+
   protected readonly invoices = rxResource({
-    params: () => this.status(),
-    stream: ({ params }) => this.service.listAll(params || undefined),
+    params: () => ({ status: this.status(), page: this.page() }),
+    stream: ({ params }) => this.service.listAll(params.page, params.status || undefined),
   });
-  protected readonly list = computed(() => (this.invoices.hasValue() ? this.invoices.value() : []));
+  /**
+   * The last page loaded, kept on screen while the next one loads so the pager (and the focus on its
+   * buttons) stays put.
+   */
+  protected readonly shown = linkedSignal<InvoicePage | undefined, InvoicePage | undefined>({
+    source: () => (this.invoices.hasValue() ? this.invoices.value() : undefined),
+    computation: (loaded, previous) => loaded ?? previous?.value,
+  });
+  protected readonly list = computed(() => this.shown()?.items ?? []);
+  protected readonly totalPages = computed(() => this.shown()?.totalPages ?? 0);
+  protected readonly hasPrev = computed(() => this.page() > 0);
+  protected readonly hasNext = computed(() => this.page() + 1 < this.totalPages());
 
   protected onStatusChange(event: Event): void {
     this.status.set((event.target as HTMLSelectElement).value as InvoiceStatus | '');

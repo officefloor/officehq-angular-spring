@@ -27,6 +27,15 @@ export interface InvoiceSummary extends Invoice {
   projectName: string;
 }
 
+/** One page of the invoices listed across all projects; pages are numbered from zero. */
+export interface InvoicePage {
+  items: InvoiceSummary[];
+  page: number;
+  size: number;
+  totalItems: number;
+  totalPages: number;
+}
+
 /** An invoice as listed on a client's statement: its project's name and how much is left to pay. */
 export interface StatementInvoice extends ProjectInvoice {
   projectName: string;
@@ -73,10 +82,10 @@ export interface NewInvoice {
 export class InvoiceService {
   private readonly http = inject(HttpClient);
 
-  /** Every invoice across all projects, optionally narrowed to one status. */
-  listAll(status?: InvoiceStatus): Observable<InvoiceSummary[]> {
-    const params: Record<string, string> = status ? { status } : {};
-    return this.http.get<InvoiceSummary[]>('/api/invoices', { params });
+  /** One page (numbered from zero) of the invoices across all projects, optionally narrowed to one status. */
+  listAll(page: number, status?: InvoiceStatus): Observable<InvoicePage> {
+    const params: Record<string, string | number> = status ? { status, page } : { page };
+    return this.http.get<InvoicePage>('/api/invoices', { params });
   }
 
   listForProject(projectId: number): Observable<ProjectInvoice[]> {
