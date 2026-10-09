@@ -1,0 +1,106 @@
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 013c8ac..0cacebd 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -1,3 +1,4 @@
++import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+@@ -43,7 +44,11 @@ import { Client, ClientService } from './client.service';
+         />
+         @if (showError('email')) {
+           <p id="client-email-error" role="alert" data-testid="client-form-email-error">
+-            Enter a valid email address.
++            @if (form.controls.email.hasError('taken')) {
++              A client with this email already exists.
++            } @else {
++              Enter a valid email address.
++            }
+           </p>
+         }
+       </div>
+@@ -199,8 +204,15 @@ export class Clients {
+         this.form.reset();
+         this.saving.set(false);
+       },
+-      error: () => {
+-        this.saveError.set('Could not save the client. Please try again.');
++      error: (err: HttpErrorResponse) => {
++        if (err.status === 409) {
++          // The server owns uniqueness; flag the email field until it is changed.
++          const email = this.form.controls.email;
++          email.setErrors({ taken: true });
++          email.markAsTouched();
++        } else {
++          this.saveError.set('Could not save the client. Please try again.');
++        }
+         this.saving.set(false);
+       },
+     });
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+index 815d64d..996b5d1 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+@@ -9,6 +9,9 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+     /** All clients not archived, in id order. */
+     List<Client> findByArchivedFalseOrderById();
+ 
++    /** Whether any client, archived or not, already has the email, ignoring case. */
++    boolean existsByEmailIgnoreCase(String email);
++
+     /** Clients not archived whose name contains the text, ignoring case, in id order. */
+     @Query("SELECT c FROM Client c WHERE c.archived = false AND LOWER(c.name) LIKE LOWER(CONCAT('%', :text, '%'))"
+             + " ESCAPE '\\' ORDER BY c.id")
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 057fb77..90457a5 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -4,6 +4,7 @@ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.contact.ContactRepository;
+ import net.officefloor.hq.app.project.ProjectRepository;
++import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.data.domain.Sort;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -48,10 +49,26 @@ public class ClientService {
+         return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientId(id));
+     }
+ 
++    /** Adds a client; its email, once trimmed, must not already belong to another client. */
+     @Transactional
+     public ClientResponse create(ClientRequest request) {
+-        Client saved = clients.save(new Client(request.name().trim(), request.email().trim()));
+-        return ClientResponse.from(saved);
++        String email = request.email().trim();
++        if (clients.existsByEmailIgnoreCase(email)) {
++            throw emailTaken();
++        }
++        try {
++            return ClientResponse.from(clients.saveAndFlush(new Client(request.name().trim(), email)));
++        } catch (DataIntegrityViolationException e) {
++            // Lost a race with a concurrent add of the same email; the unique constraint caught it.
++            if (String.valueOf(e.getMessage()).toUpperCase().contains("CLIENT_EMAIL_UQ")) {
++                throw emailTaken();
++            }
++            throw e;
++        }
++    }
++
++    private static ResponseStatusException emailTaken() {
++        return new ResponseStatusException(HttpStatus.CONFLICT, "A client with this email already exists");
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/migration/V22__client_email_unique.sql b/src/main/resources/db/migration/V22__client_email_unique.sql
+new file mode 100644
+index 0000000..4d76e55
+--- /dev/null
++++ b/src/main/resources/db/migration/V22__client_email_unique.sql
+@@ -0,0 +1,5 @@
++-- No two clients may share an email. Addresses are compared ignoring case (Ops@Acme.example and
++-- ops@acme.example reach the same mailbox), so uniqueness is enforced on a lower-cased copy; this is
++-- the backstop for the API check. Archived clients still hold their address.
++ALTER TABLE client ADD COLUMN email_key VARCHAR(255) GENERATED ALWAYS AS (LOWER(email));
++ALTER TABLE client ADD CONSTRAINT client_email_uq UNIQUE (email_key);
