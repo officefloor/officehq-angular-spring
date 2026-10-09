@@ -1,0 +1,325 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 1ff7aa1..52df050 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -8,7 +8,7 @@ import { ClientProjects } from '../projects/client-projects';
+ import { ClientCurrency } from './client-currency';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, counts of their projects and contacts, their contacts, and the projects being done for them.
++// A single client's page: their name, email, phone number, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, counts of their projects and contacts, their contacts, and the projects being done for them.
+ @Component({
+   selector: 'app-client-detail',
+   imports: [RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm],
+@@ -27,6 +27,14 @@ import { Client, ClientService } from './client.service';
+     } @else if (client.value(); as c) {
+       <h1 data-testid="client-detail-name">{{ c.name }}</h1>
+       <p>Email: <span data-testid="client-detail-email">{{ c.email }}</span></p>
++      <p>
++        Phone:
++        @if (c.phone) {
++          <a [href]="'tel:' + c.phone" data-testid="client-phone">{{ c.phone }}</a>
++        } @else {
++          <span data-testid="client-phone-none">Not given</span>
++        }
++      </p>
+       <p>
+         Main contact:
+         @if (c.primaryContact; as primary) {
+diff --git a/src/main/frontend/src/app/features/clients/client-edit-form.ts b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+index 6aede55..3523dc2 100644
+--- a/src/main/frontend/src/app/features/clients/client-edit-form.ts
++++ b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+@@ -3,7 +3,7 @@ import { Component, ElementRef, OnInit, afterNextRender, inject, input, output,
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Client, ClientService } from './client.service';
+ 
+-// Form to correct one client's name or email. Emits the saved client, or cancelled when abandoned.
++// Form to correct one client's name, email or phone number. Emits the saved client, or cancelled when abandoned.
+ @Component({
+   selector: 'app-client-edit-form',
+   imports: [ReactiveFormsModule],
+@@ -54,6 +54,23 @@ import { Client, ClientService } from './client.service';
+           </p>
+         }
+       </div>
++      <div>
++        <label for="client-edit-phone">Phone (optional)</label>
++        <input
++          id="client-edit-phone"
++          type="tel"
++          formControlName="phone"
++          autocomplete="tel"
++          data-testid="client-edit-form-phone"
++          [attr.aria-invalid]="showError('phone')"
++          [attr.aria-describedby]="showError('phone') ? 'client-edit-phone-error' : null"
++        />
++        @if (showError('phone')) {
++          <p id="client-edit-phone-error" role="alert" data-testid="client-edit-form-phone-error">
++            Phone number must be 50 characters or fewer.
++          </p>
++        }
++      </div>
+       <button type="submit" data-testid="client-edit-form-submit" [disabled]="saving()">Save</button>
+       <button type="button" data-testid="client-edit-form-cancel" (click)="cancelled.emit()">Cancel</button>
+       @if (saveError()) {
+@@ -85,6 +102,7 @@ export class ClientEditForm implements OnInit {
+         Validators.maxLength(255),
+       ],
+     ],
++    phone: ['', Validators.maxLength(50)],
+   });
+ 
+   constructor() {
+@@ -92,11 +110,11 @@ export class ClientEditForm implements OnInit {
+   }
+ 
+   ngOnInit(): void {
+-    const { name, email } = this.client();
+-    this.form.setValue({ name, email });
++    const { name, email, phone } = this.client();
++    this.form.setValue({ name, email, phone: phone ?? '' });
+   }
+ 
+-  protected showError(field: 'name' | 'email'): boolean {
++  protected showError(field: 'name' | 'email' | 'phone'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -106,10 +124,10 @@ export class ClientEditForm implements OnInit {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email } = this.form.getRawValue();
++    const { name, email, phone } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.update(this.client().id, { name: name.trim(), email: email.trim() }).subscribe({
++    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null }).subscribe({
+       next: (updated) => {
+         this.saving.set(false);
+         this.saved.emit(updated);
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 10eeda7..98074e4 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -11,6 +11,8 @@ export interface Client {
+   id: number;
+   name: string;
+   email: string;
++  /** A number to reach the client on; null when not known. */
++  phone: string | null;
+   archived: boolean;
+   /** The client's main contact; null until one is chosen. */
+   primaryContact: { id: number; name: string } | null;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 514ed53..2705ece 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -6,7 +6,7 @@ import { RouterLink } from '@angular/router';
+ import { ClientEditForm } from './client-edit-form';
+ import { Client, ClientService } from './client.service';
+ 
+-// Clients page: add a client (name + email) and list all clients, filterable by name; each client
++// Clients page: add a client (name + email, optionally a phone number) and list all clients, filterable by name; each client
+ // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
+ // list and search unless the archived toggle is on, where it can be restored. A client's name or email
+ // can be corrected in place from its row. The list can be sorted by name or by how much each client owes.
+@@ -55,6 +55,23 @@ import { Client, ClientService } from './client.service';
+           </p>
+         }
+       </div>
++      <div>
++        <label for="client-phone">Phone (optional)</label>
++        <input
++          id="client-phone"
++          type="tel"
++          formControlName="phone"
++          autocomplete="tel"
++          data-testid="client-form-phone"
++          [attr.aria-invalid]="showError('phone')"
++          [attr.aria-describedby]="showError('phone') ? 'client-phone-error' : null"
++        />
++        @if (showError('phone')) {
++          <p id="client-phone-error" role="alert" data-testid="client-form-phone-error">
++            Phone number must be 50 characters or fewer.
++          </p>
++        }
++      </div>
+       <button type="submit" data-testid="client-form-submit" [disabled]="saving()">Add client</button>
+       @if (saveError()) {
+         <p role="alert" data-testid="client-form-error">{{ saveError() }}</p>
+@@ -207,6 +224,7 @@ export class Clients {
+         Validators.maxLength(255),
+       ],
+     ],
++    phone: ['', Validators.maxLength(50)],
+   });
+ 
+   constructor() {
+@@ -221,7 +239,7 @@ export class Clients {
+     this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
+   }
+ 
+-  protected showError(field: 'name' | 'email'): boolean {
++  protected showError(field: 'name' | 'email' | 'phone'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -231,10 +249,10 @@ export class Clients {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email } = this.form.getRawValue();
++    const { name, email, phone } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.create({ name: name.trim(), email: email.trim() }).subscribe({
++    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null }).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created]);
+         this.form.reset();
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 64269f9..1f8e275 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -76,8 +76,8 @@ public class TestSupportController {
+             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email, archived, currency) VALUES (?, ?, ?, ?, ?)",
+-                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"),
++            jdbc.update("INSERT INTO client (id, name, email, phone, archived, currency) VALUES (?, ?, ?, ?, ?, ?)",
++                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"),
+                     Boolean.TRUE.equals(c.get("archived")),
+                     c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString());
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index b5ca685..72274db 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -25,6 +25,9 @@ public class Client {
+ 
+     private String email;
+ 
++    /** A number to reach the client on; none when not known. */
++    private String phone;
++
+     private boolean archived;
+ 
+     /** The currency the client is billed in; all of their money is in it. */
+@@ -39,9 +42,10 @@ public class Client {
+     protected Client() {
+     }
+ 
+-    public Client(String name, String email) {
++    public Client(String name, String email, String phone) {
+         this.name = name;
+         this.email = email;
++        this.phone = phone;
+     }
+ 
+     public Long getId() {
+@@ -56,10 +60,15 @@ public class Client {
+         return email;
+     }
+ 
+-    /** Corrects the client's name and email. */
+-    public void rename(String name, String email) {
++    public String getPhone() {
++        return phone;
++    }
++
++    /** Corrects the client's name, email and phone number. */
++    public void rename(String name, String email, String phone) {
+         this.name = name;
+         this.email = email;
++        this.phone = phone;
+     }
+ 
+     public boolean isArchived() {
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+index 70a1f63..78cf2c0 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+@@ -4,11 +4,17 @@ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
+ 
+-/** Payload to create a client, or to correct an existing client's name and email. */
++/** Payload to create a client, or to correct an existing client's name, email and phone number. */
+ public record ClientRequest(
+         @NotBlank @Size(max = 255) String name,
+-        @NotBlank @Email(regexp = ClientRequest.EMAIL_PATTERN) @Size(max = 255) String email) {
++        @NotBlank @Email(regexp = ClientRequest.EMAIL_PATTERN) @Size(max = 255) String email,
++        @Size(max = 50) String phone) {
+ 
+     /** Requires a dotted domain, which plain {@code @Email} does not (it accepts {@code a@b}). */
+     public static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
++
++    /** The phone number trimmed, or null when none was given. */
++    public String trimmedPhone() {
++        return phone == null || phone.isBlank() ? null : phone.trim();
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index 74c8475..985c8db 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -3,7 +3,7 @@ package net.officefloor.hq.app.client;
+ import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+-public record ClientResponse(Long id, String name, String email, boolean archived, PrimaryContact primaryContact,
++public record ClientResponse(Long id, String name, String email, String phone, boolean archived, PrimaryContact primaryContact,
+         Currency currency, BigDecimal outstanding) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+@@ -13,7 +13,7 @@ public record ClientResponse(Long id, String name, String email, boolean archive
+     /** A client with what they still owe, in their currency: what is left to pay on their sent, not yet fully paid invoices. */
+     public static ClientResponse from(Client client, BigDecimal outstanding) {
+         Contact primary = client.getPrimaryContact();
+-        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.isArchived(),
++        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
+                 client.getCurrency(), outstanding);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 0321e09..c6d7066 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -68,7 +68,7 @@ public class ClientService {
+             throw emailTaken();
+         }
+         try {
+-            return respond(clients.saveAndFlush(new Client(request.name().trim(), email)));
++            return respond(clients.saveAndFlush(new Client(request.name().trim(), email, request.trimmedPhone())));
+         } catch (DataIntegrityViolationException e) {
+             // Lost a race with a concurrent add of the same email; the unique constraint caught it.
+             if (String.valueOf(e.getMessage()).toUpperCase().contains("CLIENT_EMAIL_UQ")) {
+@@ -79,7 +79,7 @@ public class ClientService {
+     }
+ 
+     /**
+-     * Corrects a client's name and email; the email, once trimmed, must not belong to another client.
++     * Corrects a client's name, email and phone number; the email, once trimmed, must not belong to another client.
+      * The change is recorded in the audit log.
+      */
+     @Transactional
+@@ -89,7 +89,7 @@ public class ClientService {
+         if (clients.existsByEmailIgnoreCaseAndIdNot(email, id)) {
+             throw emailTaken();
+         }
+-        client.rename(request.name().trim(), email);
++        client.rename(request.name().trim(), email, request.trimmedPhone());
+         try {
+             clients.flush();
+         } catch (DataIntegrityViolationException e) {
+diff --git a/src/main/resources/db/migration/V31__client_phone.sql b/src/main/resources/db/migration/V31__client_phone.sql
+new file mode 100644
+index 0000000..38f5670
+--- /dev/null
++++ b/src/main/resources/db/migration/V31__client_phone.sql
+@@ -0,0 +1,2 @@
++-- A client may have a phone number to reach them on; existing clients have none.
++ALTER TABLE client ADD COLUMN phone VARCHAR(50);
