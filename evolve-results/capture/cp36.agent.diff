@@ -1,0 +1,184 @@
+diff --git a/src/main/frontend/src/app/features/projects/client-projects.ts b/src/main/frontend/src/app/features/projects/client-projects.ts
+index b9bffe9..267667e 100644
+--- a/src/main/frontend/src/app/features/projects/client-projects.ts
++++ b/src/main/frontend/src/app/features/projects/client-projects.ts
+@@ -1,25 +1,41 @@
+-import { Component, computed, inject, input } from '@angular/core';
++import { Component, computed, inject, input, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+-import { ProjectService } from './project.service';
++import { PROJECT_STATUSES, ProjectService, ProjectStatus } from './project.service';
+ 
+ // A client's projects: the projects listing scoped to one client; each project opens its detail page.
++// Only active projects are listed unless the finished, on hold and archived ones are asked for too.
+ @Component({
+   selector: 'app-client-projects',
+   imports: [RouterLink],
+   template: `
+     <section aria-labelledby="client-projects-heading" data-testid="client-projects">
+       <h2 id="client-projects-heading">Projects</h2>
++      <div>
++        <input
++          id="client-projects-show-all"
++          type="checkbox"
++          data-testid="client-projects-show-all"
++          [checked]="showAll()"
++          (change)="toggleShowAll()"
++        />
++        <label for="client-projects-show-all">Show finished and archived projects</label>
++      </div>
+       @if (projects.error()) {
+         <p role="alert" data-testid="client-projects-error">Could not load the projects.</p>
+       } @else if (list().length === 0) {
+-        <p data-testid="client-projects-empty">No projects for this client yet.</p>
++        <p data-testid="client-projects-empty">
++          {{ showAll() ? 'No projects for this client yet.' : 'No active projects for this client.' }}
++        </p>
+       } @else {
+         <table data-testid="client-projects-table">
+-          <caption>Projects for this client</caption>
++          <caption>
++            {{ showAll() ? 'All projects for this client' : 'Active projects for this client' }}
++          </caption>
+           <thead>
+             <tr>
+               <th scope="col">Name</th>
++              <th scope="col">Status</th>
+               <th scope="col"><span class="visually-hidden">Actions</span></th>
+             </tr>
+           </thead>
+@@ -27,6 +43,11 @@ import { ProjectService } from './project.service';
+             @for (p of list(); track p.id) {
+               <tr [attr.data-testid]="'project-row-' + p.id">
+                 <td data-testid="project-name">{{ p.name }}</td>
++                <td data-testid="project-status">
++                  {{ statusLabel(p.status) }}@if (p.archived) {
++                    <span data-testid="project-archived"> (archived)</span>
++                  }
++                </td>
+                 <td>
+                   <a
+                     [routerLink]="['/projects', p.id]"
+@@ -48,9 +69,19 @@ export class ClientProjects {
+ 
+   readonly clientId = input.required<number>();
+ 
++  protected readonly showAll = signal(false);
++
+   protected readonly projects = rxResource({
+-    params: () => this.clientId(),
+-    stream: ({ params }) => this.service.listForClient(params),
++    params: () => ({ clientId: this.clientId(), includeAll: this.showAll() }),
++    stream: ({ params }) => this.service.listForClient(params.clientId, params.includeAll),
+   });
+   protected readonly list = computed(() => (this.projects.hasValue() ? this.projects.value() : []));
++
++  protected toggleShowAll(): void {
++    this.showAll.update((v) => !v);
++  }
++
++  protected statusLabel(status: ProjectStatus): string {
++    return PROJECT_STATUSES.find((s) => s.value === status)?.label ?? status;
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index 2da5d16..51dfd55 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -45,8 +45,10 @@ export class ProjectService {
+     return this.http.get<Project[]>('/api/projects', { params });
+   }
+ 
+-  listForClient(clientId: number): Observable<Project[]> {
+-    return this.http.get<Project[]>(`/api/clients/${clientId}/projects`);
++  listForClient(clientId: number, includeAll = false): Observable<Project[]> {
++    return this.http.get<Project[]>(`/api/clients/${clientId}/projects`, {
++      params: { includeAll },
++    });
+   }
+ 
+   get(id: number): Observable<Project> {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index d3e2ebb..51a9e42 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -74,10 +74,11 @@ public class TestSupportController {
+                     c.get("name"), c.get("email"), c.get("role"));
+         }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+-            jdbc.update("INSERT INTO project (id, name, client_id, status) VALUES (?, ?, ?, ?)",
++            jdbc.update("INSERT INTO project (id, name, client_id, status, archived) VALUES (?, ?, ?, ?, ?)",
+                     ((Number) p.get("id")).longValue(), p.get("name"),
+                     ((Number) p.get("clientId")).longValue(),
+-                    p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString());
++                    p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString(),
++                    Boolean.TRUE.equals(p.get("archived")));
+         }
+         for (Map<String, Object> t : rows(fixture, "tags")) {
+             jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/project/ClientProjectController.java b/src/main/java/net/officefloor/hq/app/project/ClientProjectController.java
+index eb72fd8..3d417db 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ClientProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ClientProjectController.java
+@@ -4,6 +4,7 @@ import java.util.List;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /** The projects being done for a client. */
+@@ -18,7 +19,8 @@ public class ClientProjectController {
+     }
+ 
+     @GetMapping
+-    public List<ProjectResponse> list(@PathVariable Long clientId) {
+-        return service.listForClient(clientId);
++    public List<ProjectResponse> list(@PathVariable Long clientId,
++            @RequestParam(defaultValue = "false") boolean includeAll) {
++        return service.listForClient(clientId, includeAll);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index 6e6e055..688c290 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -29,6 +29,10 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+             + " ORDER BY p.id")
+     List<Project> findActiveByClientIdWithClient(Long clientId);
+ 
++    /** All of a client's projects, archived or not, with their client loaded in the same query. */
++    @Query("SELECT p FROM Project p JOIN FETCH p.client c WHERE c.id = :clientId ORDER BY p.id")
++    List<Project> findAllByClientIdWithClient(Long clientId);
++
+     /** One project with its client loaded in the same query. */
+     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
+     Optional<Project> findByIdWithClient(Long id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index 0089354..a4e6135 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -39,12 +39,20 @@ public class ProjectService {
+                 .toList();
+     }
+ 
++    /**
++     * A client's projects: only those under way (active status and not archived) unless all of them,
++     * including finished, on hold and archived ones, are asked for.
++     */
+     @Transactional(readOnly = true)
+-    public List<ProjectResponse> listForClient(Long clientId) {
++    public List<ProjectResponse> listForClient(Long clientId, boolean includeAll) {
+         if (!clients.existsById(clientId)) {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+         }
+-        return projects.findActiveByClientIdWithClient(clientId).stream().map(ProjectResponse::from).toList();
++        if (includeAll) {
++            return projects.findAllByClientIdWithClient(clientId).stream().map(ProjectResponse::from).toList();
++        }
++        return projects.findActiveByClientIdWithClient(clientId).stream()
++                .filter(p -> p.getStatus() == ProjectStatus.ACTIVE).map(ProjectResponse::from).toList();
+     }
+ 
+     @Transactional(readOnly = true)
