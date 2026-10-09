@@ -1,0 +1,13 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 038a638..80cbe00 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
+ import { DashboardService, DashboardSummary } from './dashboard.service';
+ 
+ // Dashboard page: how many clients and projects there are, and the total still owed (the sum of
+-// all unpaid invoices).
++// invoices that have been sent but not yet paid; drafts are not counted).
+ @Component({
+   selector: 'app-dashboard',
+   imports: [CurrencyPipe],
