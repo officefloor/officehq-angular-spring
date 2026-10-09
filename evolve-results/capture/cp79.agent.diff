@@ -1,0 +1,519 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 6203d36..9b6fd2f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -58,6 +58,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+               <th scope="col">Quantity</th>
+               <th scope="col">Unit</th>
+               <th scope="col">Unit price</th>
++              <th scope="col">Line discount</th>
+               <th scope="col">Amount</th>
+               @if (inv.status === 'DRAFT') {
+                 <th scope="col"><span class="visually-hidden">Actions</span></th>
+@@ -128,7 +129,22 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                       (keydown.escape)="cancelEdit(l.id)"
+                     />
+                   </td>
+-                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  <td>
++                    <input
++                      type="number"
++                      inputmode="decimal"
++                      min="0"
++                      max="100"
++                      step="0.01"
++                      [formControl]="editForm.controls.discountPct"
++                      data-testid="lineitem-edit-discountpct"
++                      aria-label="Line discount percentage"
++                      [attr.aria-invalid]="editForm.controls.discountPct.invalid"
++                      (keydown.enter)="saveEdit(l.id)"
++                      (keydown.escape)="cancelEdit(l.id)"
++                    />
++                  </td>
++                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice, l.discountPct) / 100 | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                   <td>
+                     <button
+                       type="button"
+@@ -152,6 +168,11 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                   <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
+                   <td data-testid="lineitem-unit">{{ l.unit ?? '' }}</td>
+                   <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: inv.currency : 'symbol' : '1.2-4' : 'en-US' }}</td>
++                  <td data-testid="lineitem-discount">
++                    @if (l.discountPct > 0) {
++                      {{ l.discountPct | number: '1.0-2' : 'en-US' }}%
++                    }
++                  </td>
+                   <td data-testid="lineitem-amount">{{ l.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                   @if (inv.status === 'DRAFT') {
+                     <td>
+@@ -182,14 +203,14 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+           </tbody>
+           <tfoot>
+             <tr>
+-              <th scope="row" colspan="4">Subtotal</th>
++              <th scope="row" colspan="5">Subtotal</th>
+               <td data-testid="invoice-subtotal">{{ inv.subtotal | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+             </tr>
+             <tr>
+-              <th scope="row" colspan="4">
++              <th scope="row" colspan="5">
+                 @if (inv.discountAmount > 0) {
+                   Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span> off@if (inv.discountPct > 0) {
+                     plus <span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%})
+@@ -203,14 +224,14 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+               }
+             </tr>
+             <tr>
+-              <th scope="row" colspan="4">Taxable amount (excludes tax-free lines)</th>
++              <th scope="row" colspan="5">Taxable amount (excludes tax-free lines)</th>
+               <td data-testid="invoice-taxable-base">{{ inv.taxableBase | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+             </tr>
+             <tr>
+-              <th scope="row" colspan="4" data-testid="invoice-tax-label">
++              <th scope="row" colspan="5" data-testid="invoice-tax-label">
+                 Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
+               </th>
+               <td data-testid="invoice-tax">{{ inv.tax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+@@ -219,7 +240,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+               }
+             </tr>
+             <tr>
+-              <th scope="row" colspan="4" data-testid="invoice-tax-levy-label">
++              <th scope="row" colspan="5" data-testid="invoice-tax-levy-label">
+                 Levy (<span data-testid="invoice-tax-levy-pct">{{ inv.levyPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
+               </th>
+               <td data-testid="invoice-tax-levy">{{ inv.levy | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+@@ -228,28 +249,28 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+               }
+             </tr>
+             <tr>
+-              <th scope="row" colspan="4">Effective tax rate (tax and levy as a share of the total before tax)</th>
++              <th scope="row" colspan="5">Effective tax rate (tax and levy as a share of the total before tax)</th>
+               <td data-testid="invoice-effective-tax-rate">{{ inv.effectiveTaxPct | number: '1.2-2' : 'en-US' }}%</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+             </tr>
+             <tr>
+-              <th scope="row" colspan="4">Total before tax</th>
++              <th scope="row" colspan="5">Total before tax</th>
+               <td data-testid="invoice-total-ex-tax">{{ inv.totalExTax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+             </tr>
+             <tr>
+-              <th scope="row" colspan="4">Total</th>
++              <th scope="row" colspan="5">Total</th>
+               <td data-testid="invoice-amount">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+             </tr>
+             <tr>
+-              <th scope="row" colspan="4">Total after tax</th>
++              <th scope="row" colspan="5">Total after tax</th>
+               <td data-testid="invoice-total-inc-tax">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+@@ -452,6 +473,26 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+               </p>
+             }
+           </div>
++          <div>
++            <label for="lineitem-discountpct">Line discount % (optional)</label>
++            <input
++              id="lineitem-discountpct"
++              type="number"
++              inputmode="decimal"
++              min="0"
++              max="100"
++              step="0.01"
++              formControlName="discountPct"
++              data-testid="lineitem-form-discountpct"
++              [attr.aria-invalid]="invalid('discountPct')"
++              [attr.aria-describedby]="invalid('discountPct') ? 'lineitem-discountpct-error' : null"
++            />
++            @if (invalid('discountPct')) {
++              <p id="lineitem-discountpct-error" role="alert" data-testid="lineitem-form-discountpct-error">
++                Enter a percentage from 0 to 100 with at most two decimal places.
++              </p>
++            }
++          </div>
+           <div>
+             <input id="lineitem-taxexempt" type="checkbox" formControlName="taxExempt" data-testid="lineitem-form-taxexempt" />
+             <label for="lineitem-taxexempt">Tax-free (no tax is charged on this line)</label>
+@@ -493,9 +534,10 @@ export class InvoiceDetailPage {
+   });
+ 
+   // Work in whole cents (and ten-thousandths of a unit price) so the line is exact rather than
+-  // accumulating floating-point error; each line is rounded to the cent on its own.
+-  protected lineCents(qty: number, unitPrice: number): number {
+-    return Math.round((Math.round(qty * 100) * Math.round(unitPrice * 10000)) / 10000);
++  // accumulating floating-point error; each line, and then its own discount, is rounded to the cent on its own.
++  protected lineCents(qty: number, unitPrice: number, discountPct: number): number {
++    const gross = Math.round((Math.round(qty * 100) * Math.round(unitPrice * 10000)) / 10000);
++    return gross - Math.round((gross * Math.round(discountPct * 100)) / 10000);
+   }
+ 
+   protected readonly discountSaving = signal(false);
+@@ -644,10 +686,11 @@ export class InvoiceDetailPage {
+     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+     unit: ['', [Validators.maxLength(50)]],
+     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(FOUR_DECIMALS)]],
++    discountPct: ['', [Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
+     taxExempt: false,
+   });
+ 
+-  protected invalid(name: 'description' | 'qty' | 'unit' | 'unitPrice'): boolean {
++  protected invalid(name: 'description' | 'qty' | 'unit' | 'unitPrice' | 'discountPct'): boolean {
+     const control = this.form.controls[name];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -659,8 +702,15 @@ export class InvoiceDetailPage {
+     }
+     this.saving.set(true);
+     this.saveError.set(null);
+-    const { description, qty, unit, unitPrice, taxExempt } = this.form.getRawValue();
+-    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice), taxExempt };
++    const { description, qty, unit, unitPrice, discountPct, taxExempt } = this.form.getRawValue();
++    const item = {
++      description: description.trim(),
++      qty: Number(qty),
++      unit: unit.trim() || null,
++      unitPrice: Number(unitPrice),
++      taxExempt,
++      discountPct: Number(discountPct || 0),
++    };
+     this.service.addLineItem(this.projectIdNumber(), Number(this.invoiceId()), item).subscribe({
+       next: (updated) => {
+         this.invoice.set(updated);
+@@ -684,6 +734,7 @@ export class InvoiceDetailPage {
+     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+     unit: ['', [Validators.maxLength(50)]],
+     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(FOUR_DECIMALS)]],
++    discountPct: ['', [Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
+     taxExempt: false,
+   });
+ 
+@@ -694,6 +745,7 @@ export class InvoiceDetailPage {
+       qty: String(line.qty),
+       unit: line.unit ?? '',
+       unitPrice: String(line.unitPrice),
++      discountPct: String(line.discountPct),
+       taxExempt: line.taxExempt,
+     });
+     this.editingId.set(line.id);
+@@ -711,8 +763,15 @@ export class InvoiceDetailPage {
+       this.editForm.markAllAsTouched();
+       return;
+     }
+-    const { description, qty, unit, unitPrice, taxExempt } = this.editForm.getRawValue();
+-    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice), taxExempt };
++    const { description, qty, unit, unitPrice, discountPct, taxExempt } = this.editForm.getRawValue();
++    const item = {
++      description: description.trim(),
++      qty: Number(qty),
++      unit: unit.trim() || null,
++      unitPrice: Number(unitPrice),
++      taxExempt,
++      discountPct: Number(discountPct || 0),
++    };
+     this.run(
+       this.service.updateLineItem(this.projectIdNumber(), Number(this.invoiceId()), lineItemId, item),
+       'Could not save the line item. Please try again.',
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index fe41e44..e066bdc 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -74,7 +74,7 @@ export interface ClientStatement {
+   tax: number;
+ }
+ 
+-/** One thing an invoice charges for; its amount is quantity times unit price. */
++/** One thing an invoice charges for; its amount is quantity times unit price, less the line's own discount. */
+ export interface LineItem {
+   id: number;
+   description: string;
+@@ -85,6 +85,10 @@ export interface LineItem {
+   amount: number;
+   /** Whether the line is tax-free: it is not taxable. */
+   taxExempt: boolean;
++  /** The percentage the line takes off itself; zero when it has no discount of its own. */
++  discountPct: number;
++  /** Quantity times unit price, before the line's own discount. */
++  grossAmount: number;
+ }
+ 
+ /**
+@@ -125,6 +129,7 @@ export interface NewLineItem {
+   unit: string | null;
+   unitPrice: number;
+   taxExempt: boolean;
++  discountPct: number;
+ }
+ 
+ export interface NewInvoice {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 1e4c36e..1db2605 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -159,8 +159,12 @@ public class TestSupportController {
+                     : new BigDecimal(i.get("discountAmount").toString());
+             // A flat discount is taken off after the percentage (never more than is left) and is shared
+             // across the lines in proportion to what each charges.
+-            List<BigDecimal> lines = lineItems.stream().map(l -> new BigDecimal(l.get("qty").toString())
+-                    .multiply(new BigDecimal(l.get("unitPrice").toString())).setScale(2, RoundingMode.HALF_UP)).toList();
++            // Each line is first taken down by its own discount, if it has one.
++            List<BigDecimal> lines = lineItems.stream().map(l -> {
++                BigDecimal gross = new BigDecimal(l.get("qty").toString())
++                        .multiply(new BigDecimal(l.get("unitPrice").toString())).setScale(2, RoundingMode.HALF_UP);
++                return gross.subtract(gross.multiply(lineDiscountPct(l)).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
++            }).toList();
+             BigDecimal subtotal = lines.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+             BigDecimal pctDiscount = subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+             BigDecimal flatDiscount = discountAmount.setScale(2, RoundingMode.HALF_UP)
+@@ -190,17 +194,17 @@ public class TestSupportController {
+                     seedStatus(i.get("status")), issued, due);
+             for (Map<String, Object> l : lineItems) {
+                 if (l.get("id") != null) {
+-                    jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit, unit_price, tax_exempt)"
+-                            + " VALUES (?, ?, ?, ?, ?, ?, ?)",
++                    jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit, unit_price, tax_exempt, discount_pct)"
++                            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                             ((Number) l.get("id")).longValue(), invoiceId, l.get("description"),
+                             new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()),
+-                            Boolean.TRUE.equals(l.get("taxExempt")));
++                            Boolean.TRUE.equals(l.get("taxExempt")), lineDiscountPct(l));
+                 } else {
+-                    jdbc.update("INSERT INTO invoice_line_item (invoice_id, description, qty, unit, unit_price, tax_exempt)"
+-                            + " VALUES (?, ?, ?, ?, ?, ?)",
++                    jdbc.update("INSERT INTO invoice_line_item (invoice_id, description, qty, unit, unit_price, tax_exempt, discount_pct)"
++                            + " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                             invoiceId, l.get("description"),
+                             new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()),
+-                            Boolean.TRUE.equals(l.get("taxExempt")));
++                            Boolean.TRUE.equals(l.get("taxExempt")), lineDiscountPct(l));
+                 }
+             }
+         }
+@@ -246,6 +250,12 @@ public class TestSupportController {
+     }
+ 
+     @SuppressWarnings("unchecked")
++    /** The percentage a fixture line item takes off itself; none when it does not say. */
++    private static BigDecimal lineDiscountPct(Map<String, Object> lineItem) {
++        return lineItem.get("discountPct") == null ? BigDecimal.ZERO
++                : new BigDecimal(lineItem.get("discountPct").toString());
++    }
++
+     private static List<Map<String, Object>> rows(Map<String, Object> fixture, String key) {
+         Object value = fixture.get(key);
+         return value == null ? List.of() : (List<Map<String, Object>>) value;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 543b1eb..7859e23 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -145,7 +145,10 @@ public class Invoice {
+         return discountAmount;
+     }
+ 
+-    /** What the line items add up to, before any discount: the sum of each line rounded to the cent. */
++    /**
++     * What the line items add up to, before the invoice's discount: the sum of each line after its own
++     * discount, rounded to the cent.
++     */
+     public BigDecimal getSubtotal() {
+         return lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+@@ -244,13 +247,16 @@ public class Invoice {
+ 
+     /** Adds a line to this invoice and reworks its amount to include what the line charges. */
+     public InvoiceLineItem addLineItem(String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
+-        return addLineItem(description, qty, unit, unitPrice, false);
++        return addLineItem(description, qty, unit, unitPrice, false, BigDecimal.ZERO);
+     }
+ 
+-    /** Adds a line, taxable or tax-free, to this invoice and reworks its amount to include what the line charges. */
++    /**
++     * Adds a line, taxable or tax-free and with any discount of its own, to this invoice and reworks its
++     * amount to include what the line charges after that discount.
++     */
+     public InvoiceLineItem addLineItem(String description, BigDecimal qty, String unit, BigDecimal unitPrice,
+-            boolean taxExempt) {
+-        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unit, unitPrice, taxExempt);
++            boolean taxExempt, BigDecimal discountPct) {
++        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unit, unitPrice, taxExempt, discountPct);
+         lineItems.add(item);
+         recalculateAmount();
+         return item;
+@@ -258,8 +264,8 @@ public class Invoice {
+ 
+     /** Changes one of this invoice's lines and reworks its amount to match. */
+     public void updateLineItem(InvoiceLineItem item, String description, BigDecimal qty, String unit,
+-            BigDecimal unitPrice, boolean taxExempt) {
+-        item.update(description, qty, unit, unitPrice, taxExempt);
++            BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct) {
++        item.update(description, qty, unit, unitPrice, taxExempt, discountPct);
+         recalculateAmount();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
+index 9c6b1ac..88f8155 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
+@@ -40,25 +40,31 @@ public class InvoiceLineItem {
+     @Column(name = "tax_exempt", nullable = false)
+     private boolean taxExempt;
+ 
++    @Column(name = "discount_pct", nullable = false, precision = 5, scale = 2)
++    private BigDecimal discountPct = BigDecimal.ZERO;
++
+     protected InvoiceLineItem() {
+     }
+ 
+     InvoiceLineItem(Invoice invoice, String description, BigDecimal qty, String unit, BigDecimal unitPrice,
+-            boolean taxExempt) {
++            boolean taxExempt, BigDecimal discountPct) {
+         this.invoice = invoice;
+         this.description = description;
+         this.qty = qty;
+         this.unit = unit;
+         this.unitPrice = unitPrice;
+         this.taxExempt = taxExempt;
++        this.discountPct = discountPct;
+     }
+ 
+-    void update(String description, BigDecimal qty, String unit, BigDecimal unitPrice, boolean taxExempt) {
++    void update(String description, BigDecimal qty, String unit, BigDecimal unitPrice, boolean taxExempt,
++            BigDecimal discountPct) {
+         this.description = description;
+         this.qty = qty;
+         this.unit = unit;
+         this.unitPrice = unitPrice;
+         this.taxExempt = taxExempt;
++        this.discountPct = discountPct;
+     }
+ 
+     public Long getId() {
+@@ -91,8 +97,22 @@ public class InvoiceLineItem {
+         return taxExempt;
+     }
+ 
+-    /** What this line charges: quantity times unit price, rounded to the cent on its own before lines are added up. */
+-    public BigDecimal getAmount() {
++    /** The percentage this line takes off what it charges; zero when it has no discount of its own. */
++    public BigDecimal getDiscountPct() {
++        return discountPct;
++    }
++
++    /** Quantity times unit price, rounded to the cent, before this line's own discount. */
++    public BigDecimal getGrossAmount() {
+         return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+     }
++
++    /**
++     * What this line charges: quantity times unit price less the line's own discount, each rounded to the
++     * cent on its own before lines are added up.
++     */
++    public BigDecimal getAmount() {
++        BigDecimal gross = getGrossAmount();
++        return gross.subtract(gross.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index d2123a8..8847c02 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -116,7 +116,7 @@ public class InvoiceService {
+     public InvoiceDetailResponse addLineItem(Long projectId, Long invoiceId, LineItemRequest request) {
+         Invoice invoice = findDraft(projectId, invoiceId);
+         invoice.addLineItem(request.description().strip(), request.qty(), request.normalizedUnit(), request.unitPrice(),
+-                request.exempt());
++                request.exempt(), request.lineDiscountPct());
+         invoices.flush();
+         return InvoiceDetailResponse.from(invoice);
+     }
+@@ -128,7 +128,7 @@ public class InvoiceService {
+         Invoice invoice = findDraft(projectId, invoiceId);
+         InvoiceLineItem item = findLineItem(invoice, lineItemId);
+         invoice.updateLineItem(item, request.description().strip(), request.qty(), request.normalizedUnit(),
+-                request.unitPrice(), request.exempt());
++                request.unitPrice(), request.exempt(), request.lineDiscountPct());
+         invoices.flush();
+         return InvoiceDetailResponse.from(invoice);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java b/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
+index dafa041..298c444 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.invoice;
+ 
++import jakarta.validation.constraints.DecimalMax;
+ import jakarta.validation.constraints.DecimalMin;
+ import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotBlank;
+@@ -7,13 +8,14 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ 
+-/** Payload to add, or change, a line item on a draft invoice. The unit price may be given to a fraction of a cent (up to four decimal places); the unit is optional; a line is taxable unless marked tax-exempt. */
++/** Payload to add, or change, a line item on a draft invoice. The unit price may be given to a fraction of a cent (up to four decimal places); the unit is optional; a line is taxable unless marked tax-exempt, and may take its own percentage discount. */
+ public record LineItemRequest(
+         @NotBlank @Size(max = 255) String description,
+         @NotNull @DecimalMin("0.01") @Digits(integer = 8, fraction = 2) BigDecimal qty,
+         @Size(max = 50) String unit,
+         @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 4) BigDecimal unitPrice,
+-        Boolean taxExempt) {
++        Boolean taxExempt,
++        @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal discountPct) {
+ 
+     /** The unit with surrounding blanks removed, or null when none was given. */
+     String normalizedUnit() {
+@@ -24,4 +26,9 @@ public record LineItemRequest(
+     boolean exempt() {
+         return Boolean.TRUE.equals(taxExempt);
+     }
++
++    /** The percentage the line takes off itself; a line not saying so has no discount. */
++    BigDecimal lineDiscountPct() {
++        return discountPct == null ? BigDecimal.ZERO : discountPct;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java b/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java
+index d1728bb..dbd1fd0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java
+@@ -3,10 +3,10 @@ package net.officefloor.hq.app.invoice;
+ import java.math.BigDecimal;
+ 
+ public record LineItemResponse(Long id, String description, BigDecimal qty, String unit, BigDecimal unitPrice,
+-        BigDecimal amount, boolean taxExempt) {
++        BigDecimal amount, boolean taxExempt, BigDecimal discountPct, BigDecimal grossAmount) {
+ 
+     static LineItemResponse from(InvoiceLineItem item) {
+         return new LineItemResponse(item.getId(), item.getDescription(), item.getQty(), item.getUnit(), item.getUnitPrice(),
+-                item.getAmount(), item.isTaxExempt());
++                item.getAmount(), item.isTaxExempt(), item.getDiscountPct(), item.getGrossAmount());
+     }
+ }
+diff --git a/src/main/resources/db/migration/V43__line_item_discount.sql b/src/main/resources/db/migration/V43__line_item_discount.sql
+new file mode 100644
+index 0000000..eb4a613
+--- /dev/null
++++ b/src/main/resources/db/migration/V43__line_item_discount.sql
+@@ -0,0 +1,7 @@
++-- A single line item can take its own percentage off what it charges. The line's amount is then what it
++-- charges less its discount, and the invoice is worked out from those discounted lines. Existing lines
++-- have no discount, so no amounts change.
++ALTER TABLE invoice_line_item ADD COLUMN discount_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
++
++ALTER TABLE invoice_line_item ADD CONSTRAINT invoice_line_item_discount_pct_range
++    CHECK (discount_pct >= 0 AND discount_pct <= 100);
