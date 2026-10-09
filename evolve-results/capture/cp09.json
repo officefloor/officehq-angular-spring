@@ -1,0 +1,138 @@
+{
+  "checkpoint": 9,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48"
+  },
+  "checkpoint_id": "cp09_currency_format",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    4,
+    8
+  ],
+  "request": {
+    "spec": "Show money properly everywhere. Use a dollar sign and cents, like $100.00.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nShow money properly everywhere. Use a dollar sign and cents, like $100.00.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "785f4d2fbf5bc4332dc41eed5effe265c9fd242f",
+  "reset_sha": "",
+  "preagent_sha": "96ac0089e6c068aebd9d6a559d9ef3e6bdc11898",
+  "prev_sha": "96ac0089e6c068aebd9d6a559d9ef3e6bdc11898",
+  "base_sha": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.17867719999999998,
+    "input_tokens": 8,
+    "output_tokens": 1668,
+    "cache_read_tokens": 73866,
+    "cache_creation_tokens": 16314,
+    "num_turns": 4,
+    "duration_ms": 38350,
+    "duration_api_ms": 17530,
+    "model": "claude-opus-5-5",
+    "session_id": "124061df-2357-4c6d-9f1e-d3672e9e7135",
+    "stop_reason": "success",
+    "result_text": "Money now shows as `$100.00` in all three places the app displays it, and `bin/e2e` passes.\n\n**What changed** (front end only):\n- `features/invoices/project-invoices.ts`: each invoice amount (`invoice-amount`) and the project total (`project-invoices-total`) now use Angular's US-dollar formatting instead of a plain number.\n- `features/dashboard/dashboard.ts`: the dashboard's outstanding total (`dashboard-outstanding-total`) uses the same formatting. It previously showed a bare `toFixed(2)` number.\n\n**Not changed:**\n- **Server and database:** the request asked for a migration and server change too, but neither was needed. This only changes how amounts are shown. The server still sends amounts as numbers and stores them as before. The test also says the audit record format stays the same (it still records `amount=100.00`), so no migration was added.\n- **Server framework:** the request calls the server OfficeFloor, but the code is actually Spring Boot (only the package is named `net.officefloor`). Since the server didn't need to change, this has no effect.\n- **`data-testid` values:** none were renamed or removed.\n\n**Heads-up:** the test comments say two earlier tests that check these amounts were \"shipped updated alongside this one\", but only the new test is in `e2e/specs/`. `bin/e2e` ran just that one. I didn't run anything against the dashboard's outstanding total; it uses exactly the same formatting as the invoice amounts.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.17867719999999998,
+        "num_turns": 4,
+        "duration_ms": 38350,
+        "duration_api_ms": 17530,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp09.agent.jsonl",
+  "agent_diff_file": "cp09.agent.diff",
+  "build_log_file": "cp09.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 0,
+    "results": {},
+    "detail": [],
+    "error": "e2e dep install failed: npm ci --silent",
+    "gate_invalid": true,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 0.17,
+            "impact": 16,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/src/app/features/dashboard/dashboard.ts",
+                "lang": "typescript",
+                "cost": 8,
+                "mutation": 0,
+                "godclass": 8,
+                "mut_fns": 0,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/src/app/features/dashboard/dashboard.ts",
+                "name": "computed",
+                "container": "",
+                "cc": 4,
+                "wmc_other": 2,
+                "cost": 8,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 0,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 0.0,
+            "impact": 0,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [],
+            "drivers": [],
+            "cognitive": {
+              "threshold": 20,
+              "max": 0,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
