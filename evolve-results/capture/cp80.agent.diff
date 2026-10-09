@@ -1,0 +1,142 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 9b6fd2f..9d15cc7 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -13,7 +13,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ 
+ // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
+-// amount, their subtotal, any percentage or flat amount discount, the taxable amount (leaving out tax-free lines), any
++// amount, their subtotal, any percentage or flat amount discount (one or the other, taken off before tax), the taxable amount (leaving out tax-free lines), any
+ // sales tax added on it after the discount, any levy (a second tax) added on the same base, the effective tax rate
+ // (the tax and levy as a percentage of the total before tax), the total before tax, and the final total including both taxes (also shown as the total after tax).
+ // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
+@@ -212,8 +212,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+             <tr>
+               <th scope="row" colspan="5">
+                 @if (inv.discountAmount > 0) {
+-                  Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span> off@if (inv.discountPct > 0) {
+-                    plus <span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%})
++                  Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span> off)
+                 } @else {
+                   Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%)
+                 }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index e066bdc..19ce3f9 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -184,7 +184,7 @@ export class InvoiceService {
+     return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`);
+   }
+ 
+-  /** Sets the percentage and the flat amount taken off a draft invoice; zero for both removes the discount. */
++  /** Sets the percentage or the flat amount taken off a draft invoice (the other being zero); zero for both removes the discount. */
+   applyDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discount`, {
+       discountPct,
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/DiscountRequest.java b/src/main/java/net/officefloor/hq/app/invoice/DiscountRequest.java
+index c6a1001..e65af48 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/DiscountRequest.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/DiscountRequest.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.invoice;
+ 
++import jakarta.validation.constraints.AssertTrue;
+ import jakarta.validation.constraints.DecimalMax;
+ import jakarta.validation.constraints.DecimalMin;
+ import jakarta.validation.constraints.Digits;
+@@ -7,8 +8,8 @@ import jakarta.validation.constraints.NotNull;
+ import java.math.BigDecimal;
+ 
+ /**
+- * Payload to set the discount on a draft invoice: the percentage taken off and a flat amount taken off
+- * (omitted is none); zero for both removes the discount.
++ * Payload to set the discount on a draft invoice: either a percentage taken off or a flat amount taken
++ * off (omitted is none), never both; zero for both removes the discount.
+  */
+ public record DiscountRequest(
+         @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal discountPct,
+@@ -18,4 +19,10 @@ public record DiscountRequest(
+     public BigDecimal flatAmount() {
+         return discountAmount == null ? BigDecimal.ZERO : discountAmount;
+     }
++
++    /** The discount is a percentage or a flat amount, not both at once. */
++    @AssertTrue(message = "A discount is either a percentage or a flat amount, not both")
++    public boolean isOneKind() {
++        return discountPct == null || discountPct.signum() == 0 || flatAmount().signum() == 0;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 7859e23..16d5f38 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -24,9 +24,9 @@ import java.util.function.UnaryOperator;
+ import net.officefloor.hq.app.project.Project;
+ 
+ /**
+- * An invoice raised against a project. It is built from line items, and can take a percentage and/or
+- * a flat amount off their sum as a discount (the flat amount shared across the lines in proportion to
+- * what each charges, and never more than is left after the percentage), then add a percentage sales tax on what is left of the taxable lines only
++ * An invoice raised against a project. It is built from line items, and can take either a percentage or
++ * a flat amount off their sum as a discount, before tax (the flat amount shared across the lines in
++ * proportion to what each charges, and never more than the subtotal), then add a percentage sales tax on what is left of the taxable lines only
+  * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
+  * its stored amount is always that subtotal less the discount plus the tax plus the levy.
+  * <p>
+@@ -285,8 +285,14 @@ public class Invoice {
+         applyDiscount(discountPct, BigDecimal.ZERO);
+     }
+ 
+-    /** Sets the percentage and the flat amount taken off this invoice and reworks its amount to match. */
++    /**
++     * Sets the discount on this invoice, either a percentage or a flat amount (the other being zero), and
++     * reworks its amount to match.
++     */
+     public void applyDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
++        if (discountPct.signum() != 0 && discountAmount.signum() != 0) {
++            throw new IllegalArgumentException("A discount is either a percentage or a flat amount, not both");
++        }
+         this.discountPct = discountPct.setScale(2, RoundingMode.HALF_UP);
+         this.discountAmount = discountAmount.setScale(2, RoundingMode.HALF_UP);
+         recalculateAmount();
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 8847c02..f299025 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -142,7 +142,7 @@ public class InvoiceService {
+         return InvoiceDetailResponse.from(invoice);
+     }
+ 
+-    /** Sets the percentage and flat discount on a draft invoice and reworks the invoice amount to match. */
++    /** Sets the percentage or flat discount on a draft invoice and reworks the invoice amount to match. */
+     @Transactional
+     public InvoiceDetailResponse applyDiscount(Long projectId, Long invoiceId, DiscountRequest request) {
+         Invoice invoice = findDraft(projectId, invoiceId);
+diff --git a/src/main/resources/db/migration/V44__discount_one_kind.sql b/src/main/resources/db/migration/V44__discount_one_kind.sql
+new file mode 100644
+index 0000000..1b4d0e4
+--- /dev/null
++++ b/src/main/resources/db/migration/V44__discount_one_kind.sql
+@@ -0,0 +1,21 @@
++-- An invoice's discount is now either a percentage or a flat amount, never both. An invoice that had
++-- both keeps what they took off together, as a flat amount, so its amount is unchanged: the
++-- percentage of the subtotal plus the flat amount (never more than was left after the percentage).
++CREATE VIEW invoice_subtotal_v44 AS
++    SELECT i.id AS invoice_id,
++           COALESCE((SELECT SUM(ROUND(l.qty * l.unit_price, 2)
++                         - ROUND(ROUND(l.qty * l.unit_price, 2) * l.discount_pct / 100, 2))
++                     FROM invoice_line_item l WHERE l.invoice_id = i.id), 0) AS subtotal
++    FROM invoice i;
++
++UPDATE invoice i SET
++    discount_amount = (
++        SELECT ROUND(v.subtotal * i.discount_pct / 100, 2)
++            + LEAST(i.discount_amount, GREATEST(v.subtotal - ROUND(v.subtotal * i.discount_pct / 100, 2), 0))
++        FROM invoice_subtotal_v44 v WHERE v.invoice_id = i.id),
++    discount_pct = 0
++WHERE i.discount_pct > 0 AND i.discount_amount > 0;
++
++DROP VIEW invoice_subtotal_v44;
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_discount_one_kind CHECK (discount_pct = 0 OR discount_amount = 0);
