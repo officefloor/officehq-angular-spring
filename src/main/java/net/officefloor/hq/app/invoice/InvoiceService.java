@@ -11,6 +11,7 @@ import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.Project;
 import net.officefloor.hq.app.project.ProjectRepository;
+import net.officefloor.hq.app.settings.SettingsService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -25,14 +26,16 @@ public class InvoiceService {
     private final ProjectRepository projects;
     private final PaymentRepository payments;
     private final ClientRepository clients;
+    private final SettingsService settings;
     private final Audit audit;
 
     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
-            ClientRepository clients, Audit audit) {
+            ClientRepository clients, SettingsService settings, Audit audit) {
         this.invoices = invoices;
         this.projects = projects;
         this.clients = clients;
         this.payments = payments;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -97,6 +100,7 @@ public class InvoiceService {
         if (request.amount() != null) {
             invoice.addLineItem(InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION, BigDecimal.ONE, null, request.amount());
         }
+        invoice.applyTax(request.taxPct() != null ? request.taxPct() : settings.defaultTaxPct());
         Invoice saved = invoices.save(invoice);
         return InvoiceResponse.from(saved, BigDecimal.ZERO);
     }

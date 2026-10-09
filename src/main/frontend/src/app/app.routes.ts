@@ -47,4 +47,9 @@ export const routes: Routes = [
     path: 'projects/:projectId/invoices/:invoiceId',
     loadComponent: () => import('./features/invoices/invoice-detail').then((m) => m.InvoiceDetailPage),
   },
+  {
+    path: 'settings',
+    data: { section: 'settings', label: 'Settings', order: 4 },
+    loadComponent: () => import('./features/settings/settings').then((m) => m.SettingsPage),
+  },
 ];

@@ -107,6 +107,8 @@ export interface NewInvoice {
   issuedDate?: string;
   /** Defaults to 30 days after the issue date on the server when omitted. */
   dueDate?: string;
+  /** The sales tax percentage; defaults to the default tax rate in the settings on the server when omitted. */
+  taxPct?: number;
 }
 
 @Injectable({ providedIn: 'root' })

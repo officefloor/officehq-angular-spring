@@ -1,6 +1,6 @@
 import { CurrencyPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import {
   AbstractControl,
@@ -11,6 +11,7 @@ import {
 } from '@angular/forms';
 import { InvoiceService, ProjectInvoice } from './invoice.service';
 import { CurrencyCode } from '../clients/client.service';
+import { SettingsService } from '../settings/settings.service';
 
 // ISO yyyy-MM-dd strings compare correctly as plain strings.
 function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
@@ -19,7 +20,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
 }
 
 // A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each is still left to pay, adds a
-// new draft, sends a draft and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
+// new draft (starting from the default tax rate in the settings), sends a draft and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
 // opens onto its line items and payments.
 @Component({
   selector: 'app-project-invoices',
@@ -28,10 +29,13 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
     <section aria-labelledby="project-invoices-heading" data-testid="project-invoices">
       <h2 id="project-invoices-heading">Invoices</h2>
 
+      <button type="button" data-testid="invoice-new" (click)="startNew()">New invoice</button>
+
       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="invoice-form" novalidate>
         <div>
           <label for="invoice-amount">Amount (optional, or leave blank and add line items)</label>
           <input
+            #amountInput
             id="invoice-amount"
             type="number"
             inputmode="decimal"
@@ -65,6 +69,26 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
           @if (showDueError()) {
             <p id="invoice-due-error" role="alert" data-testid="invoice-form-due-error">
               The due date cannot be before the issue date.
+            </p>
+          }
+        </div>
+        <div>
+          <label for="invoice-tax-rate">Tax rate (%)</label>
+          <input
+            id="invoice-tax-rate"
+            type="number"
+            inputmode="decimal"
+            min="0"
+            max="100"
+            step="0.01"
+            formControlName="taxPct"
+            data-testid="invoice-tax-rate"
+            [attr.aria-invalid]="showTaxError()"
+            [attr.aria-describedby]="showTaxError() ? 'invoice-tax-rate-error' : null"
+          />
+          @if (showTaxError()) {
+            <p id="invoice-tax-rate-error" role="alert" data-testid="invoice-tax-rate-error">
+              Enter a percentage from 0 to 100 with at most two decimal places, or leave it blank for no tax.
             </p>
           }
         </div>
@@ -165,6 +189,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
 })
 export class ProjectInvoices {
   private readonly service = inject(InvoiceService);
+  private readonly settingsService = inject(SettingsService);
 
   readonly projectId = input.required<number>();
   /** The currency of the client the job is for; the money shown is in it. */
@@ -205,9 +230,42 @@ export class ProjectInvoices {
       amount: ['', [Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)]],
       issuedDate: [''],
       dueDate: [''],
+      taxPct: ['', [Validators.min(0), Validators.max(100), Validators.pattern(/^\d+(\.\d{1,2})?$/)]],
     },
     { validators: dueNotBeforeIssued },
   );
+
+  private readonly amountInput = viewChild.required<ElementRef<HTMLInputElement>>('amountInput');
+
+  // The standard tax rate from the settings; a new invoice starts with it and it can be changed per invoice.
+  private readonly settings = rxResource({ stream: () => this.settingsService.get() });
+  private readonly defaultTaxPct = computed(() =>
+    this.settings.hasValue() ? String(this.settings.value().defaultTaxPct) : '',
+  );
+
+  // Fills in the default tax rate once the settings load, unless a rate has already been typed.
+  private readonly syncTax = effect(() => {
+    const taxPct = this.defaultTaxPct();
+    if (!this.form.controls.taxPct.dirty) {
+      this.form.controls.taxPct.setValue(taxPct);
+    }
+  });
+
+  /** Clears the form back to a fresh invoice, starting from the default tax rate, ready to fill in. */
+  protected startNew(): void {
+    this.resetForm();
+    this.saveError.set(null);
+    this.amountInput().nativeElement.focus();
+  }
+
+  private resetForm(): void {
+    this.form.reset({ amount: '', issuedDate: '', dueDate: '', taxPct: this.defaultTaxPct() });
+  }
+
+  protected showTaxError(): boolean {
+    const control = this.form.controls.taxPct;
+    return control.invalid && (control.touched || control.dirty);
+  }
 
   protected showDueError(): boolean {
     return this.form.hasError('dueBeforeIssued') && this.form.controls.dueDate.dirty;
@@ -225,16 +283,18 @@ export class ProjectInvoices {
     }
     this.saving.set(true);
     this.saveError.set(null);
-    const { amount, issuedDate, dueDate } = this.form.getRawValue();
+    const { amount, issuedDate, dueDate, taxPct } = this.form.getRawValue();
     const invoice = {
       ...(amount !== '' && amount !== null ? { amount: Number(amount) } : {}),
       ...(issuedDate ? { issuedDate } : {}),
       ...(dueDate ? { dueDate } : {}),
+      // A cleared rate means no tax rather than falling back to the default.
+      taxPct: taxPct !== '' && taxPct !== null ? Number(taxPct) : 0,
     };
     this.service.create(this.projectId(), invoice).subscribe({
       next: (created) => {
         this.invoices.update((list) => [...(list ?? []), created]);
-        this.form.reset();
+        this.resetForm();
         this.saving.set(false);
       },
       error: () => {

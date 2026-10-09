@@ -64,6 +64,7 @@ public class TestSupportController {
         } finally {
             jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
         }
+        jdbc.update("UPDATE app_settings SET default_tax_pct = 0 WHERE id = 1");
     }
 
     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
