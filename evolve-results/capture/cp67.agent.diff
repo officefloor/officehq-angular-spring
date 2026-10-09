@@ -1,0 +1,228 @@
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index 6f22997..d4d4bf5 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -8,7 +8,7 @@ import { ProjectTasks } from '../tasks/project-tasks';
+ import { ProjectBudgetPanel } from './project-budget';
+ import { ProjectService } from './project.service';
+ 
+-// A single project's page: its name, client and status, its budget, its tags, its tasks, its notes, and its invoices.
++// A single project's page: its name, description, client and status, its budget, its tags, its tasks, its notes, and its invoices.
+ @Component({
+   selector: 'app-project-detail',
+   imports: [RouterLink, ProjectBudgetPanel, ProjectInvoices, Notes, ProjectTags, ProjectTasks],
+@@ -18,6 +18,9 @@ import { ProjectService } from './project.service';
+       <p role="alert" data-testid="project-error">Could not load the job.</p>
+     } @else if (project.value(); as p) {
+       <h1 data-testid="project-detail-name">{{ p.name }}</h1>
++      @if (p.description) {
++        <p data-testid="job-description">{{ p.description }}</p>
++      }
+       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
+       <p>Status: <span data-testid="project-detail-status">{{ p.status }}</span></p>
+       <app-project-budget [projectId]="projectId()" [currency]="p.currency" />
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index d830541..7aee4d0 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -23,6 +23,8 @@ export interface Project {
+   status: ProjectStatus;
+   /** The currency of the client the job is for. */
+   currency: CurrencyCode;
++  /** A short description of the work; null when none was given. */
++  description: string | null;
+ }
+ 
+ /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
+@@ -37,6 +39,7 @@ export interface NewProject {
+   code: string;
+   clientId: number;
+   status: ProjectStatus;
++  description: string | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/frontend/src/app/features/projects/projects.ts b/src/main/frontend/src/app/features/projects/projects.ts
+index 53fd35a..a979c04 100644
+--- a/src/main/frontend/src/app/features/projects/projects.ts
++++ b/src/main/frontend/src/app/features/projects/projects.ts
+@@ -13,7 +13,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+ // or finished, chosen when it is added and changeable from its row, and the list can be narrowed to
+ // the projects at a chosen status. The tag and status filters combine, e.g. active projects with a
+ // given tag. Each project carries a short reference code, given when it is added, that no other
+-// project may share.
++// project may share, and may carry an optional short description of the work.
+ @Component({
+   selector: 'app-projects',
+   imports: [ReactiveFormsModule, RouterLink],
+@@ -59,6 +59,23 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+           </p>
+         }
+       </div>
++      <div>
++        <label for="project-description">Description (optional)</label>
++        <textarea
++          id="project-description"
++          formControlName="description"
++          maxlength="500"
++          rows="2"
++          data-testid="project-form-description"
++          [attr.aria-invalid]="showError('description')"
++          [attr.aria-describedby]="showError('description') ? 'project-description-error' : null"
++        ></textarea>
++        @if (showError('description')) {
++          <p id="project-description-error" role="alert" data-testid="project-form-description-error">
++            Keep the description to 500 characters or fewer.
++          </p>
++        }
++      </div>
+       <div>
+         <label for="project-client">Client</label>
+         <select
+@@ -252,6 +269,7 @@ export class Projects {
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+     code: ['', [Validators.required, Validators.pattern(/^\s*[A-Za-z0-9-]{1,20}\s*$/)]],
++    description: ['', Validators.maxLength(500)],
+     clientId: ['', Validators.required],
+     status: ['ACTIVE' as ProjectStatus, Validators.required],
+   });
+@@ -262,7 +280,7 @@ export class Projects {
+     this.tagService.list().subscribe((list) => this.tags.set(list));
+   }
+ 
+-  protected showError(field: 'name' | 'code' | 'clientId'): boolean {
++  protected showError(field: 'name' | 'code' | 'description' | 'clientId'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -272,10 +290,16 @@ export class Projects {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, code, clientId, status } = this.form.getRawValue();
++    const { name, code, description, clientId, status } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    const project = { name: name.trim(), code: code.trim().toUpperCase(), clientId: Number(clientId), status };
++    const project = {
++      name: name.trim(),
++      code: code.trim().toUpperCase(),
++      description: description.trim() || null,
++      clientId: Number(clientId),
++      status,
++    };
+     this.service.create(project).subscribe({
+       next: (created) => {
+         // A new project carries no tags, so it only belongs on a list not filtered by tag, and only
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index e54d2e5..fff3f51 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -91,8 +91,9 @@ public class TestSupportController {
+             }
+         }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+-            jdbc.update("INSERT INTO project (id, name, code, client_id, status, archived, budget) VALUES (?, ?, ?, ?, ?, ?, ?)",
+-                    ((Number) p.get("id")).longValue(), p.get("name"), p.get("code"),
++            jdbc.update("INSERT INTO project (id, name, code, description, client_id, status, archived, budget)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
++                    ((Number) p.get("id")).longValue(), p.get("name"), p.get("code"), p.get("description"),
+                     ((Number) p.get("clientId")).longValue(),
+                     p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString(),
+                     Boolean.TRUE.equals(p.get("archived")),
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+index f83d2fc..f40adf6 100644
+--- a/src/main/java/net/officefloor/hq/app/project/Project.java
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -31,6 +31,8 @@ public class Project {
+ 
+     private String code;
+ 
++    private String description;
++
+     @ManyToOne(fetch = FetchType.LAZY, optional = false)
+     @JoinColumn(name = "client_id", nullable = false)
+     private Client client;
+@@ -69,6 +71,15 @@ public class Project {
+         return code;
+     }
+ 
++    /** A short description of the work, or null when none was given. */
++    public String getDescription() {
++        return description;
++    }
++
++    public void setDescription(String description) {
++        this.description = description;
++    }
++
+     public Client getClient() {
+         return client;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java b/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java
+index 63d9258..3507556 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java
+@@ -7,13 +7,18 @@ import jakarta.validation.constraints.Size;
+ 
+ /**
+  * Payload to create a project for a client; without a status the project starts active. The code is
+- * a short reference of letters, digits and dashes, unique across projects.
++ * a short reference of letters, digits and dashes, unique across projects. The description is an
++ * optional short summary of the work.
+  */
+ public record ProjectRequest(
+         @NotBlank @Size(max = 255) String name,
+         @NotBlank @Pattern(regexp = ProjectRequest.CODE_PATTERN) String code,
+         @NotNull Long clientId,
+-        ProjectStatus status) {
++        ProjectStatus status,
++        @Size(max = ProjectRequest.DESCRIPTION_MAX) String description) {
++
++    /** The longest description a job may carry. */
++    public static final int DESCRIPTION_MAX = 500;
+ 
+     /** Up to 20 letters, digits or dashes, ignoring surrounding whitespace. */
+     public static final String CODE_PATTERN = "^\\s*[A-Za-z0-9-]{1,20}\\s*$";
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+index d55eeb2..265c235 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+@@ -3,11 +3,11 @@ package net.officefloor.hq.app.project;
+ import net.officefloor.hq.app.client.Currency;
+ 
+ public record ProjectResponse(Long id, String name, String code, Long clientId, String clientName, boolean archived,
+-        ProjectStatus status, Currency currency) {
++        ProjectStatus status, Currency currency, String description) {
+ 
+     public static ProjectResponse from(Project project) {
+         return new ProjectResponse(project.getId(), project.getName(), project.getCode(),
+                 project.getClient().getId(), project.getClient().getName(), project.isArchived(),
+-                project.getStatus(), project.getClient().getCurrency());
++                project.getStatus(), project.getClient().getCurrency(), project.getDescription());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index c95a0df..96c5a7a 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -79,6 +79,9 @@ public class ProjectService {
+         if (request.status() != null) {
+             project.setStatus(request.status());
+         }
++        if (request.description() != null && !request.description().isBlank()) {
++            project.setDescription(request.description().trim());
++        }
+         try {
+             return ProjectResponse.from(projects.saveAndFlush(project));
+         } catch (DataIntegrityViolationException e) {
+diff --git a/src/main/resources/db/migration/V35__project_description.sql b/src/main/resources/db/migration/V35__project_description.sql
+new file mode 100644
+index 0000000..625d50b
+--- /dev/null
++++ b/src/main/resources/db/migration/V35__project_description.sql
+@@ -0,0 +1,3 @@
++-- A job may carry a short description of the work, given when it is added. Jobs added before
++-- descriptions existed, or added without one, have none.
++ALTER TABLE project ADD COLUMN description VARCHAR(500);
