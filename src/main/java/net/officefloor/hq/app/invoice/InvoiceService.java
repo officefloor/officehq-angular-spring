@@ -2,16 +2,24 @@ package net.officefloor.hq.app.invoice;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.Client;
 import net.officefloor.hq.app.client.ClientRepository;
+import net.officefloor.hq.app.creditnote.CreditNote;
 import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+import net.officefloor.hq.app.deposit.Deposit;
+import net.officefloor.hq.app.deposit.DepositRepository;
+import net.officefloor.hq.app.payment.Payment;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.Project;
 import net.officefloor.hq.app.project.ProjectRepository;
+import net.officefloor.hq.app.refund.Refund;
+import net.officefloor.hq.app.refund.RefundRepository;
 import net.officefloor.hq.app.settings.SettingsService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -28,14 +36,19 @@ public class InvoiceService {
     private final PaymentRepository payments;
     private final CreditNoteRepository creditNotes;
     private final ClientRepository clients;
+    private final DepositRepository deposits;
+    private final RefundRepository refunds;
     private final SettingsService settings;
     private final Audit audit;
 
     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
-            CreditNoteRepository creditNotes, ClientRepository clients, SettingsService settings, Audit audit) {
+            CreditNoteRepository creditNotes, ClientRepository clients, DepositRepository deposits,
+            RefundRepository refunds, SettingsService settings, Audit audit) {
         this.invoices = invoices;
         this.projects = projects;
         this.clients = clients;
+        this.deposits = deposits;
+        this.refunds = refunds;
         this.payments = payments;
         this.creditNotes = creditNotes;
         this.settings = settings;
@@ -72,7 +85,50 @@ public class InvoiceService {
                 .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO),
                         credited.getOrDefault(i.getId(), BigDecimal.ZERO)))
                 .toList();
-        return ClientStatementResponse.from(client.getId(), client.getName(), client.getCurrency(), lines);
+        return ClientStatementResponse.from(client.getId(), client.getName(), client.getCurrency(), lines,
+                accountEntries(clientId, found));
+    }
+
+    /**
+     * The entries on a client's running account. Drafts have not been sent and void invoices were cancelled, so
+     * neither is charged. A payment made out of held deposits is left out, as the deposit was already credited
+     * when it was paid in.
+     */
+    private List<StatementEntry> accountEntries(Long clientId, List<Invoice> found) {
+        List<StatementEntry> entries = new ArrayList<>();
+        List<Long> sent = new ArrayList<>();
+        for (Invoice invoice : found) {
+            if (invoice.getStatus() == InvoiceStatus.DRAFT) {
+                continue;
+            }
+            sent.add(invoice.getId());
+            if (invoice.getStatus() != InvoiceStatus.VOID) {
+                entries.add(StatementEntry.charge(StatementEntry.Kind.INVOICE, invoice.getId(), invoice.getId(),
+                        invoice.getIssuedDate(), "Invoice #" + invoice.getId(), invoice.getAmount()));
+            }
+        }
+        if (!sent.isEmpty()) {
+            for (Payment payment : payments.findByInvoiceIdIn(sent)) {
+                if (payment.getDepositApplicationId() == null) {
+                    entries.add(StatementEntry.credit(StatementEntry.Kind.PAYMENT, payment.getId(), payment.getInvoiceId(),
+                            payment.getDate(), "Payment on invoice #" + payment.getInvoiceId(), payment.getAmount()));
+                }
+            }
+            for (CreditNote note : creditNotes.findByInvoiceIdIn(sent)) {
+                entries.add(StatementEntry.credit(StatementEntry.Kind.CREDIT_NOTE, note.getId(), note.getInvoiceId(),
+                        LocalDate.ofInstant(note.getIssuedAt(), ZoneOffset.UTC),
+                        "Credit note on invoice #" + note.getInvoiceId(), note.getAmount()));
+            }
+        }
+        for (Deposit deposit : deposits.findByClientIdOrderByDateAscIdAsc(clientId)) {
+            entries.add(StatementEntry.credit(StatementEntry.Kind.DEPOSIT, deposit.getId(), null, deposit.getDate(),
+                    "Deposit", deposit.getAmount()));
+        }
+        for (Refund refund : refunds.findByClientIdOrderByDateDescIdDesc(clientId)) {
+            entries.add(StatementEntry.charge(StatementEntry.Kind.REFUND, refund.getId(), null, refund.getDate(),
+                    "Refund", refund.getAmount()));
+        }
+        return entries;
     }
 
     private Map<Long, BigDecimal> paidByInvoice(List<Invoice> found) {

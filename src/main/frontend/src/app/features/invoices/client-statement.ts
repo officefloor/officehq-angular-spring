@@ -6,6 +6,8 @@ import { InvoiceService } from './invoice.service';
 
 // A client's statement: every invoice across the client's projects grouped by job, how much is left to
 // pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
+// It opens with the running account: invoices, payments, credit notes, deposits and refunds in date order with the
+// balance owed after each.
 // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
 // with the app's navigation and the page's controls left off the printed copy.
 @Component({
@@ -33,6 +35,9 @@ import { InvoiceService } from './invoice.service';
     }
     table {
       border-collapse: collapse;
+    }
+    .statement-money {
+      text-align: right;
     }
     th,
     td {
@@ -75,6 +80,44 @@ import { InvoiceService } from './invoice.service';
             <dt class="statement-grand-total">Grand total owed</dt>
             <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
           </dl>
+        </section>
+        <section aria-labelledby="statement-account-heading" data-testid="statement-account">
+          <h2 id="statement-account-heading">Account</h2>
+          @if (s.entries.length === 0) {
+            <p data-testid="statement-account-empty">Nothing on the account yet.</p>
+          } @else {
+            <table data-testid="statement-account-table">
+              <caption>Running account for {{ s.clientName }}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Entry</th>
+                  <th scope="col" class="statement-money">Charges</th>
+                  <th scope="col" class="statement-money">Credits</th>
+                  <th scope="col" class="statement-money">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (e of s.entries; track e.kind + e.sourceId; let n = $index) {
+                  <tr [attr.data-testid]="'statement-entry-row-' + (n + 1)" [attr.data-kind]="e.kind">
+                    <td data-testid="statement-entry-date">{{ e.date }}</td>
+                    <td data-testid="statement-entry-description">{{ e.description }}</td>
+                    <td class="statement-money" data-testid="statement-entry-charge">
+                      @if (e.charge !== null) {
+                        {{ e.charge | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}
+                      }
+                    </td>
+                    <td class="statement-money" data-testid="statement-entry-credit">
+                      @if (e.credit !== null) {
+                        {{ e.credit | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}
+                      }
+                    </td>
+                    <td class="statement-money" data-testid="statement-running-balance">{{ e.balance | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
         </section>
         @if (s.invoices.length === 0) {
           <p data-testid="client-statement-empty">No invoices yet.</p>

@@ -13,6 +13,9 @@ public interface CreditNoteRepository extends JpaRepository<CreditNote, Long> {
     /** An invoice's credit notes, oldest first. */
     List<CreditNote> findByInvoiceIdOrderByIdAsc(Long invoiceId);
 
+    /** Every credit note against any of the given invoices. */
+    List<CreditNote> findByInvoiceIdIn(Collection<Long> invoiceIds);
+
     /** Total credited against an invoice (zero when nothing has been credited). */
     @Query("SELECT COALESCE(SUM(c.amount), 0) FROM CreditNote c WHERE c.invoiceId = :invoiceId")
     BigDecimal sumAmountByInvoiceId(Long invoiceId);

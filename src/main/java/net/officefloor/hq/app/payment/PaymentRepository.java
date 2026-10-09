@@ -13,6 +13,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     /** An invoice's payments, oldest first. */
     List<Payment> findByInvoiceIdOrderByDateAscIdAsc(Long invoiceId);
 
+    /** Every payment against any of the given invoices. */
+    List<Payment> findByInvoiceIdIn(Collection<Long> invoiceIds);
+
     /** Total paid against an invoice (zero when nothing has been paid). */
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.invoiceId = :invoiceId")
     BigDecimal sumAmountByInvoiceId(Long invoiceId);

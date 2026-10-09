@@ -56,6 +56,25 @@ export interface StatementJob {
   tax: number;
 }
 
+/** What an entry on a client's running account records. */
+export type StatementEntryKind = 'INVOICE' | 'PAYMENT' | 'CREDIT_NOTE' | 'DEPOSIT' | 'REFUND';
+
+/**
+ * One dated entry on a client's running account: an invoice or refund is a charge, a payment, credit note or deposit
+ * is a credit. The balance is what the client owes once this entry and those before it are counted.
+ */
+export interface StatementEntry {
+  kind: StatementEntryKind;
+  sourceId: number;
+  /** The invoice the entry is for; null for deposits and refunds. */
+  invoiceId: number | null;
+  date: string;
+  description: string;
+  charge: number | null;
+  credit: number | null;
+  balance: number;
+}
+
 /** A client's invoices across all their projects, also grouped by job, with the total they still owe. */
 export interface ClientStatement {
   clientId: number;
@@ -72,6 +91,8 @@ export interface ClientStatement {
   outstanding: number;
   /** The tax across the client's sent invoices (drafts and void ones are left out). */
   tax: number;
+  /** Invoices, payments, credit notes, deposits and refunds in date order, each with the running balance. */
+  entries: StatementEntry[];
 }
 
 /** One thing an invoice charges for; its amount is quantity times unit price, less the line's own discount. */

@@ -17,12 +17,14 @@ import net.officefloor.hq.app.client.Currency;
  * summary it also gives the total invoiced on those owed invoices and how much of that has been paid,
  * so the total still owed is what was invoiced less what was paid. It also shows the tax (sales tax and
  * levy) on each job and across the whole statement, again leaving out drafts and void invoices. All of it
- * is in the client's currency.
+ * is in the client's currency. Finally it gives the running account: every invoice, payment, credit note, deposit and
+ * refund in date order, each with the balance owed once it is counted.
  */
 public record ClientStatementResponse(Long clientId, String clientName, Currency currency, List<Line> invoices, List<Job> jobs,
-        BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax) {
+        BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax, List<StatementEntry> entries) {
 
-    static ClientStatementResponse from(Long clientId, String clientName, Currency currency, List<Line> invoices) {
+    static ClientStatementResponse from(Long clientId, String clientName, Currency currency, List<Line> invoices,
+            List<StatementEntry> entries) {
         Map<Long, List<Line>> byProject = new LinkedHashMap<>();
         invoices.forEach(l -> byProject.computeIfAbsent(l.projectId(), id -> new ArrayList<>()).add(l));
         List<Job> jobs = byProject.values().stream()
@@ -31,7 +33,18 @@ public record ClientStatementResponse(Long clientId, String clientName, Currency
         BigDecimal outstanding = owed(invoices);
         BigDecimal invoiced = sum(invoices, Line::amount);
         return new ClientStatementResponse(clientId, clientName, currency, invoices, jobs, invoiced,
-                invoiced.subtract(outstanding), outstanding, sum(invoices, Line::tax));
+                invoiced.subtract(outstanding), outstanding, sum(invoices, Line::tax), runningBalance(entries));
+    }
+
+    /** Puts the entries in date order, each carrying the balance owed once it and those before it are counted. */
+    private static List<StatementEntry> runningBalance(List<StatementEntry> entries) {
+        List<StatementEntry> ordered = new ArrayList<>();
+        BigDecimal balance = BigDecimal.ZERO.setScale(2);
+        for (StatementEntry entry : entries.stream().sorted(StatementEntry.DATE_ORDER).toList()) {
+            balance = balance.add(entry.change());
+            ordered.add(entry.withBalance(balance));
+        }
+        return ordered;
     }
 
     /** What is left to pay across the given invoices, leaving out drafts and void ones. */

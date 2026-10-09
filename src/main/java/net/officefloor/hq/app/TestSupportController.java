@@ -135,7 +135,9 @@ public class TestSupportController {
         for (Map<String, Object> i : rows(fixture, "invoices")) {
             // A missing date is filled in from the other one using the standard payment term; with
             // neither given the invoice is issued today.
-            LocalDate issued = i.get("issuedDate") != null ? LocalDate.parse(i.get("issuedDate").toString())
+            // The issue date may be given as "issuedDate" or "issueDate".
+            Object issuedValue = i.get("issuedDate") != null ? i.get("issuedDate") : i.get("issueDate");
+            LocalDate issued = issuedValue != null ? LocalDate.parse(issuedValue.toString())
                     : i.get("dueDate") != null
                             ? LocalDate.parse(i.get("dueDate").toString()).minusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
                             : LocalDate.now(clock);
