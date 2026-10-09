@@ -7,5 +7,8 @@ import jakarta.validation.constraints.Size;
 /** Payload to create a client. */
 public record ClientRequest(
         @NotBlank @Size(max = 255) String name,
-        @NotBlank @Email @Size(max = 255) String email) {
+        @NotBlank @Email(regexp = ClientRequest.EMAIL_PATTERN) @Size(max = 255) String email) {
+
+    /** Requires a dotted domain, which plain {@code @Email} does not (it accepts {@code a@b}). */
+    static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
 }

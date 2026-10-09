@@ -82,7 +82,16 @@ export class Clients {
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
-    email: ['', [Validators.required, Validators.email, Validators.maxLength(255)]],
+    email: [
+      '',
+      [
+        Validators.required,
+        Validators.email,
+        // Validators.email accepts "a@b"; also require a dotted domain (matches the server rule).
+        Validators.pattern(/^[^@\s]+@[^@\s]+\.[^@\s]+$/),
+        Validators.maxLength(255),
+      ],
+    ],
   });
 
   constructor() {
