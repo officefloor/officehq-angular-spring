@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.client.Currency;
@@ -157,16 +158,19 @@ public class TestSupportController {
             boolean taxInclusive = Boolean.TRUE.equals(client.get("TAX_INCLUSIVE"));
             boolean taxExempt = Boolean.TRUE.equals(client.get("TAX_EXEMPT"));
             // An invoice may carry several discounts, each a percentage ("pct") or a flat amount ("amount");
-            // an older fixture gives at most one as discountPct / discountAmount.
+            // an older fixture gives at most one as discountPct / discountAmount. A percentage may be capped
+            // at the most it takes off ("cap", or discountCap alongside discountPct).
             List<Map<String, Object>> discounts = new ArrayList<>(rows(i, "discounts"));
             if (i.get("discountPct") != null && new BigDecimal(i.get("discountPct").toString()).signum() > 0) {
-                discounts.add(Map.of("pct", i.get("discountPct")));
+                Map<String, Object> pctDiscount = new HashMap<>(Map.of("pct", i.get("discountPct")));
+                if (i.get("discountCap") != null) {
+                    pctDiscount.put("cap", i.get("discountCap"));
+                }
+                discounts.add(pctDiscount);
             }
             if (i.get("discountAmount") != null && new BigDecimal(i.get("discountAmount").toString()).signum() > 0) {
                 discounts.add(Map.of("amount", i.get("discountAmount")));
             }
-            BigDecimal discountPct = discounts.stream().map(d -> decimal(d.get("pct")))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add).min(BigDecimal.valueOf(100));
             // The percentages each take their share of the subtotal (never more than is left); the flat
             // amounts are then taken off what is left and shared across the lines in proportion to what
             // each charges.
@@ -177,13 +181,26 @@ public class TestSupportController {
                 return gross.subtract(gross.multiply(lineDiscountPct(l)).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
             }).toList();
             BigDecimal subtotal = lines.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+            // A percentage whose cap limits it is shared across the lines like a flat amount; the others are
+            // taken off each line as a percentage.
+            BigDecimal discountPct = BigDecimal.ZERO;
+            BigDecimal cappedDiscount = BigDecimal.ZERO.setScale(2);
             BigDecimal left = subtotal;
             for (Map<String, Object> d : discounts) {
                 if (decimal(d.get("pct")).signum() > 0) {
-                    left = left.subtract(subtotal.multiply(decimal(d.get("pct"))).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
-                            .min(left.max(BigDecimal.ZERO.setScale(2))));
+                    BigDecimal share = subtotal.multiply(decimal(d.get("pct"))).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    boolean capped = d.get("cap") != null && share.compareTo(decimal(d.get("cap"))) > 0;
+                    BigDecimal taken = (capped ? decimal(d.get("cap")).setScale(2, RoundingMode.HALF_UP) : share)
+                            .min(left.max(BigDecimal.ZERO.setScale(2)));
+                    if (capped) {
+                        cappedDiscount = cappedDiscount.add(taken);
+                    } else {
+                        discountPct = discountPct.add(decimal(d.get("pct")));
+                    }
+                    left = left.subtract(taken);
                 }
             }
+            discountPct = discountPct.min(BigDecimal.valueOf(100));
             BigDecimal pctDiscount = subtotal.subtract(left);
             for (Map<String, Object> d : discounts) {
                 if (decimal(d.get("pct")).signum() == 0) {
@@ -192,13 +209,14 @@ public class TestSupportController {
                 }
             }
             BigDecimal flatDiscount = subtotal.subtract(left).subtract(pctDiscount);
+            BigDecimal sharedDiscount = flatDiscount.add(cappedDiscount);
             BigDecimal tax = BigDecimal.ZERO.setScale(2);
             BigDecimal levy = BigDecimal.ZERO.setScale(2);
             for (int n = 0; n < lineItems.size(); n++) {
                 BigDecimal line = lines.get(n);
                 if (!taxExempt && !Boolean.TRUE.equals(lineItems.get(n).get("taxExempt"))) {
                     BigDecimal flatShare = subtotal.signum() == 0 ? BigDecimal.ZERO
-                            : flatDiscount.multiply(line).divide(subtotal, 2, RoundingMode.HALF_UP);
+                            : sharedDiscount.multiply(line).divide(subtotal, 2, RoundingMode.HALF_UP);
                     BigDecimal base = line.subtract(
                             line.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
                             .subtract(flatShare);
@@ -225,11 +243,12 @@ public class TestSupportController {
                     earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due);
             for (Map<String, Object> d : discounts) {
                 if (d.get("id") != null) {
-                    jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount) VALUES (?, ?, ?, ?)",
-                            ((Number) d.get("id")).longValue(), invoiceId, decimal(d.get("pct")), decimal(d.get("amount")));
+                    jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount, discount_cap) VALUES (?, ?, ?, ?, ?)",
+                            ((Number) d.get("id")).longValue(), invoiceId, decimal(d.get("pct")), decimal(d.get("amount")),
+                            d.get("cap") == null ? null : decimal(d.get("cap")));
                 } else {
-                    jdbc.update("INSERT INTO invoice_discount (invoice_id, discount_pct, discount_amount) VALUES (?, ?, ?)",
-                            invoiceId, decimal(d.get("pct")), decimal(d.get("amount")));
+                    jdbc.update("INSERT INTO invoice_discount (invoice_id, discount_pct, discount_amount, discount_cap) VALUES (?, ?, ?, ?)",
+                            invoiceId, decimal(d.get("pct")), decimal(d.get("amount")), d.get("cap") == null ? null : decimal(d.get("cap")));
                 }
             }
             for (Map<String, Object> l : lineItems) {

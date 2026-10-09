@@ -26,7 +26,7 @@ import net.officefloor.hq.app.project.Project;
 /**
  * An invoice raised against a project. It is built from line items, and can take several discounts off
  * their sum before tax, each either a percentage or a flat amount (the percentages each taking their share
- * of the subtotal first, then the flat amounts, shared across the lines in proportion to what each
+ * of the subtotal first (a percentage capped at a maximum never taking off more than that), then the flat amounts, shared across the lines in proportion to what each
  * charges; together never more than the subtotal), then add a percentage sales tax on what is left of the taxable lines only
  * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
  * its stored amount is always that subtotal less the discount plus the tax plus the levy, plus any flat
@@ -168,14 +168,15 @@ public class Invoice {
 
     /**
      * How much one of this invoice's discounts actually takes off the subtotal, to the cent. The
-     * percentages are taken first, each its share of the subtotal, then the flat amounts in the order
-     * they were added; none takes off more than is left after those before it.
+     * percentages are taken first, each its share of the subtotal (never more than its cap, if it has
+     * one), then the flat amounts in the order they were added; none takes off more than is left after
+     * those before it.
      */
     public BigDecimal discountTakenBy(InvoiceDiscount discount) {
         BigDecimal subtotal = getSubtotal();
         BigDecimal left = subtotal;
         for (InvoiceDiscount d : discountsInOrderTaken()) {
-            BigDecimal wanted = d.isPercentage() ? percentOf(subtotal, d.getDiscountPct()) : d.getDiscountAmount();
+            BigDecimal wanted = d.isPercentage() ? percentWanted(subtotal, d) : d.getDiscountAmount();
             BigDecimal taken = wanted.min(left.max(BigDecimal.ZERO.setScale(2)));
             if (d == discount) {
                 return taken;
@@ -183,6 +184,18 @@ public class Invoice {
             left = left.subtract(taken);
         }
         return BigDecimal.ZERO.setScale(2);
+    }
+
+    /** What a percentage discount asks to take off the subtotal: its share, never more than its cap. */
+    private static BigDecimal percentWanted(BigDecimal subtotal, InvoiceDiscount discount) {
+        BigDecimal share = percentOf(subtotal, discount.getDiscountPct());
+        return isCappedAt(subtotal, discount) ? share.min(discount.getDiscountCap()) : share;
+    }
+
+    /** Whether a discount's cap limits what it takes off the given subtotal. */
+    private static boolean isCappedAt(BigDecimal subtotal, InvoiceDiscount discount) {
+        return discount.getDiscountCap() != null
+                && percentOf(subtotal, discount.getDiscountPct()).compareTo(discount.getDiscountCap()) > 0;
     }
 
     /** The percentage discounts first, then the flat ones, each in the order they were added. */
@@ -369,7 +382,15 @@ public class Invoice {
      * being zero; zero for both leaves no discount), and reworks its amount to match.
      */
     public void applyDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
-        InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount);
+        applyDiscount(discountPct, discountAmount, null);
+    }
+
+    /**
+     * Replaces this invoice's discounts with a single one, either a percentage (optionally capped at the
+     * most it takes off) or a flat amount, and reworks its amount to match.
+     */
+    public void applyDiscount(BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discountCap) {
+        InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount, discountCap);
         discounts.clear();
         if (discountPct.signum() != 0 || discountAmount.signum() != 0) {
             discounts.add(discount);
@@ -382,10 +403,18 @@ public class Invoice {
      * and reworks its amount to match.
      */
     public InvoiceDiscount addDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
+        return addDiscount(discountPct, discountAmount, null);
+    }
+
+    /**
+     * Adds another discount to this invoice, either a percentage (optionally capped at the most it takes
+     * off) or a flat amount, and reworks its amount to match.
+     */
+    public InvoiceDiscount addDiscount(BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discountCap) {
         if (discountPct.signum() == 0 && discountAmount.signum() == 0) {
             throw new IllegalArgumentException("A discount takes off a percentage or a flat amount");
         }
-        InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount);
+        InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount, discountCap);
         discounts.add(discount);
         recalculateAmount();
         return discount;
@@ -442,22 +471,32 @@ public class Invoice {
     }
 
     /**
-     * The discount taken off one line, to the cent: the percentages together, plus its share of what the
-     * flat amounts take off in proportion to what the line charges out of the subtotal.
+     * The discount taken off one line, to the cent: the uncapped percentages together, plus its share of
+     * what the flat amounts and the capped percentages take off in proportion to what the line charges
+     * out of the subtotal.
      */
     private BigDecimal discountOn(BigDecimal line) {
-        BigDecimal pct = percentOf(line, getDiscountPct());
         BigDecimal subtotal = getSubtotal();
+        BigDecimal pct = percentOf(line, uncappedPct(subtotal));
         if (subtotal.signum() == 0) {
             return pct;
         }
-        BigDecimal flatShare = flatDiscount().multiply(line).divide(subtotal, 2, RoundingMode.HALF_UP);
+        BigDecimal flatShare = sharedDiscount(subtotal).multiply(line).divide(subtotal, 2, RoundingMode.HALF_UP);
         return pct.add(flatShare);
     }
 
-    /** What the flat discounts actually take off the subtotal together: never more than is left after the percentages. */
-    private BigDecimal flatDiscount() {
-        return discounts.stream().filter(d -> !d.isPercentage()).map(this::discountTakenBy)
+    /** The percentages not limited by a cap, added up (never more than 100). */
+    private BigDecimal uncappedPct(BigDecimal subtotal) {
+        return discounts.stream().filter(d -> d.isPercentage() && !isCappedAt(subtotal, d)).map(InvoiceDiscount::getDiscountPct)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add).min(BigDecimal.valueOf(100).setScale(2));
+    }
+
+    /**
+     * What the flat discounts and the capped percentages actually take off the subtotal together, shared
+     * across the lines in proportion to what each charges.
+     */
+    private BigDecimal sharedDiscount(BigDecimal subtotal) {
+        return discounts.stream().filter(d -> !d.isPercentage() || isCappedAt(subtotal, d)).map(this::discountTakenBy)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 

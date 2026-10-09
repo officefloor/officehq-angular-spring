@@ -217,7 +217,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                   @if (d.discountAmount > 0) {
                     Discount {{ $index + 1 }} ({{ d.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }} off)
                   } @else {
-                    Discount {{ $index + 1 }} ({{ d.discountPct | number: '1.0-2' : 'en-US' }}%)
+                    Discount {{ $index + 1 }} ({{ d.discountPct | number: '1.0-2' : 'en-US' }}%@if (d.discountCap !== null) {, up to <span data-testid="discount-row-cap">{{ d.discountCap | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span>})
                   }
                 </th>
                 <td data-testid="discount-row-amount">{{ d.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
@@ -383,6 +383,25 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               @if (discountInvalid()) {
                 <p id="discount-pct-error" role="alert" data-testid="discount-form-pct-error">
                   Enter a percentage from 0 to 100 with at most two decimal places.
+                </p>
+              }
+            </div>
+            <div>
+              <label for="discount-cap">Most it takes off (optional)</label>
+              <input
+                id="discount-cap"
+                type="number"
+                inputmode="decimal"
+                min="0.01"
+                step="0.01"
+                formControlName="discountCap"
+                data-testid="discount-form-cap"
+                [attr.aria-invalid]="discountCapInvalid()"
+                [attr.aria-describedby]="discountCapInvalid() ? 'discount-cap-error' : null"
+              />
+              @if (discountCapInvalid()) {
+                <p id="discount-cap-error" role="alert" data-testid="discount-form-cap-error">
+                  Enter an amount above 0 with at most two decimal places, or leave it empty for no cap.
                 </p>
               }
             </div>
@@ -672,6 +691,7 @@ export class InvoiceDetailPage {
     discountType: ['pct' as 'pct' | 'amount'],
     discountPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
     discountAmount: ['', [Validators.required, Validators.min(0), Validators.pattern(TWO_DECIMALS)]],
+    discountCap: ['', [Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
   });
 
   // Whether the discount is taken off as a percentage or a fixed amount, as chosen in the form.
@@ -687,12 +707,18 @@ export class InvoiceDetailPage {
         discountType: inv.discountAmount > 0 ? 'amount' : 'pct',
         discountPct: String(inv.discountPct),
         discountAmount: String(inv.discountAmount),
+        discountCap: inv.discounts.length === 1 && inv.discounts[0].discountCap !== null ? String(inv.discounts[0].discountCap) : '',
       });
     }
   });
 
   protected discountInvalid(): boolean {
     const control = this.discountForm.controls.discountPct;
+    return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected discountCapInvalid(): boolean {
+    const control = this.discountForm.controls.discountCap;
     return control.invalid && (control.touched || control.dirty);
   }
 
@@ -706,7 +732,7 @@ export class InvoiceDetailPage {
     const chosen = this.chosenDiscount();
     if (chosen) {
       this.saveDiscount(
-        this.service.applyDiscount(this.projectIdNumber(), Number(this.invoiceId()), chosen.pct, chosen.amount),
+        this.service.applyDiscount(this.projectIdNumber(), Number(this.invoiceId()), chosen.pct, chosen.amount, chosen.cap),
         'Could not apply the discount. Please try again.',
       );
     }
@@ -723,7 +749,7 @@ export class InvoiceDetailPage {
       return;
     }
     this.saveDiscount(
-      this.service.addDiscount(this.projectIdNumber(), Number(this.invoiceId()), chosen.pct, chosen.amount),
+      this.service.addDiscount(this.projectIdNumber(), Number(this.invoiceId()), chosen.pct, chosen.amount, chosen.cap),
       'Could not add the discount. Please try again.',
     );
   }
@@ -735,17 +761,21 @@ export class InvoiceDetailPage {
     );
   }
 
-  // The percentage or amount chosen in the form (only the chosen kind; the other is zero), or null when it is invalid.
-  private chosenDiscount(): { pct: number; amount: number } | null {
-    const { discountType, discountPct, discountAmount } = this.discountForm.controls;
-    const field = discountType.value === 'amount' ? discountAmount : discountPct;
-    if (field.invalid) {
-      field.markAsTouched();
+  // The percentage (with any cap) or amount chosen in the form (only the chosen kind; the other is zero), or null when it is invalid.
+  private chosenDiscount(): { pct: number; amount: number; cap: number | null } | null {
+    const { discountType, discountPct, discountAmount, discountCap } = this.discountForm.controls;
+    const isPct = discountType.value === 'pct';
+    const fields = isPct ? [discountPct, discountCap] : [discountAmount];
+    const invalid = fields.filter((f) => f.invalid);
+    if (invalid.length > 0) {
+      invalid.forEach((f) => f.markAsTouched());
       return null;
     }
+    const pct = isPct ? Number(discountPct.value) : 0;
     return {
-      pct: discountType.value === 'pct' ? Number(discountPct.value) : 0,
-      amount: discountType.value === 'amount' ? Number(discountAmount.value) : 0,
+      pct,
+      amount: isPct ? 0 : Number(discountAmount.value),
+      cap: pct > 0 && discountCap.value ? Number(discountCap.value) : null,
     };
   }
 

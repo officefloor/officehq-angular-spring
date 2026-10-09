@@ -37,6 +37,6 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, 
                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
                 invoice.getProject().getClient().getTaxNumber(),
                 invoice.getDiscounts().stream().map(d -> new InvoiceDiscountResponse(d.getId(), d.getDiscountPct(),
-                        d.getDiscountAmount(), invoice.discountTakenBy(d))).toList());
+                        d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList());
     }
 }

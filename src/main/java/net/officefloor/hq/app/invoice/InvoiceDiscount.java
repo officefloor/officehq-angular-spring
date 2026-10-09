@@ -31,16 +31,28 @@ public class InvoiceDiscount {
     @Column(name = "discount_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal discountAmount = BigDecimal.ZERO.setScale(2);
 
+    /** The most a percentage discount takes off; null when it is not capped. */
+    @Column(name = "discount_cap", precision = 12, scale = 2)
+    private BigDecimal discountCap;
+
     protected InvoiceDiscount() {
     }
 
     InvoiceDiscount(Invoice invoice, BigDecimal discountPct, BigDecimal discountAmount) {
+        this(invoice, discountPct, discountAmount, null);
+    }
+
+    InvoiceDiscount(Invoice invoice, BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discountCap) {
         if (discountPct.signum() != 0 && discountAmount.signum() != 0) {
             throw new IllegalArgumentException("A discount is either a percentage or a flat amount, not both");
+        }
+        if (discountCap != null && discountPct.signum() == 0) {
+            throw new IllegalArgumentException("Only a percentage discount can be capped");
         }
         this.invoice = invoice;
         this.discountPct = discountPct.setScale(2, RoundingMode.HALF_UP);
         this.discountAmount = discountAmount.setScale(2, RoundingMode.HALF_UP);
+        this.discountCap = discountCap == null ? null : discountCap.setScale(2, RoundingMode.HALF_UP);
     }
 
     public Long getId() {
@@ -55,6 +67,11 @@ public class InvoiceDiscount {
     /** The flat amount asked to be taken off the subtotal; zero when this is a percentage discount. */
     public BigDecimal getDiscountAmount() {
         return discountAmount;
+    }
+
+    /** The most this percentage discount takes off; null when it is not capped. */
+    public BigDecimal getDiscountCap() {
+        return discountCap;
     }
 
     /** Whether this discount is a percentage of the subtotal rather than a flat amount. */

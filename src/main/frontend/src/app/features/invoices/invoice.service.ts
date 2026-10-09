@@ -96,6 +96,8 @@ export interface InvoiceDiscount {
   id: number;
   discountPct: number;
   discountAmount: number;
+  /** The most a percentage discount takes off; null when it is not capped. */
+  discountCap: number | null;
   /** What this discount actually takes off the subtotal. */
   amount: number;
 }
@@ -206,19 +208,24 @@ export class InvoiceService {
     return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`);
   }
 
-  /** Sets the percentage or the flat amount taken off a draft invoice (the other being zero); zero for both removes the discount. */
-  applyDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0): Observable<InvoiceDetail> {
+  /**
+   * Sets the percentage (optionally capped at the most it takes off) or the flat amount taken off a draft
+   * invoice (the other being zero); zero for both removes the discount.
+   */
+  applyDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0, discountCap: number | null = null): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discount`, {
       discountPct,
       discountAmount,
+      discountCap,
     });
   }
 
   /** Adds another percentage or flat amount discount to a draft invoice (the other being zero). */
-  addDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0): Observable<InvoiceDetail> {
+  addDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0, discountCap: number | null = null): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discounts`, {
       discountPct,
       discountAmount,
+      discountCap,
     });
   }
 

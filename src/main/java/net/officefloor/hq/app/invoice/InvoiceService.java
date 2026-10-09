@@ -146,7 +146,7 @@ public class InvoiceService {
     @Transactional
     public InvoiceDetailResponse applyDiscount(Long projectId, Long invoiceId, DiscountRequest request) {
         Invoice invoice = findDraft(projectId, invoiceId);
-        invoice.applyDiscount(request.discountPct(), request.flatAmount());
+        invoice.applyDiscount(request.discountPct(), request.flatAmount(), request.discountCap());
         invoices.flush();
         return InvoiceDetailResponse.from(invoice);
     }
@@ -158,7 +158,7 @@ public class InvoiceService {
         if (request.discountPct().signum() == 0 && request.flatAmount().signum() == 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A discount takes off a percentage or a flat amount");
         }
-        invoice.addDiscount(request.discountPct(), request.flatAmount());
+        invoice.addDiscount(request.discountPct(), request.flatAmount(), request.discountCap());
         invoices.flush();
         return InvoiceDetailResponse.from(invoice);
     }
