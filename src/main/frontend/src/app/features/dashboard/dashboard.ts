@@ -4,7 +4,8 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
 
 // Dashboard page: how many clients and projects there are, and the total still owed (what is left
 // to pay on invoices that have been sent but not yet fully paid; drafts are not counted), and how
-// many of those sent invoices are past their due date.
+// many of those sent invoices are past their due date. Also lists the top five clients ranked by
+// what they still owe.
 @Component({
   selector: 'app-dashboard',
   imports: [CurrencyPipe],
@@ -32,6 +33,22 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
           <dd data-testid="dashboard-overdue-count">{{ s.overdue }}</dd>
         </div>
       </dl>
+
+      <section data-testid="dashboard-top-clients" aria-labelledby="dashboard-top-clients-heading">
+        <h2 id="dashboard-top-clients-heading">Top clients by amount owed</h2>
+        @if (s.topClients.length) {
+          <ol>
+            @for (c of s.topClients; track c.id) {
+              <li [attr.data-testid]="'top-client-row-' + c.id">
+                <span data-testid="top-client-name">{{ c.name }}</span>:
+                <span data-testid="top-client-amount">{{ c.outstanding | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</span>
+              </li>
+            }
+          </ol>
+        } @else {
+          <p data-testid="dashboard-top-clients-empty">No clients owe anything.</p>
+        }
+      </section>
     } @else {
       <p data-testid="dashboard-loading">Loading…</p>
     }

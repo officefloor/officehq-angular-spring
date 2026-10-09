@@ -2,11 +2,18 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+export interface TopClient {
+  id: number;
+  name: string;
+  outstanding: number;
+}
+
 export interface DashboardSummary {
   clients: number;
   projects: number;
   outstanding: number;
   overdue: number;
+  topClients: TopClient[];
 }
 
 @Injectable({ providedIn: 'root' })

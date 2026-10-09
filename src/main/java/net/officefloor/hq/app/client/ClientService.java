@@ -142,6 +142,25 @@ public class ClientService {
         return found.stream().map(c -> ClientResponse.from(c, owed.getOrDefault(c.getId(), ZERO))).toList();
     }
 
+    /**
+     * The clients who owe the most, largest debt first (ties by id), at most {@code limit} of them.
+     * Clients owing nothing are left out.
+     */
+    @Transactional(readOnly = true)
+    public List<ClientResponse> topByOutstanding(int limit) {
+        Map<Long, BigDecimal> owed = outstandingByClient();
+        owed.values().removeIf(amount -> amount.signum() <= 0);
+        List<Long> top = owed.entrySet().stream()
+                .sorted(Map.Entry.<Long, BigDecimal>comparingByValue().reversed()
+                        .thenComparing(Map.Entry.comparingByKey()))
+                .limit(limit)
+                .map(Map.Entry::getKey)
+                .toList();
+        Map<Long, Client> found = new HashMap<>();
+        clients.findAllById(top).forEach(c -> found.put(c.getId(), c));
+        return top.stream().map(id -> ClientResponse.from(found.get(id), owed.get(id))).toList();
+    }
+
     private ClientResponse respond(Client client) {
         return ClientResponse.from(client, outstandingByClient().getOrDefault(client.getId(), ZERO));
     }
