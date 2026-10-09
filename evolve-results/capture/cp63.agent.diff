@@ -1,0 +1,293 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 87bec16..c146122 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -62,6 +62,15 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                       (keydown.enter)="saveEdit(l.id)"
+                       (keydown.escape)="cancelEdit(l.id)"
+                     />
++                    <label>
++                      <input
++                        type="checkbox"
++                        [formControl]="editForm.controls.taxExempt"
++                        data-testid="lineitem-edit-taxexempt"
++                        (keydown.escape)="cancelEdit(l.id)"
++                      />
++                      Tax-free
++                    </label>
+                   </td>
+                   <td>
+                     <input
+@@ -117,7 +126,12 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                     </button>
+                   </td>
+                 } @else {
+-                  <td data-testid="lineitem-description">{{ l.description }}</td>
++                  <td>
++                    <span data-testid="lineitem-description">{{ l.description }}</span>
++                    @if (l.taxExempt) {
++                      <span data-testid="lineitem-taxexempt">(tax-free)</span>
++                    }
++                  </td>
+                   <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
+                   <td data-testid="lineitem-unit">{{ l.unit ?? '' }}</td>
+                   <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+@@ -318,6 +332,10 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+               </p>
+             }
+           </div>
++          <div>
++            <input id="lineitem-taxexempt" type="checkbox" formControlName="taxExempt" data-testid="lineitem-form-taxexempt" />
++            <label for="lineitem-taxexempt">Tax-free (no tax is charged on this line)</label>
++          </div>
+           <button type="submit" data-testid="lineitem-form-submit" [disabled]="saving()">Add line item</button>
+           @if (saveError()) {
+             <p role="alert" data-testid="lineitem-form-error">{{ saveError() }}</p>
+@@ -445,6 +463,7 @@ export class InvoiceDetailPage {
+     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+     unit: ['', [Validators.maxLength(50)]],
+     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    taxExempt: false,
+   });
+ 
+   protected invalid(name: 'description' | 'qty' | 'unit' | 'unitPrice'): boolean {
+@@ -459,8 +478,8 @@ export class InvoiceDetailPage {
+     }
+     this.saving.set(true);
+     this.saveError.set(null);
+-    const { description, qty, unit, unitPrice } = this.form.getRawValue();
+-    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice) };
++    const { description, qty, unit, unitPrice, taxExempt } = this.form.getRawValue();
++    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice), taxExempt };
+     this.service.addLineItem(this.projectIdNumber(), Number(this.invoiceId()), item).subscribe({
+       next: (updated) => {
+         this.invoice.set(updated);
+@@ -484,6 +503,7 @@ export class InvoiceDetailPage {
+     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+     unit: ['', [Validators.maxLength(50)]],
+     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    taxExempt: false,
+   });
+ 
+   protected startEdit(line: LineItem): void {
+@@ -493,6 +513,7 @@ export class InvoiceDetailPage {
+       qty: String(line.qty),
+       unit: line.unit ?? '',
+       unitPrice: String(line.unitPrice),
++      taxExempt: line.taxExempt,
+     });
+     this.editingId.set(line.id);
+     this.focus(`lineitem-edit-description-${line.id}`);
+@@ -509,8 +530,8 @@ export class InvoiceDetailPage {
+       this.editForm.markAllAsTouched();
+       return;
+     }
+-    const { description, qty, unit, unitPrice } = this.editForm.getRawValue();
+-    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice) };
++    const { description, qty, unit, unitPrice, taxExempt } = this.editForm.getRawValue();
++    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice), taxExempt };
+     this.run(
+       this.service.updateLineItem(this.projectIdNumber(), Number(this.invoiceId()), lineItemId, item),
+       'Could not save the line item. Please try again.',
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 338ceb7..ec4d736 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -77,6 +77,8 @@ export interface LineItem {
+   unit: string | null;
+   unitPrice: number;
+   amount: number;
++  /** Whether the line is tax-free: it is not taxable. */
++  taxExempt: boolean;
+ }
+ 
+ /**
+@@ -98,6 +100,7 @@ export interface NewLineItem {
+   qty: number;
+   unit: string | null;
+   unitPrice: number;
++  taxExempt: boolean;
+ }
+ 
+ export interface NewInvoice {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 1f8e275..2f7156a 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -156,15 +156,17 @@ public class TestSupportController {
+                     seedStatus(i.get("status")), issued, due);
+             for (Map<String, Object> l : lineItems) {
+                 if (l.get("id") != null) {
+-                    jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit, unit_price)"
+-                            + " VALUES (?, ?, ?, ?, ?, ?)",
++                    jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit, unit_price, tax_exempt)"
++                            + " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                             ((Number) l.get("id")).longValue(), invoiceId, l.get("description"),
+-                            new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()));
++                            new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()),
++                            Boolean.TRUE.equals(l.get("taxExempt")));
+                 } else {
+-                    jdbc.update("INSERT INTO invoice_line_item (invoice_id, description, qty, unit, unit_price)"
+-                            + " VALUES (?, ?, ?, ?, ?)",
++                    jdbc.update("INSERT INTO invoice_line_item (invoice_id, description, qty, unit, unit_price, tax_exempt)"
++                            + " VALUES (?, ?, ?, ?, ?, ?)",
+                             invoiceId, l.get("description"),
+-                            new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()));
++                            new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()),
++                            Boolean.TRUE.equals(l.get("taxExempt")));
+                 }
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 561ce1d..6006ea4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -128,7 +128,13 @@ public class Invoice {
+ 
+     /** Adds a line to this invoice and reworks its amount to include what the line charges. */
+     public InvoiceLineItem addLineItem(String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
+-        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unit, unitPrice);
++        return addLineItem(description, qty, unit, unitPrice, false);
++    }
++
++    /** Adds a line, taxable or tax-free, to this invoice and reworks its amount to include what the line charges. */
++    public InvoiceLineItem addLineItem(String description, BigDecimal qty, String unit, BigDecimal unitPrice,
++            boolean taxExempt) {
++        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unit, unitPrice, taxExempt);
+         lineItems.add(item);
+         recalculateAmount();
+         return item;
+@@ -136,8 +142,8 @@ public class Invoice {
+ 
+     /** Changes one of this invoice's lines and reworks its amount to match. */
+     public void updateLineItem(InvoiceLineItem item, String description, BigDecimal qty, String unit,
+-            BigDecimal unitPrice) {
+-        item.update(description, qty, unit, unitPrice);
++            BigDecimal unitPrice, boolean taxExempt) {
++        item.update(description, qty, unit, unitPrice, taxExempt);
+         recalculateAmount();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
+index bb42c17..cd0d9e4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
+@@ -37,22 +37,28 @@ public class InvoiceLineItem {
+     @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
+     private BigDecimal unitPrice;
+ 
++    @Column(name = "tax_exempt", nullable = false)
++    private boolean taxExempt;
++
+     protected InvoiceLineItem() {
+     }
+ 
+-    InvoiceLineItem(Invoice invoice, String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
++    InvoiceLineItem(Invoice invoice, String description, BigDecimal qty, String unit, BigDecimal unitPrice,
++            boolean taxExempt) {
+         this.invoice = invoice;
+         this.description = description;
+         this.qty = qty;
+         this.unit = unit;
+         this.unitPrice = unitPrice;
++        this.taxExempt = taxExempt;
+     }
+ 
+-    void update(String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
++    void update(String description, BigDecimal qty, String unit, BigDecimal unitPrice, boolean taxExempt) {
+         this.description = description;
+         this.qty = qty;
+         this.unit = unit;
+         this.unitPrice = unitPrice;
++        this.taxExempt = taxExempt;
+     }
+ 
+     public Long getId() {
+@@ -80,6 +86,11 @@ public class InvoiceLineItem {
+         return unitPrice;
+     }
+ 
++    /** Whether this line is tax-free: it is not taxable. */
++    public boolean isTaxExempt() {
++        return taxExempt;
++    }
++
+     /** What this line charges: quantity times unit price, to the cent. */
+     public BigDecimal getAmount() {
+         return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 2afdb98..8960dec 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -115,7 +115,8 @@ public class InvoiceService {
+     @Transactional
+     public InvoiceDetailResponse addLineItem(Long projectId, Long invoiceId, LineItemRequest request) {
+         Invoice invoice = findDraft(projectId, invoiceId);
+-        invoice.addLineItem(request.description().strip(), request.qty(), request.normalizedUnit(), request.unitPrice());
++        invoice.addLineItem(request.description().strip(), request.qty(), request.normalizedUnit(), request.unitPrice(),
++                request.exempt());
+         invoices.flush();
+         return InvoiceDetailResponse.from(invoice);
+     }
+@@ -127,7 +128,7 @@ public class InvoiceService {
+         Invoice invoice = findDraft(projectId, invoiceId);
+         InvoiceLineItem item = findLineItem(invoice, lineItemId);
+         invoice.updateLineItem(item, request.description().strip(), request.qty(), request.normalizedUnit(),
+-                request.unitPrice());
++                request.unitPrice(), request.exempt());
+         invoices.flush();
+         return InvoiceDetailResponse.from(invoice);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java b/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
+index 2f1c375..386716b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
+@@ -7,15 +7,21 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ 
+-/** Payload to add, or change, a line item on a draft invoice. The unit is optional. */
++/** Payload to add, or change, a line item on a draft invoice. The unit is optional; a line is taxable unless marked tax-exempt. */
+ public record LineItemRequest(
+         @NotBlank @Size(max = 255) String description,
+         @NotNull @DecimalMin("0.01") @Digits(integer = 8, fraction = 2) BigDecimal qty,
+         @Size(max = 50) String unit,
+-        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal unitPrice) {
++        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal unitPrice,
++        Boolean taxExempt) {
+ 
+     /** The unit with surrounding blanks removed, or null when none was given. */
+     String normalizedUnit() {
+         return unit == null || unit.isBlank() ? null : unit.strip();
+     }
++
++    /** Whether the line is tax-free; a line not saying so is taxable. */
++    boolean exempt() {
++        return Boolean.TRUE.equals(taxExempt);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java b/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java
+index 3614386..d1728bb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java
+@@ -3,10 +3,10 @@ package net.officefloor.hq.app.invoice;
+ import java.math.BigDecimal;
+ 
+ public record LineItemResponse(Long id, String description, BigDecimal qty, String unit, BigDecimal unitPrice,
+-        BigDecimal amount) {
++        BigDecimal amount, boolean taxExempt) {
+ 
+     static LineItemResponse from(InvoiceLineItem item) {
+         return new LineItemResponse(item.getId(), item.getDescription(), item.getQty(), item.getUnit(), item.getUnitPrice(),
+-                item.getAmount());
++                item.getAmount(), item.isTaxExempt());
+     }
+ }
+diff --git a/src/main/resources/db/migration/V32__line_item_tax_exempt.sql b/src/main/resources/db/migration/V32__line_item_tax_exempt.sql
+new file mode 100644
+index 0000000..e17f1f6
+--- /dev/null
++++ b/src/main/resources/db/migration/V32__line_item_tax_exempt.sql
+@@ -0,0 +1,2 @@
++-- A line item can be marked tax-free: some things charged for are not taxable. Existing lines are taxable.
++ALTER TABLE invoice_line_item ADD COLUMN tax_exempt BOOLEAN NOT NULL DEFAULT FALSE;
