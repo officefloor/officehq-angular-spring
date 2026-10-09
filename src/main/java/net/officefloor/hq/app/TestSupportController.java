@@ -41,6 +41,7 @@ public class TestSupportController {
         // referential checks for the duration of the truncates.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
         try {
+            jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
@@ -68,6 +69,11 @@ public class TestSupportController {
                     ((Number) p.get("id")).longValue(), p.get("name"),
                     ((Number) p.get("clientId")).longValue());
         }
+        for (Map<String, Object> t : rows(fixture, "tasks")) {
+            jdbc.update("INSERT INTO task (id, project_id, title, done) VALUES (?, ?, ?, ?)",
+                    ((Number) t.get("id")).longValue(), ((Number) t.get("projectId")).longValue(),
+                    t.get("title"), Boolean.TRUE.equals(t.get("done")));
+        }
         for (Map<String, Object> i : rows(fixture, "invoices")) {
             LocalDate issued = i.get("issuedDate") == null ? LocalDate.now()
                     : LocalDate.parse(i.get("issuedDate").toString());
@@ -84,6 +90,7 @@ public class TestSupportController {
         restartIdentity("contact");
         restartIdentity("project");
         restartIdentity("invoice");
+        restartIdentity("task");
     }
 
     /**
