@@ -1,0 +1,45 @@
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index e532e46..fb02b06 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -82,7 +82,16 @@ export class Clients {
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+-    email: ['', [Validators.required, Validators.email, Validators.maxLength(255)]],
++    email: [
++      '',
++      [
++        Validators.required,
++        Validators.email,
++        // Validators.email accepts "a@b"; also require a dotted domain (matches the server rule).
++        Validators.pattern(/^[^@\s]+@[^@\s]+\.[^@\s]+$/),
++        Validators.maxLength(255),
++      ],
++    ],
+   });
+ 
+   constructor() {
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+index 0fdc694..c84f4e3 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+@@ -7,5 +7,8 @@ import jakarta.validation.constraints.Size;
+ /** Payload to create a client. */
+ public record ClientRequest(
+         @NotBlank @Size(max = 255) String name,
+-        @NotBlank @Email @Size(max = 255) String email) {
++        @NotBlank @Email(regexp = ClientRequest.EMAIL_PATTERN) @Size(max = 255) String email) {
++
++    /** Requires a dotted domain, which plain {@code @Email} does not (it accepts {@code a@b}). */
++    static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
+ }
+diff --git a/src/main/resources/db/migration/V2__client_email_format.sql b/src/main/resources/db/migration/V2__client_email_format.sql
+new file mode 100644
+index 0000000..1068707
+--- /dev/null
++++ b/src/main/resources/db/migration/V2__client_email_format.sql
+@@ -0,0 +1,3 @@
++-- Every client must have a well-formed email (local@domain.tld); backstop for the API validation.
++ALTER TABLE client ADD CONSTRAINT client_email_format
++    CHECK (email LIKE '_%@_%._%' AND email NOT LIKE '% %');
