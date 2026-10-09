@@ -1,0 +1,338 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-edit-form.ts b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+new file mode 100644
+index 0000000..6aede55
+--- /dev/null
++++ b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+@@ -0,0 +1,130 @@
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, ElementRef, OnInit, afterNextRender, inject, input, output, signal, viewChild } from '@angular/core';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { Client, ClientService } from './client.service';
++
++// Form to correct one client's name or email. Emits the saved client, or cancelled when abandoned.
++@Component({
++  selector: 'app-client-edit-form',
++  imports: [ReactiveFormsModule],
++  template: `
++    <form
++      [formGroup]="form"
++      (ngSubmit)="submit()"
++      data-testid="client-edit-form"
++      [attr.aria-label]="'Edit ' + client().name"
++      novalidate
++    >
++      <div>
++        <label for="client-edit-name">Name</label>
++        <input
++          #nameInput
++          id="client-edit-name"
++          type="text"
++          formControlName="name"
++          autocomplete="organization"
++          data-testid="client-edit-form-name"
++          [attr.aria-invalid]="showError('name')"
++          [attr.aria-describedby]="showError('name') ? 'client-edit-name-error' : null"
++        />
++        @if (showError('name')) {
++          <p id="client-edit-name-error" role="alert" data-testid="client-edit-form-name-error">
++            Name is required.
++          </p>
++        }
++      </div>
++      <div>
++        <label for="client-edit-email">Email</label>
++        <input
++          id="client-edit-email"
++          type="email"
++          formControlName="email"
++          autocomplete="email"
++          data-testid="client-edit-form-email"
++          [attr.aria-invalid]="showError('email')"
++          [attr.aria-describedby]="showError('email') ? 'client-edit-email-error' : null"
++        />
++        @if (showError('email')) {
++          <p id="client-edit-email-error" role="alert" data-testid="client-edit-form-email-error">
++            @if (form.controls.email.hasError('taken')) {
++              A client with this email already exists.
++            } @else {
++              Enter a valid email address.
++            }
++          </p>
++        }
++      </div>
++      <button type="submit" data-testid="client-edit-form-submit" [disabled]="saving()">Save</button>
++      <button type="button" data-testid="client-edit-form-cancel" (click)="cancelled.emit()">Cancel</button>
++      @if (saveError()) {
++        <p role="alert" data-testid="client-edit-form-error">{{ saveError() }}</p>
++      }
++    </form>
++  `,
++})
++export class ClientEditForm implements OnInit {
++  private readonly service = inject(ClientService);
++
++  readonly client = input.required<Client>();
++  readonly saved = output<Client>();
++  readonly cancelled = output<void>();
++
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++  private readonly nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    name: ['', [Validators.required, Validators.maxLength(255)]],
++    email: [
++      '',
++      [
++        Validators.required,
++        Validators.email,
++        // Validators.email accepts "a@b"; also require a dotted domain (matches the server rule).
++        Validators.pattern(/^[^@\s]+@[^@\s]+\.[^@\s]+$/),
++        Validators.maxLength(255),
++      ],
++    ],
++  });
++
++  constructor() {
++    afterNextRender(() => this.nameInput().nativeElement.focus());
++  }
++
++  ngOnInit(): void {
++    const { name, email } = this.client();
++    this.form.setValue({ name, email });
++  }
++
++  protected showError(field: 'name' | 'email'): boolean {
++    const control = this.form.controls[field];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    const { name, email } = this.form.getRawValue();
++    this.saving.set(true);
++    this.saveError.set(null);
++    this.service.update(this.client().id, { name: name.trim(), email: email.trim() }).subscribe({
++      next: (updated) => {
++        this.saving.set(false);
++        this.saved.emit(updated);
++      },
++      error: (err: HttpErrorResponse) => {
++        if (err.status === 409) {
++          // The server owns uniqueness; flag the email field until it is changed.
++          const control = this.form.controls.email;
++          control.setErrors({ taken: true });
++          control.markAsTouched();
++        } else {
++          this.saveError.set('Could not save the client. Please try again.');
++        }
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 3d67c3a..8108e0c 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -39,6 +39,10 @@ export class ClientService {
+     return this.http.post<Client>('/api/clients', client);
+   }
+ 
++  update(id: number, client: NewClient): Observable<Client> {
++    return this.http.put<Client>(`/api/clients/${id}`, client);
++  }
++
+   archive(id: number): Observable<Client> {
+     return this.http.post<Client>(`/api/clients/${id}/archive`, null);
+   }
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 0cacebd..144c9f0 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -2,14 +2,16 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
++import { ClientEditForm } from './client-edit-form';
+ import { Client, ClientService } from './client.service';
+ 
+ // Clients page: add a client (name + email) and list all clients, filterable by name; each client
+ // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
+-// list and search unless the archived toggle is on, where it can be restored.
++// list and search unless the archived toggle is on, where it can be restored. A client's name or email
++// can be corrected in place from its row.
+ @Component({
+   selector: 'app-clients',
+-  imports: [ReactiveFormsModule, RouterLink],
++  imports: [ReactiveFormsModule, RouterLink, ClientEditForm],
+   template: `
+     <h1>Clients</h1>
+ 
+@@ -116,6 +118,15 @@ import { Client, ClientService } from './client.service';
+                     [attr.aria-label]="'Open ' + c.name"
+                     >Open</a
+                   >
++                  <button
++                    type="button"
++                    [attr.data-testid]="'client-edit-' + c.id"
++                    [attr.aria-label]="'Edit ' + c.name"
++                    [attr.aria-expanded]="editing() === c.id"
++                    (click)="edit(c)"
++                  >
++                    Edit
++                  </button>
+                   @if (c.archived) {
+                     <button
+                       type="button"
+@@ -139,6 +150,13 @@ import { Client, ClientService } from './client.service';
+                   }
+                 </td>
+               </tr>
++              @if (editing() === c.id) {
++                <tr [attr.data-testid]="'client-edit-row-' + c.id">
++                  <td colspan="3">
++                    <app-client-edit-form [client]="c" (saved)="onSaved($event)" (cancelled)="closeEdit(c)" />
++                  </td>
++                </tr>
++              }
+             }
+           </tbody>
+         </table>
+@@ -162,6 +180,7 @@ export class Clients {
+   protected readonly showArchived = signal(false);
+   protected readonly busy = signal<number | null>(null);
+   protected readonly actionError = signal<string | null>(null);
++  protected readonly editing = signal<number | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+@@ -218,6 +237,21 @@ export class Clients {
+     });
+   }
+ 
++  protected edit(client: Client): void {
++    this.editing.update((id) => (id === client.id ? null : client.id));
++  }
++
++  protected onSaved(updated: Client): void {
++    this.clients.update((list) => list.map((c) => (c.id === updated.id ? updated : c)));
++    this.closeEdit(updated);
++  }
++
++  protected closeEdit(client: Client): void {
++    this.editing.set(null);
++    // Return focus to the row's Edit button once the form is gone.
++    setTimeout(() => document.querySelector<HTMLElement>(`[data-testid="client-edit-${client.id}"]`)?.focus());
++  }
++
+   protected toggleArchived(): void {
+     this.showArchived.update((show) => !show);
+     this.load();
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index f72ea76..bd56f74 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -50,6 +50,12 @@ public class Client {
+         return email;
+     }
+ 
++    /** Corrects the client's name and email. */
++    public void rename(String name, String email) {
++        this.name = name;
++        this.email = email;
++    }
++
+     public boolean isArchived() {
+         return archived;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index 0a98471..3e0a379 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RequestParam;
+@@ -43,6 +44,11 @@ public class ClientController {
+         return service.create(request);
+     }
+ 
++    @PutMapping("/{id}")
++    public ClientResponse update(@PathVariable Long id, @Valid @RequestBody ClientRequest request) {
++        return service.update(id, request);
++    }
++
+     @PostMapping("/{id}/archive")
+     public ClientResponse archive(@PathVariable Long id) {
+         return service.archive(id);
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+index 996b5d1..5139e5c 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+@@ -12,6 +12,9 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+     /** Whether any client, archived or not, already has the email, ignoring case. */
+     boolean existsByEmailIgnoreCase(String email);
+ 
++    /** Whether any client other than the given one already has the email, ignoring case. */
++    boolean existsByEmailIgnoreCaseAndIdNot(String email, Long id);
++
+     /** Clients not archived whose name contains the text, ignoring case, in id order. */
+     @Query("SELECT c FROM Client c WHERE c.archived = false AND LOWER(c.name) LIKE LOWER(CONCAT('%', :text, '%'))"
+             + " ESCAPE '\\' ORDER BY c.id")
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+index 7a784a9..70a1f63 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+@@ -4,7 +4,7 @@ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
+ 
+-/** Payload to create a client. */
++/** Payload to create a client, or to correct an existing client's name and email. */
+ public record ClientRequest(
+         @NotBlank @Size(max = 255) String name,
+         @NotBlank @Email(regexp = ClientRequest.EMAIL_PATTERN) @Size(max = 255) String email) {
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 90457a5..ef6459d 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -67,6 +67,31 @@ public class ClientService {
+         }
+     }
+ 
++    /**
++     * Corrects a client's name and email; the email, once trimmed, must not belong to another client.
++     * The change is recorded in the audit log.
++     */
++    @Transactional
++    public ClientResponse update(Long id, ClientRequest request) {
++        Client client = find(id);
++        String email = request.email().trim();
++        if (clients.existsByEmailIgnoreCaseAndIdNot(email, id)) {
++            throw emailTaken();
++        }
++        client.rename(request.name().trim(), email);
++        try {
++            clients.flush();
++        } catch (DataIntegrityViolationException e) {
++            // Lost a race with a concurrent change to the same email; the unique constraint caught it.
++            if (String.valueOf(e.getMessage()).toUpperCase().contains("CLIENT_EMAIL_UQ")) {
++                throw emailTaken();
++            }
++            throw e;
++        }
++        audit.record("CLIENT_UPDATED id=" + id);
++        return ClientResponse.from(client);
++    }
++
+     private static ResponseStatusException emailTaken() {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "A client with this email already exists");
+     }
