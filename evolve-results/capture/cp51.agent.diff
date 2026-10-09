@@ -1,0 +1,362 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 8108e0c..525bd20 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -9,6 +9,8 @@ export interface Client {
+   archived: boolean;
+   /** The client's main contact; null until one is chosen. */
+   primaryContact: { id: number; name: string } | null;
++  /** What is left to pay on the client's sent, not yet fully paid invoices. */
++  outstanding: number;
+ }
+ 
+ /** At-a-glance counts of what one client has. */
+@@ -17,7 +19,7 @@ export interface ClientSummary {
+   contactCount: number;
+ }
+ 
+-export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact'>;
++export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'outstanding'>;
+ 
+ @Injectable({ providedIn: 'root' })
+ export class ClientService {
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 144c9f0..b6ae92e 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -1,4 +1,5 @@
+ import { HttpErrorResponse } from '@angular/common/http';
++import { CurrencyPipe } from '@angular/common';
+ import { Component, computed, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+@@ -8,10 +9,10 @@ import { Client, ClientService } from './client.service';
+ // Clients page: add a client (name + email) and list all clients, filterable by name; each client
+ // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
+ // list and search unless the archived toggle is on, where it can be restored. A client's name or email
+-// can be corrected in place from its row.
++// can be corrected in place from its row. The list can be sorted by name or by how much each client owes.
+ @Component({
+   selector: 'app-clients',
+-  imports: [ReactiveFormsModule, RouterLink, ClientEditForm],
++  imports: [CurrencyPipe, ReactiveFormsModule, RouterLink, ClientEditForm],
+   template: `
+     <h1>Clients</h1>
+ 
+@@ -89,6 +90,14 @@ import { Client, ClientService } from './client.service';
+           (input)="onSearch($event)"
+         />
+       </div>
++      <div>
++        <label for="client-sort">Sort by</label>
++        <select id="client-sort" data-testid="client-sort" [value]="sort()" (change)="onSort($event)">
++          <option value="added">Date added</option>
++          <option value="name">Name</option>
++          <option value="outstanding">Amount owed</option>
++        </select>
++      </div>
+       @if (filteredClients().length === 0) {
+         <p role="status" data-testid="clients-no-match">No clients match your search.</p>
+       } @else {
+@@ -98,6 +107,7 @@ import { Client, ClientService } from './client.service';
+             <tr>
+               <th scope="col">Name</th>
+               <th scope="col">Email</th>
++              <th scope="col">Owed</th>
+               <th scope="col"><span class="visually-hidden">Actions</span></th>
+             </tr>
+           </thead>
+@@ -111,6 +121,7 @@ import { Client, ClientService } from './client.service';
+                   }
+                 </td>
+                 <td data-testid="client-email">{{ c.email }}</td>
++                <td data-testid="client-outstanding">{{ c.outstanding | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                 <td>
+                   <a
+                     [routerLink]="['/clients', c.id]"
+@@ -152,7 +163,7 @@ import { Client, ClientService } from './client.service';
+               </tr>
+               @if (editing() === c.id) {
+                 <tr [attr.data-testid]="'client-edit-row-' + c.id">
+-                  <td colspan="3">
++                  <td colspan="4">
+                     <app-client-edit-form [client]="c" (saved)="onSaved($event)" (cancelled)="closeEdit(c)" />
+                   </td>
+                 </tr>
+@@ -169,11 +180,13 @@ export class Clients {
+ 
+   protected readonly clients = signal<Client[]>([]);
+   protected readonly query = signal('');
+-  // Case-insensitive name filter; an empty query shows every client.
++  protected readonly sort = signal<ClientSort>('added');
++  // Case-insensitive name filter (an empty query shows every client), in the chosen order.
+   protected readonly filteredClients = computed(() => {
+     const q = this.query().trim().toLowerCase();
+     const list = this.clients();
+-    return q ? list.filter((c) => c.name.toLowerCase().includes(q)) : list;
++    const filtered = q ? list.filter((c) => c.name.toLowerCase().includes(q)) : list;
++    return sortClients(filtered, this.sort());
+   });
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+@@ -204,6 +217,10 @@ export class Clients {
+     this.query.set((event.target as HTMLInputElement).value);
+   }
+ 
++  protected onSort(event: Event): void {
++    this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
++  }
++
+   protected showError(field: 'name' | 'email'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+@@ -295,3 +312,19 @@ export class Clients {
+     this.service.list(this.showArchived()).subscribe((list) => this.clients.set(list));
+   }
+ }
++
++type ClientSort = 'added' | 'name' | 'outstanding';
++
++const byName = (a: Client, b: Client) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
++
++/** Clients in the given order: as added, by name A-Z, or those owing the most first (then by name). */
++function sortClients(list: Client[], sort: ClientSort): Client[] {
++  switch (sort) {
++    case 'name':
++      return [...list].sort(byName);
++    case 'outstanding':
++      return [...list].sort((a, b) => b.outstanding - a.outstanding || byName(a, b));
++    default:
++      return list;
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index 0928202..cfe3c10 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -1,16 +1,20 @@
+ package net.officefloor.hq.app.client;
+ 
++import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+-public record ClientResponse(Long id, String name, String email, boolean archived, PrimaryContact primaryContact) {
++public record ClientResponse(Long id, String name, String email, boolean archived, PrimaryContact primaryContact,
++        BigDecimal outstanding) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+     public record PrimaryContact(Long id, String name) {
+     }
+ 
+-    public static ClientResponse from(Client client) {
++    /** A client with what they still owe: what is left to pay on their sent, not yet fully paid invoices. */
++    public static ClientResponse from(Client client, BigDecimal outstanding) {
+         Contact primary = client.getPrimaryContact();
+         return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.isArchived(),
+-                primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()));
++                primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
++                outstanding);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index ef6459d..475fcf9 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -1,8 +1,15 @@
+ package net.officefloor.hq.app.client;
+ 
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.util.HashMap;
+ import java.util.List;
++import java.util.Map;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.contact.ContactRepository;
++import net.officefloor.hq.app.invoice.InvoiceRepository;
++import net.officefloor.hq.app.invoice.InvoiceStatus;
++import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.project.ProjectRepository;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.data.domain.Sort;
+@@ -17,13 +24,17 @@ public class ClientService {
+     private final ClientRepository clients;
+     private final ProjectRepository projects;
+     private final ContactRepository contacts;
++    private final InvoiceRepository invoices;
++    private final PaymentRepository payments;
+     private final Audit audit;
+ 
+     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
+-            Audit audit) {
++            InvoiceRepository invoices, PaymentRepository payments, Audit audit) {
+         this.clients = clients;
+         this.projects = projects;
+         this.contacts = contacts;
++        this.invoices = invoices;
++        this.payments = payments;
+         this.audit = audit;
+     }
+ 
+@@ -31,13 +42,12 @@ public class ClientService {
+     @Transactional(readOnly = true)
+     public List<ClientResponse> list(boolean includeArchived) {
+         List<Client> found = includeArchived ? clients.findAll(Sort.by("id")) : clients.findByArchivedFalseOrderById();
+-        return found.stream().map(ClientResponse::from).toList();
++        return respond(found);
+     }
+ 
+     @Transactional(readOnly = true)
+     public ClientResponse get(Long id) {
+-        return clients.findById(id).map(ClientResponse::from)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
++        return respond(find(id));
+     }
+ 
+     /** At-a-glance counts of what one client has. */
+@@ -57,7 +67,7 @@ public class ClientService {
+             throw emailTaken();
+         }
+         try {
+-            return ClientResponse.from(clients.saveAndFlush(new Client(request.name().trim(), email)));
++            return respond(clients.saveAndFlush(new Client(request.name().trim(), email)));
+         } catch (DataIntegrityViolationException e) {
+             // Lost a race with a concurrent add of the same email; the unique constraint caught it.
+             if (String.valueOf(e.getMessage()).toUpperCase().contains("CLIENT_EMAIL_UQ")) {
+@@ -89,7 +99,7 @@ public class ClientService {
+             throw e;
+         }
+         audit.record("CLIENT_UPDATED id=" + id);
+-        return ClientResponse.from(client);
++        return respond(client);
+     }
+ 
+     private static ResponseStatusException emailTaken() {
+@@ -108,7 +118,7 @@ public class ClientService {
+             clients.flush();
+             audit.record("CLIENT_ARCHIVED id=" + id);
+         }
+-        return ClientResponse.from(client);
++        return respond(client);
+     }
+ 
+     /** Brings an archived client back onto the client list, recording it in the audit log. */
+@@ -120,7 +130,35 @@ public class ClientService {
+             clients.flush();
+             audit.record("CLIENT_RESTORED id=" + id);
+         }
+-        return ClientResponse.from(client);
++        return respond(client);
++    }
++
++    private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
++
++    /** The given clients, each with what they still owe. */
++    @Transactional(readOnly = true)
++    public List<ClientResponse> respond(List<Client> found) {
++        Map<Long, BigDecimal> owed = outstandingByClient();
++        return found.stream().map(c -> ClientResponse.from(c, owed.getOrDefault(c.getId(), ZERO))).toList();
++    }
++
++    private ClientResponse respond(Client client) {
++        return ClientResponse.from(client, outstandingByClient().getOrDefault(client.getId(), ZERO));
++    }
++
++    /**
++     * What each client still owes: what is left to pay on their sent invoices that are not yet fully
++     * paid. Clients owing nothing are left out.
++     */
++    private Map<Long, BigDecimal> outstandingByClient() {
++        List<InvoiceStatus> owing = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL);
++        Map<Long, BigDecimal> owed = new HashMap<>();
++        invoices.sumAmountByStatusInPerClient(owing).forEach(t -> owed.merge(t.getClientId(), t.getTotal(),
++                BigDecimal::add));
++        payments.sumAmountByInvoiceStatusInPerClient(owing).forEach(t -> owed.merge(t.getClientId(),
++                t.getTotal().negate(), BigDecimal::add));
++        owed.replaceAll((id, amount) -> amount.setScale(2, RoundingMode.HALF_UP));
++        return owed;
+     }
+ 
+     private Client find(Long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+index efd3f30..6a1b62a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -39,6 +39,18 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+     @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.status IN :statuses")
+     BigDecimal sumAmountByStatusIn(Collection<InvoiceStatus> statuses);
+ 
++    /** Sum of the invoice amounts with any of the given statuses, per client; clients with none are left out. */
++    @Query("SELECT p.client.id AS clientId, SUM(i.amount) AS total FROM Invoice i JOIN i.project p"
++            + " WHERE i.status IN :statuses GROUP BY p.client.id")
++    List<ClientTotal> sumAmountByStatusInPerClient(Collection<InvoiceStatus> statuses);
++
++    /** A total of money for one client. */
++    interface ClientTotal {
++        Long getClientId();
++
++        BigDecimal getTotal();
++    }
++
+     /** Number of invoices with any of the given statuses whose due date is before the given date. */
+     @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status IN :statuses AND i.dueDate < :date")
+     long countByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+index 6aeea2c..abc9999 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.payment;
+ import java.math.BigDecimal;
+ import java.util.Collection;
+ import java.util.List;
++import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Query;
+@@ -21,6 +22,11 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
+             + " WHERE p.invoiceId = i.id AND i.status IN :statuses")
+     BigDecimal sumAmountByInvoiceStatusIn(Collection<InvoiceStatus> statuses);
+ 
++    /** Total paid against invoices with any of the given statuses, per client; clients with none are left out. */
++    @Query("SELECT pr.client.id AS clientId, SUM(p.amount) AS total FROM Payment p, Invoice i JOIN i.project pr"
++            + " WHERE p.invoiceId = i.id AND i.status IN :statuses GROUP BY pr.client.id")
++    List<InvoiceRepository.ClientTotal> sumAmountByInvoiceStatusInPerClient(Collection<InvoiceStatus> statuses);
++
+     /** Total paid against each of the given invoices; invoices with no payments are left out. */
+     @Query("SELECT p.invoiceId AS invoiceId, SUM(p.amount) AS paid FROM Payment p"
+             + " WHERE p.invoiceId IN :invoiceIds GROUP BY p.invoiceId")
+diff --git a/src/main/java/net/officefloor/hq/app/search/SearchService.java b/src/main/java/net/officefloor/hq/app/search/SearchService.java
+index 8cfff15..8169bae 100644
+--- a/src/main/java/net/officefloor/hq/app/search/SearchService.java
++++ b/src/main/java/net/officefloor/hq/app/search/SearchService.java
+@@ -2,7 +2,7 @@ package net.officefloor.hq.app.search;
+ 
+ import java.util.List;
+ import net.officefloor.hq.app.client.ClientRepository;
+-import net.officefloor.hq.app.client.ClientResponse;
++import net.officefloor.hq.app.client.ClientService;
+ import net.officefloor.hq.app.project.ProjectRepository;
+ import net.officefloor.hq.app.project.ProjectResponse;
+ import org.springframework.stereotype.Service;
+@@ -12,10 +12,12 @@ import org.springframework.transaction.annotation.Transactional;
+ public class SearchService {
+ 
+     private final ClientRepository clients;
++    private final ClientService clientService;
+     private final ProjectRepository projects;
+ 
+-    public SearchService(ClientRepository clients, ProjectRepository projects) {
++    public SearchService(ClientRepository clients, ClientService clientService, ProjectRepository projects) {
+         this.clients = clients;
++        this.clientService = clientService;
+         this.projects = projects;
+     }
+ 
+@@ -31,7 +33,7 @@ public class SearchService {
+         }
+         String pattern = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+         return new SearchResponse(
+-                clients.searchActiveByName(pattern).stream().map(ClientResponse::from).toList(),
++                clientService.respond(clients.searchActiveByName(pattern)),
+                 projects.searchActiveByNameWithClient(pattern).stream().map(ProjectResponse::from).toList());
+     }
+ }
