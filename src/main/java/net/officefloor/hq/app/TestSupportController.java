@@ -156,15 +156,17 @@ public class TestSupportController {
                     seedStatus(i.get("status")), issued, due);
             for (Map<String, Object> l : lineItems) {
                 if (l.get("id") != null) {
-                    jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit, unit_price)"
-                            + " VALUES (?, ?, ?, ?, ?, ?)",
+                    jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit, unit_price, tax_exempt)"
+                            + " VALUES (?, ?, ?, ?, ?, ?, ?)",
                             ((Number) l.get("id")).longValue(), invoiceId, l.get("description"),
-                            new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()));
+                            new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()),
+                            Boolean.TRUE.equals(l.get("taxExempt")));
                 } else {
-                    jdbc.update("INSERT INTO invoice_line_item (invoice_id, description, qty, unit, unit_price)"
-                            + " VALUES (?, ?, ?, ?, ?)",
+                    jdbc.update("INSERT INTO invoice_line_item (invoice_id, description, qty, unit, unit_price, tax_exempt)"
+                            + " VALUES (?, ?, ?, ?, ?, ?)",
                             invoiceId, l.get("description"),
-                            new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()));
+                            new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()),
+                            Boolean.TRUE.equals(l.get("taxExempt")));
                 }
             }
         }

@@ -128,7 +128,13 @@ public class Invoice {
 
     /** Adds a line to this invoice and reworks its amount to include what the line charges. */
     public InvoiceLineItem addLineItem(String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
-        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unit, unitPrice);
+        return addLineItem(description, qty, unit, unitPrice, false);
+    }
+
+    /** Adds a line, taxable or tax-free, to this invoice and reworks its amount to include what the line charges. */
+    public InvoiceLineItem addLineItem(String description, BigDecimal qty, String unit, BigDecimal unitPrice,
+            boolean taxExempt) {
+        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unit, unitPrice, taxExempt);
         lineItems.add(item);
         recalculateAmount();
         return item;
@@ -136,8 +142,8 @@ public class Invoice {
 
     /** Changes one of this invoice's lines and reworks its amount to match. */
     public void updateLineItem(InvoiceLineItem item, String description, BigDecimal qty, String unit,
-            BigDecimal unitPrice) {
-        item.update(description, qty, unit, unitPrice);
+            BigDecimal unitPrice, boolean taxExempt) {
+        item.update(description, qty, unit, unitPrice, taxExempt);
         recalculateAmount();
     }
 

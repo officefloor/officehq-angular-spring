@@ -62,6 +62,15 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                       (keydown.enter)="saveEdit(l.id)"
                       (keydown.escape)="cancelEdit(l.id)"
                     />
+                    <label>
+                      <input
+                        type="checkbox"
+                        [formControl]="editForm.controls.taxExempt"
+                        data-testid="lineitem-edit-taxexempt"
+                        (keydown.escape)="cancelEdit(l.id)"
+                      />
+                      Tax-free
+                    </label>
                   </td>
                   <td>
                     <input
@@ -117,7 +126,12 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                     </button>
                   </td>
                 } @else {
-                  <td data-testid="lineitem-description">{{ l.description }}</td>
+                  <td>
+                    <span data-testid="lineitem-description">{{ l.description }}</span>
+                    @if (l.taxExempt) {
+                      <span data-testid="lineitem-taxexempt">(tax-free)</span>
+                    }
+                  </td>
                   <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
                   <td data-testid="lineitem-unit">{{ l.unit ?? '' }}</td>
                   <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
@@ -318,6 +332,10 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
               </p>
             }
           </div>
+          <div>
+            <input id="lineitem-taxexempt" type="checkbox" formControlName="taxExempt" data-testid="lineitem-form-taxexempt" />
+            <label for="lineitem-taxexempt">Tax-free (no tax is charged on this line)</label>
+          </div>
           <button type="submit" data-testid="lineitem-form-submit" [disabled]="saving()">Add line item</button>
           @if (saveError()) {
             <p role="alert" data-testid="lineitem-form-error">{{ saveError() }}</p>
@@ -445,6 +463,7 @@ export class InvoiceDetailPage {
     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
     unit: ['', [Validators.maxLength(50)]],
     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+    taxExempt: false,
   });
 
   protected invalid(name: 'description' | 'qty' | 'unit' | 'unitPrice'): boolean {
@@ -459,8 +478,8 @@ export class InvoiceDetailPage {
     }
     this.saving.set(true);
     this.saveError.set(null);
-    const { description, qty, unit, unitPrice } = this.form.getRawValue();
-    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice) };
+    const { description, qty, unit, unitPrice, taxExempt } = this.form.getRawValue();
+    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice), taxExempt };
     this.service.addLineItem(this.projectIdNumber(), Number(this.invoiceId()), item).subscribe({
       next: (updated) => {
         this.invoice.set(updated);
@@ -484,6 +503,7 @@ export class InvoiceDetailPage {
     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
     unit: ['', [Validators.maxLength(50)]],
     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+    taxExempt: false,
   });
 
   protected startEdit(line: LineItem): void {
@@ -493,6 +513,7 @@ export class InvoiceDetailPage {
       qty: String(line.qty),
       unit: line.unit ?? '',
       unitPrice: String(line.unitPrice),
+      taxExempt: line.taxExempt,
     });
     this.editingId.set(line.id);
     this.focus(`lineitem-edit-description-${line.id}`);
@@ -509,8 +530,8 @@ export class InvoiceDetailPage {
       this.editForm.markAllAsTouched();
       return;
     }
-    const { description, qty, unit, unitPrice } = this.editForm.getRawValue();
-    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice) };
+    const { description, qty, unit, unitPrice, taxExempt } = this.editForm.getRawValue();
+    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice), taxExempt };
     this.run(
       this.service.updateLineItem(this.projectIdNumber(), Number(this.invoiceId()), lineItemId, item),
       'Could not save the line item. Please try again.',

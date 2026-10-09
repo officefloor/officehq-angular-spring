@@ -77,6 +77,8 @@ export interface LineItem {
   unit: string | null;
   unitPrice: number;
   amount: number;
+  /** Whether the line is tax-free: it is not taxable. */
+  taxExempt: boolean;
 }
 
 /**
@@ -98,6 +100,7 @@ export interface NewLineItem {
   qty: number;
   unit: string | null;
   unitPrice: number;
+  taxExempt: boolean;
 }
 
 export interface NewInvoice {

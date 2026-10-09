@@ -37,22 +37,28 @@ public class InvoiceLineItem {
     @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal unitPrice;
 
+    @Column(name = "tax_exempt", nullable = false)
+    private boolean taxExempt;
+
     protected InvoiceLineItem() {
     }
 
-    InvoiceLineItem(Invoice invoice, String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
+    InvoiceLineItem(Invoice invoice, String description, BigDecimal qty, String unit, BigDecimal unitPrice,
+            boolean taxExempt) {
         this.invoice = invoice;
         this.description = description;
         this.qty = qty;
         this.unit = unit;
         this.unitPrice = unitPrice;
+        this.taxExempt = taxExempt;
     }
 
-    void update(String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
+    void update(String description, BigDecimal qty, String unit, BigDecimal unitPrice, boolean taxExempt) {
         this.description = description;
         this.qty = qty;
         this.unit = unit;
         this.unitPrice = unitPrice;
+        this.taxExempt = taxExempt;
     }
 
     public Long getId() {
@@ -78,6 +84,11 @@ public class InvoiceLineItem {
 
     public BigDecimal getUnitPrice() {
         return unitPrice;
+    }
+
+    /** Whether this line is tax-free: it is not taxable. */
+    public boolean isTaxExempt() {
+        return taxExempt;
     }
 
     /** What this line charges: quantity times unit price, to the cent. */
