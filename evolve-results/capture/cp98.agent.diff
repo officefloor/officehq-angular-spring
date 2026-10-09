@@ -1,0 +1,479 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index f2a844c..952066f 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -3,15 +3,16 @@ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { ClientContacts } from '../contacts/client-contacts';
+ import { Contact } from '../contacts/contact.service';
++import { ClientDeposits } from '../deposits/client-deposits';
+ import { ClientPaymentForm } from '../payments/client-payment';
+ import { ClientProjects } from '../projects/client-projects';
+ import { ClientCurrency } from './client-currency';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, counts of their projects and contacts, their contacts, and the projects being done for them.
++// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, the deposits they have paid up front, counts of their projects and contacts, their contacts, and the projects being done for them.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm],
++  imports: [RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -107,6 +108,7 @@ import { Client, ClientService } from './client.service';
+           <p role="status" data-testid="client-payment-recorded">Payment recorded.</p>
+         }
+       </div>
++      <app-client-deposits [clientId]="clientId()" [currency]="c.currency" />
+       <app-client-contacts
+         [clientId]="clientId()"
+         (contactAdded)="contactAdded()"
+diff --git a/src/main/frontend/src/app/features/deposits/client-deposits.ts b/src/main/frontend/src/app/features/deposits/client-deposits.ts
+new file mode 100644
+index 0000000..c9d3ff3
+--- /dev/null
++++ b/src/main/frontend/src/app/features/deposits/client-deposits.ts
+@@ -0,0 +1,129 @@
++import { CurrencyPipe } from '@angular/common';
++import { Component, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { CurrencyCode } from '../clients/client.service';
++import { DepositService } from './deposit.service';
++
++const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
++
++// The deposits a client has paid up front, before any invoice, with their total and a form to record another.
++@Component({
++  selector: 'app-client-deposits',
++  imports: [ReactiveFormsModule, CurrencyPipe],
++  template: `
++    <section aria-labelledby="client-deposits-heading" data-testid="client-deposits">
++      <h2 id="client-deposits-heading">Deposits</h2>
++      @if (deposits.error()) {
++        <p role="alert" data-testid="client-deposits-error">Could not load the client's deposits.</p>
++      } @else if (deposits.hasValue()) {
++        <p>
++          Held: <span data-testid="client-deposit-total">{{ deposits.value().total | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
++        </p>
++        @if (deposits.value().deposits.length > 0) {
++          <ul data-testid="client-deposit-list">
++            @for (d of deposits.value().deposits; track d.id) {
++              <li [attr.data-testid]="'client-deposit-' + d.id">
++                <span data-testid="client-deposit-date">{{ d.date }}</span>:
++                <span data-testid="client-deposit-amount">{{ d.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
++              </li>
++            }
++          </ul>
++        }
++      }
++      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="deposit-form" novalidate>
++        <div>
++          <label for="deposit-amount">Deposit amount</label>
++          <input
++            id="deposit-amount"
++            type="number"
++            inputmode="decimal"
++            min="0.01"
++            step="0.01"
++            formControlName="amount"
++            data-testid="deposit-form-amount"
++            [attr.aria-invalid]="invalid('amount')"
++            [attr.aria-describedby]="invalid('amount') ? 'deposit-amount-error' : null"
++          />
++          @if (invalid('amount')) {
++            <p id="deposit-amount-error" role="alert" data-testid="deposit-form-amount-error">
++              Enter an amount greater than zero with at most two decimal places.
++            </p>
++          }
++        </div>
++        <div>
++          <label for="deposit-date">Date paid</label>
++          <input
++            id="deposit-date"
++            type="date"
++            formControlName="date"
++            data-testid="deposit-form-date"
++            [attr.aria-invalid]="invalid('date')"
++            [attr.aria-describedby]="invalid('date') ? 'deposit-date-error' : null"
++          />
++          @if (invalid('date')) {
++            <p id="deposit-date-error" role="alert" data-testid="deposit-form-date-error">
++              Enter the date the deposit was paid.
++            </p>
++          }
++        </div>
++        <button type="submit" data-testid="deposit-form-submit" [disabled]="saving()">Record deposit</button>
++        @if (saveError()) {
++          <p role="alert" data-testid="deposit-form-error">{{ saveError() }}</p>
++        }
++        @if (saved()) {
++          <p role="status" data-testid="deposit-form-recorded">Deposit recorded.</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class ClientDeposits {
++  private readonly service = inject(DepositService);
++
++  readonly clientId = input.required<number>();
++  /** The client's currency; their deposits are held in it. */
++  readonly currency = input.required<CurrencyCode>();
++
++  protected readonly deposits = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.service.list(params),
++  });
++
++  protected readonly saving = signal(false);
++  protected readonly saved = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    date: ['', [Validators.required]],
++  });
++
++  protected invalid(name: 'amount' | 'date'): boolean {
++    const control = this.form.controls[name];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    this.saveError.set(null);
++    this.saved.set(false);
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    const { amount, date } = this.form.getRawValue();
++    this.saving.set(true);
++    this.service.record(this.clientId(), { amount: Number(amount), date }).subscribe({
++      next: () => {
++        this.saving.set(false);
++        this.saved.set(true);
++        this.form.reset();
++        this.deposits.reload();
++      },
++      error: () => {
++        this.saving.set(false);
++        this.saveError.set('Could not record the deposit. Please try again.');
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/deposits/deposit.service.ts b/src/main/frontend/src/app/features/deposits/deposit.service.ts
+new file mode 100644
+index 0000000..d1f83fb
+--- /dev/null
++++ b/src/main/frontend/src/app/features/deposits/deposit.service.ts
+@@ -0,0 +1,36 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++/** Money a client paid up front, before any invoice, held against the client. */
++export interface Deposit {
++  id: number;
++  clientId: number;
++  amount: number;
++  /** ISO date (yyyy-MM-dd) the deposit was paid. */
++  date: string;
++}
++
++export interface NewDeposit {
++  amount: number;
++  date: string;
++}
++
++/** The deposits held for a client, oldest first, and their total. */
++export interface ClientDeposits {
++  total: number;
++  deposits: Deposit[];
++}
++
++@Injectable({ providedIn: 'root' })
++export class DepositService {
++  private readonly http = inject(HttpClient);
++
++  list(clientId: number): Observable<ClientDeposits> {
++    return this.http.get<ClientDeposits>(`/api/clients/${clientId}/deposits`);
++  }
++
++  record(clientId: number, deposit: NewDeposit): Observable<Deposit> {
++    return this.http.post<Deposit>(`/api/clients/${clientId}/deposits`, deposit);
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index f898064..d0124b1 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -60,6 +60,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE client_payment RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE deposit RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice_discount RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+@@ -291,6 +292,11 @@ public class TestSupportController {
+                     new BigDecimal(c.get("amount").toString()),
+                     Timestamp.from(seedInstant(c.get("date").toString())));
+         }
++        for (Map<String, Object> d : rows(fixture, "deposits")) {
++            jdbc.update("INSERT INTO deposit (id, client_id, amount, paid_date) VALUES (?, ?, ?, ?)",
++                    ((Number) d.get("id")).longValue(), ((Number) d.get("clientId")).longValue(),
++                    new BigDecimal(d.get("amount").toString()), LocalDate.parse(d.get("date").toString()));
++        }
+         // Continue generated ids after the explicitly seeded ones.
+         restartIdentity("client");
+         restartIdentity("contact");
+@@ -303,6 +309,7 @@ public class TestSupportController {
+         restartIdentity("note");
+         restartIdentity("payment");
+         restartIdentity("credit_note");
++        restartIdentity("deposit");
+     }
+ 
+     /** A fixture timestamp, either a full instant or a bare date taken as the start of that day (UTC). */
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/ClientDepositController.java b/src/main/java/net/officefloor/hq/app/deposit/ClientDepositController.java
+new file mode 100644
+index 0000000..4490fa6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/deposit/ClientDepositController.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app.deposit;
++
++import jakarta.validation.Valid;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** Deposits a client pays up front, before any invoice. */
++@RestController
++@RequestMapping("/api/clients/{clientId}/deposits")
++public class ClientDepositController {
++
++    private final DepositService service;
++
++    public ClientDepositController(DepositService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public ClientDepositsResponse list(@PathVariable Long clientId) {
++        return service.list(clientId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public DepositResponse record(@PathVariable Long clientId, @Valid @RequestBody DepositRequest request) {
++        return service.record(clientId, request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java b/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java
+new file mode 100644
+index 0000000..2fcaf7e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.deposit;
++
++import java.math.BigDecimal;
++import java.util.List;
++
++/** The deposits held for a client, oldest first, and their total. */
++public record ClientDepositsResponse(BigDecimal total, List<DepositResponse> deposits) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/Deposit.java b/src/main/java/net/officefloor/hq/app/deposit/Deposit.java
+new file mode 100644
+index 0000000..72d18cc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/deposit/Deposit.java
+@@ -0,0 +1,54 @@
++package net.officefloor.hq.app.deposit;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** Money a client paid up front on a given day, before any invoice, held against the client. */
++@Entity
++@Table(name = "deposit")
++public class Deposit {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "client_id", nullable = false)
++    private Long clientId;
++
++    @Column(nullable = false, precision = 12, scale = 2)
++    private BigDecimal amount;
++
++    @Column(name = "paid_date", nullable = false)
++    private LocalDate date;
++
++    protected Deposit() {
++    }
++
++    public Deposit(Long clientId, BigDecimal amount, LocalDate date) {
++        this.clientId = clientId;
++        this.amount = amount.setScale(2);
++        this.date = date;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public LocalDate getDate() {
++        return date;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/DepositRepository.java b/src/main/java/net/officefloor/hq/app/deposit/DepositRepository.java
+new file mode 100644
+index 0000000..c33c2e3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/deposit/DepositRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.deposit;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface DepositRepository extends JpaRepository<Deposit, Long> {
++
++    /** A client's deposits, oldest first. */
++    List<Deposit> findByClientIdOrderByDateAscIdAsc(Long clientId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/DepositRequest.java b/src/main/java/net/officefloor/hq/app/deposit/DepositRequest.java
+new file mode 100644
+index 0000000..95f3a27
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/deposit/DepositRequest.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.deposit;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** Payload to record a deposit a client paid up front. */
++public record DepositRequest(
++        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
++        @NotNull LocalDate date) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/DepositResponse.java b/src/main/java/net/officefloor/hq/app/deposit/DepositResponse.java
+new file mode 100644
+index 0000000..148c211
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/deposit/DepositResponse.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.deposit;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++public record DepositResponse(Long id, Long clientId, BigDecimal amount, LocalDate date) {
++
++    static DepositResponse from(Deposit deposit) {
++        return new DepositResponse(deposit.getId(), deposit.getClientId(), deposit.getAmount(), deposit.getDate());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/DepositService.java b/src/main/java/net/officefloor/hq/app/deposit/DepositService.java
+new file mode 100644
+index 0000000..6b8ffeb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/deposit/DepositService.java
+@@ -0,0 +1,50 @@
++package net.officefloor.hq.app.deposit;
++
++import java.math.BigDecimal;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.client.ClientRepository;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class DepositService {
++
++    private final DepositRepository deposits;
++    private final ClientRepository clients;
++    private final Audit audit;
++
++    public DepositService(DepositRepository deposits, ClientRepository clients, Audit audit) {
++        this.deposits = deposits;
++        this.clients = clients;
++        this.audit = audit;
++    }
++
++    @Transactional(readOnly = true)
++    public ClientDepositsResponse list(Long clientId) {
++        requireClient(clientId);
++        List<DepositResponse> held = deposits.findByClientIdOrderByDateAscIdAsc(clientId).stream()
++                .map(DepositResponse::from).toList();
++        BigDecimal total = held.stream().map(DepositResponse::amount)
++                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++        return new ClientDepositsResponse(total, held);
++    }
++
++    /** Records money a client paid up front, before any invoice; it is held against the client. */
++    @Transactional
++    public DepositResponse record(Long clientId, DepositRequest request) {
++        requireClient(clientId);
++        Deposit saved = deposits.saveAndFlush(new Deposit(clientId, request.amount(), request.date()));
++        audit.record("DEPOSIT_RECORDED id=" + saved.getId() + " client=" + clientId
++                + " amount=" + saved.getAmount().toPlainString());
++        return DepositResponse.from(saved);
++    }
++
++    private void requireClient(Long clientId) {
++        if (!clients.existsById(clientId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
++        }
++    }
++}
+diff --git a/src/main/resources/db/migration/V57__create_deposit.sql b/src/main/resources/db/migration/V57__create_deposit.sql
+new file mode 100644
+index 0000000..3c0a23a
+--- /dev/null
++++ b/src/main/resources/db/migration/V57__create_deposit.sql
+@@ -0,0 +1,11 @@
++-- Money a client pays up front, before any invoice. It is held against the client.
++CREATE TABLE deposit (
++    id        BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    client_id BIGINT         NOT NULL,
++    amount    DECIMAL(12, 2) NOT NULL,
++    paid_date DATE           NOT NULL,
++    CONSTRAINT deposit_client_fk FOREIGN KEY (client_id) REFERENCES client (id),
++    CONSTRAINT deposit_amount_positive CHECK (amount > 0)
++);
++
++CREATE INDEX deposit_client_idx ON deposit (client_id, paid_date);
