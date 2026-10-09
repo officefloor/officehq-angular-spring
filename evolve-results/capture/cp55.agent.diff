@@ -1,0 +1,162 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 7ff2d94..4332bd6 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -2,11 +2,18 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ 
++export interface TopClient {
++  id: number;
++  name: string;
++  outstanding: number;
++}
++
+ export interface DashboardSummary {
+   clients: number;
+   projects: number;
+   outstanding: number;
+   overdue: number;
++  topClients: TopClient[];
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index e2ddd5e..e8c4ba4 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -4,7 +4,8 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
+ 
+ // Dashboard page: how many clients and projects there are, and the total still owed (what is left
+ // to pay on invoices that have been sent but not yet fully paid; drafts are not counted), and how
+-// many of those sent invoices are past their due date.
++// many of those sent invoices are past their due date. Also lists the top five clients ranked by
++// what they still owe.
+ @Component({
+   selector: 'app-dashboard',
+   imports: [CurrencyPipe],
+@@ -32,6 +33,22 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
+           <dd data-testid="dashboard-overdue-count">{{ s.overdue }}</dd>
+         </div>
+       </dl>
++
++      <section data-testid="dashboard-top-clients" aria-labelledby="dashboard-top-clients-heading">
++        <h2 id="dashboard-top-clients-heading">Top clients by amount owed</h2>
++        @if (s.topClients.length) {
++          <ol>
++            @for (c of s.topClients; track c.id) {
++              <li [attr.data-testid]="'top-client-row-' + c.id">
++                <span data-testid="top-client-name">{{ c.name }}</span>:
++                <span data-testid="top-client-amount">{{ c.outstanding | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</span>
++              </li>
++            }
++          </ol>
++        } @else {
++          <p data-testid="dashboard-top-clients-empty">No clients owe anything.</p>
++        }
++      </section>
+     } @else {
+       <p data-testid="dashboard-loading">Loading…</p>
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 475fcf9..3b8532d 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -142,6 +142,25 @@ public class ClientService {
+         return found.stream().map(c -> ClientResponse.from(c, owed.getOrDefault(c.getId(), ZERO))).toList();
+     }
+ 
++    /**
++     * The clients who owe the most, largest debt first (ties by id), at most {@code limit} of them.
++     * Clients owing nothing are left out.
++     */
++    @Transactional(readOnly = true)
++    public List<ClientResponse> topByOutstanding(int limit) {
++        Map<Long, BigDecimal> owed = outstandingByClient();
++        owed.values().removeIf(amount -> amount.signum() <= 0);
++        List<Long> top = owed.entrySet().stream()
++                .sorted(Map.Entry.<Long, BigDecimal>comparingByValue().reversed()
++                        .thenComparing(Map.Entry.comparingByKey()))
++                .limit(limit)
++                .map(Map.Entry::getKey)
++                .toList();
++        Map<Long, Client> found = new HashMap<>();
++        clients.findAllById(top).forEach(c -> found.put(c.getId(), c));
++        return top.stream().map(id -> ClientResponse.from(found.get(id), owed.get(id))).toList();
++    }
++
+     private ClientResponse respond(Client client) {
+         return ClientResponse.from(client, outstandingByClient().getOrDefault(client.getId(), ZERO));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+index 9b6ebf4..171e1e7 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+@@ -1,7 +1,13 @@
+ package net.officefloor.hq.app.dashboard;
+ 
+ import java.math.BigDecimal;
++import java.util.List;
+ 
+-/** Summary figures for the dashboard. */
+-public record DashboardResponse(long clients, long projects, BigDecimal outstanding, long overdue) {
++/** Summary figures for the dashboard, with the clients who owe the most. */
++public record DashboardResponse(long clients, long projects, BigDecimal outstanding, long overdue,
++        List<TopClient> topClients) {
++
++    /** A client and what they still owe. */
++    public record TopClient(Long id, String name, BigDecimal outstanding) {
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 6695527..89a8fc2 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -6,6 +6,7 @@ import java.time.Clock;
+ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.client.ClientService;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+@@ -20,20 +21,26 @@ public class DashboardService {
+     private final ProjectRepository projects;
+     private final InvoiceRepository invoices;
+     private final PaymentRepository payments;
++    private final ClientService clientService;
+     private final Clock clock;
+ 
++    /** How many of the biggest debtors the dashboard lists. */
++    static final int TOP_CLIENTS = 5;
++
+     public DashboardService(ClientRepository clients, ProjectRepository projects, InvoiceRepository invoices,
+-            PaymentRepository payments, Clock clock) {
++            PaymentRepository payments, ClientService clientService, Clock clock) {
+         this.clients = clients;
+         this.projects = projects;
+         this.invoices = invoices;
+         this.payments = payments;
++        this.clientService = clientService;
+         this.clock = clock;
+     }
+ 
+     /**
+      * Counts of clients and projects, and the total still owed (what is left to pay on sent invoices
+-     * that are not yet fully paid), plus how many of those sent invoices are past their due date.
++     * that are not yet fully paid), plus how many of those sent invoices are past their due date, and
++     * the top clients ranked by what they owe.
+      */
+     @Transactional(readOnly = true)
+     public DashboardResponse summary() {
+@@ -42,6 +49,9 @@ public class DashboardService {
+                 .subtract(payments.sumAmountByInvoiceStatusIn(owing))
+                 .setScale(2, RoundingMode.HALF_UP);
+         long overdue = invoices.countByStatusInAndDueDateBefore(owing, LocalDate.now(clock));
+-        return new DashboardResponse(clients.count(), projects.count(), outstanding, overdue);
++        List<DashboardResponse.TopClient> top = clientService.topByOutstanding(TOP_CLIENTS).stream()
++                .map(c -> new DashboardResponse.TopClient(c.id(), c.name(), c.outstanding()))
++                .toList();
++        return new DashboardResponse(clients.count(), projects.count(), outstanding, overdue, top);
+     }
+ }
