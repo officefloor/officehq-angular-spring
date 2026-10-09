@@ -160,6 +160,19 @@ public class ProjectService {
         return ProjectResponse.from(project);
     }
 
+    /** Closes a job so no new invoice can be raised on it, recording the closing in the audit log. */
+    @Transactional
+    public ProjectResponse close(Long id) {
+        Project project = projects.findByIdWithClient(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+        if (!project.isClosed()) {
+            project.setClosed(true);
+            projects.flush();
+            audit.record("PROJECT_CLOSED id=" + id);
+        }
+        return ProjectResponse.from(project);
+    }
+
     /**
      * Archives a project: it drops off the project lists but is kept, with its tasks and invoices,
      * and the archiving is recorded in the audit log.

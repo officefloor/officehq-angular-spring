@@ -8,7 +8,7 @@ import { ProjectTasks } from '../tasks/project-tasks';
 import { ProjectBudgetPanel } from './project-budget';
 import { ProjectService } from './project.service';
 
-// A single project's page: its name, description, client and status, whether it is billable, its budget, its tags, its tasks, its notes, and its invoices.
+// A single project's page: its name, description, client and status, whether it is open or closed, whether it is billable, its budget, its tags, its tasks, its notes, and its invoices.
 @Component({
   selector: 'app-project-detail',
   imports: [RouterLink, ProjectBudgetPanel, ProjectInvoices, Notes, ProjectTags, ProjectTasks],
@@ -23,6 +23,17 @@ import { ProjectService } from './project.service';
       }
       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
       <p>Status: <span data-testid="project-detail-status">{{ p.status }}</span></p>
+      <p>
+        Job: <span data-testid="project-status">{{ p.closed ? 'CLOSED' : 'OPEN' }}</span>
+        @if (!p.closed) {
+          <button type="button" data-testid="project-close" [disabled]="closing()" (click)="close()">
+            Close job
+          </button>
+        }
+      </p>
+      @if (closeError()) {
+        <p role="alert" data-testid="project-close-error">{{ closeError() }}</p>
+      }
       <p>
         Billing: <span data-testid="project-billable">{{ p.billable ? 'Billable' : 'Non-billable' }}</span>
         <button
@@ -41,7 +52,7 @@ import { ProjectService } from './project.service';
       <app-project-tags [projectId]="projectId()" />
       <app-project-tasks [projectId]="projectId()" />
       <app-notes [projectId]="projectId()" />
-      <app-project-invoices [projectId]="projectId()" [currency]="p.currency" (invoiced)="budget()?.reload()" />
+      <app-project-invoices [projectId]="projectId()" [currency]="p.currency" [closed]="p.closed" (invoiced)="budget()?.reload()" />
     }
   `,
 })
@@ -61,6 +72,24 @@ export class ProjectDetail {
 
   protected readonly savingBillable = signal(false);
   protected readonly billableError = signal<string | null>(null);
+
+  protected readonly closing = signal(false);
+  protected readonly closeError = signal<string | null>(null);
+
+  protected close(): void {
+    this.closing.set(true);
+    this.closeError.set(null);
+    this.service.close(this.projectId()).subscribe({
+      next: (updated) => {
+        this.project.set(updated);
+        this.closing.set(false);
+      },
+      error: () => {
+        this.closeError.set('Could not close the job.');
+        this.closing.set(false);
+      },
+    });
+  }
 
   protected setBillable(billable: boolean): void {
     this.savingBillable.set(true);

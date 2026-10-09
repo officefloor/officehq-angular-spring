@@ -39,6 +39,8 @@ public class Project {
 
     private boolean archived;
 
+    private boolean closed;
+
     @Enumerated(EnumType.STRING)
     private ProjectStatus status = ProjectStatus.ACTIVE;
 
@@ -92,6 +94,15 @@ public class Project {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    /** Whether the job is closed; no new invoice can be raised on a closed job. */
+    public boolean isClosed() {
+        return closed;
+    }
+
+    public void setClosed(boolean closed) {
+        this.closed = closed;
     }
 
     public ProjectStatus getStatus() {

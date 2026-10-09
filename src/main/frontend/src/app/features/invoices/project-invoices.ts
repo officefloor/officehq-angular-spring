@@ -29,9 +29,21 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
     <section aria-labelledby="project-invoices-heading" data-testid="project-invoices">
       <h2 id="project-invoices-heading">Invoices</h2>
 
-      <button type="button" data-testid="invoice-new" (click)="startNew()">New invoice</button>
+      <button
+        type="button"
+        data-testid="invoice-new"
+        [disabled]="closed()"
+        [attr.aria-describedby]="closed() ? 'invoice-closed-note' : null"
+        (click)="startNew()"
+      >
+        New invoice
+      </button>
+      @if (closed()) {
+        <p id="invoice-closed-note" data-testid="invoice-closed-note">This job is closed; no new invoice can be raised on it.</p>
+      }
 
       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="invoice-form" novalidate>
+        <fieldset [disabled]="closed()">
         <div>
           <label for="invoice-amount">Amount (optional, or leave blank and add line items)</label>
           <input
@@ -98,6 +110,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
         @if (saveError()) {
           <p role="alert" data-testid="invoice-form-error">{{ saveError() }}</p>
         }
+        </fieldset>
       </form>
 
       @if (invoices.error()) {
@@ -194,6 +207,8 @@ export class ProjectInvoices {
   readonly projectId = input.required<number>();
   /** The currency of the client the job is for; the money shown is in it. */
   readonly currency = input.required<CurrencyCode>();
+  /** Whether the job is closed; no new invoice can be raised on a closed job. */
+  readonly closed = input(false);
   /** Emits when an invoice is sent or cancelled, changing how much has been invoiced on the project. */
   readonly invoiced = output<void>();
 
@@ -277,6 +292,9 @@ export class ProjectInvoices {
   }
 
   protected submit(): void {
+    if (this.closed()) {
+      return;
+    }
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;

@@ -60,6 +60,11 @@ public class ProjectController {
         return service.setBudget(id, request.budget());
     }
 
+    @PostMapping("/{id}/close")
+    public ProjectResponse close(@PathVariable Long id) {
+        return service.close(id);
+    }
+
     @PostMapping("/{id}/archive")
     public ProjectResponse archive(@PathVariable Long id) {
         return service.archive(id);

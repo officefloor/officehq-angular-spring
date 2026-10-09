@@ -27,6 +27,8 @@ export interface Project {
   description: string | null;
   /** Whether the work is charged to the client; internal work is non-billable. */
   billable: boolean;
+  /** Whether the job is closed; no new invoice can be raised on a closed job. */
+  closed: boolean;
 }
 
 /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
@@ -91,6 +93,10 @@ export class ProjectService {
 
   setBudget(id: number, budget: number | null): Observable<ProjectBudget> {
     return this.http.put<ProjectBudget>(`/api/projects/${id}/budget`, { budget });
+  }
+
+  close(id: number): Observable<Project> {
+    return this.http.post<Project>(`/api/projects/${id}/close`, null);
   }
 
   archive(id: number): Observable<Project> {

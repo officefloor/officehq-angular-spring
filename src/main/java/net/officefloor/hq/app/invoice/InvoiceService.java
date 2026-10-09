@@ -105,6 +105,9 @@ public class InvoiceService {
     public InvoiceResponse create(Long projectId, InvoiceRequest request) {
         Project project = projects.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+        if (project.isClosed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The job is closed; no new invoice can be raised on it");
+        }
         LocalDate issued = request.issuedDate() != null ? request.issuedDate() : LocalDate.now();
         LocalDate due = request.dueDate() != null ? request.dueDate() : issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS);
         if (due.isBefore(issued)) {
