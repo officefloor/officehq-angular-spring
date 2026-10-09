@@ -1,0 +1,356 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 62189ac..58279e9 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -6,6 +6,7 @@ export interface Client {
+   id: number;
+   name: string;
+   email: string;
++  archived: boolean;
+ }
+ 
+ /** At-a-glance counts of what one client has. */
+@@ -14,14 +15,14 @@ export interface ClientSummary {
+   contactCount: number;
+ }
+ 
+-export type NewClient = Omit<Client, 'id'>;
++export type NewClient = Omit<Client, 'id' | 'archived'>;
+ 
+ @Injectable({ providedIn: 'root' })
+ export class ClientService {
+   private readonly http = inject(HttpClient);
+ 
+-  list(): Observable<Client[]> {
+-    return this.http.get<Client[]>('/api/clients');
++  list(includeArchived = false): Observable<Client[]> {
++    return this.http.get<Client[]>('/api/clients', { params: { includeArchived } });
+   }
+ 
+   get(id: number): Observable<Client> {
+@@ -35,4 +36,12 @@ export class ClientService {
+   create(client: NewClient): Observable<Client> {
+     return this.http.post<Client>('/api/clients', client);
+   }
++
++  archive(id: number): Observable<Client> {
++    return this.http.post<Client>(`/api/clients/${id}/archive`, null);
++  }
++
++  restore(id: number): Observable<Client> {
++    return this.http.post<Client>(`/api/clients/${id}/restore`, null);
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 2ccba36..013c8ac 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -4,7 +4,8 @@ import { RouterLink } from '@angular/router';
+ import { Client, ClientService } from './client.service';
+ 
+ // Clients page: add a client (name + email) and list all clients, filterable by name; each client
+-// opens its detail page.
++// opens its detail page. A client no longer worked with can be archived: it is kept but left off the
++// list and search unless the archived toggle is on, where it can be restored.
+ @Component({
+   selector: 'app-clients',
+   imports: [ReactiveFormsModule, RouterLink],
+@@ -52,6 +53,21 @@ import { Client, ClientService } from './client.service';
+       }
+     </form>
+ 
++    @if (actionError()) {
++      <p role="alert" data-testid="client-archive-error">{{ actionError() }}</p>
++    }
++
++    <div>
++      <input
++        id="clients-show-archived"
++        type="checkbox"
++        data-testid="clients-show-archived"
++        [checked]="showArchived()"
++        (change)="toggleArchived()"
++      />
++      <label for="clients-show-archived">Show archived clients</label>
++    </div>
++
+     @if (clients().length === 0) {
+       <p data-testid="clients-empty">No clients yet.</p>
+     } @else {
+@@ -81,7 +97,12 @@ import { Client, ClientService } from './client.service';
+           <tbody>
+             @for (c of filteredClients(); track c.id) {
+               <tr [attr.data-testid]="'client-row-' + c.id">
+-                <td data-testid="client-name">{{ c.name }}</td>
++                <td data-testid="client-name">
++                  {{ c.name }}
++                  @if (c.archived) {
++                    <span [attr.data-testid]="'client-archived-' + c.id">(archived)</span>
++                  }
++                </td>
+                 <td data-testid="client-email">{{ c.email }}</td>
+                 <td>
+                   <a
+@@ -90,6 +111,27 @@ import { Client, ClientService } from './client.service';
+                     [attr.aria-label]="'Open ' + c.name"
+                     >Open</a
+                   >
++                  @if (c.archived) {
++                    <button
++                      type="button"
++                      [attr.data-testid]="'client-restore-' + c.id"
++                      [attr.aria-label]="'Restore ' + c.name"
++                      [disabled]="busy() === c.id"
++                      (click)="restore(c)"
++                    >
++                      Restore
++                    </button>
++                  } @else {
++                    <button
++                      type="button"
++                      [attr.data-testid]="'client-archive-' + c.id"
++                      [attr.aria-label]="'Archive ' + c.name"
++                      [disabled]="busy() === c.id"
++                      (click)="archive(c)"
++                    >
++                      Archive
++                    </button>
++                  }
+                 </td>
+               </tr>
+             }
+@@ -112,6 +154,9 @@ export class Clients {
+   });
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
++  protected readonly showArchived = signal(false);
++  protected readonly busy = signal<number | null>(null);
++  protected readonly actionError = signal<string | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+@@ -161,7 +206,46 @@ export class Clients {
+     });
+   }
+ 
++  protected toggleArchived(): void {
++    this.showArchived.update((show) => !show);
++    this.load();
++  }
++
++  protected archive(client: Client): void {
++    this.busy.set(client.id);
++    this.actionError.set(null);
++    this.service.archive(client.id).subscribe({
++      next: (archived) => {
++        this.clients.update((list) =>
++          this.showArchived()
++            ? list.map((c) => (c.id === archived.id ? archived : c))
++            : list.filter((c) => c.id !== archived.id),
++        );
++        this.busy.set(null);
++      },
++      error: () => {
++        this.actionError.set(`Could not archive ${client.name}. Please try again.`);
++        this.busy.set(null);
++      },
++    });
++  }
++
++  protected restore(client: Client): void {
++    this.busy.set(client.id);
++    this.actionError.set(null);
++    this.service.restore(client.id).subscribe({
++      next: (restored) => {
++        this.clients.update((list) => list.map((c) => (c.id === restored.id ? restored : c)));
++        this.busy.set(null);
++      },
++      error: () => {
++        this.actionError.set(`Could not restore ${client.name}. Please try again.`);
++        this.busy.set(null);
++      },
++    });
++  }
++
+   private load(): void {
+-    this.service.list().subscribe((list) => this.clients.set(list));
++    this.service.list(this.showArchived()).subscribe((list) => this.clients.set(list));
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index a5aee17..895a9ba 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -19,6 +19,8 @@ public class Client {
+ 
+     private String email;
+ 
++    private boolean archived;
++
+     protected Client() {
+     }
+ 
+@@ -38,4 +40,12 @@ public class Client {
+     public String getEmail() {
+         return email;
+     }
++
++    public boolean isArchived() {
++        return archived;
++    }
++
++    public void setArchived(boolean archived) {
++        this.archived = archived;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index 77e8a67..0a98471 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+@@ -22,8 +23,8 @@ public class ClientController {
+     }
+ 
+     @GetMapping
+-    public List<ClientResponse> list() {
+-        return service.list();
++    public List<ClientResponse> list(@RequestParam(defaultValue = "false") boolean includeArchived) {
++        return service.list(includeArchived);
+     }
+ 
+     @GetMapping("/{id}")
+@@ -41,4 +42,14 @@ public class ClientController {
+     public ClientResponse create(@Valid @RequestBody ClientRequest request) {
+         return service.create(request);
+     }
++
++    @PostMapping("/{id}/archive")
++    public ClientResponse archive(@PathVariable Long id) {
++        return service.archive(id);
++    }
++
++    @PostMapping("/{id}/restore")
++    public ClientResponse restore(@PathVariable Long id) {
++        return service.restore(id);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+index 468b90b..9e09d1e 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+@@ -1,6 +1,10 @@
+ package net.officefloor.hq.app.client;
+ 
++import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface ClientRepository extends JpaRepository<Client, Long> {
++
++    /** All clients not archived, in id order. */
++    List<Client> findByArchivedFalseOrderById();
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index 1c48b8a..d085c0f 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -1,8 +1,8 @@
+ package net.officefloor.hq.app.client;
+ 
+-public record ClientResponse(Long id, String name, String email) {
++public record ClientResponse(Long id, String name, String email, boolean archived) {
+ 
+     static ClientResponse from(Client client) {
+-        return new ClientResponse(client.getId(), client.getName(), client.getEmail());
++        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.isArchived());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 5784ffe..057fb77 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.client;
+ 
+ import java.util.List;
++import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.contact.ContactRepository;
+ import net.officefloor.hq.app.project.ProjectRepository;
+ import org.springframework.data.domain.Sort;
+@@ -15,16 +16,21 @@ public class ClientService {
+     private final ClientRepository clients;
+     private final ProjectRepository projects;
+     private final ContactRepository contacts;
++    private final Audit audit;
+ 
+-    public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts) {
++    public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
++            Audit audit) {
+         this.clients = clients;
+         this.projects = projects;
+         this.contacts = contacts;
++        this.audit = audit;
+     }
+ 
++    /** The clients, leaving out archived ones unless they are asked for. */
+     @Transactional(readOnly = true)
+-    public List<ClientResponse> list() {
+-        return clients.findAll(Sort.by("id")).stream().map(ClientResponse::from).toList();
++    public List<ClientResponse> list(boolean includeArchived) {
++        List<Client> found = includeArchived ? clients.findAll(Sort.by("id")) : clients.findByArchivedFalseOrderById();
++        return found.stream().map(ClientResponse::from).toList();
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -47,4 +53,36 @@ public class ClientService {
+         Client saved = clients.save(new Client(request.name().trim(), request.email().trim()));
+         return ClientResponse.from(saved);
+     }
++
++    /**
++     * Archives a client: it drops off the client list and search but is kept, with its projects and
++     * contacts, and the archiving is recorded in the audit log.
++     */
++    @Transactional
++    public ClientResponse archive(Long id) {
++        Client client = find(id);
++        if (!client.isArchived()) {
++            client.setArchived(true);
++            clients.flush();
++            audit.record("CLIENT_ARCHIVED id=" + id);
++        }
++        return ClientResponse.from(client);
++    }
++
++    /** Brings an archived client back onto the client list, recording it in the audit log. */
++    @Transactional
++    public ClientResponse restore(Long id) {
++        Client client = find(id);
++        if (client.isArchived()) {
++            client.setArchived(false);
++            clients.flush();
++            audit.record("CLIENT_RESTORED id=" + id);
++        }
++        return ClientResponse.from(client);
++    }
++
++    private Client find(Long id) {
++        return clients.findById(id)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
++    }
+ }
+diff --git a/src/main/resources/db/migration/V15__client_archive.sql b/src/main/resources/db/migration/V15__client_archive.sql
+new file mode 100644
+index 0000000..e730a5a
+--- /dev/null
++++ b/src/main/resources/db/migration/V15__client_archive.sql
+@@ -0,0 +1,3 @@
++-- Clients are archived rather than deleted: an archived client drops off the client list and search
++-- but is kept, with its projects and contacts, and can be brought back.
++ALTER TABLE client ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE;
