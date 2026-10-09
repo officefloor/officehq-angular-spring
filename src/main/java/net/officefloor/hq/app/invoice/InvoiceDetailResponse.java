@@ -7,7 +7,7 @@ import net.officefloor.hq.app.client.Currency;
 
 /**
  * A single invoice together with the line items it is built from: their subtotal, the percentage
- * discount and what it takes off, the sales tax percentage, the taxable base it is charged on (the
+ * discount, the flat amount discount, and what they take off together, the sales tax percentage, the taxable base it is charged on (the
  * taxable lines after the discount) and what it adds, the levy (second tax) percentage and what it adds
  * on the same base, the amount owed including both taxes, the total before tax, whether the prices already include the taxes
  * (so they are worked back out rather than added on), whether the client is tax exempt (so
@@ -17,14 +17,14 @@ import net.officefloor.hq.app.client.Currency;
  */
 public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal totalExTax,
         BigDecimal subtotal,
-        BigDecimal discountPct, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
+        BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
         BigDecimal levyPct, BigDecimal levy, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct, InvoiceStatus status, LocalDate issuedDate,
         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber) {
 
     static InvoiceDetailResponse from(Invoice invoice) {
         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
-                invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscount(),
+                invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
                 invoice.getLevyPct(), invoice.getLevy(), invoice.isTaxInclusive(), invoice.isTaxExempt(),
                 invoice.getEffectiveTaxPct(),

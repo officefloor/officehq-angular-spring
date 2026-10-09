@@ -154,28 +154,38 @@ public class TestSupportController {
                     projectId);
             boolean taxInclusive = Boolean.TRUE.equals(client.get("TAX_INCLUSIVE"));
             boolean taxExempt = Boolean.TRUE.equals(client.get("TAX_EXEMPT"));
-            BigDecimal subtotal = BigDecimal.ZERO.setScale(2);
+            BigDecimal discountAmount = i.get("discountAmount") == null ? BigDecimal.ZERO
+                    : new BigDecimal(i.get("discountAmount").toString());
+            // A flat discount is taken off after the percentage (never more than is left) and is shared
+            // across the lines in proportion to what each charges.
+            List<BigDecimal> lines = lineItems.stream().map(l -> new BigDecimal(l.get("qty").toString())
+                    .multiply(new BigDecimal(l.get("unitPrice").toString())).setScale(2, RoundingMode.HALF_UP)).toList();
+            BigDecimal subtotal = lines.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+            BigDecimal pctDiscount = subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            BigDecimal flatDiscount = discountAmount.setScale(2, RoundingMode.HALF_UP)
+                    .min(subtotal.subtract(pctDiscount).max(BigDecimal.ZERO.setScale(2)));
             BigDecimal tax = BigDecimal.ZERO.setScale(2);
             BigDecimal levy = BigDecimal.ZERO.setScale(2);
-            for (Map<String, Object> l : lineItems) {
-                BigDecimal line = new BigDecimal(l.get("qty").toString())
-                        .multiply(new BigDecimal(l.get("unitPrice").toString())).setScale(2, RoundingMode.HALF_UP);
-                subtotal = subtotal.add(line);
-                if (!taxExempt && !Boolean.TRUE.equals(l.get("taxExempt"))) {
+            for (int n = 0; n < lineItems.size(); n++) {
+                BigDecimal line = lines.get(n);
+                if (!taxExempt && !Boolean.TRUE.equals(lineItems.get(n).get("taxExempt"))) {
+                    BigDecimal flatShare = subtotal.signum() == 0 ? BigDecimal.ZERO
+                            : flatDiscount.multiply(line).divide(subtotal, 2, RoundingMode.HALF_UP);
                     BigDecimal base = line.subtract(
-                            line.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+                            line.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
+                            .subtract(flatShare);
                     tax = tax.add(base.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
                     levy = levy.add(base.multiply(levyPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
                 }
             }
-            BigDecimal discount = subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            BigDecimal discount = pctDiscount.add(flatDiscount);
             BigDecimal discounted = subtotal.subtract(discount);
             // An invoice for a tax-inclusive client already has the taxes inside its prices, so its amount is
             // just the discounted subtotal.
-            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, levy_pct, tax_inclusive, tax_exempt,"
-                    + " status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, discount_amount, tax_pct, levy_pct, tax_inclusive, tax_exempt,"
+                    + " status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
-                    taxInclusive ? discounted : discounted.add(tax).add(levy), discountPct, taxPct, levyPct, taxInclusive, taxExempt,
+                    taxInclusive ? discounted : discounted.add(tax).add(levy), discountPct, discountAmount, taxPct, levyPct, taxInclusive, taxExempt,
                     seedStatus(i.get("status")), issued, due);
             for (Map<String, Object> l : lineItems) {
                 if (l.get("id") != null) {

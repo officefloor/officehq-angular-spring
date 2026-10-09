@@ -1,6 +1,6 @@
 import { CurrencyPipe, DecimalPipe } from '@angular/common';
 import { Component, Injector, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
-import { rxResource } from '@angular/core/rxjs-interop';
+import { rxResource, toSignal } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
@@ -13,7 +13,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 
 // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
-// amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
+// amount, their subtotal, any percentage or flat amount discount, the taxable amount (leaving out tax-free lines), any
 // sales tax added on it after the discount, any levy (a second tax) added on the same base, the effective tax rate
 // (the tax and levy as a percentage of the total before tax), the total before tax, and the final total including both taxes (also shown as the total after tax).
 // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
@@ -190,7 +190,12 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
             </tr>
             <tr>
               <th scope="row" colspan="4">
-                Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%)
+                @if (inv.discountAmount > 0) {
+                  Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span> off@if (inv.discountPct > 0) {
+                    plus <span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%})
+                } @else {
+                  Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%)
+                }
               </th>
               <td data-testid="invoice-discount">{{ inv.discount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
@@ -260,26 +265,59 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
       @if (inv.status === 'DRAFT') {
         <form [formGroup]="discountForm" (ngSubmit)="applyDiscount()" data-testid="discount-form" novalidate>
           <h2>Discount</h2>
-          <div>
-            <label for="discount-pct">Percentage off the subtotal</label>
-            <input
-              id="discount-pct"
-              type="number"
-              inputmode="decimal"
-              min="0"
-              max="100"
-              step="0.01"
-              formControlName="discountPct"
-              data-testid="discount-form-pct"
-              [attr.aria-invalid]="discountInvalid()"
-              [attr.aria-describedby]="discountInvalid() ? 'discount-pct-error' : null"
-            />
-            @if (discountInvalid()) {
-              <p id="discount-pct-error" role="alert" data-testid="discount-form-pct-error">
-                Enter a percentage from 0 to 100 with at most two decimal places.
-              </p>
-            }
-          </div>
+          <fieldset>
+            <legend>Take off</legend>
+            <label>
+              <input type="radio" formControlName="discountType" value="pct" data-testid="discount-form-type-pct" />
+              A percentage
+            </label>
+            <label>
+              <input type="radio" formControlName="discountType" value="amount" data-testid="discount-form-type-amount" />
+              A fixed amount
+            </label>
+          </fieldset>
+          @if (discountType() === 'amount') {
+            <div>
+              <label for="discount-amount">Amount off the subtotal</label>
+              <input
+                id="discount-amount"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="0.01"
+                formControlName="discountAmount"
+                data-testid="discount-form-amount"
+                [attr.aria-invalid]="discountAmountInvalid()"
+                [attr.aria-describedby]="discountAmountInvalid() ? 'discount-amount-error' : null"
+              />
+              @if (discountAmountInvalid()) {
+                <p id="discount-amount-error" role="alert" data-testid="discount-form-amount-error">
+                  Enter an amount of 0 or more with at most two decimal places.
+                </p>
+              }
+            </div>
+          } @else {
+            <div>
+              <label for="discount-pct">Percentage off the subtotal</label>
+              <input
+                id="discount-pct"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                max="100"
+                step="0.01"
+                formControlName="discountPct"
+                data-testid="discount-form-pct"
+                [attr.aria-invalid]="discountInvalid()"
+                [attr.aria-describedby]="discountInvalid() ? 'discount-pct-error' : null"
+              />
+              @if (discountInvalid()) {
+                <p id="discount-pct-error" role="alert" data-testid="discount-form-pct-error">
+                  Enter a percentage from 0 to 100 with at most two decimal places.
+                </p>
+              }
+            </div>
+          }
           <button type="submit" data-testid="discount-form-submit" [disabled]="discountSaving()">Apply discount</button>
           @if (discountError()) {
             <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
@@ -464,13 +502,25 @@ export class InvoiceDetailPage {
   protected readonly discountError = signal<string | null>(null);
 
   protected readonly discountForm = this.fb.group({
+    discountType: ['pct' as 'pct' | 'amount'],
     discountPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
+    discountAmount: ['', [Validators.required, Validators.min(0), Validators.pattern(TWO_DECIMALS)]],
   });
 
-  // Starts the discount field from the invoice's current percentage whenever the invoice loads.
+  // Whether the discount is taken off as a percentage or a fixed amount, as chosen in the form.
+  protected readonly discountType = toSignal(this.discountForm.controls.discountType.valueChanges, {
+    initialValue: this.discountForm.controls.discountType.value,
+  });
+
+  // Starts the discount fields from the invoice's current discount whenever the invoice loads.
   private readonly syncDiscount = effect(() => {
     if (this.invoice.hasValue()) {
-      this.discountForm.setValue({ discountPct: String(this.invoice.value().discountPct) });
+      const inv = this.invoice.value();
+      this.discountForm.setValue({
+        discountType: inv.discountAmount > 0 ? 'amount' : 'pct',
+        discountPct: String(inv.discountPct),
+        discountAmount: String(inv.discountAmount),
+      });
     }
   });
 
@@ -479,15 +529,24 @@ export class InvoiceDetailPage {
     return control.invalid && (control.touched || control.dirty);
   }
 
+  protected discountAmountInvalid(): boolean {
+    const control = this.discountForm.controls.discountAmount;
+    return control.invalid && (control.touched || control.dirty);
+  }
+
   protected applyDiscount(): void {
-    if (this.discountForm.invalid) {
-      this.discountForm.markAllAsTouched();
+    const { discountType, discountPct, discountAmount } = this.discountForm.controls;
+    const field = discountType.value === 'amount' ? discountAmount : discountPct;
+    if (field.invalid) {
+      field.markAsTouched();
       return;
     }
     this.discountSaving.set(true);
     this.discountError.set(null);
-    const discountPct = Number(this.discountForm.getRawValue().discountPct);
-    this.service.applyDiscount(this.projectIdNumber(), Number(this.invoiceId()), discountPct).subscribe({
+    // Only the chosen kind of discount is applied; the other is cleared.
+    const pct = discountType.value === 'pct' ? Number(discountPct.value) : 0;
+    const amount = discountType.value === 'amount' ? Number(discountAmount.value) : 0;
+    this.service.applyDiscount(this.projectIdNumber(), Number(this.invoiceId()), pct, amount).subscribe({
       next: (updated) => {
         this.invoice.set(updated);
         this.discountSaving.set(false);

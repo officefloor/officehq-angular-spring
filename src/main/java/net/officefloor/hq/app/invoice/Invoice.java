@@ -24,8 +24,9 @@ import java.util.function.UnaryOperator;
 import net.officefloor.hq.app.project.Project;
 
 /**
- * An invoice raised against a project. It is built from line items, and can take a percentage off
- * their sum as a discount, then add a percentage sales tax on what is left of the taxable lines only
+ * An invoice raised against a project. It is built from line items, and can take a percentage and/or
+ * a flat amount off their sum as a discount (the flat amount shared across the lines in proportion to
+ * what each charges, and never more than is left after the percentage), then add a percentage sales tax on what is left of the taxable lines only
  * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
  * its stored amount is always that subtotal less the discount plus the tax plus the levy.
  * <p>
@@ -57,6 +58,10 @@ public class Invoice {
 
     @Column(name = "discount_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal discountPct = BigDecimal.ZERO.setScale(2);
+
+    /** A flat amount taken off the subtotal (after the percentage); zero when there is none. */
+    @Column(name = "discount_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal discountAmount = BigDecimal.ZERO.setScale(2);
 
     @Column(name = "tax_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal taxPct = BigDecimal.ZERO.setScale(2);
@@ -135,14 +140,20 @@ public class Invoice {
         return discountPct;
     }
 
+    /** The flat amount asked to be taken off the subtotal; zero when there is no flat discount. */
+    public BigDecimal getDiscountAmount() {
+        return discountAmount;
+    }
+
     /** What the line items add up to, before any discount: the sum of each line rounded to the cent. */
     public BigDecimal getSubtotal() {
         return lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** How much the discount takes off the subtotal, to the cent. */
+    /** How much the discount (the percentage and the flat amount together) takes off the subtotal, to the cent. */
     public BigDecimal getDiscount() {
-        return discountOn(getSubtotal());
+        BigDecimal subtotal = getSubtotal();
+        return percentOf(subtotal, discountPct).add(flatDiscountOn(subtotal));
     }
 
     /** The sales tax percentage added after the discount; zero when there is no tax. */
@@ -265,7 +276,13 @@ public class Invoice {
 
     /** Sets the percentage taken off this invoice and reworks its amount to match. */
     public void applyDiscount(BigDecimal discountPct) {
+        applyDiscount(discountPct, BigDecimal.ZERO);
+    }
+
+    /** Sets the percentage and the flat amount taken off this invoice and reworks its amount to match. */
+    public void applyDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
         this.discountPct = discountPct.setScale(2, RoundingMode.HALF_UP);
+        this.discountAmount = discountAmount.setScale(2, RoundingMode.HALF_UP);
         recalculateAmount();
     }
 
@@ -293,8 +310,24 @@ public class Invoice {
         recalculateAmount();
     }
 
-    private BigDecimal discountOn(BigDecimal subtotal) {
-        return subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    /**
+     * The discount taken off one line, to the cent: its percentage, plus its share of the flat amount in
+     * proportion to what the line charges out of the subtotal.
+     */
+    private BigDecimal discountOn(BigDecimal line) {
+        BigDecimal pct = percentOf(line, discountPct);
+        BigDecimal subtotal = getSubtotal();
+        if (subtotal.signum() == 0) {
+            return pct;
+        }
+        BigDecimal flatShare = flatDiscountOn(subtotal).multiply(line).divide(subtotal, 2, RoundingMode.HALF_UP);
+        return pct.add(flatShare);
+    }
+
+    /** The flat amount actually taken off the subtotal: never more than is left after the percentage. */
+    private BigDecimal flatDiscountOn(BigDecimal subtotal) {
+        BigDecimal left = subtotal.subtract(percentOf(subtotal, discountPct)).max(BigDecimal.ZERO.setScale(2));
+        return discountAmount.min(left);
     }
 
     /** The sales tax on one discounted taxable line (or inside it, when tax-inclusive), to the cent. */
@@ -313,7 +346,7 @@ public class Invoice {
 
     private void recalculateAmount() {
         BigDecimal subtotal = getSubtotal();
-        BigDecimal discounted = subtotal.subtract(discountOn(subtotal));
+        BigDecimal discounted = subtotal.subtract(getDiscount());
         this.amount = taxInclusive ? discounted : discounted.add(getTax()).add(getLevy());
     }
 

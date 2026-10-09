@@ -88,8 +88,8 @@ export interface LineItem {
 }
 
 /**
- * A single invoice with the line items it is built from: their subtotal, the percentage discount and
- * what it takes off, and the sales tax percentage, the taxable base it is charged on (the taxable
+ * A single invoice with the line items it is built from: their subtotal, the percentage and flat
+ * amount discount and what they take off, and the sales tax percentage, the taxable base it is charged on (the taxable
  * lines after the discount, leaving out tax-free ones) and what it adds, and the levy (a second tax)
  * percentage and what it adds on that same base; its amount is the subtotal less the discount plus
  * the tax plus the levy.
@@ -99,6 +99,9 @@ export interface InvoiceDetail extends Invoice {
   totalExTax: number;
   subtotal: number;
   discountPct: number;
+  /** A flat amount taken off the subtotal after the percentage; zero when there is none. */
+  discountAmount: number;
+  /** What the percentage and flat amount take off together. */
   discount: number;
   taxPct: number;
   taxableBase: number;
@@ -176,9 +179,12 @@ export class InvoiceService {
     return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`);
   }
 
-  /** Sets the percentage taken off a draft invoice; zero removes the discount. */
-  applyDiscount(projectId: number, invoiceId: number, discountPct: number): Observable<InvoiceDetail> {
-    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discount`, { discountPct });
+  /** Sets the percentage and the flat amount taken off a draft invoice; zero for both removes the discount. */
+  applyDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discount`, {
+      discountPct,
+      discountAmount,
+    });
   }
 
   /** Sets the sales tax percentage added to a draft invoice after its discount; zero removes the tax. */

@@ -6,7 +6,16 @@ import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 
-/** Payload to set the percentage taken off a draft invoice; zero removes the discount. */
+/**
+ * Payload to set the discount on a draft invoice: the percentage taken off and a flat amount taken off
+ * (omitted is none); zero for both removes the discount.
+ */
 public record DiscountRequest(
-        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal discountPct) {
+        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal discountPct,
+        @DecimalMin("0") @Digits(integer = 10, fraction = 2) BigDecimal discountAmount) {
+
+    /** The flat amount taken off, zero when none is given. */
+    public BigDecimal flatAmount() {
+        return discountAmount == null ? BigDecimal.ZERO : discountAmount;
+    }
 }
