@@ -1,0 +1,293 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 0d18ea4..8bd5c48 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -1,4 +1,4 @@
+-import { HttpClient } from '@angular/common/http';
++import { HttpClient, HttpParams } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ import { CurrencyCode } from '../clients/client.service';
+@@ -30,6 +30,20 @@ export interface DashboardSummary {
+   topClients: TopClient[];
+ }
+ 
++/** The tax charged on invoices issued on or between two dates, in the home currency. */
++export interface TaxSummary {
++  from: string;
++  to: string;
++  homeCurrency: CurrencyCode;
++  /** How many invoices the tax came from. */
++  invoices: number;
++  tax: number;
++  /** The levy (second tax). */
++  levy: number;
++  /** The tax and levy together. */
++  total: number;
++}
++
+ @Injectable({ providedIn: 'root' })
+ export class DashboardService {
+   private readonly http = inject(HttpClient);
+@@ -37,4 +51,8 @@ export class DashboardService {
+   summary(): Observable<DashboardSummary> {
+     return this.http.get<DashboardSummary>('/api/dashboard');
+   }
++
++  taxSummary(from: string, to: string): Observable<TaxSummary> {
++    return this.http.get<TaxSummary>('/api/dashboard/tax-summary', { params: new HttpParams().set('from', from).set('to', to) });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index cc7abba..686acdd 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -1,16 +1,17 @@
+ import { Component, inject, signal } from '@angular/core';
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService, DashboardSummary } from './dashboard.service';
++import { TaxSummaryReport } from './tax-summary';
+ 
+ // Dashboard page: how many clients and projects there are, and the total still owed in each currency
+ // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
+ // counted; amounts in different currencies are never added together), and how many of those sent
+ // invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees,
+ // in the home currency). Also lists the top five clients ranked by what they still owe,
+-// each in their own currency.
++// each in their own currency. A tax summary for a chosen date range can be opened from here.
+ @Component({
+   selector: 'app-dashboard',
+-  imports: [MoneyPipe],
++  imports: [MoneyPipe, TaxSummaryReport],
+   template: `
+     <h1>Dashboard</h1>
+ 
+@@ -62,11 +63,25 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
+     } @else {
+       <p data-testid="dashboard-loading">Loading…</p>
+     }
++
++    <button
++      type="button"
++      data-testid="tax-summary-open"
++      aria-controls="tax-summary"
++      [attr.aria-expanded]="taxSummaryOpen()"
++      (click)="taxSummaryOpen.set(!taxSummaryOpen())"
++    >
++      {{ taxSummaryOpen() ? 'Hide tax summary' : 'Tax summary' }}
++    </button>
++    @if (taxSummaryOpen()) {
++      <app-tax-summary id="tax-summary" />
++    }
+   `,
+ })
+ export class Dashboard {
+   protected readonly summary = signal<DashboardSummary | null>(null);
+   protected readonly loadError = signal<string | null>(null);
++  protected readonly taxSummaryOpen = signal(false);
+ 
+   constructor() {
+     inject(DashboardService)
+diff --git a/src/main/frontend/src/app/features/dashboard/tax-summary.ts b/src/main/frontend/src/app/features/dashboard/tax-summary.ts
+new file mode 100644
+index 0000000..3b686ec
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/tax-summary.ts
+@@ -0,0 +1,80 @@
++import { Component, inject, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { DashboardService } from './dashboard.service';
++
++// The total tax charged over a chosen date range: the sales tax and levy on invoices issued within it that were
++// sent (drafts and cancelled invoices are left out), in the home currency.
++@Component({
++  selector: 'app-tax-summary',
++  imports: [MoneyPipe],
++  styles: `
++    .tax-summary-range {
++      display: flex;
++      flex-wrap: wrap;
++      align-items: center;
++      gap: 0.5rem;
++    }
++    .tax-summary-figures {
++      display: grid;
++      grid-template-columns: max-content max-content;
++      gap: 0.25rem 1.5rem;
++    }
++    .tax-summary-figures dd {
++      margin: 0;
++      text-align: right;
++    }
++  `,
++  template: `
++    <section aria-labelledby="tax-summary-heading" data-testid="tax-summary">
++      <h2 id="tax-summary-heading">Tax summary</h2>
++      <form class="tax-summary-range" (submit)="apply($event, fromInput.value, toInput.value)">
++        <label for="tax-summary-from">From</label>
++        <input #fromInput id="tax-summary-from" type="date" required data-testid="tax-summary-from" />
++        <label for="tax-summary-to">To</label>
++        <input #toInput id="tax-summary-to" type="date" required data-testid="tax-summary-to" />
++        <button type="submit" data-testid="tax-summary-apply">Show tax</button>
++      </form>
++      @if (rangeError()) {
++        <p role="alert" data-testid="tax-summary-range-error">{{ rangeError() }}</p>
++      } @else if (summary.error()) {
++        <p role="alert" data-testid="tax-summary-error">Could not load the tax summary.</p>
++      } @else if (summary.value(); as t) {
++        <dl class="tax-summary-figures" aria-live="polite">
++          <dt>Invoices</dt>
++          <dd data-testid="tax-summary-invoices">{{ t.invoices }}</dd>
++          <dt>Sales tax</dt>
++          <dd data-testid="tax-summary-tax">{{ t.tax | money: t.homeCurrency }}</dd>
++          <dt>Levy</dt>
++          <dd data-testid="tax-summary-levy">{{ t.levy | money: t.homeCurrency }}</dd>
++          <dt>Total tax charged</dt>
++          <dd data-testid="tax-summary-total">{{ t.total | money: t.homeCurrency }}</dd>
++        </dl>
++      }
++    </section>
++  `,
++})
++export class TaxSummaryReport {
++  private readonly service = inject(DashboardService);
++
++  private readonly range = signal<{ from: string; to: string } | undefined>(undefined);
++  protected readonly rangeError = signal<string | null>(null);
++
++  protected readonly summary = rxResource({
++    params: () => this.range(),
++    stream: ({ params }) => this.service.taxSummary(params.from, params.to),
++  });
++
++  protected apply(event: Event, from: string, to: string): void {
++    event.preventDefault();
++    if (!from || !to) {
++      return;
++    }
++    if (from > to) {
++      this.rangeError.set('The start date must not be after the end date.');
++      return;
++    }
++    this.rangeError.set(null);
++    this.range.set({ from, to });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index 4f9cfca..80b0ab3 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -1,7 +1,10 @@
+ package net.officefloor.hq.app.dashboard;
+ 
++import java.time.LocalDate;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ @RestController
+@@ -18,4 +21,11 @@ public class DashboardController {
+     public DashboardResponse summary() {
+         return service.summary();
+     }
++
++    /** The tax charged on invoices issued on or between the given dates. */
++    @GetMapping("/tax-summary")
++    public TaxSummaryResponse taxSummary(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
++            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
++        return service.taxSummary(from, to);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index c896dcb..6a0d6ed 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -19,8 +19,10 @@ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.project.ProjectRepository;
+ import net.officefloor.hq.app.settings.SettingsService;
++import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ @Service
+ public class DashboardService {
+@@ -107,4 +109,42 @@ public class DashboardService {
+         }
+         return total.setScale(2, RoundingMode.HALF_UP);
+     }
++
++    /**
++     * The tax charged over a period, in the home currency: the sales tax and levy on every invoice issued on or
++     * between the given dates that was actually charged (sent, whether paid or not, or later written off; drafts
++     * and cancelled invoices are left out). A foreign invoice converts at the exchange rate from its issue date;
++     * one whose currency has no rate by then cannot be converted and is left out.
++     */
++    @Transactional(readOnly = true)
++    public TaxSummaryResponse taxSummary(LocalDate from, LocalDate to) {
++        if (from.isAfter(to)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The start date must not be after the end date");
++        }
++        List<InvoiceStatus> charged = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID,
++                InvoiceStatus.WRITTEN_OFF);
++        String home = settings.homeCurrency();
++        BigDecimal tax = BigDecimal.ZERO;
++        BigDecimal levy = BigDecimal.ZERO;
++        long count = 0;
++        for (Invoice invoice : invoices.findByStatusInAndIssuedDateBetween(charged, from, to)) {
++            String currency = invoice.getProject().getClient().getCurrency();
++            if (currency.equals(home)) {
++                tax = tax.add(invoice.getTax());
++                levy = levy.add(invoice.getLevy());
++                count++;
++                continue;
++            }
++            var inHomeTax = fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getTax());
++            var inHomeLevy = fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getLevy());
++            if (inHomeTax.isPresent() && inHomeLevy.isPresent()) {
++                tax = tax.add(inHomeTax.get());
++                levy = levy.add(inHomeLevy.get());
++                count++;
++            }
++        }
++        tax = tax.setScale(2, RoundingMode.HALF_UP);
++        levy = levy.setScale(2, RoundingMode.HALF_UP);
++        return new TaxSummaryResponse(from, to, home, count, tax, levy, tax.add(levy));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/TaxSummaryResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/TaxSummaryResponse.java
+new file mode 100644
+index 0000000..d4bb7e7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/TaxSummaryResponse.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * The tax charged on invoices issued on or between two dates, in the home currency: the sales tax and the levy
++ * (second tax) separately, and together as the total, with how many invoices they came from.
++ */
++public record TaxSummaryResponse(LocalDate from, LocalDate to, String homeCurrency, long invoices, BigDecimal tax,
++        BigDecimal levy, BigDecimal total) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+index d2efc7e..b3d7a2c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -68,4 +68,9 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+     /** Number of invoices with any of the given statuses whose due date is before the given date. */
+     @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status IN :statuses AND i.dueDate < :date")
+     long countByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);
++
++    /** Invoices with any of the given statuses issued on or between the given dates, with their project and client. */
++    @Query("SELECT i FROM Invoice i JOIN FETCH i.project p JOIN FETCH p.client"
++            + " WHERE i.status IN :statuses AND i.issuedDate BETWEEN :from AND :to ORDER BY i.id")
++    List<Invoice> findByStatusInAndIssuedDateBetween(Collection<InvoiceStatus> statuses, LocalDate from, LocalDate to);
+ }
