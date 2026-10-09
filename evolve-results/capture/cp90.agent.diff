@@ -1,0 +1,92 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index bd66cff..1171fa5 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -19,6 +19,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // never taxed), the total before tax, and the final total including both taxes (also shown as the total after tax).
+ // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
+ // When the net total comes out under the invoice's minimum charge, the minimum is billed instead and marked as applied.
++// It also shows the total savings: every line discount and invoice discount added together.
+ // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the set number of days.
+ // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+ @Component({
+@@ -327,6 +328,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 <td></td>
+               }
+             </tr>
++            <tr>
++              <th scope="row" colspan="5">Total savings (all discounts added together)</th>
++              <td data-testid="invoice-total-savings">{{ inv.totalSavings | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              @if (inv.status === 'DRAFT') {
++                <td></td>
++              }
++            </tr>
+             @if (inv.earlyPaymentAmount !== null) {
+               <tr data-testid="invoice-early-pay">
+                 <th scope="row" colspan="5">
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 5c34f15..3a3c9f7 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -151,6 +151,8 @@ export interface InvoiceDetail extends Invoice {
+   netTotal: number;
+   /** Whether the net total came out under the minimum charge, so the minimum is billed instead. */
+   minimumApplied: boolean;
++  /** How much the client saves: the line discounts and the invoice's discounts added together. */
++  totalSavings: number;
+ }
+ 
+ export interface NewLineItem {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index f5cae63..afd7ffc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -225,6 +225,16 @@ public class Invoice {
+         return discounts.stream().map(this::discountTakenBy).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
++    /**
++     * How much the client saves on this invoice: every discount added together, both what the lines take
++     * off themselves and what the invoice's discounts take off the subtotal, to the cent.
++     */
++    public BigDecimal getTotalSavings() {
++        BigDecimal lineSavings = lineItems.stream().map(l -> l.getGrossAmount().subtract(l.getAmount()))
++                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++        return lineSavings.add(getDiscount());
++    }
++
+     /** The sales tax percentage added after the discount; zero when there is no tax. */
+     public BigDecimal getTaxPct() {
+         return taxPct;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 657cc87..d035ad7 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -15,7 +15,8 @@ import net.officefloor.hq.app.client.Currency;
+  * the total before tax), any early-payment discount offered (its percentage, the days after issue it
+  * must be paid within, the last day to pay, and the reduced amount; null when none is offered), and the
+  * client's tax number (null when the client is not tax registered), the minimum charge, the net total
+- * before it, and whether the minimum was billed because the net total came out under it.
++ * before it, whether the minimum was billed because the net total came out under it, and the total
++ * savings (the line discounts and the invoice's discounts added together).
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+@@ -24,7 +25,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency,
+         BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
+         InvoiceStatus status, LocalDate issuedDate,
+         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts,
+-        BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied) {
++        BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings) {
+ 
+     static InvoiceDetailResponse from(Invoice invoice) {
+         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
+@@ -40,6 +41,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency,
+                 invoice.getProject().getClient().getTaxNumber(),
+                 invoice.getDiscounts().stream().map(d -> new InvoiceDiscountResponse(d.getId(), d.getDiscountPct(),
+                         d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList(),
+-                invoice.getMinimumCharge(), invoice.getNetTotal(), invoice.isMinimumApplied());
++                invoice.getMinimumCharge(), invoice.getNetTotal(), invoice.isMinimumApplied(),
++                invoice.getTotalSavings());
+     }
+ }
