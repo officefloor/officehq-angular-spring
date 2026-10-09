@@ -1,0 +1,302 @@
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index a83fbbc..78d17a3 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -14,6 +14,8 @@ export const PROJECT_STATUSES: { value: ProjectStatus; label: string }[] = [
+ export interface Project {
+   id: number;
+   name: string;
++  /** Short reference code, unique across jobs; null for jobs added before codes existed. */
++  code: string | null;
+   clientId: number;
+   clientName: string;
+   archived: boolean;
+@@ -29,6 +31,7 @@ export interface ProjectBudget {
+ 
+ export interface NewProject {
+   name: string;
++  code: string;
+   clientId: number;
+   status: ProjectStatus;
+ }
+diff --git a/src/main/frontend/src/app/features/projects/projects.ts b/src/main/frontend/src/app/features/projects/projects.ts
+index a3b95ae..53fd35a 100644
+--- a/src/main/frontend/src/app/features/projects/projects.ts
++++ b/src/main/frontend/src/app/features/projects/projects.ts
+@@ -1,4 +1,5 @@
+ import { Component, inject, signal } from '@angular/core';
++import { HttpErrorResponse } from '@angular/common/http';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+ import { Client, ClientService } from '../clients/client.service';
+@@ -11,7 +12,8 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+ // list can be narrowed to the projects carrying a chosen tag. Each project is marked active, on hold
+ // or finished, chosen when it is added and changeable from its row, and the list can be narrowed to
+ // the projects at a chosen status. The tag and status filters combine, e.g. active projects with a
+-// given tag.
++// given tag. Each project carries a short reference code, given when it is added, that no other
++// project may share.
+ @Component({
+   selector: 'app-projects',
+   imports: [ReactiveFormsModule, RouterLink],
+@@ -35,6 +37,28 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+           </p>
+         }
+       </div>
++      <div>
++        <label for="project-code">Code</label>
++        <input
++          id="project-code"
++          type="text"
++          formControlName="code"
++          maxlength="20"
++          autocomplete="off"
++          data-testid="project-form-code"
++          [attr.aria-invalid]="showError('code')"
++          [attr.aria-describedby]="showError('code') ? 'project-code-error' : null"
++        />
++        @if (showError('code')) {
++          <p id="project-code-error" role="alert" data-testid="project-form-code-error">
++            @if (form.controls.code.hasError('taken')) {
++              A job with this code already exists.
++            } @else {
++              Enter a code of up to 20 letters, digits or dashes.
++            }
++          </p>
++        }
++      </div>
+       <div>
+         <label for="project-client">Client</label>
+         <select
+@@ -133,6 +157,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+         <caption>All jobs</caption>
+         <thead>
+           <tr>
++            <th scope="col">Code</th>
+             <th scope="col">Name</th>
+             <th scope="col">Client</th>
+             <th scope="col">Status</th>
+@@ -142,6 +167,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+         <tbody>
+           @for (p of projects(); track p.id) {
+             <tr [attr.data-testid]="'project-row-' + p.id">
++              <td data-testid="project-code">{{ p.code }}</td>
+               <td data-testid="project-name">
+                 {{ p.name }}
+                 @if (p.archived) {
+@@ -225,6 +251,7 @@ export class Projects {
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
++    code: ['', [Validators.required, Validators.pattern(/^\s*[A-Za-z0-9-]{1,20}\s*$/)]],
+     clientId: ['', Validators.required],
+     status: ['ACTIVE' as ProjectStatus, Validators.required],
+   });
+@@ -235,7 +262,7 @@ export class Projects {
+     this.tagService.list().subscribe((list) => this.tags.set(list));
+   }
+ 
+-  protected showError(field: 'name' | 'clientId'): boolean {
++  protected showError(field: 'name' | 'code' | 'clientId'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -245,10 +272,11 @@ export class Projects {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, clientId, status } = this.form.getRawValue();
++    const { name, code, clientId, status } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.create({ name: name.trim(), clientId: Number(clientId), status }).subscribe({
++    const project = { name: name.trim(), code: code.trim().toUpperCase(), clientId: Number(clientId), status };
++    this.service.create(project).subscribe({
+       next: (created) => {
+         // A new project carries no tags, so it only belongs on a list not filtered by tag, and only
+         // when its status matches any status filter.
+@@ -258,8 +286,15 @@ export class Projects {
+         this.form.reset();
+         this.saving.set(false);
+       },
+-      error: () => {
+-        this.saveError.set('Could not save the job. Please try again.');
++      error: (err: HttpErrorResponse) => {
++        if (err.status === 409) {
++          // The server owns uniqueness; flag the code field until it is changed.
++          const codeControl = this.form.controls.code;
++          codeControl.setErrors({ taken: true });
++          codeControl.markAsTouched();
++        } else {
++          this.saveError.set('Could not save the job. Please try again.');
++        }
+         this.saving.set(false);
+       },
+     });
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 8019017..dba9365 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -85,8 +85,8 @@ public class TestSupportController {
+             }
+         }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+-            jdbc.update("INSERT INTO project (id, name, client_id, status, archived, budget) VALUES (?, ?, ?, ?, ?, ?)",
+-                    ((Number) p.get("id")).longValue(), p.get("name"),
++            jdbc.update("INSERT INTO project (id, name, code, client_id, status, archived, budget) VALUES (?, ?, ?, ?, ?, ?, ?)",
++                    ((Number) p.get("id")).longValue(), p.get("name"), p.get("code"),
+                     ((Number) p.get("clientId")).longValue(),
+                     p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString(),
+                     Boolean.TRUE.equals(p.get("archived")),
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+index ada8bda..f83d2fc 100644
+--- a/src/main/java/net/officefloor/hq/app/project/Project.java
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -29,6 +29,8 @@ public class Project {
+ 
+     private String name;
+ 
++    private String code;
++
+     @ManyToOne(fetch = FetchType.LAZY, optional = false)
+     @JoinColumn(name = "client_id", nullable = false)
+     private Client client;
+@@ -48,8 +50,9 @@ public class Project {
+     protected Project() {
+     }
+ 
+-    public Project(String name, Client client) {
++    public Project(String name, String code, Client client) {
+         this.name = name;
++        this.code = code;
+         this.client = client;
+     }
+ 
+@@ -61,6 +64,11 @@ public class Project {
+         return name;
+     }
+ 
++    /** The job's short reference code, unique across jobs; null for jobs added before codes existed. */
++    public String getCode() {
++        return code;
++    }
++
+     public Client getClient() {
+         return client;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index 92b1721..6d6c9f4 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -48,6 +48,9 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
+     Optional<Project> findByIdWithClient(Long id);
+ 
++    /** Whether any project, archived or not, already has the code. */
++    boolean existsByCode(String code);
++
+     /** How many projects a client has. */
+     long countByClientId(Long clientId);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java b/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java
+index 4d548ff..63d9258 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java
+@@ -2,11 +2,19 @@ package net.officefloor.hq.app.project;
+ 
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ 
+-/** Payload to create a project for a client; without a status the project starts active. */
++/**
++ * Payload to create a project for a client; without a status the project starts active. The code is
++ * a short reference of letters, digits and dashes, unique across projects.
++ */
+ public record ProjectRequest(
+         @NotBlank @Size(max = 255) String name,
++        @NotBlank @Pattern(regexp = ProjectRequest.CODE_PATTERN) String code,
+         @NotNull Long clientId,
+         ProjectStatus status) {
++
++    /** Up to 20 letters, digits or dashes, ignoring surrounding whitespace. */
++    public static final String CODE_PATTERN = "^\\s*[A-Za-z0-9-]{1,20}\\s*$";
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+index 1620bd6..6121abe 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+@@ -1,10 +1,10 @@
+ package net.officefloor.hq.app.project;
+ 
+-public record ProjectResponse(Long id, String name, Long clientId, String clientName, boolean archived,
++public record ProjectResponse(Long id, String name, String code, Long clientId, String clientName, boolean archived,
+         ProjectStatus status) {
+ 
+     public static ProjectResponse from(Project project) {
+-        return new ProjectResponse(project.getId(), project.getName(),
++        return new ProjectResponse(project.getId(), project.getName(), project.getCode(),
+                 project.getClient().getId(), project.getClient().getName(), project.isArchived(),
+                 project.getStatus());
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index 5bf897c..c95a0df 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -7,6 +7,8 @@ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.Client;
+ import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
++import java.util.Locale;
++import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -64,16 +66,32 @@ public class ProjectService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+     }
+ 
++    /** Adds a project; its code, trimmed and upper-cased, must not already belong to another project. */
+     @Transactional
+     public ProjectResponse create(ProjectRequest request) {
+         Client client = clients.findById(request.clientId())
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown client"));
+-        Project project = new Project(request.name().trim(), client);
++        String code = request.code().trim().toUpperCase(Locale.ROOT);
++        if (projects.existsByCode(code)) {
++            throw codeTaken();
++        }
++        Project project = new Project(request.name().trim(), code, client);
+         if (request.status() != null) {
+             project.setStatus(request.status());
+         }
+-        Project saved = projects.save(project);
+-        return ProjectResponse.from(saved);
++        try {
++            return ProjectResponse.from(projects.saveAndFlush(project));
++        } catch (DataIntegrityViolationException e) {
++            // Lost a race with a concurrent add of the same code; the unique constraint caught it.
++            if (String.valueOf(e.getMessage()).toUpperCase().contains("PROJECT_CODE_UQ")) {
++                throw codeTaken();
++            }
++            throw e;
++        }
++    }
++
++    private static ResponseStatusException codeTaken() {
++        return new ResponseStatusException(HttpStatus.CONFLICT, "A job with this code already exists");
+     }
+ 
+     /** Invoices count as invoiced once sent; drafts have not been invoiced yet. */
+diff --git a/src/main/resources/db/migration/V26__project_code.sql b/src/main/resources/db/migration/V26__project_code.sql
+new file mode 100644
+index 0000000..7f781d9
+--- /dev/null
++++ b/src/main/resources/db/migration/V26__project_code.sql
+@@ -0,0 +1,5 @@
++-- Each job carries a short reference code, given when it is added. Codes are stored upper-cased so
++-- no two jobs share one regardless of how it was typed; this is the backstop for the API check. Jobs
++-- added before codes existed have none (multiple NULLs are allowed by the unique constraint).
++ALTER TABLE project ADD COLUMN code VARCHAR(20);
++ALTER TABLE project ADD CONSTRAINT project_code_uq UNIQUE (code);
