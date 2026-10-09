@@ -31,6 +31,8 @@ public class Project {
 
     private String code;
 
+    private String description;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "client_id", nullable = false)
     private Client client;
@@ -67,6 +69,15 @@ public class Project {
     /** The job's short reference code, unique across jobs; null for jobs added before codes existed. */
     public String getCode() {
         return code;
+    }
+
+    /** A short description of the work, or null when none was given. */
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 
     public Client getClient() {

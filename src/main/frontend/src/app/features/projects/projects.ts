@@ -13,7 +13,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
 // or finished, chosen when it is added and changeable from its row, and the list can be narrowed to
 // the projects at a chosen status. The tag and status filters combine, e.g. active projects with a
 // given tag. Each project carries a short reference code, given when it is added, that no other
-// project may share.
+// project may share, and may carry an optional short description of the work.
 @Component({
   selector: 'app-projects',
   imports: [ReactiveFormsModule, RouterLink],
@@ -56,6 +56,23 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
             } @else {
               Enter a code of up to 20 letters, digits or dashes.
             }
+          </p>
+        }
+      </div>
+      <div>
+        <label for="project-description">Description (optional)</label>
+        <textarea
+          id="project-description"
+          formControlName="description"
+          maxlength="500"
+          rows="2"
+          data-testid="project-form-description"
+          [attr.aria-invalid]="showError('description')"
+          [attr.aria-describedby]="showError('description') ? 'project-description-error' : null"
+        ></textarea>
+        @if (showError('description')) {
+          <p id="project-description-error" role="alert" data-testid="project-form-description-error">
+            Keep the description to 500 characters or fewer.
           </p>
         }
       </div>
@@ -252,6 +269,7 @@ export class Projects {
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
     code: ['', [Validators.required, Validators.pattern(/^\s*[A-Za-z0-9-]{1,20}\s*$/)]],
+    description: ['', Validators.maxLength(500)],
     clientId: ['', Validators.required],
     status: ['ACTIVE' as ProjectStatus, Validators.required],
   });
@@ -262,7 +280,7 @@ export class Projects {
     this.tagService.list().subscribe((list) => this.tags.set(list));
   }
 
-  protected showError(field: 'name' | 'code' | 'clientId'): boolean {
+  protected showError(field: 'name' | 'code' | 'description' | 'clientId'): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -272,10 +290,16 @@ export class Projects {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, code, clientId, status } = this.form.getRawValue();
+    const { name, code, description, clientId, status } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    const project = { name: name.trim(), code: code.trim().toUpperCase(), clientId: Number(clientId), status };
+    const project = {
+      name: name.trim(),
+      code: code.trim().toUpperCase(),
+      description: description.trim() || null,
+      clientId: Number(clientId),
+      status,
+    };
     this.service.create(project).subscribe({
       next: (created) => {
         // A new project carries no tags, so it only belongs on a list not filtered by tag, and only

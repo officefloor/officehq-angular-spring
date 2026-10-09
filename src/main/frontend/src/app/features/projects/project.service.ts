@@ -23,6 +23,8 @@ export interface Project {
   status: ProjectStatus;
   /** The currency of the client the job is for. */
   currency: CurrencyCode;
+  /** A short description of the work; null when none was given. */
+  description: string | null;
 }
 
 /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
@@ -37,6 +39,7 @@ export interface NewProject {
   code: string;
   clientId: number;
   status: ProjectStatus;
+  description: string | null;
 }
 
 @Injectable({ providedIn: 'root' })

@@ -8,7 +8,7 @@ import { ProjectTasks } from '../tasks/project-tasks';
 import { ProjectBudgetPanel } from './project-budget';
 import { ProjectService } from './project.service';
 
-// A single project's page: its name, client and status, its budget, its tags, its tasks, its notes, and its invoices.
+// A single project's page: its name, description, client and status, its budget, its tags, its tasks, its notes, and its invoices.
 @Component({
   selector: 'app-project-detail',
   imports: [RouterLink, ProjectBudgetPanel, ProjectInvoices, Notes, ProjectTags, ProjectTasks],
@@ -18,6 +18,9 @@ import { ProjectService } from './project.service';
       <p role="alert" data-testid="project-error">Could not load the job.</p>
     } @else if (project.value(); as p) {
       <h1 data-testid="project-detail-name">{{ p.name }}</h1>
+      @if (p.description) {
+        <p data-testid="job-description">{{ p.description }}</p>
+      }
       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
       <p>Status: <span data-testid="project-detail-status">{{ p.status }}</span></p>
       <app-project-budget [projectId]="projectId()" [currency]="p.currency" />

@@ -91,8 +91,9 @@ public class TestSupportController {
             }
         }
         for (Map<String, Object> p : rows(fixture, "projects")) {
-            jdbc.update("INSERT INTO project (id, name, code, client_id, status, archived, budget) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    ((Number) p.get("id")).longValue(), p.get("name"), p.get("code"),
+            jdbc.update("INSERT INTO project (id, name, code, description, client_id, status, archived, budget)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    ((Number) p.get("id")).longValue(), p.get("name"), p.get("code"), p.get("description"),
                     ((Number) p.get("clientId")).longValue(),
                     p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString(),
                     Boolean.TRUE.equals(p.get("archived")),

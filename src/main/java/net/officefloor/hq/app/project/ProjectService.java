@@ -79,6 +79,9 @@ public class ProjectService {
         if (request.status() != null) {
             project.setStatus(request.status());
         }
+        if (request.description() != null && !request.description().isBlank()) {
+            project.setDescription(request.description().trim());
+        }
         try {
             return ProjectResponse.from(projects.saveAndFlush(project));
         } catch (DataIntegrityViolationException e) {
