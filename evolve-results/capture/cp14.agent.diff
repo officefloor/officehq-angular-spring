@@ -1,0 +1,188 @@
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index ce54518..03365e8 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -28,6 +28,11 @@ export const routes: Routes = [
+     data: { section: 'projects', label: 'Projects', order: 2 },
+     loadComponent: () => import('./features/projects/projects').then((m) => m.Projects),
+   },
++  {
++    path: 'invoices',
++    data: { section: 'invoices', label: 'Invoices', order: 3 },
++    loadComponent: () => import('./features/invoices/invoices').then((m) => m.Invoices),
++  },
+   {
+     path: 'projects/:id',
+     loadComponent: () => import('./features/projects/project-detail').then((m) => m.ProjectDetail),
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 017bc2c..5f987b8 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -15,6 +15,11 @@ export interface Invoice {
+   dueDate: string;
+ }
+ 
++/** An invoice as listed across all projects, with the name of the project it is for. */
++export interface InvoiceSummary extends Invoice {
++  projectName: string;
++}
++
+ export interface NewInvoice {
+   amount: number;
+   /** Defaults to today on the server when omitted. */
+@@ -27,6 +32,10 @@ export interface NewInvoice {
+ export class InvoiceService {
+   private readonly http = inject(HttpClient);
+ 
++  listAll(): Observable<InvoiceSummary[]> {
++    return this.http.get<InvoiceSummary[]>('/api/invoices');
++  }
++
+   listForProject(projectId: number): Observable<Invoice[]> {
+     return this.http.get<Invoice[]>(`/api/projects/${projectId}/invoices`);
+   }
+diff --git a/src/main/frontend/src/app/features/invoices/invoices.ts b/src/main/frontend/src/app/features/invoices/invoices.ts
+new file mode 100644
+index 0000000..dd14fe4
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/invoices.ts
+@@ -0,0 +1,57 @@
++import { CurrencyPipe } from '@angular/common';
++import { Component, computed, inject } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { RouterLink } from '@angular/router';
++import { InvoiceService } from './invoice.service';
++
++// Invoices page: every invoice from every project in one list, showing the project each is for and
++// the stage it is at.
++@Component({
++  selector: 'app-invoices',
++  imports: [CurrencyPipe, RouterLink],
++  template: `
++    <h1>Invoices</h1>
++
++    @if (invoices.error()) {
++      <p role="alert" data-testid="all-invoices-error">Could not load the invoices.</p>
++    } @else if (invoices.isLoading()) {
++      <p data-testid="all-invoices-loading">Loading invoices…</p>
++    } @else if (list().length === 0) {
++      <p data-testid="all-invoices-empty">No invoices yet.</p>
++    } @else {
++      <table data-testid="all-invoices-table">
++        <caption>All invoices across every project</caption>
++        <thead>
++          <tr>
++            <th scope="col">Invoice</th>
++            <th scope="col">Project</th>
++            <th scope="col">Amount</th>
++            <th scope="col">Status</th>
++            <th scope="col">Issued</th>
++            <th scope="col">Due</th>
++          </tr>
++        </thead>
++        <tbody>
++          @for (i of list(); track i.id) {
++            <tr [attr.data-testid]="'invoice-row-' + i.id">
++              <td data-testid="invoice-id">#{{ i.id }}</td>
++              <td data-testid="invoice-project">
++                <a [routerLink]="['/projects', i.projectId]">{{ i.projectName }}</a>
++              </td>
++              <td data-testid="invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-status">{{ i.status }}</td>
++              <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
++              <td data-testid="invoice-due">{{ i.dueDate }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    }
++  `,
++})
++export class Invoices {
++  private readonly service = inject(InvoiceService);
++
++  protected readonly invoices = rxResource({ stream: () => this.service.listAll() });
++  protected readonly list = computed(() => (this.invoices.hasValue() ? this.invoices.value() : []));
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/AllInvoicesController.java b/src/main/java/net/officefloor/hq/app/invoice/AllInvoicesController.java
+new file mode 100644
+index 0000000..af71cf9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/AllInvoicesController.java
+@@ -0,0 +1,23 @@
++package net.officefloor.hq.app.invoice;
++
++import java.util.List;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** Invoices across every project. */
++@RestController
++@RequestMapping("/api/invoices")
++public class AllInvoicesController {
++
++    private final InvoiceService service;
++
++    public AllInvoicesController(InvoiceService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<InvoiceSummaryResponse> list() {
++        return service.listAll();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+index c982a5f..37f9d22 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -9,6 +9,10 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+ 
+     List<Invoice> findByProjectIdOrderById(Long projectId);
+ 
++    /** All invoices across every project, with their project loaded in the same query. */
++    @Query("SELECT i FROM Invoice i JOIN FETCH i.project ORDER BY i.id")
++    List<Invoice> findAllWithProject();
++
+     /** Sum of the amounts of all invoices with the given status (zero when there are none). */
+     @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.status = :status")
+     BigDecimal sumAmountByStatus(InvoiceStatus status);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index b2d67fd..c623f3e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -31,6 +31,12 @@ public class InvoiceService {
+         return invoices.findByProjectIdOrderById(projectId).stream().map(InvoiceResponse::from).toList();
+     }
+ 
++    /** Every invoice across all projects, with the name of the project each one is for. */
++    @Transactional(readOnly = true)
++    public List<InvoiceSummaryResponse> listAll() {
++        return invoices.findAllWithProject().stream().map(InvoiceSummaryResponse::from).toList();
++    }
++
+     @Transactional
+     public InvoiceResponse create(Long projectId, InvoiceRequest request) {
+         Project project = projects.findById(projectId)
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceSummaryResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceSummaryResponse.java
+new file mode 100644
+index 0000000..f3e5fc6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceSummaryResponse.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** An invoice as listed across all projects: carries the name of the project it is for. */
++public record InvoiceSummaryResponse(Long id, Long projectId, String projectName, BigDecimal amount,
++        InvoiceStatus status, LocalDate issuedDate, LocalDate dueDate) {
++
++    static InvoiceSummaryResponse from(Invoice invoice) {
++        return new InvoiceSummaryResponse(invoice.getId(), invoice.getProject().getId(),
++                invoice.getProject().getName(), invoice.getAmount(), invoice.getStatus(),
++                invoice.getIssuedDate(), invoice.getDueDate());
++    }
++}
