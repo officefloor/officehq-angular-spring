@@ -74,7 +74,7 @@ export interface ClientStatement {
   tax: number;
 }
 
-/** One thing an invoice charges for; its amount is quantity times unit price. */
+/** One thing an invoice charges for; its amount is quantity times unit price, less the line's own discount. */
 export interface LineItem {
   id: number;
   description: string;
@@ -85,6 +85,10 @@ export interface LineItem {
   amount: number;
   /** Whether the line is tax-free: it is not taxable. */
   taxExempt: boolean;
+  /** The percentage the line takes off itself; zero when it has no discount of its own. */
+  discountPct: number;
+  /** Quantity times unit price, before the line's own discount. */
+  grossAmount: number;
 }
 
 /**
@@ -125,6 +129,7 @@ export interface NewLineItem {
   unit: string | null;
   unitPrice: number;
   taxExempt: boolean;
+  discountPct: number;
 }
 
 export interface NewInvoice {

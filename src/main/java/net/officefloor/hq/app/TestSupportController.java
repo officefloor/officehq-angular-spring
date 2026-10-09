@@ -159,8 +159,12 @@ public class TestSupportController {
                     : new BigDecimal(i.get("discountAmount").toString());
             // A flat discount is taken off after the percentage (never more than is left) and is shared
             // across the lines in proportion to what each charges.
-            List<BigDecimal> lines = lineItems.stream().map(l -> new BigDecimal(l.get("qty").toString())
-                    .multiply(new BigDecimal(l.get("unitPrice").toString())).setScale(2, RoundingMode.HALF_UP)).toList();
+            // Each line is first taken down by its own discount, if it has one.
+            List<BigDecimal> lines = lineItems.stream().map(l -> {
+                BigDecimal gross = new BigDecimal(l.get("qty").toString())
+                        .multiply(new BigDecimal(l.get("unitPrice").toString())).setScale(2, RoundingMode.HALF_UP);
+                return gross.subtract(gross.multiply(lineDiscountPct(l)).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+            }).toList();
             BigDecimal subtotal = lines.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             BigDecimal pctDiscount = subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
             BigDecimal flatDiscount = discountAmount.setScale(2, RoundingMode.HALF_UP)
@@ -190,17 +194,17 @@ public class TestSupportController {
                     seedStatus(i.get("status")), issued, due);
             for (Map<String, Object> l : lineItems) {
                 if (l.get("id") != null) {
-                    jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit, unit_price, tax_exempt)"
-                            + " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit, unit_price, tax_exempt, discount_pct)"
+                            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                             ((Number) l.get("id")).longValue(), invoiceId, l.get("description"),
                             new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()),
-                            Boolean.TRUE.equals(l.get("taxExempt")));
+                            Boolean.TRUE.equals(l.get("taxExempt")), lineDiscountPct(l));
                 } else {
-                    jdbc.update("INSERT INTO invoice_line_item (invoice_id, description, qty, unit, unit_price, tax_exempt)"
-                            + " VALUES (?, ?, ?, ?, ?, ?)",
+                    jdbc.update("INSERT INTO invoice_line_item (invoice_id, description, qty, unit, unit_price, tax_exempt, discount_pct)"
+                            + " VALUES (?, ?, ?, ?, ?, ?, ?)",
                             invoiceId, l.get("description"),
                             new BigDecimal(l.get("qty").toString()), l.get("unit"), new BigDecimal(l.get("unitPrice").toString()),
-                            Boolean.TRUE.equals(l.get("taxExempt")));
+                            Boolean.TRUE.equals(l.get("taxExempt")), lineDiscountPct(l));
                 }
             }
         }
@@ -246,6 +250,12 @@ public class TestSupportController {
     }
 
     @SuppressWarnings("unchecked")
+    /** The percentage a fixture line item takes off itself; none when it does not say. */
+    private static BigDecimal lineDiscountPct(Map<String, Object> lineItem) {
+        return lineItem.get("discountPct") == null ? BigDecimal.ZERO
+                : new BigDecimal(lineItem.get("discountPct").toString());
+    }
+
     private static List<Map<String, Object>> rows(Map<String, Object> fixture, String key) {
         Object value = fixture.get(key);
         return value == null ? List.of() : (List<Map<String, Object>>) value;

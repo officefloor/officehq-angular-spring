@@ -145,7 +145,10 @@ public class Invoice {
         return discountAmount;
     }
 
-    /** What the line items add up to, before any discount: the sum of each line rounded to the cent. */
+    /**
+     * What the line items add up to, before the invoice's discount: the sum of each line after its own
+     * discount, rounded to the cent.
+     */
     public BigDecimal getSubtotal() {
         return lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
@@ -244,13 +247,16 @@ public class Invoice {
 
     /** Adds a line to this invoice and reworks its amount to include what the line charges. */
     public InvoiceLineItem addLineItem(String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
-        return addLineItem(description, qty, unit, unitPrice, false);
+        return addLineItem(description, qty, unit, unitPrice, false, BigDecimal.ZERO);
     }
 
-    /** Adds a line, taxable or tax-free, to this invoice and reworks its amount to include what the line charges. */
+    /**
+     * Adds a line, taxable or tax-free and with any discount of its own, to this invoice and reworks its
+     * amount to include what the line charges after that discount.
+     */
     public InvoiceLineItem addLineItem(String description, BigDecimal qty, String unit, BigDecimal unitPrice,
-            boolean taxExempt) {
-        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unit, unitPrice, taxExempt);
+            boolean taxExempt, BigDecimal discountPct) {
+        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unit, unitPrice, taxExempt, discountPct);
         lineItems.add(item);
         recalculateAmount();
         return item;
@@ -258,8 +264,8 @@ public class Invoice {
 
     /** Changes one of this invoice's lines and reworks its amount to match. */
     public void updateLineItem(InvoiceLineItem item, String description, BigDecimal qty, String unit,
-            BigDecimal unitPrice, boolean taxExempt) {
-        item.update(description, qty, unit, unitPrice, taxExempt);
+            BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct) {
+        item.update(description, qty, unit, unitPrice, taxExempt, discountPct);
         recalculateAmount();
     }
 

@@ -58,6 +58,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               <th scope="col">Quantity</th>
               <th scope="col">Unit</th>
               <th scope="col">Unit price</th>
+              <th scope="col">Line discount</th>
               <th scope="col">Amount</th>
               @if (inv.status === 'DRAFT') {
                 <th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -128,7 +129,22 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                       (keydown.escape)="cancelEdit(l.id)"
                     />
                   </td>
-                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td>
+                    <input
+                      type="number"
+                      inputmode="decimal"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      [formControl]="editForm.controls.discountPct"
+                      data-testid="lineitem-edit-discountpct"
+                      aria-label="Line discount percentage"
+                      [attr.aria-invalid]="editForm.controls.discountPct.invalid"
+                      (keydown.enter)="saveEdit(l.id)"
+                      (keydown.escape)="cancelEdit(l.id)"
+                    />
+                  </td>
+                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice, l.discountPct) / 100 | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
                   <td>
                     <button
                       type="button"
@@ -152,6 +168,11 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                   <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
                   <td data-testid="lineitem-unit">{{ l.unit ?? '' }}</td>
                   <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: inv.currency : 'symbol' : '1.2-4' : 'en-US' }}</td>
+                  <td data-testid="lineitem-discount">
+                    @if (l.discountPct > 0) {
+                      {{ l.discountPct | number: '1.0-2' : 'en-US' }}%
+                    }
+                  </td>
                   <td data-testid="lineitem-amount">{{ l.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
                   @if (inv.status === 'DRAFT') {
                     <td>
@@ -182,14 +203,14 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row" colspan="4">Subtotal</th>
+              <th scope="row" colspan="5">Subtotal</th>
               <td data-testid="invoice-subtotal">{{ inv.subtotal | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
             </tr>
             <tr>
-              <th scope="row" colspan="4">
+              <th scope="row" colspan="5">
                 @if (inv.discountAmount > 0) {
                   Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span> off@if (inv.discountPct > 0) {
                     plus <span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%})
@@ -203,14 +224,14 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               }
             </tr>
             <tr>
-              <th scope="row" colspan="4">Taxable amount (excludes tax-free lines)</th>
+              <th scope="row" colspan="5">Taxable amount (excludes tax-free lines)</th>
               <td data-testid="invoice-taxable-base">{{ inv.taxableBase | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
             </tr>
             <tr>
-              <th scope="row" colspan="4" data-testid="invoice-tax-label">
+              <th scope="row" colspan="5" data-testid="invoice-tax-label">
                 Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
               </th>
               <td data-testid="invoice-tax">{{ inv.tax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
@@ -219,7 +240,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               }
             </tr>
             <tr>
-              <th scope="row" colspan="4" data-testid="invoice-tax-levy-label">
+              <th scope="row" colspan="5" data-testid="invoice-tax-levy-label">
                 Levy (<span data-testid="invoice-tax-levy-pct">{{ inv.levyPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
               </th>
               <td data-testid="invoice-tax-levy">{{ inv.levy | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
@@ -228,28 +249,28 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               }
             </tr>
             <tr>
-              <th scope="row" colspan="4">Effective tax rate (tax and levy as a share of the total before tax)</th>
+              <th scope="row" colspan="5">Effective tax rate (tax and levy as a share of the total before tax)</th>
               <td data-testid="invoice-effective-tax-rate">{{ inv.effectiveTaxPct | number: '1.2-2' : 'en-US' }}%</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
             </tr>
             <tr>
-              <th scope="row" colspan="4">Total before tax</th>
+              <th scope="row" colspan="5">Total before tax</th>
               <td data-testid="invoice-total-ex-tax">{{ inv.totalExTax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
             </tr>
             <tr>
-              <th scope="row" colspan="4">Total</th>
+              <th scope="row" colspan="5">Total</th>
               <td data-testid="invoice-amount">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
             </tr>
             <tr>
-              <th scope="row" colspan="4">Total after tax</th>
+              <th scope="row" colspan="5">Total after tax</th>
               <td data-testid="invoice-total-inc-tax">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
@@ -453,6 +474,26 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
             }
           </div>
           <div>
+            <label for="lineitem-discountpct">Line discount % (optional)</label>
+            <input
+              id="lineitem-discountpct"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              max="100"
+              step="0.01"
+              formControlName="discountPct"
+              data-testid="lineitem-form-discountpct"
+              [attr.aria-invalid]="invalid('discountPct')"
+              [attr.aria-describedby]="invalid('discountPct') ? 'lineitem-discountpct-error' : null"
+            />
+            @if (invalid('discountPct')) {
+              <p id="lineitem-discountpct-error" role="alert" data-testid="lineitem-form-discountpct-error">
+                Enter a percentage from 0 to 100 with at most two decimal places.
+              </p>
+            }
+          </div>
+          <div>
             <input id="lineitem-taxexempt" type="checkbox" formControlName="taxExempt" data-testid="lineitem-form-taxexempt" />
             <label for="lineitem-taxexempt">Tax-free (no tax is charged on this line)</label>
           </div>
@@ -493,9 +534,10 @@ export class InvoiceDetailPage {
   });
 
   // Work in whole cents (and ten-thousandths of a unit price) so the line is exact rather than
-  // accumulating floating-point error; each line is rounded to the cent on its own.
-  protected lineCents(qty: number, unitPrice: number): number {
-    return Math.round((Math.round(qty * 100) * Math.round(unitPrice * 10000)) / 10000);
+  // accumulating floating-point error; each line, and then its own discount, is rounded to the cent on its own.
+  protected lineCents(qty: number, unitPrice: number, discountPct: number): number {
+    const gross = Math.round((Math.round(qty * 100) * Math.round(unitPrice * 10000)) / 10000);
+    return gross - Math.round((gross * Math.round(discountPct * 100)) / 10000);
   }
 
   protected readonly discountSaving = signal(false);
@@ -644,10 +686,11 @@ export class InvoiceDetailPage {
     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
     unit: ['', [Validators.maxLength(50)]],
     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(FOUR_DECIMALS)]],
+    discountPct: ['', [Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
     taxExempt: false,
   });
 
-  protected invalid(name: 'description' | 'qty' | 'unit' | 'unitPrice'): boolean {
+  protected invalid(name: 'description' | 'qty' | 'unit' | 'unitPrice' | 'discountPct'): boolean {
     const control = this.form.controls[name];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -659,8 +702,15 @@ export class InvoiceDetailPage {
     }
     this.saving.set(true);
     this.saveError.set(null);
-    const { description, qty, unit, unitPrice, taxExempt } = this.form.getRawValue();
-    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice), taxExempt };
+    const { description, qty, unit, unitPrice, discountPct, taxExempt } = this.form.getRawValue();
+    const item = {
+      description: description.trim(),
+      qty: Number(qty),
+      unit: unit.trim() || null,
+      unitPrice: Number(unitPrice),
+      taxExempt,
+      discountPct: Number(discountPct || 0),
+    };
     this.service.addLineItem(this.projectIdNumber(), Number(this.invoiceId()), item).subscribe({
       next: (updated) => {
         this.invoice.set(updated);
@@ -684,6 +734,7 @@ export class InvoiceDetailPage {
     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
     unit: ['', [Validators.maxLength(50)]],
     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(FOUR_DECIMALS)]],
+    discountPct: ['', [Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
     taxExempt: false,
   });
 
@@ -694,6 +745,7 @@ export class InvoiceDetailPage {
       qty: String(line.qty),
       unit: line.unit ?? '',
       unitPrice: String(line.unitPrice),
+      discountPct: String(line.discountPct),
       taxExempt: line.taxExempt,
     });
     this.editingId.set(line.id);
@@ -711,8 +763,15 @@ export class InvoiceDetailPage {
       this.editForm.markAllAsTouched();
       return;
     }
-    const { description, qty, unit, unitPrice, taxExempt } = this.editForm.getRawValue();
-    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice), taxExempt };
+    const { description, qty, unit, unitPrice, discountPct, taxExempt } = this.editForm.getRawValue();
+    const item = {
+      description: description.trim(),
+      qty: Number(qty),
+      unit: unit.trim() || null,
+      unitPrice: Number(unitPrice),
+      taxExempt,
+      discountPct: Number(discountPct || 0),
+    };
     this.run(
       this.service.updateLineItem(this.projectIdNumber(), Number(this.invoiceId()), lineItemId, item),
       'Could not save the line item. Please try again.',

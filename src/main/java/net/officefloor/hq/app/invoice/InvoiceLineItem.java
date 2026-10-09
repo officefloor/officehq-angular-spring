@@ -40,25 +40,31 @@ public class InvoiceLineItem {
     @Column(name = "tax_exempt", nullable = false)
     private boolean taxExempt;
 
+    @Column(name = "discount_pct", nullable = false, precision = 5, scale = 2)
+    private BigDecimal discountPct = BigDecimal.ZERO;
+
     protected InvoiceLineItem() {
     }
 
     InvoiceLineItem(Invoice invoice, String description, BigDecimal qty, String unit, BigDecimal unitPrice,
-            boolean taxExempt) {
+            boolean taxExempt, BigDecimal discountPct) {
         this.invoice = invoice;
         this.description = description;
         this.qty = qty;
         this.unit = unit;
         this.unitPrice = unitPrice;
         this.taxExempt = taxExempt;
+        this.discountPct = discountPct;
     }
 
-    void update(String description, BigDecimal qty, String unit, BigDecimal unitPrice, boolean taxExempt) {
+    void update(String description, BigDecimal qty, String unit, BigDecimal unitPrice, boolean taxExempt,
+            BigDecimal discountPct) {
         this.description = description;
         this.qty = qty;
         this.unit = unit;
         this.unitPrice = unitPrice;
         this.taxExempt = taxExempt;
+        this.discountPct = discountPct;
     }
 
     public Long getId() {
@@ -91,8 +97,22 @@ public class InvoiceLineItem {
         return taxExempt;
     }
 
-    /** What this line charges: quantity times unit price, rounded to the cent on its own before lines are added up. */
-    public BigDecimal getAmount() {
+    /** The percentage this line takes off what it charges; zero when it has no discount of its own. */
+    public BigDecimal getDiscountPct() {
+        return discountPct;
+    }
+
+    /** Quantity times unit price, rounded to the cent, before this line's own discount. */
+    public BigDecimal getGrossAmount() {
         return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * What this line charges: quantity times unit price less the line's own discount, each rounded to the
+     * cent on its own before lines are added up.
+     */
+    public BigDecimal getAmount() {
+        BigDecimal gross = getGrossAmount();
+        return gross.subtract(gross.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
     }
 }

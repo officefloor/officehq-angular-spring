@@ -116,7 +116,7 @@ public class InvoiceService {
     public InvoiceDetailResponse addLineItem(Long projectId, Long invoiceId, LineItemRequest request) {
         Invoice invoice = findDraft(projectId, invoiceId);
         invoice.addLineItem(request.description().strip(), request.qty(), request.normalizedUnit(), request.unitPrice(),
-                request.exempt());
+                request.exempt(), request.lineDiscountPct());
         invoices.flush();
         return InvoiceDetailResponse.from(invoice);
     }
@@ -128,7 +128,7 @@ public class InvoiceService {
         Invoice invoice = findDraft(projectId, invoiceId);
         InvoiceLineItem item = findLineItem(invoice, lineItemId);
         invoice.updateLineItem(item, request.description().strip(), request.qty(), request.normalizedUnit(),
-                request.unitPrice(), request.exempt());
+                request.unitPrice(), request.exempt(), request.lineDiscountPct());
         invoices.flush();
         return InvoiceDetailResponse.from(invoice);
     }
