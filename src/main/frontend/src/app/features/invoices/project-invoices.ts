@@ -18,7 +18,8 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
 }
 
 // A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each is still left to pay, adds a
-// new draft, sends a draft, and marks a sent one as paid. Each invoice opens onto its line items.
+// new draft and sends a draft. Each invoice's status follows from the payments recorded on it; each invoice
+// opens onto its line items and payments.
 @Component({
   selector: 'app-project-invoices',
   imports: [ReactiveFormsModule, CurrencyPipe, RouterLink],
@@ -128,16 +129,6 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
                     >
                       Send
                     </button>
-                  } @else if (i.status === 'SENT') {
-                    <button
-                      type="button"
-                      [attr.data-testid]="'invoice-pay-' + i.id"
-                      [attr.aria-label]="'Mark invoice #' + i.id + ' as paid'"
-                      [disabled]="busy() === i.id"
-                      (click)="pay(i.id)"
-                    >
-                      Mark paid
-                    </button>
                   }
                 </td>
               </tr>
@@ -151,9 +142,6 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
             </tr>
           </tfoot>
         </table>
-        @if (payError()) {
-          <p role="alert" data-testid="invoice-pay-error">{{ payError() }}</p>
-        }
         @if (sendError()) {
           <p role="alert" data-testid="invoice-send-error">{{ sendError() }}</p>
         }
@@ -186,10 +174,9 @@ export class ProjectInvoices {
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
 
-  // The invoice whose send or pay request is in flight.
+  // The invoice whose send request is in flight.
   protected readonly busy = signal<number | null>(null);
   protected readonly sendError = signal<string | null>(null);
-  protected readonly payError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group(
     {
@@ -245,21 +232,6 @@ export class ProjectInvoices {
       },
       error: () => {
         this.sendError.set('Could not send the invoice. Please try again.');
-        this.busy.set(null);
-      },
-    });
-  }
-
-  protected pay(invoiceId: number): void {
-    this.busy.set(invoiceId);
-    this.payError.set(null);
-    this.service.pay(this.projectId(), invoiceId).subscribe({
-      next: (paid) => {
-        this.replace(paid);
-        this.busy.set(null);
-      },
-      error: () => {
-        this.payError.set('Could not mark the invoice as paid. Please try again.');
         this.busy.set(null);
       },
     });

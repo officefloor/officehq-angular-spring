@@ -2,9 +2,11 @@ package net.officefloor.hq.app.dashboard;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.List;
 import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
+import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.ProjectRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,17 +17,26 @@ public class DashboardService {
     private final ClientRepository clients;
     private final ProjectRepository projects;
     private final InvoiceRepository invoices;
+    private final PaymentRepository payments;
 
-    public DashboardService(ClientRepository clients, ProjectRepository projects, InvoiceRepository invoices) {
+    public DashboardService(ClientRepository clients, ProjectRepository projects, InvoiceRepository invoices,
+            PaymentRepository payments) {
         this.clients = clients;
         this.projects = projects;
         this.invoices = invoices;
+        this.payments = payments;
     }
 
-    /** Counts of clients and projects, and the total still owed (sum of sent, unpaid invoices). */
+    /**
+     * Counts of clients and projects, and the total still owed (what is left to pay on sent invoices
+     * that are not yet fully paid).
+     */
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
-        BigDecimal outstanding = invoices.sumAmountByStatus(InvoiceStatus.SENT).setScale(2, RoundingMode.HALF_UP);
+        List<InvoiceStatus> owing = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL);
+        BigDecimal outstanding = invoices.sumAmountByStatusIn(owing)
+                .subtract(payments.sumAmountByInvoiceStatusIn(owing))
+                .setScale(2, RoundingMode.HALF_UP);
         return new DashboardResponse(clients.count(), projects.count(), outstanding);
     }
 }

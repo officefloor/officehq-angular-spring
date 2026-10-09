@@ -217,7 +217,8 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
         [projectId]="projectIdNumber()"
         [invoiceId]="inv.id"
         [invoiceAmount]="totalCents() / 100"
-        [canRecord]="inv.status !== 'DRAFT'"
+        [canRecord]="inv.status === 'SENT' || inv.status === 'PARTIAL'"
+        (recorded)="invoice.reload()"
       />
     }
   `,

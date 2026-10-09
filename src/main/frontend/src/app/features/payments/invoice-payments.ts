@@ -1,6 +1,6 @@
 import { CurrencyPipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { PaymentService } from './payment.service';
@@ -8,7 +8,7 @@ import { PaymentService } from './payment.service';
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
 // The payments a client has made against an invoice, what is still owed, and a form to record
-// another payment once the invoice has been sent.
+// another payment while the invoice is sent and not yet fully paid.
 @Component({
   selector: 'app-invoice-payments',
   imports: [ReactiveFormsModule, CurrencyPipe],
@@ -104,8 +104,10 @@ export class InvoicePayments {
   readonly invoiceId = input.required<number>();
   /** The invoice total, which the payments count down. */
   readonly invoiceAmount = input.required<number>();
-  /** Payments can be recorded once the invoice has been sent, not while it is a draft. */
+  /** Payments can be recorded once the invoice has been sent, until it is fully paid. */
   readonly canRecord = input.required<boolean>();
+  /** Emits once a payment has been recorded, as it may change the invoice's status. */
+  readonly recorded = output<void>();
 
   protected readonly payments = rxResource({
     params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
@@ -146,6 +148,7 @@ export class InvoicePayments {
         );
         this.form.reset();
         this.saving.set(false);
+        this.recorded.emit();
       },
       error: (err: HttpErrorResponse) => {
         this.saveError.set(

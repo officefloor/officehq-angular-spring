@@ -62,9 +62,4 @@ public class InvoiceController {
     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.send(projectId, invoiceId);
     }
-
-    @PostMapping("/{invoiceId}/pay")
-    public InvoiceResponse pay(@PathVariable Long projectId, @PathVariable Long invoiceId) {
-        return service.pay(projectId, invoiceId);
-    }
 }

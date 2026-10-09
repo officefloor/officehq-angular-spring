@@ -21,7 +21,7 @@ public class Payment {
     @Column(name = "invoice_id", nullable = false)
     private Long invoiceId;
 
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;
 
     @Column(name = "paid_date", nullable = false)
@@ -32,7 +32,7 @@ public class Payment {
 
     public Payment(Long invoiceId, BigDecimal amount, LocalDate date) {
         this.invoiceId = invoiceId;
-        this.amount = amount;
+        this.amount = amount.setScale(2);
         this.date = date;
     }
 

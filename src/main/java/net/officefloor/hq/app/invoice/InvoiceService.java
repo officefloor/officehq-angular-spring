@@ -124,19 +124,6 @@ public class InvoiceService {
         return toResponse(invoice);
     }
 
-    /** Marks a sent invoice paid and records the payment in the audit log. */
-    @Transactional
-    public InvoiceResponse pay(Long projectId, Long invoiceId) {
-        Invoice invoice = find(projectId, invoiceId);
-        if (invoice.getStatus() != InvoiceStatus.SENT) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a sent invoice can be paid");
-        }
-        invoice.markPaid();
-        invoices.flush();
-        audit.record("INVOICE_PAID id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
-        return toResponse(invoice);
-    }
-
     private InvoiceResponse toResponse(Invoice invoice) {
         return InvoiceResponse.from(invoice, payments.sumAmountByInvoiceId(invoice.getId()));
     }

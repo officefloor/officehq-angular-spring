@@ -2,8 +2,8 @@ import { CurrencyPipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { DashboardService, DashboardSummary } from './dashboard.service';
 
-// Dashboard page: how many clients and projects there are, and the total still owed (the sum of
-// invoices that have been sent but not yet paid; drafts are not counted).
+// Dashboard page: how many clients and projects there are, and the total still owed (what is left
+// to pay on invoices that have been sent but not yet fully paid; drafts are not counted).
 @Component({
   selector: 'app-dashboard',
   imports: [CurrencyPipe],

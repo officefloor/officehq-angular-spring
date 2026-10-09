@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PAID'] as const;
+export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID'] as const;
 
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
@@ -95,9 +95,5 @@ export class InvoiceService {
 
   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
-  }
-
-  pay(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
-    return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/pay`, null);
   }
 }

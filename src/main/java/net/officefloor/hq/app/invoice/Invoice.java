@@ -126,8 +126,20 @@ public class Invoice {
         this.status = InvoiceStatus.SENT;
     }
 
-    /** Marks this invoice as paid. */
-    public void markPaid() {
-        this.status = InvoiceStatus.PAID;
+    /**
+     * Works out this sent invoice's status from the total paid against it: PAID once the payments
+     * cover the amount, PARTIAL once something has been paid, otherwise still SENT.
+     */
+    public void applyPaidTotal(BigDecimal paid) {
+        if (status == InvoiceStatus.DRAFT) {
+            throw new IllegalStateException("A draft invoice cannot be paid");
+        }
+        if (paid.compareTo(amount) >= 0) {
+            this.status = InvoiceStatus.PAID;
+        } else if (paid.signum() > 0) {
+            this.status = InvoiceStatus.PARTIAL;
+        } else {
+            this.status = InvoiceStatus.SENT;
+        }
     }
 }
