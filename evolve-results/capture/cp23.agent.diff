@@ -1,0 +1,131 @@
+diff --git a/src/main/frontend/src/app/features/tasks/project-tasks.ts b/src/main/frontend/src/app/features/tasks/project-tasks.ts
+index 47b2e88..59ed9e3 100644
+--- a/src/main/frontend/src/app/features/tasks/project-tasks.ts
++++ b/src/main/frontend/src/app/features/tasks/project-tasks.ts
+@@ -1,8 +1,10 @@
+-import { Component, inject, input, signal } from '@angular/core';
++import { Component, computed, inject, input, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Task, TaskService } from './task.service';
+ 
++export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
++
+ // A project's task list: add tasks and tick them off (OPEN <-> DONE) as they are finished.
+ @Component({
+   selector: 'app-project-tasks',
+@@ -44,36 +46,55 @@ import { Task, TaskService } from './task.service';
+         @if (tasks.value().length === 0) {
+           <p data-testid="project-tasks-empty">No tasks for this project yet.</p>
+         } @else {
+-          <table data-testid="project-tasks-table">
+-            <caption>Tasks for this project</caption>
+-            <thead>
+-              <tr>
+-                <th scope="col">Task</th>
+-                <th scope="col">Status</th>
+-                <th scope="col">Action</th>
+-              </tr>
+-            </thead>
+-            <tbody>
+-              @for (t of tasks.value(); track t.id) {
+-                <tr [attr.data-testid]="'task-row-' + t.id">
+-                  <td data-testid="task-title">{{ t.title }}</td>
+-                  <td data-testid="task-status">{{ t.done ? 'DONE' : 'OPEN' }}</td>
+-                  <td>
+-                    <button
+-                      type="button"
+-                      [attr.data-testid]="'task-toggle-' + t.id"
+-                      [attr.aria-pressed]="t.done"
+-                      [attr.aria-label]="(t.done ? 'Reopen ' : 'Tick off ') + t.title"
+-                      [disabled]="toggling() === t.id"
+-                      (click)="toggle(t)"
+-                    >
+-                      {{ t.done ? 'Reopen' : 'Tick off' }}
+-                    </button>
+-                  </td>
++          <div>
++            <label for="task-filter">Show</label>
++            <select
++              id="task-filter"
++              data-testid="task-filter"
++              [value]="filter()"
++              (change)="setFilter($event)"
++            >
++              <option value="ALL">All tasks</option>
++              <option value="OPEN">Open tasks</option>
++              <option value="DONE">Done tasks</option>
++            </select>
++          </div>
++          @if (visibleTasks().length === 0) {
++            <p data-testid="project-tasks-filter-empty">
++              {{ filter() === 'OPEN' ? 'No open tasks.' : 'No done tasks.' }}
++            </p>
++          } @else {
++            <table data-testid="project-tasks-table">
++              <caption>Tasks for this project</caption>
++              <thead>
++                <tr>
++                  <th scope="col">Task</th>
++                  <th scope="col">Status</th>
++                  <th scope="col">Action</th>
+                 </tr>
+-              }
+-            </tbody>
+-          </table>
++              </thead>
++              <tbody>
++                @for (t of visibleTasks(); track t.id) {
++                  <tr [attr.data-testid]="'task-row-' + t.id">
++                    <td data-testid="task-title">{{ t.title }}</td>
++                    <td data-testid="task-status">{{ t.done ? 'DONE' : 'OPEN' }}</td>
++                    <td>
++                      <button
++                        type="button"
++                        [attr.data-testid]="'task-toggle-' + t.id"
++                        [attr.aria-pressed]="t.done"
++                        [attr.aria-label]="(t.done ? 'Reopen ' : 'Tick off ') + t.title"
++                        [disabled]="toggling() === t.id"
++                        (click)="toggle(t)"
++                      >
++                        {{ t.done ? 'Reopen' : 'Tick off' }}
++                      </button>
++                    </td>
++                  </tr>
++                }
++              </tbody>
++            </table>
++          }
+         }
+       }
+     </section>
+@@ -88,6 +109,18 @@ export class ProjectTasks {
+     params: () => this.projectId(),
+     stream: ({ params }) => this.service.listForProject(params),
+   });
++  protected readonly filter = signal<TaskFilter>('ALL');
++  protected readonly visibleTasks = computed(() => {
++    const list = this.tasks.value() ?? [];
++    switch (this.filter()) {
++      case 'OPEN':
++        return list.filter((t) => !t.done);
++      case 'DONE':
++        return list.filter((t) => t.done);
++      default:
++        return list;
++    }
++  });
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+   protected readonly toggling = signal<number | null>(null);
+@@ -97,6 +130,10 @@ export class ProjectTasks {
+     title: ['', [Validators.required, Validators.maxLength(255)]],
+   });
+ 
++  protected setFilter(event: Event): void {
++    this.filter.set((event.target as HTMLSelectElement).value as TaskFilter);
++  }
++
+   protected showTitleError(): boolean {
+     const control = this.form.controls.title;
+     return control.invalid && (control.touched || control.dirty);
