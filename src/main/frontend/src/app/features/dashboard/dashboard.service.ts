@@ -22,6 +22,8 @@ export interface DashboardSummary {
   projects: number;
   /** What is still owed, one total per currency anything is owed in. */
   outstanding: CurrencyTotal[];
+  /** Everything outstanding as one total in the home currency, each invoice converted at its issue date's rate. */
+  outstandingHome: number;
   overdue: number;
   /** The currency the overdue amount is given in. */
   homeCurrency: CurrencyCode;

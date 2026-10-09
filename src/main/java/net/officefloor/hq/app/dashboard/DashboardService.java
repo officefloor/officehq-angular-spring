@@ -57,7 +57,7 @@ public class DashboardService {
     /**
      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
      * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices are past their due date and
-     * what is overdue on them (see {@link #overdueAmount}), and the top clients ranked by what they owe.
+     * what is overdue on them, what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe.
      */
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
@@ -74,19 +74,20 @@ public class DashboardService {
         LocalDate today = LocalDate.now(clock);
         long overdue = invoices.countByStatusInAndDueDateBefore(owing, today);
         String home = settings.homeCurrency();
-        BigDecimal overdueAmount = overdueAmount(invoices.findByStatusInAndDueDateBefore(owing, today), home, today);
+        BigDecimal outstandingHome = inHome(invoices.findByStatusInWithClient(owing), home, today, false);
+        BigDecimal overdueAmount = inHome(invoices.findByStatusInAndDueDateBefore(owing, today), home, today, true);
         List<DashboardResponse.TopClient> top = clientService.topByOutstanding(TOP_CLIENTS).stream()
                 .map(c -> new DashboardResponse.TopClient(c.id(), c.name(), c.currency(), c.outstanding()))
                 .toList();
-        return new DashboardResponse(clients.count(), projects.count(), outstanding, overdue, home, overdueAmount, top);
+        return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount, top);
     }
 
     /**
-     * What is overdue, in the home currency: what is left to pay on each overdue invoice plus the late fee it
-     * has accrued by today. A foreign invoice converts at the exchange rate from its issue date; one whose
-     * currency has no rate by then cannot be converted and is left out.
+     * What is left to pay on the invoices, in the home currency, with the late fee each has accrued by today
+     * when asked for (as for what is overdue). A foreign invoice converts at the exchange rate from its issue
+     * date; one whose currency has no rate by then cannot be converted and is left out.
      */
-    private BigDecimal overdueAmount(List<Invoice> found, String home, LocalDate today) {
+    private BigDecimal inHome(List<Invoice> found, String home, LocalDate today, boolean withLateFees) {
         if (found.isEmpty()) {
             return BigDecimal.ZERO.setScale(2);
         }
@@ -100,8 +101,10 @@ public class DashboardService {
         BigDecimal total = BigDecimal.ZERO;
         for (Invoice invoice : found) {
             BigDecimal due = invoice.amountDue(paid.getOrDefault(invoice.getId(), BigDecimal.ZERO),
-                    credited.getOrDefault(invoice.getId(), BigDecimal.ZERO))
-                    .add(invoice.lateFee(invoice.getStatus(), today));
+                    credited.getOrDefault(invoice.getId(), BigDecimal.ZERO));
+            if (withLateFees) {
+                due = due.add(invoice.lateFee(invoice.getStatus(), today));
+            }
             String currency = invoice.getProject().getClient().getCurrency();
             BigDecimal inHome = currency.equals(home) ? due
                     : fxRates.toHome(currency, invoice.getIssuedDate(), due).orElse(BigDecimal.ZERO);

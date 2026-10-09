@@ -7,8 +7,11 @@ import java.util.List;
  * Summary figures for the dashboard, with the clients who owe the most. What is outstanding is
  * given per currency, since amounts in different currencies cannot be added together. What is overdue
  * (left to pay on overdue invoices plus the late fees they have accrued) is one total in the home currency.
+ * What is outstanding is also given as one grand total in the home currency, each invoice converted at the
+ * exchange rate from its own issue date.
  */
-public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding, long overdue,
+public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
+        BigDecimal outstandingHome, long overdue,
         String homeCurrency, BigDecimal overdueAmount, List<TopClient> topClients) {
 
     /** What is still owed in one currency. */

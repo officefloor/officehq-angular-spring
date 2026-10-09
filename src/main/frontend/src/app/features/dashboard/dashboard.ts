@@ -5,7 +5,8 @@ import { TaxSummaryReport } from './tax-summary';
 
 // Dashboard page: how many clients and projects there are, and the total still owed in each currency
 // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
-// counted; amounts in different currencies are never added together), and how many of those sent
+// counted), plus one grand total of it in the home currency with each invoice converted at the
+// exchange rate from its own issue date, and how many of those sent
 // invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees,
 // in the home currency). Also lists the top five clients ranked by what they still owe,
 // each in their own currency. A tax summary for a chosen date range can be opened from here.
@@ -34,6 +35,10 @@ import { TaxSummaryReport } from './tax-summary';
           } @empty {
             <dd data-testid="dashboard-outstanding-none">Nothing owed</dd>
           }
+        </div>
+        <div>
+          <dt>Outstanding in {{ s.homeCurrency }} (converted at each invoice's date)</dt>
+          <dd data-testid="dashboard-outstanding-home">{{ s.outstandingHome | money: s.homeCurrency }}</dd>
         </div>
         <div>
           <dt>Overdue invoices</dt>
