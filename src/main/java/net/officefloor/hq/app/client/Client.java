@@ -36,6 +36,9 @@ public class Client {
     /** Where the client's bills are sent; none when not known. */
     private String billingAddress;
 
+    /** The language the client prefers to be dealt with in; none when not known. */
+    private String language;
+
     private boolean archived;
 
     /** Whether the client's prices already include tax, so tax is worked back out of them rather than added on. */
@@ -85,6 +88,14 @@ public class Client {
 
     public String getPhone() {
         return phone;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public void setLanguage(String language) {
+        this.language = language;
     }
 
     public String getTaxNumber() {
