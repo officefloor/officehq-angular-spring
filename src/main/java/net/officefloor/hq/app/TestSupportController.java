@@ -1,7 +1,10 @@
 package net.officefloor.hq.app;
 
+import java.util.List;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,21 +21,37 @@ import org.springframework.web.bind.annotation.RestController;
 public class TestSupportController {
 
     private final Audit audit;
+    private final JdbcTemplate jdbc;
 
-    public TestSupportController(Audit audit) {
+    public TestSupportController(Audit audit, JdbcTemplate jdbc) {
         this.audit = audit;
+        this.jdbc = jdbc;
     }
 
     /** Truncate all domain tables and clear the audit file so each spec starts clean. */
     @PostMapping("/reset")
+    @Transactional
     public void reset() {
         audit.clear();
-        // TODO: TRUNCATE the domain tables that currently exist (inject a JdbcTemplate/repo).
+        jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
     }
 
     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
     @PostMapping("/seed")
+    @Transactional
     public void seed(@RequestBody Map<String, Object> fixture) {
-        // TODO: insert rows for the fixture.
+        for (Map<String, Object> c : rows(fixture, "clients")) {
+            jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
+                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"));
+        }
+        // Continue generated ids after the explicitly seeded ones.
+        Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM client", Long.class);
+        jdbc.execute("ALTER TABLE client ALTER COLUMN id RESTART WITH " + next);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> rows(Map<String, Object> fixture, String key) {
+        Object value = fixture.get(key);
+        return value == null ? List.of() : (List<Map<String, Object>>) value;
     }
 }
