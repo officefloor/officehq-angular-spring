@@ -2,13 +2,14 @@ import { Component, computed, inject, input } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { ProjectInvoices } from '../invoices/project-invoices';
+import { ProjectTags } from '../tags/project-tags';
 import { ProjectTasks } from '../tasks/project-tasks';
 import { ProjectService } from './project.service';
 
-// A single project's page: its name and client, its tasks, and its invoices.
+// A single project's page: its name and client, its tags, its tasks, and its invoices.
 @Component({
   selector: 'app-project-detail',
-  imports: [RouterLink, ProjectInvoices, ProjectTasks],
+  imports: [RouterLink, ProjectInvoices, ProjectTags, ProjectTasks],
   template: `
     <a routerLink="/projects" data-testid="project-back">Back to projects</a>
     @if (project.error()) {
@@ -16,6 +17,7 @@ import { ProjectService } from './project.service';
     } @else if (project.value(); as p) {
       <h1 data-testid="project-detail-name">{{ p.name }}</h1>
       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
+      <app-project-tags [projectId]="projectId()" />
       <app-project-tasks [projectId]="projectId()" />
       <app-project-invoices [projectId]="projectId()" />
     }

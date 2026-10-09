@@ -42,6 +42,8 @@ public class TestSupportController {
         // referential checks for the duration of the truncates.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
         try {
+            jdbc.execute("TRUNCATE TABLE project_tag");
+            jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
@@ -70,6 +72,14 @@ public class TestSupportController {
             jdbc.update("INSERT INTO project (id, name, client_id) VALUES (?, ?, ?)",
                     ((Number) p.get("id")).longValue(), p.get("name"),
                     ((Number) p.get("clientId")).longValue());
+        }
+        for (Map<String, Object> t : rows(fixture, "tags")) {
+            jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",
+                    ((Number) t.get("id")).longValue(), t.get("name"));
+        }
+        for (Map<String, Object> pt : rows(fixture, "projectTags")) {
+            jdbc.update("INSERT INTO project_tag (project_id, tag_id) VALUES (?, ?)",
+                    ((Number) pt.get("projectId")).longValue(), ((Number) pt.get("tagId")).longValue());
         }
         for (Map<String, Object> t : rows(fixture, "tasks")) {
             jdbc.update("INSERT INTO task (id, project_id, title, done) VALUES (?, ?, ?, ?)",
@@ -120,6 +130,7 @@ public class TestSupportController {
         restartIdentity("invoice");
         restartIdentity("invoice_line_item");
         restartIdentity("task");
+        restartIdentity("tag");
     }
 
     /**

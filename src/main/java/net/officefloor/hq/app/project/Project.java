@@ -6,9 +6,14 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.util.HashSet;
+import java.util.Set;
 import net.officefloor.hq.app.client.Client;
+import net.officefloor.hq.app.tag.Tag;
 
 /** A project done for a client. */
 @Entity
@@ -26,6 +31,11 @@ public class Project {
     private Client client;
 
     private boolean archived;
+
+    @ManyToMany
+    @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id"))
+    private Set<Tag> tags = new HashSet<>();
 
     protected Project() {
     }
@@ -53,5 +63,10 @@ public class Project {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    /** The tags labelling this project; add or remove to tag or untag it. */
+    public Set<Tag> getTags() {
+        return tags;
     }
 }
