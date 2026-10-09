@@ -1,0 +1,94 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 48a0068..6ae51ad 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -14,7 +14,8 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ 
+ // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
+ // amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
+-// sales tax added on it after the discount, any levy (a second tax) added on the same base, the total before tax, and the final total including both taxes (also shown as the total after tax).
++// sales tax added on it after the discount, any levy (a second tax) added on the same base, the effective tax rate
++// (the tax and levy as a percentage of the total before tax), the total before tax, and the final total including both taxes (also shown as the total after tax).
+ // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
+ // Lines, the discount, the tax rate and the levy rate can be changed while it is a draft.
+ @Component({
+@@ -221,6 +222,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 <td></td>
+               }
+             </tr>
++            <tr>
++              <th scope="row" colspan="4">Effective tax rate (tax and levy as a share of the total before tax)</th>
++              <td data-testid="invoice-effective-tax-rate">{{ inv.effectiveTaxPct | number: '1.2-2' : 'en-US' }}%</td>
++              @if (inv.status === 'DRAFT') {
++                <td></td>
++              }
++            </tr>
+             <tr>
+               <th scope="row" colspan="4">Total before tax</th>
+               <td data-testid="invoice-total-ex-tax">{{ inv.totalExTax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 2f82ba9..35ba5fa 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -103,6 +103,8 @@ export interface InvoiceDetail extends Invoice {
+   taxInclusive: boolean;
+   /** Whether the client is tax exempt, so the invoice carries no tax or levy whatever its lines say. */
+   taxExempt: boolean;
++  /** The overall tax rate that ended up on the invoice: the tax and levy as a percentage of the total before tax. */
++  effectiveTaxPct: number;
+   lineItems: LineItem[];
+   /** The client's tax registration number; null when they are not tax registered. */
+   clientTaxNumber: string | null;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index d15b294..06a7615 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -117,6 +117,19 @@ public class Invoice {
+         return amount.subtract(getTax()).subtract(getLevy());
+     }
+ 
++    /**
++     * The overall tax rate that actually ended up on the invoice: the sales tax and levy together as a
++     * percentage of the total before tax, to two decimal places. It is below the headline rates when some
++     * lines are tax-free, and zero when there is nothing before tax to charge it on.
++     */
++    public BigDecimal getEffectiveTaxPct() {
++        BigDecimal totalExTax = getTotalExTax();
++        if (totalExTax.signum() == 0) {
++            return BigDecimal.ZERO.setScale(2);
++        }
++        return getTax().add(getLevy()).multiply(BigDecimal.valueOf(100)).divide(totalExTax, 2, RoundingMode.HALF_UP);
++    }
++
+     /** The percentage taken off the subtotal; zero when there is no discount. */
+     public BigDecimal getDiscountPct() {
+         return discountPct;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index e72e308..9d8aae5 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -11,13 +11,14 @@ import net.officefloor.hq.app.client.Currency;
+  * taxable lines after the discount) and what it adds, the levy (second tax) percentage and what it adds
+  * on the same base, the amount owed including both taxes, the total before tax, whether the prices already include the taxes
+  * (so they are worked back out rather than added on), whether the client is tax exempt (so
+- * there is no tax at all), and the
++ * there is no tax at all), the effective tax rate (the sales tax and levy together as a percentage of
++ * the total before tax), and the
+  * client's tax number (null when the client is not tax registered).
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+         BigDecimal discountPct, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
+-        BigDecimal levyPct, BigDecimal levy, boolean taxInclusive, boolean taxExempt, InvoiceStatus status, LocalDate issuedDate,
++        BigDecimal levyPct, BigDecimal levy, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct, InvoiceStatus status, LocalDate issuedDate,
+         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber) {
+ 
+     static InvoiceDetailResponse from(Invoice invoice) {
+@@ -26,6 +27,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency,
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscount(),
+                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
+                 invoice.getLevyPct(), invoice.getLevy(), invoice.isTaxInclusive(), invoice.isTaxExempt(),
++                invoice.getEffectiveTaxPct(),
+                 invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
+                 invoice.getProject().getClient().getTaxNumber());
