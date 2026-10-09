@@ -1,0 +1,404 @@
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index 53b094f..0601bf3 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -29,7 +29,7 @@ export const routes: Routes = [
+   },
+   {
+     path: 'projects',
+-    data: { section: 'projects', label: 'Projects', order: 2 },
++    data: { section: 'projects', label: 'Jobs', order: 2 },
+     loadComponent: () => import('./features/projects/projects').then((m) => m.Projects),
+   },
+   {
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 3306ba1..f22a1b6 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -36,7 +36,7 @@ import { ClientService } from './client.service';
+       @if (summary.hasValue()) {
+         <ul class="client-badges" aria-label="At a glance" data-testid="client-badges">
+           <li>
+-            Projects: <span data-testid="client-projects-count">{{ summary.value().projectCount }}</span>
++            Jobs: <span data-testid="client-projects-count">{{ summary.value().projectCount }}</span>
+           </li>
+           <li>
+             Contacts: <span data-testid="client-contacts-count">{{ summary.value().contactCount }}</span>
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index c11b7d5..e2ddd5e 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -20,7 +20,7 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
+           <dd data-testid="dashboard-clients-count">{{ s.clients }}</dd>
+         </div>
+         <div>
+-          <dt>Projects</dt>
++          <dt>Jobs</dt>
+           <dd data-testid="dashboard-projects-count">{{ s.projects }}</dd>
+         </div>
+         <div>
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index f434ab5..64dd7d9 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -23,7 +23,7 @@ import { InvoiceService } from './invoice.service';
+           <thead>
+             <tr>
+               <th scope="col">Invoice</th>
+-              <th scope="col">Project</th>
++              <th scope="col">Job</th>
+               <th scope="col">Status</th>
+               <th scope="col">Issued</th>
+               <th scope="col">Due</th>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index dcbc553..13a5ae0 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -16,7 +16,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+   selector: 'app-invoice-detail',
+   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments],
+   template: `
+-    <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to project</a>
++    <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
+     @if (invoice.error()) {
+       <p role="alert" data-testid="invoice-error">Could not load the invoice.</p>
+     } @else if (invoice.value(); as inv) {
+diff --git a/src/main/frontend/src/app/features/invoices/invoices.ts b/src/main/frontend/src/app/features/invoices/invoices.ts
+index 9d22d75..214ccdf 100644
+--- a/src/main/frontend/src/app/features/invoices/invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/invoices.ts
+@@ -35,11 +35,11 @@ import { INVOICE_STATUSES, InvoicePage, InvoiceService, InvoiceStatus } from './
+       </p>
+     } @else {
+       <table data-testid="all-invoices-table">
+-        <caption>All invoices across every project</caption>
++        <caption>All invoices across every job</caption>
+         <thead>
+           <tr>
+             <th scope="col">Invoice</th>
+-            <th scope="col">Project</th>
++            <th scope="col">Job</th>
+             <th scope="col">Amount</th>
+             <th scope="col">Status</th>
+             <th scope="col">Issued</th>
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index e091e6f..e21dff3 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -81,7 +81,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+         <p data-testid="project-invoices-empty">No invoices yet.</p>
+       } @else {
+         <table data-testid="project-invoices-table">
+-          <caption>Invoices for this project</caption>
++          <caption>Invoices for this job</caption>
+           <thead>
+             <tr>
+               <th scope="col">Invoice</th>
+diff --git a/src/main/frontend/src/app/features/notes/project-notes.ts b/src/main/frontend/src/app/features/notes/project-notes.ts
+index 317fcfe..f3a8d81 100644
+--- a/src/main/frontend/src/app/features/notes/project-notes.ts
++++ b/src/main/frontend/src/app/features/notes/project-notes.ts
+@@ -40,9 +40,9 @@ import { NoteService } from './note.service';
+         <p role="alert" data-testid="project-notes-error">Could not load the notes.</p>
+       } @else if (notes.hasValue()) {
+         @if (notes.value().length === 0) {
+-          <p data-testid="project-notes-empty">No notes on this project yet.</p>
++          <p data-testid="project-notes-empty">No notes on this job yet.</p>
+         } @else {
+-          <ol class="notes" aria-label="Project notes, newest first" data-testid="project-note-list">
++          <ol class="notes" aria-label="Job notes, newest first" data-testid="project-note-list">
+             @for (n of notes.value(); track n.id) {
+               <li [attr.data-testid]="'note-row-' + n.id">
+                 <time [attr.datetime]="n.at" data-testid="note-at">{{ n.at | date: 'medium' }}</time>
+diff --git a/src/main/frontend/src/app/features/projects/client-projects.ts b/src/main/frontend/src/app/features/projects/client-projects.ts
+index 267667e..7c1b83b 100644
+--- a/src/main/frontend/src/app/features/projects/client-projects.ts
++++ b/src/main/frontend/src/app/features/projects/client-projects.ts
+@@ -10,7 +10,7 @@ import { PROJECT_STATUSES, ProjectService, ProjectStatus } from './project.servi
+   imports: [RouterLink],
+   template: `
+     <section aria-labelledby="client-projects-heading" data-testid="client-projects">
+-      <h2 id="client-projects-heading">Projects</h2>
++      <h2 id="client-projects-heading">Jobs</h2>
+       <div>
+         <input
+           id="client-projects-show-all"
+@@ -19,18 +19,18 @@ import { PROJECT_STATUSES, ProjectService, ProjectStatus } from './project.servi
+           [checked]="showAll()"
+           (change)="toggleShowAll()"
+         />
+-        <label for="client-projects-show-all">Show finished and archived projects</label>
++        <label for="client-projects-show-all">Show finished and archived jobs</label>
+       </div>
+       @if (projects.error()) {
+-        <p role="alert" data-testid="client-projects-error">Could not load the projects.</p>
++        <p role="alert" data-testid="client-projects-error">Could not load the jobs.</p>
+       } @else if (list().length === 0) {
+         <p data-testid="client-projects-empty">
+-          {{ showAll() ? 'No projects for this client yet.' : 'No active projects for this client.' }}
++          {{ showAll() ? 'No jobs for this client yet.' : 'No active jobs for this client.' }}
+         </p>
+       } @else {
+         <table data-testid="client-projects-table">
+           <caption>
+-            {{ showAll() ? 'All projects for this client' : 'Active projects for this client' }}
++            {{ showAll() ? 'All jobs for this client' : 'Active jobs for this client' }}
+           </caption>
+           <thead>
+             <tr>
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index 3a3b4a1..3a7ac76 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -13,9 +13,9 @@ import { ProjectService } from './project.service';
+   selector: 'app-project-detail',
+   imports: [RouterLink, ProjectBudgetPanel, ProjectInvoices, ProjectNotes, ProjectTags, ProjectTasks],
+   template: `
+-    <a routerLink="/projects" data-testid="project-back">Back to projects</a>
++    <a routerLink="/projects" data-testid="project-back">Back to jobs</a>
+     @if (project.error()) {
+-      <p role="alert" data-testid="project-error">Could not load the project.</p>
++      <p role="alert" data-testid="project-error">Could not load the job.</p>
+     } @else if (project.value(); as p) {
+       <h1 data-testid="project-detail-name">{{ p.name }}</h1>
+       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
+diff --git a/src/main/frontend/src/app/features/projects/projects.ts b/src/main/frontend/src/app/features/projects/projects.ts
+index 2a764b4..a3b95ae 100644
+--- a/src/main/frontend/src/app/features/projects/projects.ts
++++ b/src/main/frontend/src/app/features/projects/projects.ts
+@@ -16,7 +16,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+   selector: 'app-projects',
+   imports: [ReactiveFormsModule, RouterLink],
+   template: `
+-    <h1>Projects</h1>
++    <h1>Jobs</h1>
+ 
+     <form [formGroup]="form" (ngSubmit)="submit()" data-testid="project-form" novalidate>
+       <div>
+@@ -64,7 +64,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+         </select>
+       </div>
+       <button type="submit" data-testid="project-form-submit" [disabled]="saving()">
+-        Add project
++        Add job
+       </button>
+       @if (saveError()) {
+         <p role="alert" data-testid="project-form-error">{{ saveError() }}</p>
+@@ -83,7 +83,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+         [checked]="showArchived()"
+         (change)="toggleArchived()"
+       />
+-      <label for="projects-show-archived">Show archived projects</label>
++      <label for="projects-show-archived">Show archived jobs</label>
+     </div>
+ 
+     <div>
+@@ -121,16 +121,16 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+     @if (projects().length === 0) {
+       <p data-testid="projects-empty">
+         @if (statusFilter() !== null && tagFilter() !== null) {
+-          No projects at this status with this tag.
++          No jobs at this status with this tag.
+         } @else if (statusFilter() !== null) {
+-          No projects at this status.
++          No jobs at this status.
+         } @else {
+-          {{ tagFilter() === null ? 'No projects yet.' : 'No projects with this tag.' }}
++          {{ tagFilter() === null ? 'No jobs yet.' : 'No jobs with this tag.' }}
+         }
+       </p>
+     } @else {
+       <table data-testid="projects-table">
+-        <caption>All projects</caption>
++        <caption>All jobs</caption>
+         <thead>
+           <tr>
+             <th scope="col">Name</th>
+@@ -259,7 +259,7 @@ export class Projects {
+         this.saving.set(false);
+       },
+       error: () => {
+-        this.saveError.set('Could not save the project. Please try again.');
++        this.saveError.set('Could not save the job. Please try again.');
+         this.saving.set(false);
+       },
+     });
+diff --git a/src/main/frontend/src/app/features/search/global-search.ts b/src/main/frontend/src/app/features/search/global-search.ts
+index c58f954..c34d56f 100644
+--- a/src/main/frontend/src/app/features/search/global-search.ts
++++ b/src/main/frontend/src/app/features/search/global-search.ts
+@@ -11,7 +11,7 @@ import { SearchResults, SearchService } from './search.service';
+   imports: [RouterLink],
+   template: `
+     <div role="search">
+-      <label for="global-search">Search clients and projects</label>
++      <label for="global-search">Search clients and jobs</label>
+       <input
+         id="global-search"
+         type="search"
+@@ -38,9 +38,9 @@ import { SearchResults, SearchService } from './search.service';
+           }
+         </section>
+         <section data-testid="search-projects" aria-labelledby="search-projects-heading">
+-          <h2 id="search-projects-heading">Projects</h2>
++          <h2 id="search-projects-heading">Jobs</h2>
+           @if (r.projects.length === 0) {
+-            <p data-testid="search-projects-empty">No projects match.</p>
++            <p data-testid="search-projects-empty">No jobs match.</p>
+           } @else {
+             <ul>
+               @for (p of r.projects; track p.id) {
+diff --git a/src/main/frontend/src/app/features/tags/project-tags.ts b/src/main/frontend/src/app/features/tags/project-tags.ts
+index b0e6a0c..2ee329c 100644
+--- a/src/main/frontend/src/app/features/tags/project-tags.ts
++++ b/src/main/frontend/src/app/features/tags/project-tags.ts
+@@ -19,7 +19,7 @@ import { Tag, TagService } from './tag.service';
+         @if (projectTags.value().length === 0) {
+           <p data-testid="project-tags-empty">No tags on this project yet.</p>
+         } @else {
+-          <ul class="chips" aria-label="Project tags" data-testid="project-tag-list">
++          <ul class="chips" aria-label="Job tags" data-testid="project-tag-list">
+             @for (t of projectTags.value(); track t.id) {
+               <li class="chip">
+                 <span [attr.data-testid]="'project-tag-' + t.id">{{ t.name }}</span>
+diff --git a/src/main/frontend/src/app/features/tasks/project-tasks.ts b/src/main/frontend/src/app/features/tasks/project-tasks.ts
+index 59ed9e3..2ff95af 100644
+--- a/src/main/frontend/src/app/features/tasks/project-tasks.ts
++++ b/src/main/frontend/src/app/features/tasks/project-tasks.ts
+@@ -65,7 +65,7 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+             </p>
+           } @else {
+             <table data-testid="project-tasks-table">
+-              <caption>Tasks for this project</caption>
++              <caption>Tasks for this job</caption>
+               <thead>
+                 <tr>
+                   <th scope="col">Task</th>
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index a3a1374..91e2397 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -40,7 +40,7 @@ public class InvoiceService {
+     @Transactional(readOnly = true)
+     public List<InvoiceResponse> listForProject(Long projectId) {
+         if (!projects.existsById(projectId)) {
+-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job");
+         }
+         List<Invoice> found = invoices.findByProjectIdOrderById(projectId);
+         Map<Long, BigDecimal> paid = paidByInvoice(found);
+@@ -93,7 +93,7 @@ public class InvoiceService {
+     @Transactional
+     public InvoiceResponse create(Long projectId, InvoiceRequest request) {
+         Project project = projects.findById(projectId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+         LocalDate issued = request.issuedDate() != null ? request.issuedDate() : LocalDate.now();
+         LocalDate due = request.dueDate() != null ? request.dueDate() : issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS);
+         if (due.isBefore(issued)) {
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteService.java b/src/main/java/net/officefloor/hq/app/note/NoteService.java
+index 2cedc35..0f76867 100644
+--- a/src/main/java/net/officefloor/hq/app/note/NoteService.java
++++ b/src/main/java/net/officefloor/hq/app/note/NoteService.java
+@@ -35,7 +35,7 @@ public class NoteService {
+ 
+     private void requireProject(Long projectId) {
+         if (!projects.existsById(projectId)) {
+-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job");
+         }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index 4ff599f..5bf897c 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -61,7 +61,7 @@ public class ProjectService {
+     @Transactional(readOnly = true)
+     public ProjectResponse get(Long id) {
+         return projects.findByIdWithClient(id).map(ProjectResponse::from)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+     }
+ 
+     @Transactional
+@@ -84,7 +84,7 @@ public class ProjectService {
+     @Transactional(readOnly = true)
+     public ProjectBudgetResponse budget(Long id) {
+         Project project = projects.findById(id)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+         return budgetOf(project);
+     }
+ 
+@@ -92,7 +92,7 @@ public class ProjectService {
+     @Transactional
+     public ProjectBudgetResponse setBudget(Long id, BigDecimal budget) {
+         Project project = projects.findById(id)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+         BigDecimal scaled = budget == null ? null : budget.setScale(2, RoundingMode.HALF_UP);
+         BigDecimal current = project.getBudget();
+         boolean changed = scaled == null ? current != null : current == null || current.compareTo(scaled) != 0;
+@@ -114,7 +114,7 @@ public class ProjectService {
+     @Transactional
+     public ProjectResponse changeStatus(Long id, ProjectStatus status) {
+         Project project = projects.findByIdWithClient(id)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+         if (project.getStatus() != status) {
+             project.setStatus(status);
+             projects.flush();
+@@ -130,7 +130,7 @@ public class ProjectService {
+     @Transactional
+     public ProjectResponse archive(Long id) {
+         Project project = projects.findByIdWithClient(id)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+         if (!project.isArchived()) {
+             project.setArchived(true);
+             projects.flush();
+@@ -143,7 +143,7 @@ public class ProjectService {
+     @Transactional
+     public ProjectResponse restore(Long id) {
+         Project project = projects.findByIdWithClient(id)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+         if (project.isArchived()) {
+             project.setArchived(false);
+             projects.flush();
+diff --git a/src/main/java/net/officefloor/hq/app/tag/TagService.java b/src/main/java/net/officefloor/hq/app/tag/TagService.java
+index 11c1eef..37e3330 100644
+--- a/src/main/java/net/officefloor/hq/app/tag/TagService.java
++++ b/src/main/java/net/officefloor/hq/app/tag/TagService.java
+@@ -68,7 +68,7 @@ public class TagService {
+ 
+     private Project findProject(Long projectId) {
+         return projects.findById(projectId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+     }
+ 
+     private static List<TagResponse> responses(Project project) {
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskService.java b/src/main/java/net/officefloor/hq/app/task/TaskService.java
+index 4d49c02..d5c4421 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskService.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskService.java
+@@ -25,7 +25,7 @@ public class TaskService {
+     @Transactional(readOnly = true)
+     public List<TaskResponse> listForProject(Long projectId) {
+         if (!projects.existsById(projectId)) {
+-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job");
+         }
+         return tasks.findByProjectIdOrderById(projectId).stream().map(TaskResponse::from).toList();
+     }
+@@ -33,7 +33,7 @@ public class TaskService {
+     @Transactional
+     public TaskResponse create(Long projectId, TaskRequest request) {
+         Project project = projects.findById(projectId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+         Task saved = tasks.save(new Task(project, request.title().trim()));
+         return TaskResponse.from(saved);
+     }
