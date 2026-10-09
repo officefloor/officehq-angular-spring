@@ -1,6 +1,7 @@
 package net.officefloor.hq.app;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,7 @@ public class TestSupportController {
         try {
             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
@@ -79,17 +81,44 @@ public class TestSupportController {
                     : LocalDate.parse(i.get("issuedDate").toString());
             LocalDate due = i.get("dueDate") == null ? issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
                     : LocalDate.parse(i.get("dueDate").toString());
+            long invoiceId = ((Number) i.get("id")).longValue();
+            List<Map<String, Object>> lineItems = rows(i, "lineItems");
+            // An invoice is the sum of its line items; a fixture giving only an amount describes an
+            // invoice raised as one figure, which is carried as a single line.
+            if (lineItems.isEmpty() && i.get("amount") != null) {
+                lineItems = List.of(Map.of("description", InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION,
+                        "qty", 1, "unitPrice", i.get("amount")));
+            }
+            BigDecimal amount = BigDecimal.ZERO;
+            for (Map<String, Object> l : lineItems) {
+                amount = amount.add(new BigDecimal(l.get("qty").toString())
+                        .multiply(new BigDecimal(l.get("unitPrice").toString())));
+            }
             jdbc.update("INSERT INTO invoice (id, project_id, amount, status, issued_date, due_date)"
                     + " VALUES (?, ?, ?, ?, ?, ?)",
-                    ((Number) i.get("id")).longValue(), ((Number) i.get("projectId")).longValue(),
-                    new BigDecimal(i.get("amount").toString()),
+                    invoiceId, ((Number) i.get("projectId")).longValue(),
+                    amount.setScale(2, RoundingMode.HALF_UP),
                     seedStatus(i.get("status")), issued, due);
+            for (Map<String, Object> l : lineItems) {
+                if (l.get("id") != null) {
+                    jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit_price)"
+                            + " VALUES (?, ?, ?, ?, ?)",
+                            ((Number) l.get("id")).longValue(), invoiceId, l.get("description"),
+                            new BigDecimal(l.get("qty").toString()), new BigDecimal(l.get("unitPrice").toString()));
+                } else {
+                    jdbc.update("INSERT INTO invoice_line_item (invoice_id, description, qty, unit_price)"
+                            + " VALUES (?, ?, ?, ?)",
+                            invoiceId, l.get("description"),
+                            new BigDecimal(l.get("qty").toString()), new BigDecimal(l.get("unitPrice").toString()));
+                }
+            }
         }
         // Continue generated ids after the explicitly seeded ones.
         restartIdentity("client");
         restartIdentity("contact");
         restartIdentity("project");
         restartIdentity("invoice");
+        restartIdentity("invoice_line_item");
         restartIdentity("task");
     }
 

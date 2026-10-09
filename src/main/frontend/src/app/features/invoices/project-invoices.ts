@@ -1,4 +1,5 @@
 import { CurrencyPipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import {
@@ -17,17 +18,17 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
 }
 
 // A project's invoices: lists them with their issue and due dates, shows what they add up to, adds a
-// new draft, sends a draft, and marks a sent one as paid.
+// new draft, sends a draft, and marks a sent one as paid. Each invoice opens onto its line items.
 @Component({
   selector: 'app-project-invoices',
-  imports: [ReactiveFormsModule, CurrencyPipe],
+  imports: [ReactiveFormsModule, CurrencyPipe, RouterLink],
   template: `
     <section aria-labelledby="project-invoices-heading" data-testid="project-invoices">
       <h2 id="project-invoices-heading">Invoices</h2>
 
       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="invoice-form" novalidate>
         <div>
-          <label for="invoice-amount">Amount</label>
+          <label for="invoice-amount">Amount (optional, or leave blank and add line items)</label>
           <input
             id="invoice-amount"
             type="number"
@@ -41,7 +42,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
           />
           @if (showError()) {
             <p id="invoice-amount-error" role="alert" data-testid="invoice-form-amount-error">
-              Enter an amount greater than zero with at most two decimal places.
+              Enter an amount greater than zero with at most two decimal places, or leave it blank.
             </p>
           }
         </div>
@@ -102,7 +103,14 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
           <tbody>
             @for (i of rows(); track i.id) {
               <tr [attr.data-testid]="'invoice-row-' + i.id">
-                <td data-testid="invoice-id">#{{ i.id }}</td>
+                <td data-testid="invoice-id">
+                  <a
+                    [routerLink]="['/projects', projectId(), 'invoices', i.id]"
+                    [attr.data-testid]="'invoice-open-' + i.id"
+                    [attr.aria-label]="'Open invoice #' + i.id"
+                    >#{{ i.id }}</a
+                  >
+                </td>
                 <td data-testid="invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
                 <td data-testid="invoice-status">{{ i.status }}</td>
                 <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
@@ -183,10 +191,7 @@ export class ProjectInvoices {
 
   protected readonly form = inject(NonNullableFormBuilder).group(
     {
-      amount: [
-        '',
-        [Validators.required, Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)],
-      ],
+      amount: ['', [Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)]],
       issuedDate: [''],
       dueDate: [''],
     },
@@ -211,7 +216,7 @@ export class ProjectInvoices {
     this.saveError.set(null);
     const { amount, issuedDate, dueDate } = this.form.getRawValue();
     const invoice = {
-      amount: Number(amount),
+      ...(amount !== '' && amount !== null ? { amount: Number(amount) } : {}),
       ...(issuedDate ? { issuedDate } : {}),
       ...(dueDate ? { dueDate } : {}),
     };

@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.invoice;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
@@ -51,8 +52,30 @@ public class InvoiceService {
         if (due.isBefore(issued)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Due date must not be before the issue date");
         }
-        Invoice saved = invoices.save(new Invoice(project, request.amount(), issued, due));
+        Invoice invoice = new Invoice(project, issued, due);
+        if (request.amount() != null) {
+            invoice.addLineItem(InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION, BigDecimal.ONE, request.amount());
+        }
+        Invoice saved = invoices.save(invoice);
         return InvoiceResponse.from(saved);
+    }
+
+    /** A single invoice with its line items. */
+    @Transactional(readOnly = true)
+    public InvoiceDetailResponse get(Long projectId, Long invoiceId) {
+        return InvoiceDetailResponse.from(find(projectId, invoiceId));
+    }
+
+    /** Adds a line item to a draft invoice and reworks the invoice amount to match. */
+    @Transactional
+    public InvoiceDetailResponse addLineItem(Long projectId, Long invoiceId, LineItemRequest request) {
+        Invoice invoice = find(projectId, invoiceId);
+        if (invoice.getStatus() != InvoiceStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft invoice can be changed");
+        }
+        invoice.addLineItem(request.description().strip(), request.qty(), request.unitPrice());
+        invoices.flush();
+        return InvoiceDetailResponse.from(invoice);
     }
 
     /** Sends a draft invoice and records the sending in the audit log. */
@@ -61,6 +84,9 @@ public class InvoiceService {
         Invoice invoice = find(projectId, invoiceId);
         if (invoice.getStatus() != InvoiceStatus.DRAFT) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft invoice can be sent");
+        }
+        if (invoice.getAmount().signum() == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Add a line item before sending the invoice");
         }
         invoice.markSent();
         invoices.flush();

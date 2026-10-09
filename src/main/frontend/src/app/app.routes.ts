@@ -37,4 +37,8 @@ export const routes: Routes = [
     path: 'projects/:id',
     loadComponent: () => import('./features/projects/project-detail').then((m) => m.ProjectDetail),
   },
+  {
+    path: 'projects/:projectId/invoices/:invoiceId',
+    loadComponent: () => import('./features/invoices/invoice-detail').then((m) => m.InvoiceDetailPage),
+  },
 ];

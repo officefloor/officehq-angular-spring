@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.invoice;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -10,12 +11,19 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import net.officefloor.hq.app.project.Project;
 
-/** An invoice raised against a project. */
+/**
+ * An invoice raised against a project. It is built from line items, and its stored amount is always
+ * the sum of what each line charges.
+ */
 @Entity
 @Table(name = "invoice")
 public class Invoice {
@@ -29,7 +37,7 @@ public class Invoice {
     private Project project;
 
     @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal amount;
+    private BigDecimal amount = BigDecimal.ZERO.setScale(2);
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
@@ -41,12 +49,15 @@ public class Invoice {
     @Column(name = "due_date", nullable = false)
     private LocalDate dueDate;
 
+    @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id")
+    private List<InvoiceLineItem> lineItems = new ArrayList<>();
+
     protected Invoice() {
     }
 
-    public Invoice(Project project, BigDecimal amount, LocalDate issuedDate, LocalDate dueDate) {
+    public Invoice(Project project, LocalDate issuedDate, LocalDate dueDate) {
         this.project = project;
-        this.amount = amount;
         this.issuedDate = issuedDate;
         this.dueDate = dueDate;
     }
@@ -73,6 +84,18 @@ public class Invoice {
 
     public LocalDate getDueDate() {
         return dueDate;
+    }
+
+    public List<InvoiceLineItem> getLineItems() {
+        return List.copyOf(lineItems);
+    }
+
+    /** Adds a line to this invoice and reworks its amount to include what the line charges. */
+    public InvoiceLineItem addLineItem(String description, BigDecimal qty, BigDecimal unitPrice) {
+        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unitPrice);
+        lineItems.add(item);
+        this.amount = lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return item;
     }
 
     /** Marks this invoice as sent to the client. */

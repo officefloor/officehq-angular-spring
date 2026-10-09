@@ -32,6 +32,18 @@ public class InvoiceController {
         return service.create(projectId, request);
     }
 
+    @GetMapping("/{invoiceId}")
+    public InvoiceDetailResponse get(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+        return service.get(projectId, invoiceId);
+    }
+
+    @PostMapping("/{invoiceId}/line-items")
+    @ResponseStatus(HttpStatus.CREATED)
+    public InvoiceDetailResponse addLineItem(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @Valid @RequestBody LineItemRequest request) {
+        return service.addLineItem(projectId, invoiceId, request);
+    }
+
     @PostMapping("/{invoiceId}/send")
     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.send(projectId, invoiceId);
