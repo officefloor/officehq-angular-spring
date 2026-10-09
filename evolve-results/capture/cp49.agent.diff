@@ -1,0 +1,333 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index f41c378..dcbc553 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -10,8 +10,8 @@ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ 
+ // A single invoice: the things it charges for (description, how many and of what, price each), each line's
+-// amount, their subtotal, any percentage discount, and the final total after it. Lines and the
+-// discount can be changed while it is a draft.
++// amount, their subtotal, any percentage discount, any sales tax added after it, and the final total
++// including the tax. Lines, the discount and the tax rate can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments],
+@@ -165,6 +165,15 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                 <td></td>
+               }
+             </tr>
++            <tr>
++              <th scope="row" colspan="4">
++                Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)
++              </th>
++              <td data-testid="invoice-tax">{{ inv.tax | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              @if (inv.status === 'DRAFT') {
++                <td></td>
++              }
++            </tr>
+             <tr>
+               <th scope="row" colspan="4">Total</th>
+               <td data-testid="invoice-amount">{{ inv.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+@@ -208,6 +217,34 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+           }
+         </form>
+ 
++        <form [formGroup]="taxForm" (ngSubmit)="applyTax()" data-testid="tax-form" novalidate>
++          <h2>Sales tax</h2>
++          <div>
++            <label for="tax-pct">Tax percentage added after the discount</label>
++            <input
++              id="tax-pct"
++              type="number"
++              inputmode="decimal"
++              min="0"
++              max="100"
++              step="0.01"
++              formControlName="taxPct"
++              data-testid="tax-form-pct"
++              [attr.aria-invalid]="taxInvalid()"
++              [attr.aria-describedby]="taxInvalid() ? 'tax-pct-error' : null"
++            />
++            @if (taxInvalid()) {
++              <p id="tax-pct-error" role="alert" data-testid="tax-form-pct-error">
++                Enter a percentage from 0 to 100 with at most two decimal places.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="tax-form-submit" [disabled]="taxSaving()">Apply tax</button>
++          @if (taxError()) {
++            <p role="alert" data-testid="tax-form-error">{{ taxError() }}</p>
++          }
++        </form>
++
+         <form [formGroup]="form" (ngSubmit)="submit()" data-testid="lineitem-form" novalidate>
+           <h2>Add a line item</h2>
+           <div>
+@@ -357,6 +394,45 @@ export class InvoiceDetailPage {
+     });
+   }
+ 
++  protected readonly taxSaving = signal(false);
++  protected readonly taxError = signal<string | null>(null);
++
++  protected readonly taxForm = this.fb.group({
++    taxPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
++  });
++
++  // Starts the tax field from the invoice's current rate whenever the invoice loads.
++  private readonly syncTax = effect(() => {
++    if (this.invoice.hasValue()) {
++      this.taxForm.setValue({ taxPct: String(this.invoice.value().taxPct) });
++    }
++  });
++
++  protected taxInvalid(): boolean {
++    const control = this.taxForm.controls.taxPct;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected applyTax(): void {
++    if (this.taxForm.invalid) {
++      this.taxForm.markAllAsTouched();
++      return;
++    }
++    this.taxSaving.set(true);
++    this.taxError.set(null);
++    const taxPct = Number(this.taxForm.getRawValue().taxPct);
++    this.service.applyTax(this.projectIdNumber(), Number(this.invoiceId()), taxPct).subscribe({
++      next: (updated) => {
++        this.invoice.set(updated);
++        this.taxSaving.set(false);
++      },
++      error: () => {
++        this.taxError.set('Could not apply the tax. Please try again.');
++        this.taxSaving.set(false);
++      },
++    });
++  }
++
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index fdaf4ae..5126d2f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -62,12 +62,15 @@ export interface LineItem {
+ 
+ /**
+  * A single invoice with the line items it is built from: their subtotal, the percentage discount and
+- * what it takes off; its amount is the subtotal less the discount.
++ * what it takes off, and the sales tax percentage and what it adds after the discount; its amount is
++ * the subtotal less the discount plus the tax.
+  */
+ export interface InvoiceDetail extends Invoice {
+   subtotal: number;
+   discountPct: number;
+   discount: number;
++  taxPct: number;
++  tax: number;
+   lineItems: LineItem[];
+ }
+ 
+@@ -133,6 +136,11 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discount`, { discountPct });
+   }
+ 
++  /** Sets the sales tax percentage added to a draft invoice after its discount; zero removes the tax. */
++  applyTax(projectId: number, invoiceId: number, taxPct: number): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/tax`, { taxPct });
++  }
++
+   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index d995e9c..8019017 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -133,15 +133,20 @@ public class TestSupportController {
+                 amount = amount.add(new BigDecimal(l.get("qty").toString())
+                         .multiply(new BigDecimal(l.get("unitPrice").toString())));
+             }
+-            // A discount takes a percentage off the line items' subtotal; the amount is what is left.
++            // A discount takes a percentage off the line items' subtotal, then sales tax adds a percentage
++            // of what is left; the amount is the discounted subtotal plus the tax.
+             BigDecimal subtotal = amount.setScale(2, RoundingMode.HALF_UP);
+             BigDecimal discountPct = i.get("discountPct") == null ? BigDecimal.ZERO
+                     : new BigDecimal(i.get("discountPct").toString());
+             BigDecimal discount = subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+-            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, status, issued_date, due_date)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?)",
++            BigDecimal discounted = subtotal.subtract(discount);
++            BigDecimal taxPct = i.get("taxPct") == null ? BigDecimal.ZERO
++                    : new BigDecimal(i.get("taxPct").toString());
++            BigDecimal tax = discounted.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
++            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, status, issued_date, due_date)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, ((Number) i.get("projectId")).longValue(),
+-                    subtotal.subtract(discount), discountPct,
++                    discounted.add(tax), discountPct, taxPct,
+                     seedStatus(i.get("status")), issued, due);
+             for (Map<String, Object> l : lineItems) {
+                 if (l.get("id") != null) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index d93b3f4..561ce1d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -24,7 +24,8 @@ import net.officefloor.hq.app.project.Project;
+ 
+ /**
+  * An invoice raised against a project. It is built from line items, and can take a percentage off
+- * their sum as a discount; its stored amount is always that subtotal less the discount.
++ * their sum as a discount, then add a percentage sales tax on what is left; its stored amount is always
++ * that subtotal less the discount plus the tax.
+  */
+ @Entity
+ @Table(name = "invoice")
+@@ -44,6 +45,9 @@ public class Invoice {
+     @Column(name = "discount_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal discountPct = BigDecimal.ZERO.setScale(2);
+ 
++    @Column(name = "tax_pct", nullable = false, precision = 5, scale = 2)
++    private BigDecimal taxPct = BigDecimal.ZERO.setScale(2);
++
+     @Enumerated(EnumType.STRING)
+     @Column(nullable = false, length = 16)
+     private InvoiceStatus status = InvoiceStatus.DRAFT;
+@@ -95,6 +99,17 @@ public class Invoice {
+         return discountOn(getSubtotal());
+     }
+ 
++    /** The sales tax percentage added after the discount; zero when there is no tax. */
++    public BigDecimal getTaxPct() {
++        return taxPct;
++    }
++
++    /** How much sales tax is added to the discounted subtotal, to the cent. */
++    public BigDecimal getTax() {
++        BigDecimal subtotal = getSubtotal();
++        return taxOn(subtotal.subtract(discountOn(subtotal)));
++    }
++
+     public InvoiceStatus getStatus() {
+         return status;
+     }
+@@ -143,13 +158,24 @@ public class Invoice {
+         recalculateAmount();
+     }
+ 
++    /** Sets the sales tax percentage added to this invoice and reworks its amount to match. */
++    public void applyTax(BigDecimal taxPct) {
++        this.taxPct = taxPct.setScale(2, RoundingMode.HALF_UP);
++        recalculateAmount();
++    }
++
+     private BigDecimal discountOn(BigDecimal subtotal) {
+         return subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+     }
+ 
++    private BigDecimal taxOn(BigDecimal discounted) {
++        return discounted.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
++    }
++
+     private void recalculateAmount() {
+         BigDecimal subtotal = getSubtotal();
+-        this.amount = subtotal.subtract(discountOn(subtotal));
++        BigDecimal discounted = subtotal.subtract(discountOn(subtotal));
++        this.amount = discounted.add(taxOn(discounted));
+     }
+ 
+     /** Marks this invoice as sent to the client. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index 83ee758..9e9fc2a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -64,6 +64,12 @@ public class InvoiceController {
+         return service.applyDiscount(projectId, invoiceId, request);
+     }
+ 
++    @PutMapping("/{invoiceId}/tax")
++    public InvoiceDetailResponse applyTax(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody TaxRequest request) {
++        return service.applyTax(projectId, invoiceId, request);
++    }
++
+     @PostMapping("/{invoiceId}/send")
+     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.send(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 00463b7..84daeba 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -6,15 +6,17 @@ import java.util.List;
+ 
+ /**
+  * A single invoice together with the line items it is built from: their subtotal, the percentage
+- * discount and what it takes off, and the amount owed after it.
++ * discount and what it takes off, the sales tax percentage and what it adds after the discount, and
++ * the amount owed including that tax.
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, BigDecimal amount, BigDecimal subtotal,
+-        BigDecimal discountPct, BigDecimal discount, InvoiceStatus status, LocalDate issuedDate,
++        BigDecimal discountPct, BigDecimal discount, BigDecimal taxPct, BigDecimal tax, InvoiceStatus status, LocalDate issuedDate,
+         LocalDate dueDate, List<LineItemResponse> lineItems) {
+ 
+     static InvoiceDetailResponse from(Invoice invoice) {
+         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(), invoice.getAmount(),
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscount(),
++                invoice.getTaxPct(), invoice.getTax(),
+                 invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+                 invoice.getLineItems().stream().map(LineItemResponse::from).toList());
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index f4eb621..a3a1374 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -152,6 +152,15 @@ public class InvoiceService {
+         return InvoiceDetailResponse.from(invoice);
+     }
+ 
++    /** Sets the sales tax percentage on a draft invoice and reworks the invoice amount to match. */
++    @Transactional
++    public InvoiceDetailResponse applyTax(Long projectId, Long invoiceId, TaxRequest request) {
++        Invoice invoice = findDraft(projectId, invoiceId);
++        invoice.applyTax(request.taxPct());
++        invoices.flush();
++        return InvoiceDetailResponse.from(invoice);
++    }
++
+     /** Sends a draft invoice and records the sending in the audit log. */
+     @Transactional
+     public InvoiceResponse send(Long projectId, Long invoiceId) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/TaxRequest.java b/src/main/java/net/officefloor/hq/app/invoice/TaxRequest.java
+new file mode 100644
+index 0000000..1a4eab7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/TaxRequest.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.constraints.DecimalMax;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/** Payload to set the sales tax percentage added to a draft invoice; zero removes the tax. */
++public record TaxRequest(
++        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal taxPct) {
++}
+diff --git a/src/main/resources/db/migration/V25__invoice_tax.sql b/src/main/resources/db/migration/V25__invoice_tax.sql
+new file mode 100644
+index 0000000..7bec00a
+--- /dev/null
++++ b/src/main/resources/db/migration/V25__invoice_tax.sql
+@@ -0,0 +1,6 @@
++-- An invoice can add a percentage sales tax on top of what is owed after any discount. The stored
++-- amount remains what is owed, so it is now the discounted subtotal plus the tax; existing invoices
++-- have no tax.
++ALTER TABLE invoice ADD COLUMN tax_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_tax_pct_range CHECK (tax_pct >= 0 AND tax_pct <= 100);
