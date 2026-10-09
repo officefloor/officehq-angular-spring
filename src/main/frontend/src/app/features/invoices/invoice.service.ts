@@ -89,6 +89,8 @@ export interface LineItem {
  * the tax plus the levy.
  */
 export interface InvoiceDetail extends Invoice {
+  /** The total before tax: the amount less the sales tax and levy. */
+  totalExTax: number;
   subtotal: number;
   discountPct: number;
   discount: number;

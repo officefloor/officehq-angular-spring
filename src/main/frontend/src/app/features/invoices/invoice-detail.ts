@@ -12,7 +12,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
 // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
 // amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
-// sales tax added on it after the discount, any levy (a second tax) added on the same base, and the final total including both taxes.
+// sales tax added on it after the discount, any levy (a second tax) added on the same base, the total before tax, and the final total including both taxes (also shown as the total after tax).
 // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
 // Lines, the discount, the tax rate and the levy rate can be changed while it is a draft.
 @Component({
@@ -217,8 +217,22 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
               }
             </tr>
             <tr>
+              <th scope="row" colspan="4">Total before tax</th>
+              <td data-testid="invoice-total-ex-tax">{{ inv.totalExTax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              @if (inv.status === 'DRAFT') {
+                <td></td>
+              }
+            </tr>
+            <tr>
               <th scope="row" colspan="4">Total</th>
               <td data-testid="invoice-amount">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              @if (inv.status === 'DRAFT') {
+                <td></td>
+              }
+            </tr>
+            <tr>
+              <th scope="row" colspan="4">Total after tax</th>
+              <td data-testid="invoice-total-inc-tax">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }

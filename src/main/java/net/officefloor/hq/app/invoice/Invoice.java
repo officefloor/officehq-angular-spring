@@ -96,6 +96,14 @@ public class Invoice {
         return amount;
     }
 
+    /**
+     * The total before tax: the amount owed less the sales tax and levy, whether they were added on or
+     * are included in the prices.
+     */
+    public BigDecimal getTotalExTax() {
+        return amount.subtract(getTax()).subtract(getLevy());
+    }
+
     /** The percentage taken off the subtotal; zero when there is no discount. */
     public BigDecimal getDiscountPct() {
         return discountPct;
