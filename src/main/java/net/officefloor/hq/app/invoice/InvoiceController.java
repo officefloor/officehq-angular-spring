@@ -95,6 +95,12 @@ public class InvoiceController {
         return service.applySurcharge(projectId, invoiceId, request);
     }
 
+    @PutMapping("/{invoiceId}/minimum-charge")
+    public InvoiceDetailResponse applyMinimumCharge(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @Valid @RequestBody MinimumChargeRequest request) {
+        return service.applyMinimumCharge(projectId, invoiceId, request);
+    }
+
     @PutMapping("/{invoiceId}/early-payment")
     public InvoiceDetailResponse applyEarlyPayment(@PathVariable Long projectId, @PathVariable Long invoiceId,
             @Valid @RequestBody EarlyPaymentRequest request) {

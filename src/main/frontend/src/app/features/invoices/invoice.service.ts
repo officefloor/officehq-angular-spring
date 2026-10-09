@@ -145,6 +145,12 @@ export interface InvoiceDetail extends Invoice {
   lineItems: LineItem[];
   /** The client's tax registration number; null when they are not tax registered. */
   clientTaxNumber: string | null;
+  /** The least the invoice bills; zero when there is no minimum charge. */
+  minimumCharge: number;
+  /** What the invoice comes to before any minimum charge. */
+  netTotal: number;
+  /** Whether the net total came out under the minimum charge, so the minimum is billed instead. */
+  minimumApplied: boolean;
 }
 
 export interface NewLineItem {
@@ -247,6 +253,11 @@ export class InvoiceService {
   /** Sets the flat surcharge (such as a handling fee) added to a draft invoice; zero removes it. */
   applySurcharge(projectId: number, invoiceId: number, surcharge: number): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/surcharge`, { surcharge });
+  }
+
+  /** Sets the minimum charge billed on a draft invoice when its net total comes out under it; zero removes it. */
+  applyMinimumCharge(projectId: number, invoiceId: number, minimumCharge: number): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/minimum-charge`, { minimumCharge });
   }
 
   /** Sets the early-payment discount offered on a draft invoice; zero for either removes the offer. */

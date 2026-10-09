@@ -200,6 +200,15 @@ public class InvoiceService {
         return InvoiceDetailResponse.from(invoice);
     }
 
+    /** Sets the minimum charge on a draft invoice and reworks the invoice amount to match. */
+    @Transactional
+    public InvoiceDetailResponse applyMinimumCharge(Long projectId, Long invoiceId, MinimumChargeRequest request) {
+        Invoice invoice = findDraft(projectId, invoiceId);
+        invoice.applyMinimumCharge(request.minimumCharge());
+        invoices.flush();
+        return InvoiceDetailResponse.from(invoice);
+    }
+
     /** Sets the early-payment discount offered on a draft invoice. */
     @Transactional
     public InvoiceDetailResponse applyEarlyPayment(Long projectId, Long invoiceId, EarlyPaymentRequest request) {

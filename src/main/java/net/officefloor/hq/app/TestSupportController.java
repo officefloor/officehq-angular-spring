@@ -235,13 +235,15 @@ public class TestSupportController {
             // A flat surcharge (such as a handling fee) is added on last, after any tax.
             BigDecimal surcharge = i.get("surcharge") == null ? BigDecimal.ZERO
                     : new BigDecimal(i.get("surcharge").toString());
+            // A minimum charge is billed instead when the net total comes out under it.
+            BigDecimal minimumCharge = decimal(i.get("minimumCharge"));
             int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
-                    (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge), taxPct, levyPct,
+                    (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
                     surcharge, taxInclusive, taxExempt,
-                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due);
+                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge);
             for (Map<String, Object> d : discounts) {
                 if (d.get("id") != null) {
                     jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount, discount_cap) VALUES (?, ?, ?, ?, ?)",

@@ -18,8 +18,9 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 // (the tax and levy as a percentage of the total before tax), any flat surcharge (such as a handling fee, added after tax and
 // never taxed), the total before tax, and the final total including both taxes (also shown as the total after tax).
 // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
+// When the net total comes out under the invoice's minimum charge, the minimum is billed instead and marked as applied.
 // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the set number of days.
-// Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge and the early-payment discount can be changed while it is a draft.
+// Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, Notes],
@@ -299,6 +300,19 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                 <td></td>
               }
             </tr>
+            @if (inv.minimumApplied) {
+              <tr data-testid="invoice-minimum-applied">
+                <th scope="row" colspan="5">
+                  Minimum charge applied (net total
+                  <span data-testid="invoice-net-total">{{ inv.netTotal | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span>
+                  is under the minimum)
+                </th>
+                <td data-testid="invoice-minimum-charge">{{ inv.minimumCharge | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                @if (inv.status === 'DRAFT') {
+                  <td></td>
+                }
+              </tr>
+            }
             <tr>
               <th scope="row" colspan="5">Total</th>
               <td data-testid="invoice-amount">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
@@ -497,6 +511,33 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
           <button type="submit" data-testid="surcharge-form-submit" [disabled]="surchargeSaving()">Apply surcharge</button>
           @if (surchargeError()) {
             <p role="alert" data-testid="surcharge-form-error">{{ surchargeError() }}</p>
+          }
+        </form>
+
+        <form [formGroup]="minimumChargeForm" (ngSubmit)="applyMinimumCharge()" data-testid="minimum-charge-form" novalidate>
+          <h2>Minimum charge</h2>
+          <div>
+            <label for="minimum-charge-amount">Least amount billed when the total comes out under it</label>
+            <input
+              id="minimum-charge-amount"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              step="0.01"
+              formControlName="minimumCharge"
+              data-testid="minimum-charge-form-amount"
+              [attr.aria-invalid]="minimumChargeInvalid()"
+              [attr.aria-describedby]="minimumChargeInvalid() ? 'minimum-charge-amount-error' : null"
+            />
+            @if (minimumChargeInvalid()) {
+              <p id="minimum-charge-amount-error" role="alert" data-testid="minimum-charge-form-amount-error">
+                Enter an amount of 0 or more with at most two decimal places.
+              </p>
+            }
+          </div>
+          <button type="submit" data-testid="minimum-charge-form-submit" [disabled]="minimumChargeSaving()">Apply minimum charge</button>
+          @if (minimumChargeError()) {
+            <p role="alert" data-testid="minimum-charge-form-error">{{ minimumChargeError() }}</p>
           }
         </form>
 
@@ -909,6 +950,45 @@ export class InvoiceDetailPage {
       error: () => {
         this.surchargeError.set('Could not apply the surcharge. Please try again.');
         this.surchargeSaving.set(false);
+      },
+    });
+  }
+
+  protected readonly minimumChargeSaving = signal(false);
+  protected readonly minimumChargeError = signal<string | null>(null);
+
+  protected readonly minimumChargeForm = this.fb.group({
+    minimumCharge: ['', [Validators.required, Validators.min(0), Validators.pattern(TWO_DECIMALS)]],
+  });
+
+  // Starts the minimum charge field from the invoice's current minimum whenever the invoice loads.
+  private readonly syncMinimumCharge = effect(() => {
+    if (this.invoice.hasValue()) {
+      this.minimumChargeForm.setValue({ minimumCharge: String(this.invoice.value().minimumCharge) });
+    }
+  });
+
+  protected minimumChargeInvalid(): boolean {
+    const control = this.minimumChargeForm.controls.minimumCharge;
+    return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected applyMinimumCharge(): void {
+    if (this.minimumChargeForm.invalid) {
+      this.minimumChargeForm.markAllAsTouched();
+      return;
+    }
+    this.minimumChargeSaving.set(true);
+    this.minimumChargeError.set(null);
+    const minimumCharge = Number(this.minimumChargeForm.getRawValue().minimumCharge);
+    this.service.applyMinimumCharge(this.projectIdNumber(), Number(this.invoiceId()), minimumCharge).subscribe({
+      next: (updated) => {
+        this.invoice.set(updated);
+        this.minimumChargeSaving.set(false);
+      },
+      error: () => {
+        this.minimumChargeError.set('Could not apply the minimum charge. Please try again.');
+        this.minimumChargeSaving.set(false);
       },
     });
   }

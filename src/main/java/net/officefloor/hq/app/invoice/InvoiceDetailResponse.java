@@ -14,7 +14,8 @@ import net.officefloor.hq.app.client.Currency;
  * there is no tax at all), the effective tax rate (the sales tax and levy together as a percentage of
  * the total before tax), any early-payment discount offered (its percentage, the days after issue it
  * must be paid within, the last day to pay, and the reduced amount; null when none is offered), and the
- * client's tax number (null when the client is not tax registered).
+ * client's tax number (null when the client is not tax registered), the minimum charge, the net total
+ * before it, and whether the minimum was billed because the net total came out under it.
  */
 public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal totalExTax,
         BigDecimal subtotal,
@@ -22,7 +23,8 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, 
         BigDecimal levyPct, BigDecimal levy, BigDecimal surcharge, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
         BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
         InvoiceStatus status, LocalDate issuedDate,
-        LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts) {
+        LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts,
+        BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied) {
 
     static InvoiceDetailResponse from(Invoice invoice) {
         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
@@ -37,6 +39,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, 
                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
                 invoice.getProject().getClient().getTaxNumber(),
                 invoice.getDiscounts().stream().map(d -> new InvoiceDiscountResponse(d.getId(), d.getDiscountPct(),
-                        d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList());
+                        d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList(),
+                invoice.getMinimumCharge(), invoice.getNetTotal(), invoice.isMinimumApplied());
     }
 }

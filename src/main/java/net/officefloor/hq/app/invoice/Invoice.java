@@ -42,6 +42,9 @@ import net.officefloor.hq.app.project.Project;
  * <p>
  * A tax-exempt invoice (for a tax-exempt client) has no taxable lines at all: it carries no tax or levy
  * whatever its lines or rates say, so its amount is the subtotal less the discount (plus any surcharge).
+ * <p>
+ * An invoice can carry a minimum charge: when its net total (everything above, worked out as usual) comes
+ * out under it, the minimum is billed instead, and the invoice records that the minimum was applied.
  */
 @Entity
 @Table(name = "invoice")
@@ -67,6 +70,10 @@ public class Invoice {
     /** A flat amount (such as a handling fee) added to the total after tax; zero when there is none. */
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal surcharge = BigDecimal.ZERO.setScale(2);
+
+    /** The least the invoice bills; zero when there is no minimum charge. */
+    @Column(name = "minimum_charge", nullable = false, precision = 12, scale = 2)
+    private BigDecimal minimumCharge = BigDecimal.ZERO.setScale(2);
 
     /** Whether the prices already include the tax and levy, so they are backed out rather than added on. */
     @Column(name = "tax_inclusive", nullable = false)
@@ -269,6 +276,25 @@ public class Invoice {
         return surcharge;
     }
 
+    /** The least this invoice bills; zero when there is no minimum charge. */
+    public BigDecimal getMinimumCharge() {
+        return minimumCharge;
+    }
+
+    /**
+     * What the invoice comes to before any minimum charge: the subtotal less the discount plus the tax and
+     * levy (unless they are inside the prices), plus the surcharge.
+     */
+    public BigDecimal getNetTotal() {
+        BigDecimal discounted = getSubtotal().subtract(getDiscount());
+        return (taxInclusive ? discounted : discounted.add(getTax()).add(getLevy())).add(surcharge);
+    }
+
+    /** Whether the net total came out under the minimum charge, so the minimum is billed instead. */
+    public boolean isMinimumApplied() {
+        return getNetTotal().compareTo(minimumCharge) < 0;
+    }
+
     /** The taxable lines (leaving out tax-free ones), each less the discount taken off it, added up. */
     private BigDecimal getDiscountedTaxable() {
         return sumOverTaxableLines(line -> line);
@@ -461,6 +487,12 @@ public class Invoice {
         recalculateAmount();
     }
 
+    /** Sets the minimum charge billed on this invoice and reworks its amount to match. */
+    public void applyMinimumCharge(BigDecimal minimumCharge) {
+        this.minimumCharge = minimumCharge.setScale(2, RoundingMode.HALF_UP);
+        recalculateAmount();
+    }
+
     /**
      * Sets the early-payment discount offered on this invoice: the percentage taken off if it is paid
      * within the given number of days of being issued. It does not change the amount owed.
@@ -515,9 +547,7 @@ public class Invoice {
     }
 
     private void recalculateAmount() {
-        BigDecimal subtotal = getSubtotal();
-        BigDecimal discounted = subtotal.subtract(getDiscount());
-        this.amount = (taxInclusive ? discounted : discounted.add(getTax()).add(getLevy())).add(surcharge);
+        this.amount = getNetTotal().max(minimumCharge);
     }
 
     /** Marks this invoice as sent to the client. */
