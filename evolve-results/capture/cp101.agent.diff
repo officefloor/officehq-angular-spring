@@ -1,0 +1,252 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index d46236c..503071e 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -4,16 +4,17 @@ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { ClientContacts } from '../contacts/client-contacts';
+ import { Contact } from '../contacts/contact.service';
++import { ClientCredit } from '../credit/client-credit';
+ import { ClientDeposits } from '../deposits/client-deposits';
+ import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
+ import { ClientProjects } from '../projects/client-projects';
+ import { ClientCurrency } from './client-currency';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
++// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes), the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [CurrencyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits],
++  imports: [CurrencyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -127,6 +128,7 @@ import { Client, ClientService } from './client.service';
+           <p role="status" data-testid="client-deposit-applied">Deposit applied.</p>
+         }
+       </div>
++      <app-client-credit [clientId]="clientId()" [currency]="c.currency" />
+       <app-client-deposits [clientId]="clientId()" [currency]="c.currency" />
+       <app-client-contacts
+         [clientId]="clientId()"
+@@ -160,6 +162,7 @@ export class ClientDetail {
+   protected readonly depositApplied = signal(false);
+   private readonly paymentForm = viewChild(ClientPaymentForm);
+   private readonly depositsPanel = viewChild(ClientDeposits);
++  private readonly creditPanel = viewChild(ClientCredit);
+ 
+   /** Resolves to true once any payment being recorded has been saved, so the page can be left safely. */
+   async canLeave(): Promise<boolean> {
+@@ -177,6 +180,7 @@ export class ClientDetail {
+     this.depositApplied.set(source === 'deposit');
+     if (source === 'deposit') {
+       this.depositsPanel()?.reload();
++      this.creditPanel()?.reload();
+     }
+     this.client.reload();
+   }
+diff --git a/src/main/frontend/src/app/features/credit/client-credit.ts b/src/main/frontend/src/app/features/credit/client-credit.ts
+new file mode 100644
+index 0000000..5d55acd
+--- /dev/null
++++ b/src/main/frontend/src/app/features/credit/client-credit.ts
+@@ -0,0 +1,38 @@
++import { CurrencyPipe } from '@angular/common';
++import { Component, inject, input } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { CurrencyCode } from '../clients/client.service';
++import { CreditService } from './credit.service';
++
++// How much credit a client has to spend: their unused deposits and credit notes added up.
++@Component({
++  selector: 'app-client-credit',
++  imports: [CurrencyPipe],
++  template: `
++    @if (credit.error()) {
++      <p role="alert" data-testid="client-available-credit-error">Could not load the client's available credit.</p>
++    } @else if (credit.hasValue()) {
++      <p>
++        Available credit:
++        <span data-testid="client-available-credit">{{ credit.value().total | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
++      </p>
++    }
++  `,
++})
++export class ClientCredit {
++  private readonly service = inject(CreditService);
++
++  readonly clientId = input.required<number>();
++  /** The client's currency; their credit is held in it. */
++  readonly currency = input.required<CurrencyCode>();
++
++  protected readonly credit = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.service.available(params),
++  });
++
++  /** Loads the credit again, e.g. after deposits were put toward invoices elsewhere on the page. */
++  reload(): void {
++    this.credit.reload();
++  }
++}
+diff --git a/src/main/frontend/src/app/features/credit/credit.service.ts b/src/main/frontend/src/app/features/credit/credit.service.ts
+new file mode 100644
+index 0000000..8bab992
+--- /dev/null
++++ b/src/main/frontend/src/app/features/credit/credit.service.ts
+@@ -0,0 +1,19 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++/** The credit a client has to spend: unused deposits plus unused credit notes, added up in `total`. */
++export interface ClientCredit {
++  deposits: number;
++  creditNotes: number;
++  total: number;
++}
++
++@Injectable({ providedIn: 'root' })
++export class CreditService {
++  private readonly http = inject(HttpClient);
++
++  available(clientId: number): Observable<ClientCredit> {
++    return this.http.get<ClientCredit>(`/api/clients/${clientId}/credit`);
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/credit/ClientCreditController.java b/src/main/java/net/officefloor/hq/app/credit/ClientCreditController.java
+new file mode 100644
+index 0000000..bb4fbcd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/credit/ClientCreditController.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.credit;
++
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The credit a client has to spend: their unused deposits and credit notes. */
++@RestController
++public class ClientCreditController {
++
++    private final ClientCreditService service;
++
++    public ClientCreditController(ClientCreditService service) {
++        this.service = service;
++    }
++
++    @GetMapping("/api/clients/{clientId}/credit")
++    public ClientCreditResponse available(@PathVariable Long clientId) {
++        return service.available(clientId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/credit/ClientCreditResponse.java b/src/main/java/net/officefloor/hq/app/credit/ClientCreditResponse.java
+new file mode 100644
+index 0000000..9e05b0b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/credit/ClientCreditResponse.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.credit;
++
++import java.math.BigDecimal;
++
++/**
++ * The credit a client has to spend: deposits still held ({@code deposits}) plus the part of their credit notes not
++ * taken up settling the invoice they were raised against ({@code creditNotes}); {@code total} is the two added up.
++ */
++public record ClientCreditResponse(BigDecimal deposits, BigDecimal creditNotes, BigDecimal total) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java b/src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java
+new file mode 100644
+index 0000000..2ef0c31
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java
+@@ -0,0 +1,86 @@
++package net.officefloor.hq.app.credit;
++
++import java.math.BigDecimal;
++import java.util.List;
++import java.util.Map;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.creditnote.CreditNoteRepository;
++import net.officefloor.hq.app.deposit.DepositApplicationRepository;
++import net.officefloor.hq.app.deposit.DepositRepository;
++import net.officefloor.hq.app.invoice.Invoice;
++import net.officefloor.hq.app.invoice.InvoiceRepository;
++import net.officefloor.hq.app.invoice.InvoiceStatus;
++import net.officefloor.hq.app.payment.PaymentRepository;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class ClientCreditService {
++
++    private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
++
++    private final ClientRepository clients;
++    private final DepositRepository deposits;
++    private final DepositApplicationRepository applications;
++    private final InvoiceRepository invoices;
++    private final PaymentRepository payments;
++    private final CreditNoteRepository creditNotes;
++
++    public ClientCreditService(ClientRepository clients, DepositRepository deposits,
++            DepositApplicationRepository applications, InvoiceRepository invoices, PaymentRepository payments,
++            CreditNoteRepository creditNotes) {
++        this.clients = clients;
++        this.deposits = deposits;
++        this.applications = applications;
++        this.invoices = invoices;
++        this.payments = payments;
++        this.creditNotes = creditNotes;
++    }
++
++    /**
++     * Works out how much credit a client has to spend. A deposit is unused until it is put toward invoices. A credit
++     * note is used only as far as it was needed to settle its invoice once payments are counted; anything beyond
++     * that (say, a credit on an invoice already paid in full, or on one since cancelled) is still the client's to spend.
++     */
++    @Transactional(readOnly = true)
++    public ClientCreditResponse available(Long clientId) {
++        if (!clients.existsById(clientId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
++        }
++        BigDecimal held = deposits.sumAmountByClientId(clientId)
++                .subtract(applications.sumAmountByClientId(clientId)).setScale(2).max(ZERO);
++        BigDecimal unusedCredit = unusedCreditNotes(clientId);
++        return new ClientCreditResponse(held, unusedCredit, held.add(unusedCredit));
++    }
++
++    private BigDecimal unusedCreditNotes(Long clientId) {
++        List<Invoice> clientInvoices = invoices.findByClientIdWithProject(clientId);
++        List<Long> ids = clientInvoices.stream().map(Invoice::getId).toList();
++        if (ids.isEmpty()) {
++            return ZERO;
++        }
++        Map<Long, BigDecimal> credited = creditNotes.sumAmountByInvoiceIds(ids).stream().collect(Collectors.toMap(
++                CreditNoteRepository.InvoiceCreditedTotal::getInvoiceId,
++                CreditNoteRepository.InvoiceCreditedTotal::getCredited));
++        if (credited.isEmpty()) {
++            return ZERO;
++        }
++        Map<Long, BigDecimal> paid = payments.sumAmountByInvoiceIds(ids).stream().collect(Collectors.toMap(
++                PaymentRepository.InvoicePaidTotal::getInvoiceId, PaymentRepository.InvoicePaidTotal::getPaid));
++        BigDecimal unused = ZERO;
++        for (Invoice invoice : clientInvoices) {
++            BigDecimal credit = credited.get(invoice.getId());
++            if (credit == null) {
++                continue;
++            }
++            // A cancelled invoice is no longer owed, so none of its credit went toward settling it.
++            BigDecimal owed = invoice.getStatus() == InvoiceStatus.VOID ? ZERO
++                    : invoice.getAmount().subtract(paid.getOrDefault(invoice.getId(), ZERO)).max(ZERO);
++            unused = unused.add(credit.subtract(credit.min(owed)));
++        }
++        return unused.setScale(2);
++    }
++}
