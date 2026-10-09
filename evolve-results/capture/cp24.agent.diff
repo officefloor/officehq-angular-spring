@@ -1,0 +1,185 @@
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index 385fc6d..d71b321 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -33,4 +33,8 @@ export class ProjectService {
+   create(project: NewProject): Observable<Project> {
+     return this.http.post<Project>('/api/projects', project);
+   }
++
++  delete(id: number): Observable<void> {
++    return this.http.delete<void>(`/api/projects/${id}`);
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/projects/projects.ts b/src/main/frontend/src/app/features/projects/projects.ts
+index 365b960..0620bbe 100644
+--- a/src/main/frontend/src/app/features/projects/projects.ts
++++ b/src/main/frontend/src/app/features/projects/projects.ts
+@@ -1,3 +1,4 @@
++import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+@@ -5,7 +6,7 @@ import { Client, ClientService } from '../clients/client.service';
+ import { Project, ProjectService } from './project.service';
+ 
+ // Projects page: add a project for a client and list all projects with their client's name; each
+-// project opens its detail page.
++// project opens its detail page and can be deleted once it is no longer needed.
+ @Component({
+   selector: 'app-projects',
+   imports: [ReactiveFormsModule, RouterLink],
+@@ -57,6 +58,10 @@ import { Project, ProjectService } from './project.service';
+       }
+     </form>
+ 
++    @if (deleteError()) {
++      <p role="alert" data-testid="project-delete-error">{{ deleteError() }}</p>
++    }
++
+     @if (projects().length === 0) {
+       <p data-testid="projects-empty">No projects yet.</p>
+     } @else {
+@@ -81,6 +86,15 @@ import { Project, ProjectService } from './project.service';
+                   [attr.aria-label]="'Open ' + p.name"
+                   >Open</a
+                 >
++                <button
++                  type="button"
++                  [attr.data-testid]="'project-delete-' + p.id"
++                  [attr.aria-label]="'Delete ' + p.name"
++                  [disabled]="deleting() === p.id"
++                  (click)="remove(p)"
++                >
++                  Delete
++                </button>
+               </td>
+             </tr>
+           }
+@@ -97,6 +111,8 @@ export class Projects {
+   protected readonly clients = signal<Client[]>([]);
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
++  protected readonly deleting = signal<number | null>(null);
++  protected readonly deleteError = signal<string | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+@@ -133,4 +149,23 @@ export class Projects {
+       },
+     });
+   }
++
++  protected remove(project: Project): void {
++    this.deleting.set(project.id);
++    this.deleteError.set(null);
++    this.service.delete(project.id).subscribe({
++      next: () => {
++        this.projects.update((list) => list.filter((p) => p.id !== project.id));
++        this.deleting.set(null);
++      },
++      error: (err: unknown) => {
++        this.deleteError.set(
++          err instanceof HttpErrorResponse && err.status === 409
++            ? `Could not delete ${project.name}: it has invoices.`
++            : `Could not delete ${project.name}. Please try again.`,
++        );
++        this.deleting.set(null);
++      },
++    });
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectController.java b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+index 54db8fd..21d2db7 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.project;
+ import jakarta.validation.Valid;
+ import java.util.List;
+ import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -36,4 +37,10 @@ public class ProjectController {
+     public ProjectResponse create(@Valid @RequestBody ProjectRequest request) {
+         return service.create(request);
+     }
++
++    @DeleteMapping("/{id}")
++    @ResponseStatus(HttpStatus.NO_CONTENT)
++    public void delete(@PathVariable Long id) {
++        service.delete(id);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index c392c63..12c4ab5 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -21,4 +21,8 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+ 
+     /** How many projects a client has. */
+     long countByClientId(Long clientId);
++
++    /** Whether any invoice has been raised against the project. */
++    @Query("SELECT COUNT(i) > 0 FROM Invoice i WHERE i.project.id = :id")
++    boolean hasInvoices(Long id);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index b779fd4..b3cfbb9 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.project;
+ 
+ import java.util.List;
++import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.Client;
+ import net.officefloor.hq.app.client.ClientRepository;
+ import org.springframework.http.HttpStatus;
+@@ -13,10 +14,12 @@ public class ProjectService {
+ 
+     private final ProjectRepository projects;
+     private final ClientRepository clients;
++    private final Audit audit;
+ 
+-    public ProjectService(ProjectRepository projects, ClientRepository clients) {
++    public ProjectService(ProjectRepository projects, ClientRepository clients, Audit audit) {
+         this.projects = projects;
+         this.clients = clients;
++        this.audit = audit;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -45,4 +48,20 @@ public class ProjectService {
+         Project saved = projects.save(new Project(request.name().trim(), client));
+         return ProjectResponse.from(saved);
+     }
++
++    /**
++     * Deletes a project (and its tasks) and records the deletion in the audit log. A project that
++     * has been invoiced is kept, so its invoices are never lost.
++     */
++    @Transactional
++    public void delete(Long id) {
++        Project project = projects.findById(id)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++        if (projects.hasInvoices(id)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project has invoices");
++        }
++        projects.delete(project);
++        projects.flush();
++        audit.record("PROJECT_DELETED id=" + id);
++    }
+ }
+diff --git a/src/main/resources/db/migration/V11__project_delete_cascades_tasks.sql b/src/main/resources/db/migration/V11__project_delete_cascades_tasks.sql
+new file mode 100644
+index 0000000..1a02dac
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__project_delete_cascades_tasks.sql
+@@ -0,0 +1,5 @@
++-- A project can be deleted once it is no longer needed. Its tasks belong to it and go with it;
++-- invoices are financial records, so the foreign key still blocks deleting a project that has any.
++ALTER TABLE task DROP CONSTRAINT task_project_fk;
++ALTER TABLE task ADD CONSTRAINT task_project_fk
++    FOREIGN KEY (project_id) REFERENCES project (id) ON DELETE CASCADE;
