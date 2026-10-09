@@ -1,0 +1,208 @@
+diff --git a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteService.java b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteService.java
+index 2339763..3f54a5d 100644
+--- a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteService.java
++++ b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteService.java
+@@ -7,6 +7,7 @@ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
++import net.officefloor.hq.app.payment.PaymentRepository;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -17,12 +18,15 @@ public class CreditNoteService {
+ 
+     private final CreditNoteRepository creditNotes;
+     private final InvoiceRepository invoices;
++    private final PaymentRepository payments;
+     private final Clock clock;
+     private final Audit audit;
+ 
+-    public CreditNoteService(CreditNoteRepository creditNotes, InvoiceRepository invoices, Clock clock, Audit audit) {
++    public CreditNoteService(CreditNoteRepository creditNotes, InvoiceRepository invoices,
++            PaymentRepository payments, Clock clock, Audit audit) {
+         this.creditNotes = creditNotes;
+         this.invoices = invoices;
++        this.payments = payments;
+         this.clock = clock;
+         this.audit = audit;
+     }
+@@ -35,7 +39,8 @@ public class CreditNoteService {
+ 
+     /**
+      * Raises a credit note against an invoice that has been sent to the client and not cancelled. The
+-     * credit notes on an invoice may not add up to more than the invoice amount.
++     * credit notes on an invoice may not add up to more than the invoice amount. The invoice's status is
++     * then worked out again from what has been paid and credited, so a credit that clears what is left settles it.
+      */
+     @Transactional
+     public CreditNoteResponse issue(Long projectId, Long invoiceId, CreditNoteRequest request) {
+@@ -51,6 +56,8 @@ public class CreditNoteService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "Credit is more than the invoice amount");
+         }
+         CreditNote saved = creditNotes.saveAndFlush(new CreditNote(invoiceId, request.amount(), clock.instant()));
++        invoice.applySettledTotals(payments.sumAmountByInvoiceId(invoiceId), credited);
++        invoices.flush();
+         audit.record("CREDIT_NOTE_ISSUED invoice=" + invoiceId + " amount=" + saved.getAmount().toPlainString());
+         return CreditNoteResponse.from(saved);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+index 540ac60..1355bce 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -58,7 +58,7 @@ public record ClientStatementResponse(Long clientId, String clientName, Currency
+ 
+         static Line from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
+             return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
+-                    invoice.getAmount(), invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
++                    invoice.getAmount(), invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
+                     invoice.amountDue(paid, credited), invoice.getTax().add(invoice.getLevy()));
+         }
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 9fe4e83..3f75c28 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -576,19 +576,29 @@ public class Invoice {
+     }
+ 
+     /**
+-     * Works out this sent invoice's status from the total paid against it: PAID once the payments
+-     * cover the amount, PARTIAL once something has been paid, otherwise still SENT.
++     * This invoice's status given the totals paid and credited against it. Once sent, it is PAID when the
++     * payments and credit notes together clear the amount, PARTIAL once something has been paid or credited,
++     * otherwise still SENT. Drafts and void invoices keep their status, as does one marked paid by hand.
+      */
+-    public void applyPaidTotal(BigDecimal paid) {
++    public InvoiceStatus statusFor(BigDecimal paid, BigDecimal credited) {
+         if (status == InvoiceStatus.DRAFT || status == InvoiceStatus.VOID) {
+-            throw new IllegalStateException("A " + status.name().toLowerCase() + " invoice cannot be paid");
++            return status;
+         }
+-        if (paid.compareTo(amount) >= 0) {
+-            this.status = InvoiceStatus.PAID;
+-        } else if (paid.signum() > 0) {
+-            this.status = InvoiceStatus.PARTIAL;
+-        } else {
+-            this.status = InvoiceStatus.SENT;
++        BigDecimal settled = paid.add(credited);
++        if (settled.compareTo(amount) >= 0 || (status == InvoiceStatus.PAID && settled.signum() == 0)) {
++            return InvoiceStatus.PAID;
+         }
++        return settled.signum() > 0 ? InvoiceStatus.PARTIAL : InvoiceStatus.SENT;
++    }
++
++    /**
++     * Works out this sent invoice's status from the totals paid and credited against it: PAID once the
++     * payments and credit notes cover the amount, PARTIAL once something has been settled, otherwise still SENT.
++     */
++    public void applySettledTotals(BigDecimal paid, BigDecimal credited) {
++        if (status == InvoiceStatus.DRAFT || status == InvoiceStatus.VOID) {
++            throw new IllegalStateException("A " + status.name().toLowerCase() + " invoice cannot be settled");
++        }
++        this.status = statusFor(paid, credited);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index d035ad7..250371f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -28,6 +28,11 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency,
+         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings) {
+ 
+     static InvoiceDetailResponse from(Invoice invoice) {
++        return from(invoice, invoice.getStatus());
++    }
++
++    /** The invoice with the given status, as worked out from what has been paid and credited against it. */
++    static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status) {
+         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
+                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
+@@ -36,7 +41,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency,
+                 invoice.getEffectiveTaxPct(),
+                 invoice.getEarlyPaymentPct(), invoice.getEarlyPaymentDays(), invoice.getEarlyPaymentBy(),
+                 invoice.getEarlyPaymentAmount(),
+-                invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
++                status, invoice.getIssuedDate(), invoice.getDueDate(),
+                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
+                 invoice.getProject().getClient().getTaxNumber(),
+                 invoice.getDiscounts().stream().map(d -> new InvoiceDiscountResponse(d.getId(), d.getDiscountPct(),
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+index b8834c3..c63e24a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+@@ -14,7 +14,7 @@ public record InvoiceResponse(Long id, Long projectId, Currency currency, BigDec
+     static InvoiceResponse from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
+         return new InvoiceResponse(invoice.getId(), invoice.getProject().getId(),
+                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(),
+-                invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
++                invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
+                 invoice.amountDue(paid, credited));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 4548450..0ec8c04 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -127,7 +127,9 @@ public class InvoiceService {
+     /** A single invoice with its line items. */
+     @Transactional(readOnly = true)
+     public InvoiceDetailResponse get(Long projectId, Long invoiceId) {
+-        return InvoiceDetailResponse.from(find(projectId, invoiceId));
++        Invoice invoice = find(projectId, invoiceId);
++        return InvoiceDetailResponse.from(invoice, invoice.statusFor(payments.sumAmountByInvoiceId(invoiceId),
++                creditNotes.sumAmountByInvoiceId(invoiceId)));
+     }
+ 
+     /** Adds a line item to a draft invoice and reworks the invoice amount to match. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java
+index e08d853..8709117 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java
+@@ -2,7 +2,7 @@ package net.officefloor.hq.app.invoice;
+ 
+ /**
+  * Lifecycle stage of an invoice: DRAFT -> SENT -> PARTIAL -> PAID. Once sent, the stage is worked
+- * out from the payments recorded against the invoice. A sent invoice with nothing paid against it can
++ * out from the payments and credit notes recorded against the invoice. A sent invoice with nothing paid against it can
+  * instead be cancelled, making it VOID: it stays on record but is no longer owed.
+  */
+ public enum InvoiceStatus {
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+index fa3687c..c2f2eca 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+@@ -92,13 +92,14 @@ public class PaymentService {
+         if (!invoice.getStatus().isOwing()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice is already paid");
+         }
+-        BigDecimal settled = payments.sumAmountByInvoiceId(invoice.getId())
+-                .add(creditNotes.sumAmountByInvoiceId(invoice.getId())).add(amount);
++        BigDecimal paid = payments.sumAmountByInvoiceId(invoice.getId()).add(amount);
++        BigDecimal credited = creditNotes.sumAmountByInvoiceId(invoice.getId());
++        BigDecimal settled = paid.add(credited);
+         if (settled.compareTo(invoice.getAmount()) > 0) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment is more than the balance due");
+         }
+         Payment saved = payments.saveAndFlush(new Payment(invoice.getId(), amount, date, clientPaymentId));
+-        invoice.applyPaidTotal(settled);
++        invoice.applySettledTotals(paid, credited);
+         invoices.flush();
+         audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount=" + saved.getAmount().toPlainString());
+         return PaymentResponse.from(saved);
+diff --git a/src/main/resources/db/migration/V55__invoice_status_from_credits.sql b/src/main/resources/db/migration/V55__invoice_status_from_credits.sql
+new file mode 100644
+index 0000000..e9844b8
+--- /dev/null
++++ b/src/main/resources/db/migration/V55__invoice_status_from_credits.sql
+@@ -0,0 +1,9 @@
++-- An invoice's status is now worked out from its payments AND its credit notes: a credit that clears
++-- what is left settles the invoice rather than leaving it owing. Bring sent and part-paid invoices in
++-- line with what has already been paid and credited against them.
++UPDATE invoice i SET status = CASE
++        WHEN COALESCE((SELECT SUM(p.amount) FROM payment p WHERE p.invoice_id = i.id), 0)
++           + COALESCE((SELECT SUM(c.amount) FROM credit_note c WHERE c.invoice_id = i.id), 0) >= i.amount THEN 'PAID'
++        ELSE 'PARTIAL'
++    END
++WHERE i.status IN ('SENT', 'PARTIAL') AND EXISTS (SELECT 1 FROM credit_note c WHERE c.invoice_id = i.id);
