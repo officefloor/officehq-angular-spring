@@ -4,7 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-/** Payload to create a client. */
+/** Payload to create a client, or to correct an existing client's name and email. */
 public record ClientRequest(
         @NotBlank @Size(max = 255) String name,
         @NotBlank @Email(regexp = ClientRequest.EMAIL_PATTERN) @Size(max = 255) String email) {

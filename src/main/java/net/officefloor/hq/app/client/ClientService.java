@@ -67,6 +67,31 @@ public class ClientService {
         }
     }
 
+    /**
+     * Corrects a client's name and email; the email, once trimmed, must not belong to another client.
+     * The change is recorded in the audit log.
+     */
+    @Transactional
+    public ClientResponse update(Long id, ClientRequest request) {
+        Client client = find(id);
+        String email = request.email().trim();
+        if (clients.existsByEmailIgnoreCaseAndIdNot(email, id)) {
+            throw emailTaken();
+        }
+        client.rename(request.name().trim(), email);
+        try {
+            clients.flush();
+        } catch (DataIntegrityViolationException e) {
+            // Lost a race with a concurrent change to the same email; the unique constraint caught it.
+            if (String.valueOf(e.getMessage()).toUpperCase().contains("CLIENT_EMAIL_UQ")) {
+                throw emailTaken();
+            }
+            throw e;
+        }
+        audit.record("CLIENT_UPDATED id=" + id);
+        return ClientResponse.from(client);
+    }
+
     private static ResponseStatusException emailTaken() {
         return new ResponseStatusException(HttpStatus.CONFLICT, "A client with this email already exists");
     }

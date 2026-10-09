@@ -50,6 +50,12 @@ public class Client {
         return email;
     }
 
+    /** Corrects the client's name and email. */
+    public void rename(String name, String email) {
+        this.name = name;
+        this.email = email;
+    }
+
     public boolean isArchived() {
         return archived;
     }

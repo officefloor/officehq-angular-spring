@@ -1,0 +1,130 @@
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, ElementRef, OnInit, afterNextRender, inject, input, output, signal, viewChild } from '@angular/core';
+import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Client, ClientService } from './client.service';
+
+// Form to correct one client's name or email. Emits the saved client, or cancelled when abandoned.
+@Component({
+  selector: 'app-client-edit-form',
+  imports: [ReactiveFormsModule],
+  template: `
+    <form
+      [formGroup]="form"
+      (ngSubmit)="submit()"
+      data-testid="client-edit-form"
+      [attr.aria-label]="'Edit ' + client().name"
+      novalidate
+    >
+      <div>
+        <label for="client-edit-name">Name</label>
+        <input
+          #nameInput
+          id="client-edit-name"
+          type="text"
+          formControlName="name"
+          autocomplete="organization"
+          data-testid="client-edit-form-name"
+          [attr.aria-invalid]="showError('name')"
+          [attr.aria-describedby]="showError('name') ? 'client-edit-name-error' : null"
+        />
+        @if (showError('name')) {
+          <p id="client-edit-name-error" role="alert" data-testid="client-edit-form-name-error">
+            Name is required.
+          </p>
+        }
+      </div>
+      <div>
+        <label for="client-edit-email">Email</label>
+        <input
+          id="client-edit-email"
+          type="email"
+          formControlName="email"
+          autocomplete="email"
+          data-testid="client-edit-form-email"
+          [attr.aria-invalid]="showError('email')"
+          [attr.aria-describedby]="showError('email') ? 'client-edit-email-error' : null"
+        />
+        @if (showError('email')) {
+          <p id="client-edit-email-error" role="alert" data-testid="client-edit-form-email-error">
+            @if (form.controls.email.hasError('taken')) {
+              A client with this email already exists.
+            } @else {
+              Enter a valid email address.
+            }
+          </p>
+        }
+      </div>
+      <button type="submit" data-testid="client-edit-form-submit" [disabled]="saving()">Save</button>
+      <button type="button" data-testid="client-edit-form-cancel" (click)="cancelled.emit()">Cancel</button>
+      @if (saveError()) {
+        <p role="alert" data-testid="client-edit-form-error">{{ saveError() }}</p>
+      }
+    </form>
+  `,
+})
+export class ClientEditForm implements OnInit {
+  private readonly service = inject(ClientService);
+
+  readonly client = input.required<Client>();
+  readonly saved = output<Client>();
+  readonly cancelled = output<void>();
+
+  protected readonly saving = signal(false);
+  protected readonly saveError = signal<string | null>(null);
+  private readonly nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');
+
+  protected readonly form = inject(NonNullableFormBuilder).group({
+    name: ['', [Validators.required, Validators.maxLength(255)]],
+    email: [
+      '',
+      [
+        Validators.required,
+        Validators.email,
+        // Validators.email accepts "a@b"; also require a dotted domain (matches the server rule).
+        Validators.pattern(/^[^@\s]+@[^@\s]+\.[^@\s]+$/),
+        Validators.maxLength(255),
+      ],
+    ],
+  });
+
+  constructor() {
+    afterNextRender(() => this.nameInput().nativeElement.focus());
+  }
+
+  ngOnInit(): void {
+    const { name, email } = this.client();
+    this.form.setValue({ name, email });
+  }
+
+  protected showError(field: 'name' | 'email'): boolean {
+    const control = this.form.controls[field];
+    return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected submit(): void {
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
+    const { name, email } = this.form.getRawValue();
+    this.saving.set(true);
+    this.saveError.set(null);
+    this.service.update(this.client().id, { name: name.trim(), email: email.trim() }).subscribe({
+      next: (updated) => {
+        this.saving.set(false);
+        this.saved.emit(updated);
+      },
+      error: (err: HttpErrorResponse) => {
+        if (err.status === 409) {
+          // The server owns uniqueness; flag the email field until it is changed.
+          const control = this.form.controls.email;
+          control.setErrors({ taken: true });
+          control.markAsTouched();
+        } else {
+          this.saveError.set('Could not save the client. Please try again.');
+        }
+        this.saving.set(false);
+      },
+    });
+  }
+}

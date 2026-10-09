@@ -39,6 +39,10 @@ export class ClientService {
     return this.http.post<Client>('/api/clients', client);
   }
 
+  update(id: number, client: NewClient): Observable<Client> {
+    return this.http.put<Client>(`/api/clients/${id}`, client);
+  }
+
   archive(id: number): Observable<Client> {
     return this.http.post<Client>(`/api/clients/${id}/archive`, null);
   }

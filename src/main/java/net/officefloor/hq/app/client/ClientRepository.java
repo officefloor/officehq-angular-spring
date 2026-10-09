@@ -12,6 +12,9 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     /** Whether any client, archived or not, already has the email, ignoring case. */
     boolean existsByEmailIgnoreCase(String email);
 
+    /** Whether any client other than the given one already has the email, ignoring case. */
+    boolean existsByEmailIgnoreCaseAndIdNot(String email, Long id);
+
     /** Clients not archived whose name contains the text, ignoring case, in id order. */
     @Query("SELECT c FROM Client c WHERE c.archived = false AND LOWER(c.name) LIKE LOWER(CONCAT('%', :text, '%'))"
             + " ESCAPE '\\' ORDER BY c.id")

@@ -2,14 +2,16 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { ClientEditForm } from './client-edit-form';
 import { Client, ClientService } from './client.service';
 
 // Clients page: add a client (name + email) and list all clients, filterable by name; each client
 // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
-// list and search unless the archived toggle is on, where it can be restored.
+// list and search unless the archived toggle is on, where it can be restored. A client's name or email
+// can be corrected in place from its row.
 @Component({
   selector: 'app-clients',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, ClientEditForm],
   template: `
     <h1>Clients</h1>
 
@@ -116,6 +118,15 @@ import { Client, ClientService } from './client.service';
                     [attr.aria-label]="'Open ' + c.name"
                     >Open</a
                   >
+                  <button
+                    type="button"
+                    [attr.data-testid]="'client-edit-' + c.id"
+                    [attr.aria-label]="'Edit ' + c.name"
+                    [attr.aria-expanded]="editing() === c.id"
+                    (click)="edit(c)"
+                  >
+                    Edit
+                  </button>
                   @if (c.archived) {
                     <button
                       type="button"
@@ -139,6 +150,13 @@ import { Client, ClientService } from './client.service';
                   }
                 </td>
               </tr>
+              @if (editing() === c.id) {
+                <tr [attr.data-testid]="'client-edit-row-' + c.id">
+                  <td colspan="3">
+                    <app-client-edit-form [client]="c" (saved)="onSaved($event)" (cancelled)="closeEdit(c)" />
+                  </td>
+                </tr>
+              }
             }
           </tbody>
         </table>
@@ -162,6 +180,7 @@ export class Clients {
   protected readonly showArchived = signal(false);
   protected readonly busy = signal<number | null>(null);
   protected readonly actionError = signal<string | null>(null);
+  protected readonly editing = signal<number | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -216,6 +235,21 @@ export class Clients {
         this.saving.set(false);
       },
     });
+  }
+
+  protected edit(client: Client): void {
+    this.editing.update((id) => (id === client.id ? null : client.id));
+  }
+
+  protected onSaved(updated: Client): void {
+    this.clients.update((list) => list.map((c) => (c.id === updated.id ? updated : c)));
+    this.closeEdit(updated);
+  }
+
+  protected closeEdit(client: Client): void {
+    this.editing.set(null);
+    // Return focus to the row's Edit button once the form is gone.
+    setTimeout(() => document.querySelector<HTMLElement>(`[data-testid="client-edit-${client.id}"]`)?.focus());
   }
 
   protected toggleArchived(): void {
