@@ -1,0 +1,105 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 952066f..9605dbf 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -1,3 +1,4 @@
++import { CurrencyPipe } from '@angular/common';
+ import { Component, computed, inject, input, signal, viewChild } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+@@ -9,10 +10,10 @@ import { ClientProjects } from '../projects/client-projects';
+ import { ClientCurrency } from './client-currency';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, the deposits they have paid up front, counts of their projects and contacts, their contacts, and the projects being done for them.
++// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits],
++  imports: [CurrencyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -84,6 +85,12 @@ import { Client, ClientService } from './client.service';
+           <li>
+             Contacts: <span data-testid="client-contacts-count">{{ summary.value().contactCount }}</span>
+           </li>
++          <li>
++            Billed to date:
++            <span data-testid="client-lifetime-billed">{{
++              summary.value().lifetimeBilled | currency: c.currency : 'symbol' : '1.2-2' : 'en-US'
++            }}</span>
++          </li>
+         </ul>
+       }
+       <p>
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index edd3c65..3e4e17a 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -38,6 +38,7 @@ export interface Client {
+ export interface ClientSummary {
+   projectCount: number;
+   contactCount: number;
++  lifetimeBilled: number;
+ }
+ 
+ export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'outstanding'>;
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 7373bc1..a95d560 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -54,13 +54,18 @@ public class ClientService {
+         return respond(find(id));
+     }
+ 
+-    /** At-a-glance counts of what one client has. */
++    /** Invoices that have been issued to the client: everything but drafts and cancelled invoices. */
++    private static final List<InvoiceStatus> BILLED = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL,
++            InvoiceStatus.PAID, InvoiceStatus.WRITTEN_OFF);
++
++    /** At-a-glance counts of what one client has, and the total ever billed to them. */
+     @Transactional(readOnly = true)
+     public ClientSummaryResponse summary(Long id) {
+         if (!clients.existsById(id)) {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+         }
+-        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientId(id));
++        BigDecimal billed = invoices.sumAmountByClientIdAndStatusIn(id, BILLED).setScale(2, RoundingMode.HALF_UP);
++        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientId(id), billed);
+     }
+ 
+     /** Adds a client; its email, once trimmed, must not already belong to another client. */
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java
+index e20b9f7..d86b150 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java
+@@ -1,5 +1,10 @@
+ package net.officefloor.hq.app.client;
+ 
+-/** At-a-glance counts of a client's projects and contacts. */
+-public record ClientSummaryResponse(long projectCount, long contactCount) {
++import java.math.BigDecimal;
++
++/**
++ * At-a-glance counts of a client's projects and contacts, and the total ever billed to them in their currency: the
++ * sum of every invoice issued to them (drafts, not yet issued, and cancelled invoices are left out).
++ */
++public record ClientSummaryResponse(long projectCount, long contactCount, BigDecimal lifetimeBilled) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+index 88b8605..fc15ee5 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -43,6 +43,11 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+     @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.status IN :statuses")
+     BigDecimal sumAmountByStatusIn(Collection<InvoiceStatus> statuses);
+ 
++    /** Sum of the amounts of one client's invoices with any of the given statuses (zero when there are none). */
++    @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i JOIN i.project p"
++            + " WHERE p.client.id = :clientId AND i.status IN :statuses")
++    BigDecimal sumAmountByClientIdAndStatusIn(Long clientId, Collection<InvoiceStatus> statuses);
++
+     /** Sum of the invoice amounts with any of the given statuses, per client; clients with none are left out. */
+     @Query("SELECT p.client.id AS clientId, SUM(i.amount) AS total FROM Invoice i JOIN i.project p"
+             + " WHERE i.status IN :statuses GROUP BY p.client.id")
