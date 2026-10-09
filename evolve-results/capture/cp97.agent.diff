@@ -1,0 +1,294 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 3432390..70006a6 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -38,6 +38,16 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+         <span data-testid="invoice-issued">{{ inv.issuedDate }}</span> · Due
+         <span data-testid="invoice-due">{{ inv.dueDate }}</span>
+       </p>
++      @if (inv.status === 'SENT' || inv.status === 'PARTIAL') {
++        <p>
++          <button type="button" (click)="writeOff()" [disabled]="writingOff()" data-testid="invoice-write-off">
++            Write off as bad debt
++          </button>
++        </p>
++      }
++      @if (writeOffError()) {
++        <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
++      }
+       <p>
+         Tax: <span data-testid="invoice-tax-mode">{{ inv.taxInclusive ? 'Inclusive' : 'Exclusive' }}</span>
+         @if (inv.taxInclusive) {
+@@ -715,7 +725,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+         [projectId]="projectIdNumber()"
+         [invoiceId]="inv.id"
+         [currency]="inv.currency"
+-        [canIssue]="inv.status !== 'DRAFT' && inv.status !== 'VOID'"
++        [canIssue]="inv.status !== 'DRAFT' && inv.status !== 'VOID' && inv.status !== 'WRITTEN_OFF'"
+         (issued)="creditNotes.reload()"
+       />
+ 
+@@ -758,6 +768,25 @@ export class InvoiceDetailPage {
+     return gross - Math.round((gross * Math.round(discountPct * 100)) / 10000);
+   }
+ 
++  protected readonly writingOff = signal(false);
++  protected readonly writeOffError = signal<string | null>(null);
++
++  // Writes the invoice off as bad debt: it is kept on record but no longer counts toward what is owed.
++  protected writeOff(): void {
++    this.writingOff.set(true);
++    this.writeOffError.set(null);
++    this.service.writeOff(this.projectIdNumber(), Number(this.invoiceId())).subscribe({
++      next: (updated) => {
++        this.invoice.set(updated);
++        this.writingOff.set(false);
++      },
++      error: () => {
++        this.writeOffError.set('Could not write off the invoice. Please try again.');
++        this.writingOff.set(false);
++      },
++    });
++  }
++
+   protected readonly discountSaving = signal(false);
+   protected readonly discountError = signal<string | null>(null);
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 3a3c9f7..0ad6d45 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ import { CurrencyCode } from '../clients/client.service';
+ 
+-export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'VOID'] as const;
++export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'VOID', 'WRITTEN_OFF'] as const;
+ 
+ export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+ 
+@@ -274,6 +274,11 @@ export class InvoiceService {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+   }
+ 
++  /** Writes off a sent or part-paid invoice as bad debt so it is no longer owed; it then reads WRITTEN_OFF. */
++  writeOff(projectId: number, invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/write-off`, null);
++  }
++
+   /** Cancels a sent invoice so it is no longer owed; it then reads VOID. */
+   cancel(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/cancel`, null);
+diff --git a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteService.java b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteService.java
+index 3f54a5d..88a5811 100644
+--- a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteService.java
++++ b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteService.java
+@@ -51,6 +51,9 @@ public class CreditNoteService {
+         if (invoice.getStatus() == InvoiceStatus.VOID) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been cancelled");
+         }
++        if (invoice.getStatus() == InvoiceStatus.WRITTEN_OFF) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been written off");
++        }
+         BigDecimal credited = creditNotes.sumAmountByInvoiceId(invoiceId).add(request.amount());
+         if (credited.compareTo(invoice.getAmount()) > 0) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "Credit is more than the invoice amount");
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 3dba9fd..20e17fe 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -1,11 +1,15 @@
+ package net.officefloor.hq.app.dashboard;
+ 
++import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.Clock;
+ import java.time.LocalDate;
++import java.util.EnumMap;
+ import java.util.List;
++import java.util.Map;
+ import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.client.ClientService;
++import net.officefloor.hq.app.client.Currency;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.project.ProjectRepository;
+@@ -35,13 +39,19 @@ public class DashboardService {
+ 
+     /**
+      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
+-     * on sent invoices that are not yet fully paid), plus how many of those sent invoices are past their due date, and
++     * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices are past their due date, and
+      * the top clients ranked by what they owe.
+      */
+     @Transactional(readOnly = true)
+     public DashboardResponse summary() {
+         List<InvoiceStatus> owing = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL);
+-        List<DashboardResponse.CurrencyTotal> outstanding = clientService.outstandingByCurrency().entrySet().stream()
++        Map<Currency, BigDecimal> owed = new EnumMap<>(Currency.class);
++        // A currency whose debts were written off stays listed, showing nothing owed, so the write-off is visible.
++        clients.findAllById(invoices.sumAmountByStatusInPerClient(List.of(InvoiceStatus.WRITTEN_OFF)).stream()
++                .map(InvoiceRepository.ClientTotal::getClientId).toList())
++                .forEach(c -> owed.put(c.getCurrency(), BigDecimal.ZERO));
++        owed.putAll(clientService.outstandingByCurrency());
++        List<DashboardResponse.CurrencyTotal> outstanding = owed.entrySet().stream()
+                 .map(e -> new DashboardResponse.CurrencyTotal(e.getKey(), e.getValue().setScale(2, RoundingMode.HALF_UP)))
+                 .toList();
+         long overdue = invoices.countByStatusInAndDueDateBefore(owing, LocalDate.now(clock));
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+index 1355bce..1de5650 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -42,7 +42,7 @@ public record ClientStatementResponse(Long clientId, String clientName, Currency
+     /** Adds up the given figure across the invoices that are owed, leaving out drafts and void ones. */
+     private static BigDecimal sum(List<Line> lines, Function<Line, BigDecimal> figure) {
+         return lines.stream()
+-                .filter(l -> l.status() != InvoiceStatus.DRAFT && l.status() != InvoiceStatus.VOID)
++                .filter(l -> l.status() != InvoiceStatus.DRAFT && !l.status().isClosedUnpaid())
+                 .map(figure)
+                 .reduce(BigDecimal.ZERO, BigDecimal::add)
+                 .setScale(2, RoundingMode.HALF_UP);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 3f75c28..f3abff0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -570,18 +570,23 @@ public class Invoice {
+         this.status = InvoiceStatus.VOID;
+     }
+ 
+-    /** What is left to pay on this invoice given the totals paid and credited against it; nothing once it is void. */
++    /** Writes this invoice off as bad debt, so it is no longer owed. */
++    public void markWrittenOff() {
++        this.status = InvoiceStatus.WRITTEN_OFF;
++    }
++
++    /** What is left to pay on this invoice given the totals paid and credited against it; nothing once it is void or written off. */
+     public BigDecimal amountDue(BigDecimal paid, BigDecimal credited) {
+-        return status == InvoiceStatus.VOID ? BigDecimal.ZERO.setScale(2) : amount.subtract(paid).subtract(credited);
++        return status.isClosedUnpaid() ? BigDecimal.ZERO.setScale(2) : amount.subtract(paid).subtract(credited);
+     }
+ 
+     /**
+      * This invoice's status given the totals paid and credited against it. Once sent, it is PAID when the
+      * payments and credit notes together clear the amount, PARTIAL once something has been paid or credited,
+-     * otherwise still SENT. Drafts and void invoices keep their status, as does one marked paid by hand.
++     * otherwise still SENT. Drafts, void and written-off invoices keep their status, as does one marked paid by hand.
+      */
+     public InvoiceStatus statusFor(BigDecimal paid, BigDecimal credited) {
+-        if (status == InvoiceStatus.DRAFT || status == InvoiceStatus.VOID) {
++        if (status == InvoiceStatus.DRAFT || status.isClosedUnpaid()) {
+             return status;
+         }
+         BigDecimal settled = paid.add(credited);
+@@ -596,7 +601,7 @@ public class Invoice {
+      * payments and credit notes cover the amount, PARTIAL once something has been settled, otherwise still SENT.
+      */
+     public void applySettledTotals(BigDecimal paid, BigDecimal credited) {
+-        if (status == InvoiceStatus.DRAFT || status == InvoiceStatus.VOID) {
++        if (status == InvoiceStatus.DRAFT || status.isClosedUnpaid()) {
+             throw new IllegalStateException("A " + status.name().toLowerCase() + " invoice cannot be settled");
+         }
+         this.status = statusFor(paid, credited);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index 33a40c5..d86692b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -112,6 +112,11 @@ public class InvoiceController {
+         return service.send(projectId, invoiceId);
+     }
+ 
++    @PostMapping("/{invoiceId}/write-off")
++    public InvoiceDetailResponse writeOff(@PathVariable Long projectId, @PathVariable Long invoiceId) {
++        return service.writeOff(projectId, invoiceId);
++    }
++
+     @PostMapping("/{invoiceId}/cancel")
+     public InvoiceResponse cancel(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.cancel(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 0ec8c04..fde17f3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -272,6 +272,26 @@ public class InvoiceService {
+         return toResponse(invoice);
+     }
+ 
++    /**
++     * Writes off a sent or part-paid invoice as bad debt, so what is left on it no longer counts toward what is
++     * owed while the invoice stays on record, and records the write-off (the balance given up) in the audit log.
++     */
++    @Transactional
++    public InvoiceDetailResponse writeOff(Long projectId, Long invoiceId) {
++        Invoice invoice = find(projectId, invoiceId);
++        BigDecimal paid = payments.sumAmountByInvoiceId(invoiceId);
++        BigDecimal credited = creditNotes.sumAmountByInvoiceId(invoiceId);
++        if (!invoice.statusFor(paid, credited).isOwing()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "Only a sent invoice with something still owed can be written off");
++        }
++        BigDecimal balance = invoice.amountDue(paid, credited);
++        invoice.markWrittenOff();
++        invoices.flush();
++        audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + balance.setScale(2).toPlainString());
++        return InvoiceDetailResponse.from(invoice);
++    }
++
+     private InvoiceResponse toResponse(Invoice invoice) {
+         return InvoiceResponse.from(invoice, payments.sumAmountByInvoiceId(invoice.getId()),
+                 creditNotes.sumAmountByInvoiceId(invoice.getId()));
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java
+index 8709117..13f5c50 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java
+@@ -3,17 +3,24 @@ package net.officefloor.hq.app.invoice;
+ /**
+  * Lifecycle stage of an invoice: DRAFT -> SENT -> PARTIAL -> PAID. Once sent, the stage is worked
+  * out from the payments and credit notes recorded against the invoice. A sent invoice with nothing paid against it can
+- * instead be cancelled, making it VOID: it stays on record but is no longer owed.
++ * instead be cancelled, making it VOID: it stays on record but is no longer owed. A sent or part-paid invoice that
++ * will never be paid can be written off as bad debt, making it WRITTEN_OFF: likewise kept on record but no longer owed.
+  */
+ public enum InvoiceStatus {
+     DRAFT,
+     SENT,
+     PARTIAL,
+     PAID,
+-    VOID;
++    VOID,
++    WRITTEN_OFF;
+ 
+     /** Whether payments can still be recorded against an invoice at this stage. */
+     public boolean isOwing() {
+         return this == SENT || this == PARTIAL;
+     }
++
++    /** Whether an invoice at this stage is closed without being paid (cancelled or written off), so nothing is owed. */
++    public boolean isClosedUnpaid() {
++        return this == VOID || this == WRITTEN_OFF;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+index c2f2eca..92fccbd 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+@@ -89,6 +89,9 @@ public class PaymentService {
+         if (invoice.getStatus() == InvoiceStatus.VOID) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been cancelled");
+         }
++        if (invoice.getStatus() == InvoiceStatus.WRITTEN_OFF) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been written off");
++        }
+         if (!invoice.getStatus().isOwing()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice is already paid");
+         }
+diff --git a/src/main/resources/db/migration/V56__invoice_write_off.sql b/src/main/resources/db/migration/V56__invoice_write_off.sql
+new file mode 100644
+index 0000000..b840dfc
+--- /dev/null
++++ b/src/main/resources/db/migration/V56__invoice_write_off.sql
+@@ -0,0 +1,5 @@
++-- A sent or part-paid invoice that will never be paid can be written off as bad debt. It stays on
++-- record but is no longer owed.
++ALTER TABLE invoice DROP CONSTRAINT invoice_status_valid;
++ALTER TABLE invoice ADD CONSTRAINT invoice_status_valid
++    CHECK (status IN ('DRAFT', 'SENT', 'PARTIAL', 'PAID', 'VOID', 'WRITTEN_OFF'));
