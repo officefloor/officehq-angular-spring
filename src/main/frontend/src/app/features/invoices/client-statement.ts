@@ -4,8 +4,8 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { InvoiceService } from './invoice.service';
 
-// A client's statement: every invoice across the client's projects, how much is left to pay on each,
-// and the total the client still owes. Drafts are listed but do not count towards what is owed.
+// A client's statement: every invoice across the client's projects grouped by job, how much is left to
+// pay on each, a subtotal still owed per job, and the total the client still owes. Drafts are listed but do not count towards what is owed.
 @Component({
   selector: 'app-client-statement',
   imports: [CurrencyPipe, RouterLink],
@@ -31,26 +31,35 @@ import { InvoiceService } from './invoice.service';
               <th scope="col">Left to pay</th>
             </tr>
           </thead>
-          <tbody>
-            @for (i of s.invoices; track i.id) {
-              <tr [attr.data-testid]="'statement-invoice-row-' + i.id">
-                <td data-testid="statement-invoice-id">
-                  <a
-                    [routerLink]="['/projects', i.projectId, 'invoices', i.id]"
-                    [attr.data-testid]="'statement-invoice-open-' + i.id"
-                    [attr.aria-label]="'Open invoice #' + i.id"
-                    >#{{ i.id }}</a
-                  >
-                </td>
-                <td data-testid="statement-invoice-project">{{ i.projectName }}</td>
-                <td data-testid="statement-invoice-status">{{ i.status }}</td>
-                <td data-testid="statement-invoice-issued">{{ i.issuedDate }}</td>
-                <td data-testid="statement-invoice-due">{{ i.dueDate }}</td>
-                <td data-testid="statement-invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
-                <td data-testid="statement-invoice-due-amount">{{ i.amountDue | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+          @for (job of s.jobs; track job.projectId) {
+            <tbody [attr.data-testid]="'statement-project-' + job.projectId">
+              <tr>
+                <th scope="colgroup" colspan="7" data-testid="statement-project-name">{{ job.projectName }}</th>
               </tr>
-            }
-          </tbody>
+              @for (i of job.invoices; track i.id) {
+                <tr [attr.data-testid]="'statement-invoice-row-' + i.id">
+                  <td data-testid="statement-invoice-id">
+                    <a
+                      [routerLink]="['/projects', i.projectId, 'invoices', i.id]"
+                      [attr.data-testid]="'statement-invoice-open-' + i.id"
+                      [attr.aria-label]="'Open invoice #' + i.id"
+                      >#{{ i.id }}</a
+                    >
+                  </td>
+                  <td data-testid="statement-invoice-project">{{ i.projectName }}</td>
+                  <td data-testid="statement-invoice-status">{{ i.status }}</td>
+                  <td data-testid="statement-invoice-issued">{{ i.issuedDate }}</td>
+                  <td data-testid="statement-invoice-due">{{ i.dueDate }}</td>
+                  <td data-testid="statement-invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="statement-invoice-due-amount">{{ i.amountDue | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                </tr>
+              }
+              <tr>
+                <th scope="row" colspan="6">Subtotal owed on {{ job.projectName }}</th>
+                <td data-testid="statement-project-subtotal">{{ job.subtotal | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              </tr>
+            </tbody>
+          }
         </table>
       }
       <p>

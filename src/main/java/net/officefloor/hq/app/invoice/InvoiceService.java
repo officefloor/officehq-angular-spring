@@ -1,7 +1,6 @@
 package net.officefloor.hq.app.invoice;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +50,7 @@ public class InvoiceService {
 
     /**
      * A client's statement: every invoice across their projects with what is left to pay on each, and
-     * the total they still owe. Drafts are listed but not owed, as they have not been sent, nor are
+     * the total they still owe, also grouped by job with a subtotal per job. Drafts are listed but not owed, as they have not been sent, nor are
      * void invoices, as they have been cancelled.
      */
     @Transactional(readOnly = true)
@@ -63,12 +62,7 @@ public class InvoiceService {
         List<ClientStatementResponse.Line> lines = found.stream()
                 .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
                 .toList();
-        BigDecimal outstanding = lines.stream()
-                .filter(l -> l.status() != InvoiceStatus.DRAFT && l.status() != InvoiceStatus.VOID)
-                .map(ClientStatementResponse.Line::amountDue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
-        return new ClientStatementResponse(client.getId(), client.getName(), lines, outstanding);
+        return ClientStatementResponse.from(client.getId(), client.getName(), lines);
     }
 
     private Map<Long, BigDecimal> paidByInvoice(List<Invoice> found) {

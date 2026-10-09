@@ -41,11 +41,20 @@ export interface StatementInvoice extends ProjectInvoice {
   projectName: string;
 }
 
-/** A client's invoices across all their projects, with the total they still owe. */
+/** One job on a client's statement: its invoices and what is still owed on them. */
+export interface StatementJob {
+  projectId: number;
+  projectName: string;
+  invoices: StatementInvoice[];
+  subtotal: number;
+}
+
+/** A client's invoices across all their projects, also grouped by job, with the total they still owe. */
 export interface ClientStatement {
   clientId: number;
   clientName: string;
   invoices: StatementInvoice[];
+  jobs: StatementJob[];
   outstanding: number;
 }
 
