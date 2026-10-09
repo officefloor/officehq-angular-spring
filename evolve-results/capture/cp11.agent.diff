@@ -1,0 +1,336 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 8240550..b19df82 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -9,10 +9,18 @@ export interface Invoice {
+   projectId: number;
+   amount: number;
+   status: InvoiceStatus;
++  /** ISO date (yyyy-MM-dd) the invoice was issued. */
++  issuedDate: string;
++  /** ISO date (yyyy-MM-dd) payment is due. */
++  dueDate: string;
+ }
+ 
+ export interface NewInvoice {
+   amount: number;
++  /** Defaults to today on the server when omitted. */
++  issuedDate?: string;
++  /** Defaults to 30 days after the issue date on the server when omitted. */
++  dueDate?: string;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index ec33b9d..ca5127f 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -1,11 +1,23 @@
+ import { CurrencyPipe } from '@angular/common';
+ import { Component, computed, inject, input, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+-import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import {
++  AbstractControl,
++  NonNullableFormBuilder,
++  ReactiveFormsModule,
++  ValidationErrors,
++  Validators,
++} from '@angular/forms';
+ import { InvoiceService } from './invoice.service';
+ 
+-// A project's invoices: lists them, shows what they add up to, adds a new one by amount, and marks
+-// one as paid.
++// ISO yyyy-MM-dd strings compare correctly as plain strings.
++function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
++  const { issuedDate, dueDate } = group.value as { issuedDate?: string; dueDate?: string };
++  return issuedDate && dueDate && dueDate < issuedDate ? { dueBeforeIssued: true } : null;
++}
++
++// A project's invoices: lists them with their issue and due dates, shows what they add up to, adds a
++// new one, and marks one as paid.
+ @Component({
+   selector: 'app-project-invoices',
+   imports: [ReactiveFormsModule, CurrencyPipe],
+@@ -33,6 +45,26 @@ import { InvoiceService } from './invoice.service';
+             </p>
+           }
+         </div>
++        <div>
++          <label for="invoice-issued">Issued (optional, defaults to today)</label>
++          <input id="invoice-issued" type="date" formControlName="issuedDate" data-testid="invoice-form-issued" />
++        </div>
++        <div>
++          <label for="invoice-due">Due (optional, defaults to 30 days after issue)</label>
++          <input
++            id="invoice-due"
++            type="date"
++            formControlName="dueDate"
++            data-testid="invoice-form-due"
++            [attr.aria-invalid]="showDueError()"
++            [attr.aria-describedby]="showDueError() ? 'invoice-due-error' : null"
++          />
++          @if (showDueError()) {
++            <p id="invoice-due-error" role="alert" data-testid="invoice-form-due-error">
++              The due date cannot be before the issue date.
++            </p>
++          }
++        </div>
+         <button type="submit" data-testid="invoice-form-submit" [disabled]="saving()">
+           Add invoice
+         </button>
+@@ -53,6 +85,8 @@ import { InvoiceService } from './invoice.service';
+               <th scope="col">Invoice</th>
+               <th scope="col">Amount</th>
+               <th scope="col">Status</th>
++              <th scope="col">Issued</th>
++              <th scope="col">Due</th>
+               <th scope="col"><span class="visually-hidden">Actions</span></th>
+             </tr>
+           </thead>
+@@ -62,6 +96,8 @@ import { InvoiceService } from './invoice.service';
+                 <td data-testid="invoice-id">#{{ i.id }}</td>
+                 <td data-testid="invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                 <td data-testid="invoice-status">{{ i.status }}</td>
++                <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
++                <td data-testid="invoice-due">{{ i.dueDate }}</td>
+                 <td>
+                   @if (i.status === 'UNPAID') {
+                     <button
+@@ -82,7 +118,7 @@ import { InvoiceService } from './invoice.service';
+             <tr>
+               <th scope="row">Total</th>
+               <td data-testid="project-invoices-total">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+-              <td colspan="2"></td>
++              <td colspan="4"></td>
+             </tr>
+           </tfoot>
+         </table>
+@@ -114,12 +150,21 @@ export class ProjectInvoices {
+   protected readonly paying = signal<number | null>(null);
+   protected readonly payError = signal<string | null>(null);
+ 
+-  protected readonly form = inject(NonNullableFormBuilder).group({
+-    amount: [
+-      '',
+-      [Validators.required, Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)],
+-    ],
+-  });
++  protected readonly form = inject(NonNullableFormBuilder).group(
++    {
++      amount: [
++        '',
++        [Validators.required, Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)],
++      ],
++      issuedDate: [''],
++      dueDate: [''],
++    },
++    { validators: dueNotBeforeIssued },
++  );
++
++  protected showDueError(): boolean {
++    return this.form.hasError('dueBeforeIssued') && this.form.controls.dueDate.dirty;
++  }
+ 
+   protected showError(): boolean {
+     const control = this.form.controls.amount;
+@@ -133,8 +178,13 @@ export class ProjectInvoices {
+     }
+     this.saving.set(true);
+     this.saveError.set(null);
+-    const amount = Number(this.form.getRawValue().amount);
+-    this.service.create(this.projectId(), { amount }).subscribe({
++    const { amount, issuedDate, dueDate } = this.form.getRawValue();
++    const invoice = {
++      amount: Number(amount),
++      ...(issuedDate ? { issuedDate } : {}),
++      ...(dueDate ? { dueDate } : {}),
++    };
++    this.service.create(this.projectId(), invoice).subscribe({
+       next: (created) => {
+         this.invoices.update((list) => [...(list ?? []), created]);
+         this.form.reset();
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 112911d..deed919 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -1,8 +1,11 @@
+ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
++import net.officefloor.hq.app.invoice.InvoiceRequest;
++import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import org.springframework.context.annotation.Profile;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -60,10 +63,15 @@ public class TestSupportController {
+                     ((Number) p.get("clientId")).longValue());
+         }
+         for (Map<String, Object> i : rows(fixture, "invoices")) {
+-            jdbc.update("INSERT INTO invoice (id, project_id, amount, status) VALUES (?, ?, ?, ?)",
++            LocalDate issued = i.get("issuedDate") == null ? LocalDate.now()
++                    : LocalDate.parse(i.get("issuedDate").toString());
++            LocalDate due = i.get("dueDate") == null ? issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
++                    : LocalDate.parse(i.get("dueDate").toString());
++            jdbc.update("INSERT INTO invoice (id, project_id, amount, status, issued_date, due_date)"
++                    + " VALUES (?, ?, ?, ?, ?, ?)",
+                     ((Number) i.get("id")).longValue(), ((Number) i.get("projectId")).longValue(),
+                     new BigDecimal(i.get("amount").toString()),
+-                    i.getOrDefault("status", "UNPAID"));
++                    seedStatus(i.get("status")), issued, due);
+         }
+         // Continue generated ids after the explicitly seeded ones.
+         restartIdentity("client");
+@@ -71,6 +79,17 @@ public class TestSupportController {
+         restartIdentity("invoice");
+     }
+ 
++    /**
++     * Fixtures may describe an issued-but-unpaid invoice as "SENT"; this domain models that state
++     * as UNPAID.
++     */
++    private static String seedStatus(Object status) {
++        if (status == null || "SENT".equals(status)) {
++            return InvoiceStatus.UNPAID.name();
++        }
++        return status.toString();
++    }
++
+     private void restartIdentity(String table) {
+         Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM " + table, Long.class);
+         jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH " + next);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index d46b481..3fcc97d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import net.officefloor.hq.app.project.Project;
+ 
+ /** An invoice raised against a project. */
+@@ -34,12 +35,20 @@ public class Invoice {
+     @Column(nullable = false, length = 16)
+     private InvoiceStatus status = InvoiceStatus.UNPAID;
+ 
++    @Column(name = "issued_date", nullable = false)
++    private LocalDate issuedDate;
++
++    @Column(name = "due_date", nullable = false)
++    private LocalDate dueDate;
++
+     protected Invoice() {
+     }
+ 
+-    public Invoice(Project project, BigDecimal amount) {
++    public Invoice(Project project, BigDecimal amount, LocalDate issuedDate, LocalDate dueDate) {
+         this.project = project;
+         this.amount = amount;
++        this.issuedDate = issuedDate;
++        this.dueDate = dueDate;
+     }
+ 
+     public Long getId() {
+@@ -58,6 +67,14 @@ public class Invoice {
+         return status;
+     }
+ 
++    public LocalDate getIssuedDate() {
++        return issuedDate;
++    }
++
++    public LocalDate getDueDate() {
++        return dueDate;
++    }
++
+     /** Marks this invoice as paid. */
+     public void markPaid() {
+         this.status = InvoiceStatus.PAID;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
+index 3d9efb5..c308d86 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
+@@ -4,8 +4,17 @@ import jakarta.validation.constraints.DecimalMin;
+ import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotNull;
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ 
+-/** Payload to add an invoice to a project. */
++/**
++ * Payload to add an invoice to a project. The dates are optional: the issue date defaults to today
++ * and the due date to {@link #DEFAULT_TERM_DAYS} days after the issue date.
++ */
+ public record InvoiceRequest(
+-        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount) {
++        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
++        LocalDate issuedDate,
++        LocalDate dueDate) {
++
++    /** Days between issue and due date when no due date is given. */
++    public static final int DEFAULT_TERM_DAYS = 30;
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+index 1ae8f70..45bec50 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+@@ -1,11 +1,13 @@
+ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ 
+-public record InvoiceResponse(Long id, Long projectId, BigDecimal amount, InvoiceStatus status) {
++public record InvoiceResponse(Long id, Long projectId, BigDecimal amount, InvoiceStatus status,
++        LocalDate issuedDate, LocalDate dueDate) {
+ 
+     static InvoiceResponse from(Invoice invoice) {
+         return new InvoiceResponse(invoice.getId(), invoice.getProject().getId(), invoice.getAmount(),
+-                invoice.getStatus());
++                invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index d329e83..a57e115 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.invoice;
+ 
++import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.project.Project;
+@@ -34,7 +35,12 @@ public class InvoiceService {
+     public InvoiceResponse create(Long projectId, InvoiceRequest request) {
+         Project project = projects.findById(projectId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+-        Invoice saved = invoices.save(new Invoice(project, request.amount()));
++        LocalDate issued = request.issuedDate() != null ? request.issuedDate() : LocalDate.now();
++        LocalDate due = request.dueDate() != null ? request.dueDate() : issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS);
++        if (due.isBefore(issued)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Due date must not be before the issue date");
++        }
++        Invoice saved = invoices.save(new Invoice(project, request.amount(), issued, due));
+         return InvoiceResponse.from(saved);
+     }
+ 
+diff --git a/src/main/resources/db/migration/V6__invoice_dates.sql b/src/main/resources/db/migration/V6__invoice_dates.sql
+new file mode 100644
+index 0000000..e39bea9
+--- /dev/null
++++ b/src/main/resources/db/migration/V6__invoice_dates.sql
+@@ -0,0 +1,8 @@
++-- Every invoice carries the date it was issued (sent out) and the date payment is due.
++-- Backfill any existing rows: issued today, due 30 days later.
++ALTER TABLE invoice ADD COLUMN issued_date DATE DEFAULT CURRENT_DATE NOT NULL;
++ALTER TABLE invoice ADD COLUMN due_date DATE;
++UPDATE invoice SET due_date = DATEADD('DAY', 30, issued_date) WHERE due_date IS NULL;
++ALTER TABLE invoice ALTER COLUMN due_date SET NOT NULL;
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_due_after_issued CHECK (due_date >= issued_date);
