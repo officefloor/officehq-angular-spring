@@ -19,8 +19,10 @@ import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.ProjectRepository;
 import net.officefloor.hq.app.settings.SettingsService;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class DashboardService {
@@ -106,5 +108,43 @@ public class DashboardService {
             total = total.add(inHome);
         }
         return total.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * The tax charged over a period, in the home currency: the sales tax and levy on every invoice issued on or
+     * between the given dates that was actually charged (sent, whether paid or not, or later written off; drafts
+     * and cancelled invoices are left out). A foreign invoice converts at the exchange rate from its issue date;
+     * one whose currency has no rate by then cannot be converted and is left out.
+     */
+    @Transactional(readOnly = true)
+    public TaxSummaryResponse taxSummary(LocalDate from, LocalDate to) {
+        if (from.isAfter(to)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The start date must not be after the end date");
+        }
+        List<InvoiceStatus> charged = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID,
+                InvoiceStatus.WRITTEN_OFF);
+        String home = settings.homeCurrency();
+        BigDecimal tax = BigDecimal.ZERO;
+        BigDecimal levy = BigDecimal.ZERO;
+        long count = 0;
+        for (Invoice invoice : invoices.findByStatusInAndIssuedDateBetween(charged, from, to)) {
+            String currency = invoice.getProject().getClient().getCurrency();
+            if (currency.equals(home)) {
+                tax = tax.add(invoice.getTax());
+                levy = levy.add(invoice.getLevy());
+                count++;
+                continue;
+            }
+            var inHomeTax = fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getTax());
+            var inHomeLevy = fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getLevy());
+            if (inHomeTax.isPresent() && inHomeLevy.isPresent()) {
+                tax = tax.add(inHomeTax.get());
+                levy = levy.add(inHomeLevy.get());
+                count++;
+            }
+        }
+        tax = tax.setScale(2, RoundingMode.HALF_UP);
+        levy = levy.setScale(2, RoundingMode.HALF_UP);
+        return new TaxSummaryResponse(from, to, home, count, tax, levy, tax.add(levy));
     }
 }

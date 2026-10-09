@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { CurrencyCode } from '../clients/client.service';
@@ -30,11 +30,29 @@ export interface DashboardSummary {
   topClients: TopClient[];
 }
 
+/** The tax charged on invoices issued on or between two dates, in the home currency. */
+export interface TaxSummary {
+  from: string;
+  to: string;
+  homeCurrency: CurrencyCode;
+  /** How many invoices the tax came from. */
+  invoices: number;
+  tax: number;
+  /** The levy (second tax). */
+  levy: number;
+  /** The tax and levy together. */
+  total: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class DashboardService {
   private readonly http = inject(HttpClient);
 
   summary(): Observable<DashboardSummary> {
     return this.http.get<DashboardSummary>('/api/dashboard');
+  }
+
+  taxSummary(from: string, to: string): Observable<TaxSummary> {
+    return this.http.get<TaxSummary>('/api/dashboard/tax-summary', { params: new HttpParams().set('from', from).set('to', to) });
   }
 }

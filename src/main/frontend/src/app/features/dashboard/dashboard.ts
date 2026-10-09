@@ -1,16 +1,17 @@
 import { Component, inject, signal } from '@angular/core';
 import { MoneyPipe } from '../currencies/money.pipe';
 import { DashboardService, DashboardSummary } from './dashboard.service';
+import { TaxSummaryReport } from './tax-summary';
 
 // Dashboard page: how many clients and projects there are, and the total still owed in each currency
 // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
 // counted; amounts in different currencies are never added together), and how many of those sent
 // invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees,
 // in the home currency). Also lists the top five clients ranked by what they still owe,
-// each in their own currency.
+// each in their own currency. A tax summary for a chosen date range can be opened from here.
 @Component({
   selector: 'app-dashboard',
-  imports: [MoneyPipe],
+  imports: [MoneyPipe, TaxSummaryReport],
   template: `
     <h1>Dashboard</h1>
 
@@ -62,11 +63,25 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
     } @else {
       <p data-testid="dashboard-loading">Loading…</p>
     }
+
+    <button
+      type="button"
+      data-testid="tax-summary-open"
+      aria-controls="tax-summary"
+      [attr.aria-expanded]="taxSummaryOpen()"
+      (click)="taxSummaryOpen.set(!taxSummaryOpen())"
+    >
+      {{ taxSummaryOpen() ? 'Hide tax summary' : 'Tax summary' }}
+    </button>
+    @if (taxSummaryOpen()) {
+      <app-tax-summary id="tax-summary" />
+    }
   `,
 })
 export class Dashboard {
   protected readonly summary = signal<DashboardSummary | null>(null);
   protected readonly loadError = signal<string | null>(null);
+  protected readonly taxSummaryOpen = signal(false);
 
   constructor() {
     inject(DashboardService)
