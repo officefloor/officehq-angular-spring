@@ -1,0 +1,413 @@
+diff --git a/src/main/frontend/src/app/features/fx-rates/fx-rate.service.ts b/src/main/frontend/src/app/features/fx-rates/fx-rate.service.ts
+new file mode 100644
+index 0000000..e2e25c3
+--- /dev/null
++++ b/src/main/frontend/src/app/features/fx-rates/fx-rate.service.ts
+@@ -0,0 +1,27 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++/** An exchange rate: from its date, one unit of the currency is worth `rate` units of the home currency. */
++export interface FxRate {
++  id: number;
++  currency: string;
++  /** ISO date (yyyy-mm-dd) the rate applies from. */
++  date: string;
++  rate: number;
++}
++
++export type FxRateRequest = Omit<FxRate, 'id'>;
++
++@Injectable({ providedIn: 'root' })
++export class FxRateService {
++  private readonly http = inject(HttpClient);
++
++  list(): Observable<FxRate[]> {
++    return this.http.get<FxRate[]>('/api/fx-rates');
++  }
++
++  record(request: FxRateRequest): Observable<FxRate> {
++    return this.http.post<FxRate>('/api/fx-rates', request);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/fx-rates/fx-rates.ts b/src/main/frontend/src/app/features/fx-rates/fx-rates.ts
+new file mode 100644
+index 0000000..154791b
+--- /dev/null
++++ b/src/main/frontend/src/app/features/fx-rates/fx-rates.ts
+@@ -0,0 +1,160 @@
++import { Component, inject, signal } from '@angular/core';
++import { DecimalPipe } from '@angular/common';
++import { HttpErrorResponse } from '@angular/common/http';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { FxRateService } from './fx-rate.service';
++import { CurrencyService } from '../currencies/currency.service';
++
++// The exchange rate history: record what one unit of a currency is worth in the home currency from a date.
++@Component({
++  selector: 'app-fx-rates',
++  imports: [ReactiveFormsModule, DecimalPipe],
++  template: `
++    <section aria-labelledby="fx-rates-heading" data-testid="fx-rates">
++      <h2 id="fx-rates-heading">Exchange rates</h2>
++      <p id="fx-rates-hint">The value of one unit of the currency in the home currency, from the date onwards.</p>
++      <form [formGroup]="form" (ngSubmit)="save()" data-testid="fx-rate-form" novalidate>
++        <div>
++          <label for="fx-rate-form-currency">Currency</label>
++          <input
++            id="fx-rate-form-currency"
++            type="text"
++            list="fx-rate-currencies"
++            autocomplete="off"
++            maxlength="3"
++            formControlName="currency"
++            data-testid="fx-rate-form-currency"
++            [attr.aria-invalid]="invalid('currency')"
++            [attr.aria-describedby]="invalid('currency') ? 'fx-rate-form-currency-error' : null"
++          />
++          <datalist id="fx-rate-currencies">
++            @for (c of currencies.list(); track c.code) {
++              <option [value]="c.code"></option>
++            }
++          </datalist>
++          @if (invalid('currency')) {
++            <p id="fx-rate-form-currency-error" role="alert" data-testid="fx-rate-form-currency-error">
++              Enter a three-letter currency code.
++            </p>
++          }
++        </div>
++        <div>
++          <label for="fx-rate-form-date">Date</label>
++          <input
++            id="fx-rate-form-date"
++            type="date"
++            formControlName="date"
++            data-testid="fx-rate-form-date"
++            [attr.aria-invalid]="invalid('date')"
++            [attr.aria-describedby]="invalid('date') ? 'fx-rate-form-date-error' : null"
++          />
++          @if (invalid('date')) {
++            <p id="fx-rate-form-date-error" role="alert" data-testid="fx-rate-form-date-error">Enter a date.</p>
++          }
++        </div>
++        <div>
++          <label for="fx-rate-form-rate">Rate</label>
++          <input
++            id="fx-rate-form-rate"
++            type="number"
++            inputmode="decimal"
++            min="0"
++            step="any"
++            formControlName="rate"
++            data-testid="fx-rate-form-rate"
++            [attr.aria-invalid]="invalid('rate')"
++            [attr.aria-describedby]="invalid('rate') ? 'fx-rates-hint fx-rate-form-rate-error' : 'fx-rates-hint'"
++          />
++          @if (invalid('rate')) {
++            <p id="fx-rate-form-rate-error" role="alert" data-testid="fx-rate-form-rate-error">
++              Enter a rate above zero with at most six decimal places.
++            </p>
++          }
++        </div>
++        <button type="submit" data-testid="fx-rate-form-submit" [disabled]="saving()">Record rate</button>
++        @if (saved()) {
++          <p role="status" data-testid="fx-rate-saved">Rate recorded.</p>
++        }
++        @if (saveError()) {
++          <p role="alert" data-testid="fx-rate-form-error">{{ saveError() }}</p>
++        }
++      </form>
++      @if (rates.error()) {
++        <p role="alert" data-testid="fx-rates-load-error">Could not load the exchange rates.</p>
++      } @else if (rates.hasValue() && rates.value().length === 0) {
++        <p data-testid="fx-rates-empty">No exchange rates recorded yet.</p>
++      } @else if (rates.hasValue()) {
++        <table data-testid="fx-rates-table">
++          <caption class="visually-hidden">Exchange rate history</caption>
++          <thead>
++            <tr>
++              <th scope="col">Currency</th>
++              <th scope="col">From</th>
++              <th scope="col">Rate</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (r of rates.value(); track r.id) {
++              <tr [attr.data-testid]="'fx-rate-row-' + r.id">
++                <th scope="row" data-testid="fx-rate-currency">{{ r.currency }}</th>
++                <td data-testid="fx-rate-date">{{ r.date }}</td>
++                <td data-testid="fx-rate-value">{{ r.rate | number: '1.2-6' : 'en-US' }}</td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
++    </section>
++  `,
++})
++export class FxRates {
++  private readonly service = inject(FxRateService);
++  protected readonly currencies = inject(CurrencyService);
++
++  protected readonly rates = rxResource({ stream: () => this.service.list() });
++
++  protected readonly saving = signal(false);
++  protected readonly saved = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    currency: ['', [Validators.required, Validators.pattern(/^\s*[A-Za-z]{3}\s*$/)]],
++    date: ['', Validators.required],
++    rate: ['', [Validators.required, Validators.pattern(/^\d+(\.\d{1,6})?$/), Validators.min(0.000001)]],
++  });
++
++  protected invalid(name: 'currency' | 'date' | 'rate'): boolean {
++    const control = this.form.controls[name];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected save(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.saved.set(false);
++    this.saveError.set(null);
++    const { currency, date, rate } = this.form.getRawValue();
++    this.service.record({ currency: currency.trim().toUpperCase(), date, rate: Number(rate) }).subscribe({
++      next: () => {
++        this.rates.reload();
++        this.form.reset();
++        this.saving.set(false);
++        this.saved.set(true);
++      },
++      error: (err: HttpErrorResponse) => {
++        this.saveError.set(
++          err.status === 409
++            ? 'A rate for this currency on this date is already recorded.'
++            : err.status === 400
++              ? 'Could not record the rate: check the currency is known and is not the home currency.'
++              : 'Could not record the rate. Please try again.',
++        );
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index a8b0320..0a6ef50 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -3,11 +3,12 @@ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { SettingsService } from './settings.service';
+ import { CurrencyRounding } from '../currencies/currency-rounding';
++import { FxRates } from '../fx-rates/fx-rates';
+ 
+-// The app-wide settings: the standard sales tax rate that every new invoice starts with, and how each currency rounds.
++// The app-wide settings: the standard sales tax rate that every new invoice starts with, how each currency rounds, and the exchange rate history.
+ @Component({
+   selector: 'app-settings',
+-  imports: [ReactiveFormsModule, CurrencyRounding],
++  imports: [ReactiveFormsModule, CurrencyRounding, FxRates],
+   template: `
+     <h1>Settings</h1>
+     @if (settings.error()) {
+@@ -43,6 +44,7 @@ import { CurrencyRounding } from '../currencies/currency-rounding';
+       }
+     </form>
+     <app-currency-rounding />
++    <app-fx-rates />
+   `,
+ })
+ export class SettingsPage {
+diff --git a/src/main/java/net/officefloor/hq/app/fx/FxRate.java b/src/main/java/net/officefloor/hq/app/fx/FxRate.java
+index 2fc247b..e13aff6 100644
+--- a/src/main/java/net/officefloor/hq/app/fx/FxRate.java
++++ b/src/main/java/net/officefloor/hq/app/fx/FxRate.java
+@@ -33,6 +33,12 @@ public class FxRate {
+     protected FxRate() {
+     }
+ 
++    public FxRate(String currency, LocalDate rateDate, BigDecimal rate) {
++        this.currency = currency;
++        this.rateDate = rateDate;
++        this.rate = rate;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/fx/FxRateController.java b/src/main/java/net/officefloor/hq/app/fx/FxRateController.java
+new file mode 100644
+index 0000000..15dea68
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/fx/FxRateController.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app.fx;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The history of exchange rates into the home currency. */
++@RestController
++@RequestMapping("/api/fx-rates")
++public class FxRateController {
++
++    private final FxRateService service;
++
++    public FxRateController(FxRateService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<FxRateResponse> list() {
++        return service.list();
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public FxRateResponse record(@Valid @RequestBody FxRateRequest request) {
++        return service.record(request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/fx/FxRateRepository.java b/src/main/java/net/officefloor/hq/app/fx/FxRateRepository.java
+index 7a7e184..f1c848a 100644
+--- a/src/main/java/net/officefloor/hq/app/fx/FxRateRepository.java
++++ b/src/main/java/net/officefloor/hq/app/fx/FxRateRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.fx;
+ 
+ import java.time.LocalDate;
++import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+@@ -8,4 +9,10 @@ public interface FxRateRepository extends JpaRepository<FxRate, Long> {
+ 
+     /** The currency's rate in effect on the date: its latest rate dated on or before it. */
+     Optional<FxRate> findFirstByCurrencyAndRateDateLessThanEqualOrderByRateDateDesc(String currency, LocalDate date);
++
++    /** Whether the currency already has a rate dated on the day. */
++    boolean existsByCurrencyAndRateDate(String currency, LocalDate rateDate);
++
++    /** The rate history: by currency, the most recent rate first. */
++    List<FxRate> findAllByOrderByCurrencyAscRateDateDescIdDesc();
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/fx/FxRateRequest.java b/src/main/java/net/officefloor/hq/app/fx/FxRateRequest.java
+new file mode 100644
+index 0000000..5586055
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/fx/FxRateRequest.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app.fx;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** Payload to record what one unit of a currency is worth in the home currency from a date. */
++public record FxRateRequest(
++        @NotBlank String currency,
++        @NotNull LocalDate date,
++        @NotNull @DecimalMin(value = "0", inclusive = false) @Digits(integer = 13, fraction = 6) BigDecimal rate) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/fx/FxRateResponse.java b/src/main/java/net/officefloor/hq/app/fx/FxRateResponse.java
+new file mode 100644
+index 0000000..25404c7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/fx/FxRateResponse.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.fx;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++public record FxRateResponse(Long id, String currency, LocalDate date, BigDecimal rate) {
++
++    static FxRateResponse from(FxRate rate) {
++        return new FxRateResponse(rate.getId(), rate.getCurrency(), rate.getRateDate(), rate.getRate());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/fx/FxRateService.java b/src/main/java/net/officefloor/hq/app/fx/FxRateService.java
+index e37ec09..eb17f1a 100644
+--- a/src/main/java/net/officefloor/hq/app/fx/FxRateService.java
++++ b/src/main/java/net/officefloor/hq/app/fx/FxRateService.java
+@@ -3,18 +3,62 @@ package net.officefloor.hq.app.fx;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.List;
++import java.util.Locale;
+ import java.util.Optional;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.currency.CurrencyService;
++import net.officefloor.hq.app.settings.SettingsService;
++import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
+ 
+-/** Converts foreign amounts into the home currency at the exchange rate in effect on a given date. */
++/**
++ * Keeps the history of exchange rates, and converts foreign amounts into the home currency at the rate in
++ * effect on a given date.
++ */
+ @Service
+ public class FxRateService {
+ 
+     private final FxRateRepository rates;
++    private final CurrencyService currencies;
++    private final SettingsService settings;
++    private final Audit audit;
+ 
+-    public FxRateService(FxRateRepository rates) {
++    public FxRateService(FxRateRepository rates, CurrencyService currencies, SettingsService settings, Audit audit) {
+         this.rates = rates;
++        this.currencies = currencies;
++        this.settings = settings;
++        this.audit = audit;
++    }
++
++    /** The recorded rates, by currency with the most recent first. */
++    @Transactional(readOnly = true)
++    public List<FxRateResponse> list() {
++        return rates.findAllByOrderByCurrencyAscRateDateDescIdDesc().stream().map(FxRateResponse::from).toList();
++    }
++
++    /**
++     * Records the currency's rate from the date, recording it in the audit log. A currency has at most one
++     * rate a day, and the home currency needs none.
++     */
++    @Transactional
++    public FxRateResponse record(FxRateRequest request) {
++        String currency = request.currency().trim().toUpperCase(Locale.ROOT);
++        if (!currencies.exists(currency)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown currency");
++        }
++        if (currency.equals(settings.homeCurrency())) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The home currency needs no exchange rate");
++        }
++        if (rates.existsByCurrencyAndRateDate(currency, request.date())) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "A rate for this currency on this date already exists");
++        }
++        FxRate saved = rates.saveAndFlush(new FxRate(currency, request.date(), request.rate()));
++        audit.record("FX_RATE_RECORDED id=" + saved.getId() + " currency=" + currency + " date=" + saved.getRateDate()
++                + " rate=" + saved.getRate().stripTrailingZeros().toPlainString());
++        return FxRateResponse.from(saved);
+     }
+ 
+     /**
