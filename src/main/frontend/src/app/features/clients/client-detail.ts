@@ -1,3 +1,4 @@
+import { CurrencyPipe } from '@angular/common';
 import { Component, computed, inject, input, signal, viewChild } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
@@ -9,10 +10,10 @@ import { ClientProjects } from '../projects/client-projects';
 import { ClientCurrency } from './client-currency';
 import { Client, ClientService } from './client.service';
 
-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, the deposits they have paid up front, counts of their projects and contacts, their contacts, and the projects being done for them.
+// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
 @Component({
   selector: 'app-client-detail',
-  imports: [RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits],
+  imports: [CurrencyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits],
   styles: `
     .client-badges {
       display: flex;
@@ -83,6 +84,12 @@ import { Client, ClientService } from './client.service';
           </li>
           <li>
             Contacts: <span data-testid="client-contacts-count">{{ summary.value().contactCount }}</span>
+          </li>
+          <li>
+            Billed to date:
+            <span data-testid="client-lifetime-billed">{{
+              summary.value().lifetimeBilled | currency: c.currency : 'symbol' : '1.2-2' : 'en-US'
+            }}</span>
           </li>
         </ul>
       }

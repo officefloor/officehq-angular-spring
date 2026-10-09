@@ -38,6 +38,7 @@ export interface Client {
 export interface ClientSummary {
   projectCount: number;
   contactCount: number;
+  lifetimeBilled: number;
 }
 
 export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'outstanding'>;

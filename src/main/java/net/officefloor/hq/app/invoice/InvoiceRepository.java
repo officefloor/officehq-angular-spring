@@ -43,6 +43,11 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.status IN :statuses")
     BigDecimal sumAmountByStatusIn(Collection<InvoiceStatus> statuses);
 
+    /** Sum of the amounts of one client's invoices with any of the given statuses (zero when there are none). */
+    @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i JOIN i.project p"
+            + " WHERE p.client.id = :clientId AND i.status IN :statuses")
+    BigDecimal sumAmountByClientIdAndStatusIn(Long clientId, Collection<InvoiceStatus> statuses);
+
     /** Sum of the invoice amounts with any of the given statuses, per client; clients with none are left out. */
     @Query("SELECT p.client.id AS clientId, SUM(i.amount) AS total FROM Invoice i JOIN i.project p"
             + " WHERE i.status IN :statuses GROUP BY p.client.id")

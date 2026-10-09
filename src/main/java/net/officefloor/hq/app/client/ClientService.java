@@ -54,13 +54,18 @@ public class ClientService {
         return respond(find(id));
     }
 
-    /** At-a-glance counts of what one client has. */
+    /** Invoices that have been issued to the client: everything but drafts and cancelled invoices. */
+    private static final List<InvoiceStatus> BILLED = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL,
+            InvoiceStatus.PAID, InvoiceStatus.WRITTEN_OFF);
+
+    /** At-a-glance counts of what one client has, and the total ever billed to them. */
     @Transactional(readOnly = true)
     public ClientSummaryResponse summary(Long id) {
         if (!clients.existsById(id)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
         }
-        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientId(id));
+        BigDecimal billed = invoices.sumAmountByClientIdAndStatusIn(id, BILLED).setScale(2, RoundingMode.HALF_UP);
+        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientId(id), billed);
     }
 
     /** Adds a client; its email, once trimmed, must not already belong to another client. */
