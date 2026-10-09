@@ -1,0 +1,854 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 9605dbf..d46236c 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -5,12 +5,12 @@ import { RouterLink } from '@angular/router';
+ import { ClientContacts } from '../contacts/client-contacts';
+ import { Contact } from '../contacts/contact.service';
+ import { ClientDeposits } from '../deposits/client-deposits';
+-import { ClientPaymentForm } from '../payments/client-payment';
++import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
+ import { ClientProjects } from '../projects/client-projects';
+ import { ClientCurrency } from './client-currency';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
++// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
+ @Component({
+   selector: 'app-client-detail',
+   imports: [CurrencyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits],
+@@ -101,19 +101,31 @@ import { Client, ClientService } from './client.service';
+           type="button"
+           data-testid="client-record-payment"
+           aria-controls="client-payment-panel"
+-          [attr.aria-expanded]="recordingPayment()"
+-          (click)="recordingPayment.set(!recordingPayment())"
++          [attr.aria-expanded]="recordingPayment() === 'payment'"
++          (click)="toggle('payment')"
+         >
+-          {{ recordingPayment() ? 'Close payment form' : 'Record a payment' }}
++          {{ recordingPayment() === 'payment' ? 'Close payment form' : 'Record a payment' }}
++        </button>
++        <button
++          type="button"
++          data-testid="client-allocate-deposit"
++          aria-controls="client-payment-panel"
++          [attr.aria-expanded]="recordingPayment() === 'deposit'"
++          (click)="toggle('deposit')"
++        >
++          {{ recordingPayment() === 'deposit' ? 'Close deposit form' : 'Put a deposit toward invoices' }}
+         </button>
+       </p>
+       <div id="client-payment-panel">
+-        @if (recordingPayment()) {
+-          <app-client-payment [clientId]="clientId()" (recorded)="paymentRecorded()" />
++        @if (recordingPayment(); as source) {
++          <app-client-payment [clientId]="clientId()" [source]="source" (recorded)="paymentRecorded(source)" />
+         }
+         @if (paymentSaved()) {
+           <p role="status" data-testid="client-payment-recorded">Payment recorded.</p>
+         }
++        @if (depositApplied()) {
++          <p role="status" data-testid="client-deposit-applied">Deposit applied.</p>
++        }
+       </div>
+       <app-client-deposits [clientId]="clientId()" [currency]="c.currency" />
+       <app-client-contacts
+@@ -142,9 +154,12 @@ export class ClientDetail {
+     stream: ({ params }) => this.service.summary(params),
+   });
+ 
+-  protected readonly recordingPayment = signal(false);
++  /** Which split form is open, if any: a payment received, or the client's held deposits. */
++  protected readonly recordingPayment = signal<PaymentSource | null>(null);
+   protected readonly paymentSaved = signal(false);
++  protected readonly depositApplied = signal(false);
+   private readonly paymentForm = viewChild(ClientPaymentForm);
++  private readonly depositsPanel = viewChild(ClientDeposits);
+ 
+   /** Resolves to true once any payment being recorded has been saved, so the page can be left safely. */
+   async canLeave(): Promise<boolean> {
+@@ -152,9 +167,17 @@ export class ClientDetail {
+     return true;
+   }
+ 
+-  protected paymentRecorded(): void {
+-    this.recordingPayment.set(false);
+-    this.paymentSaved.set(true);
++  protected toggle(source: PaymentSource): void {
++    this.recordingPayment.update((open) => (open === source ? null : source));
++  }
++
++  protected paymentRecorded(source: PaymentSource): void {
++    this.recordingPayment.set(null);
++    this.paymentSaved.set(source === 'payment');
++    this.depositApplied.set(source === 'deposit');
++    if (source === 'deposit') {
++      this.depositsPanel()?.reload();
++    }
+     this.client.reload();
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/deposits/client-deposits.ts b/src/main/frontend/src/app/features/deposits/client-deposits.ts
+index c9d3ff3..7c15dde 100644
+--- a/src/main/frontend/src/app/features/deposits/client-deposits.ts
++++ b/src/main/frontend/src/app/features/deposits/client-deposits.ts
+@@ -7,7 +7,7 @@ import { DepositService } from './deposit.service';
+ 
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ 
+-// The deposits a client has paid up front, before any invoice, with their total and a form to record another.
++// The deposits a client has paid up front, before any invoice, with what is still held, how much has been put toward invoices, and a form to record another.
+ @Component({
+   selector: 'app-client-deposits',
+   imports: [ReactiveFormsModule, CurrencyPipe],
+@@ -20,6 +20,12 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+         <p>
+           Held: <span data-testid="client-deposit-total">{{ deposits.value().total | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
+         </p>
++        @if (deposits.value().applied > 0) {
++          <p>
++            Put toward invoices:
++            <span data-testid="client-deposit-applied">{{ deposits.value().applied | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
++          </p>
++        }
+         @if (deposits.value().deposits.length > 0) {
+           <ul data-testid="client-deposit-list">
+             @for (d of deposits.value().deposits; track d.id) {
+@@ -104,6 +110,11 @@ export class ClientDeposits {
+     return control.invalid && (control.touched || control.dirty);
+   }
+ 
++  /** Loads the deposits again, e.g. after some were put toward invoices elsewhere on the page. */
++  reload(): void {
++    this.deposits.reload();
++  }
++
+   protected submit(): void {
+     this.saveError.set(null);
+     this.saved.set(false);
+diff --git a/src/main/frontend/src/app/features/deposits/deposit.service.ts b/src/main/frontend/src/app/features/deposits/deposit.service.ts
+index d1f83fb..c3b5b35 100644
+--- a/src/main/frontend/src/app/features/deposits/deposit.service.ts
++++ b/src/main/frontend/src/app/features/deposits/deposit.service.ts
+@@ -16,9 +16,15 @@ export interface NewDeposit {
+   date: string;
+ }
+ 
+-/** The deposits held for a client, oldest first, and their total. */
++/** Part of a client's held deposits to put toward their invoices, split across them. */
++export interface NewDepositApplication {
++  allocations: { invoiceId: number; amount: number }[];
++}
++
++/** The deposits a client has paid, oldest first; `total` is what is still held after `applied` was put toward invoices. */
+ export interface ClientDeposits {
+   total: number;
++  applied: number;
+   deposits: Deposit[];
+ }
+ 
+@@ -33,4 +39,9 @@ export class DepositService {
+   record(clientId: number, deposit: NewDeposit): Observable<Deposit> {
+     return this.http.post<Deposit>(`/api/clients/${clientId}/deposits`, deposit);
+   }
++
++  /** Puts part of the client's held deposits toward the given invoices. */
++  apply(clientId: number, application: NewDepositApplication): Observable<unknown> {
++    return this.http.post(`/api/clients/${clientId}/deposits/applications`, application);
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/payments/client-payment.ts b/src/main/frontend/src/app/features/payments/client-payment.ts
+index c9dd140..48d9898 100644
+--- a/src/main/frontend/src/app/features/payments/client-payment.ts
++++ b/src/main/frontend/src/app/features/payments/client-payment.ts
+@@ -1,8 +1,10 @@
+ import { CurrencyPipe, formatCurrency, getCurrencySymbol } from '@angular/common';
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, inject, input, output, signal } from '@angular/core';
++import { Observable } from 'rxjs';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { DepositService } from '../deposits/deposit.service';
+ import { InvoiceService } from '../invoices/invoice.service';
+ import { PaymentService } from './payment.service';
+ 
+@@ -14,58 +16,70 @@ function toCents(value: string | number): number | null {
+   return TWO_DECIMALS.test(trimmed) ? Math.round(Number(trimmed) * 100) : null;
+ }
+ 
++/** Where the money split across the invoices comes from: a payment received now, or deposits already held. */
++export type PaymentSource = 'payment' | 'deposit';
++
+ // Records one lump payment from a client and splits it across their invoices that are still owed.
+-// The shares must account for the whole payment before it is recorded.
++// The shares must account for the whole payment before it is recorded. With the deposit source it
++// instead puts part of the client's held deposits toward those invoices, split the same way; the
++// shares may not add up to more than is held.
+ @Component({
+   selector: 'app-client-payment',
+   imports: [ReactiveFormsModule, CurrencyPipe],
+   template: `
+     <section aria-labelledby="client-payment-heading" data-testid="client-payment">
+-      <h2 id="client-payment-heading">Record a payment</h2>
+-      @if (statement.error()) {
++      <h2 id="client-payment-heading">{{ fromDeposit() ? 'Put a deposit toward invoices' : 'Record a payment' }}</h2>
++      @if (statement.error() || (fromDeposit() && deposits.error())) {
+         <p role="alert" data-testid="client-payment-load-error">Could not load the client's invoices.</p>
+-      } @else if (statement.hasValue()) {
++      } @else if (statement.hasValue() && (!fromDeposit() || deposits.hasValue())) {
+         @if (owing().length === 0) {
+           <p data-testid="client-payment-none-owing">This client has no invoices waiting to be paid.</p>
+         } @else {
+           <form [formGroup]="form" (ngSubmit)="submit()" data-testid="payment-form" novalidate>
+-            <div>
+-              <label for="client-payment-amount">Amount received</label>
+-              <input
+-                id="client-payment-amount"
+-                type="number"
+-                inputmode="decimal"
+-                min="0.01"
+-                step="0.01"
+-                formControlName="amount"
+-                data-testid="payment-form-amount"
+-                [attr.aria-invalid]="invalid('amount')"
+-                [attr.aria-describedby]="invalid('amount') ? 'client-payment-amount-error' : null"
+-              />
+-              @if (invalid('amount')) {
+-                <p id="client-payment-amount-error" role="alert" data-testid="payment-form-amount-error">
+-                  Enter an amount greater than zero with at most two decimal places.
+-                </p>
+-              }
+-            </div>
+-            <div>
+-              <label for="client-payment-date">Date paid</label>
+-              <input
+-                id="client-payment-date"
+-                type="date"
+-                formControlName="date"
+-                data-testid="payment-form-date"
+-                [attr.aria-invalid]="invalid('date')"
+-                [attr.aria-describedby]="invalid('date') ? 'client-payment-date-error' : null"
+-              />
+-              @if (invalid('date')) {
+-                <p id="client-payment-date-error" role="alert" data-testid="payment-form-date-error">
+-                  Enter the date the payment was made.
+-                </p>
+-              }
+-            </div>
++            @if (fromDeposit()) {
++              <p>
++                Deposits held:
++                <span data-testid="payment-deposit-held">{{ heldCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
++              </p>
++            } @else {
++              <div>
++                <label for="client-payment-amount">Amount received</label>
++                <input
++                  id="client-payment-amount"
++                  type="number"
++                  inputmode="decimal"
++                  min="0.01"
++                  step="0.01"
++                  formControlName="amount"
++                  data-testid="payment-form-amount"
++                  [attr.aria-invalid]="invalid('amount')"
++                  [attr.aria-describedby]="invalid('amount') ? 'client-payment-amount-error' : null"
++                />
++                @if (invalid('amount')) {
++                  <p id="client-payment-amount-error" role="alert" data-testid="payment-form-amount-error">
++                    Enter an amount greater than zero with at most two decimal places.
++                  </p>
++                }
++              </div>
++              <div>
++                <label for="client-payment-date">Date paid</label>
++                <input
++                  id="client-payment-date"
++                  type="date"
++                  formControlName="date"
++                  data-testid="payment-form-date"
++                  [attr.aria-invalid]="invalid('date')"
++                  [attr.aria-describedby]="invalid('date') ? 'client-payment-date-error' : null"
++                />
++                @if (invalid('date')) {
++                  <p id="client-payment-date-error" role="alert" data-testid="payment-form-date-error">
++                    Enter the date the payment was made.
++                  </p>
++                }
++              </div>
++            }
+             <table data-testid="payment-alloc-table">
+-              <caption>Split the payment across the invoices still owed</caption>
++              <caption>Split the {{ fromDeposit() ? 'deposit' : 'payment' }} across the invoices still owed</caption>
+               <thead>
+                 <tr>
+                   <th scope="col">Invoice</th>
+@@ -102,7 +116,9 @@ function toCents(value: string | number): number | null {
+                 </tr>
+               </tfoot>
+             </table>
+-            <button type="submit" data-testid="payment-form-submit" [disabled]="saving()">Record payment</button>
++            <button type="submit" data-testid="payment-form-submit" [disabled]="saving()">
++              {{ fromDeposit() ? 'Apply deposit' : 'Record payment' }}
++            </button>
+             @if (saveError()) {
+               <p role="alert" data-testid="payment-form-error">{{ saveError() }}</p>
+             }
+@@ -115,8 +131,11 @@ function toCents(value: string | number): number | null {
+ export class ClientPaymentForm {
+   private readonly invoices = inject(InvoiceService);
+   private readonly payments = inject(PaymentService);
++  private readonly depositService = inject(DepositService);
+ 
+   readonly clientId = input.required<number>();
++  readonly source = input<PaymentSource>('payment');
++  protected readonly fromDeposit = computed(() => this.source() === 'deposit');
+   /** Emits once the payment has been recorded. */
+   readonly recorded = output<void>();
+ 
+@@ -125,6 +144,17 @@ export class ClientPaymentForm {
+     stream: ({ params }) => this.invoices.statementForClient(params),
+   });
+ 
++  /** The client's deposits, loaded only when they are the source of the money. */
++  protected readonly deposits = rxResource({
++    params: () => (this.fromDeposit() ? this.clientId() : undefined),
++    stream: ({ params }) => this.depositService.list(params),
++  });
++
++  /** Whole cents of deposits still held for the client. */
++  protected readonly heldCents = computed(() =>
++    this.deposits.hasValue() ? Math.round(this.deposits.value().total * 100) : 0,
++  );
++
+   /** The client's currency; the payment and its allocations are in it. */
+   protected readonly currency = computed(() => (this.statement.hasValue() ? this.statement.value().currency : 'USD'));
+ 
+@@ -163,7 +193,7 @@ export class ClientPaymentForm {
+ 
+   protected submit(): void {
+     this.saveError.set(null);
+-    if (this.form.invalid) {
++    if (!this.fromDeposit() && this.form.invalid) {
+       this.form.markAllAsTouched();
+       return;
+     }
+@@ -186,13 +216,20 @@ export class ClientPaymentForm {
+         shares.push({ invoiceId: invoice.id, amount: cents / 100 });
+       }
+     }
++    if (shares.length === 0) {
++      this.saveError.set(`Allocate the ${this.fromDeposit() ? 'deposit' : 'payment'} to at least one invoice.`);
++      return;
++    }
+     const { amount, date } = this.form.getRawValue();
+     const totalCents = toCents(amount) ?? 0;
+-    if (shares.length === 0) {
+-      this.saveError.set('Allocate the payment to at least one invoice.');
++    if (this.fromDeposit() && this.allocatedCents() > this.heldCents()) {
++      this.saveError.set(
++        `The amounts allocated add up to ${this.format(this.allocatedCents())}, ` +
++          `but only ${this.format(this.heldCents())} is held in deposits.`,
++      );
+       return;
+     }
+-    if (this.allocatedCents() !== totalCents) {
++    if (!this.fromDeposit() && this.allocatedCents() !== totalCents) {
+       this.saveError.set(
+         `The amounts allocated add up to ${this.format(this.allocatedCents())}, ` +
+           `but the payment is ${this.format(totalCents)}. Allocate the whole payment.`,
+@@ -206,13 +243,19 @@ export class ClientPaymentForm {
+       this.inFlight = null;
+       settle();
+     };
+-    this.payments.recordForClient(this.clientId(), { amount: totalCents / 100, date, allocations: shares }).subscribe({
++    const request: Observable<unknown> = this.fromDeposit()
++      ? this.depositService.apply(this.clientId(), { allocations: shares })
++      : this.payments.recordForClient(this.clientId(), { amount: totalCents / 100, date, allocations: shares });
++    request.subscribe({
+       next: () => {
+         this.saving.set(false);
+         done();
+         this.form.reset();
+         this.allocations.set({});
+         this.statement.reload();
++        if (this.fromDeposit()) {
++          this.deposits.reload();
++        }
+         this.recorded.emit();
+       },
+       error: (err: HttpErrorResponse) => {
+@@ -220,8 +263,10 @@ export class ClientPaymentForm {
+           err.status === 409
+             ? 'One of the amounts is more than that invoice’s balance due.'
+             : err.status === 400
+-              ? 'The amounts allocated must add up to the whole payment.'
+-              : 'Could not record the payment. Please try again.',
++              ? this.fromDeposit()
++                ? 'The amounts allocated add up to more than the deposits held.'
++                : 'The amounts allocated must add up to the whole payment.'
++              : `Could not ${this.fromDeposit() ? 'apply the deposit' : 'record the payment'}. Please try again.`,
+         );
+         this.saving.set(false);
+         done();
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index d0124b1..0fe7759 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -60,6 +60,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE client_payment RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE deposit_application RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE deposit RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice_discount RESTART IDENTITY");
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/ClientDepositController.java b/src/main/java/net/officefloor/hq/app/deposit/ClientDepositController.java
+index 4490fa6..c533984 100644
+--- a/src/main/java/net/officefloor/hq/app/deposit/ClientDepositController.java
++++ b/src/main/java/net/officefloor/hq/app/deposit/ClientDepositController.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.deposit;
+ 
+ import jakarta.validation.Valid;
++import net.officefloor.hq.app.payment.PaymentService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -16,9 +17,11 @@ import org.springframework.web.bind.annotation.RestController;
+ public class ClientDepositController {
+ 
+     private final DepositService service;
++    private final PaymentService payments;
+ 
+-    public ClientDepositController(DepositService service) {
++    public ClientDepositController(DepositService service, PaymentService payments) {
+         this.service = service;
++        this.payments = payments;
+     }
+ 
+     @GetMapping
+@@ -31,4 +34,12 @@ public class ClientDepositController {
+     public DepositResponse record(@PathVariable Long clientId, @Valid @RequestBody DepositRequest request) {
+         return service.record(clientId, request);
+     }
++
++    /** Puts part of the client's held deposits toward their invoices, split across them. */
++    @PostMapping("/applications")
++    @ResponseStatus(HttpStatus.CREATED)
++    public DepositApplicationResponse apply(@PathVariable Long clientId,
++            @Valid @RequestBody DepositApplicationRequest request) {
++        return payments.applyDeposits(clientId, request);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java b/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java
+index 2fcaf7e..04f7fea 100644
+--- a/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java
++++ b/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java
+@@ -3,6 +3,9 @@ package net.officefloor.hq.app.deposit;
+ import java.math.BigDecimal;
+ import java.util.List;
+ 
+-/** The deposits held for a client, oldest first, and their total. */
+-public record ClientDepositsResponse(BigDecimal total, List<DepositResponse> deposits) {
++/**
++ * The deposits a client has paid, oldest first; {@code total} is what is still held once any
++ * already put toward invoices ({@code applied}) is taken off.
++ */
++public record ClientDepositsResponse(BigDecimal total, BigDecimal applied, List<DepositResponse> deposits) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/DepositApplication.java b/src/main/java/net/officefloor/hq/app/deposit/DepositApplication.java
+new file mode 100644
+index 0000000..ba9464a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/deposit/DepositApplication.java
+@@ -0,0 +1,54 @@
++package net.officefloor.hq.app.deposit;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** Part of a client's held deposits put toward several of their invoices on a given day. */
++@Entity
++@Table(name = "deposit_application")
++public class DepositApplication {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "client_id", nullable = false)
++    private Long clientId;
++
++    @Column(nullable = false, precision = 12, scale = 2)
++    private BigDecimal amount;
++
++    @Column(name = "applied_on", nullable = false)
++    private LocalDate date;
++
++    protected DepositApplication() {
++    }
++
++    public DepositApplication(Long clientId, BigDecimal amount, LocalDate date) {
++        this.clientId = clientId;
++        this.amount = amount.setScale(2);
++        this.date = date;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public LocalDate getDate() {
++        return date;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/DepositApplicationRepository.java b/src/main/java/net/officefloor/hq/app/deposit/DepositApplicationRepository.java
+new file mode 100644
+index 0000000..4e65a84
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/deposit/DepositApplicationRepository.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.deposit;
++
++import java.math.BigDecimal;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
++
++public interface DepositApplicationRepository extends JpaRepository<DepositApplication, Long> {
++
++    /** Total of a client's deposits already put toward invoices (zero when none has been). */
++    @Query("SELECT COALESCE(SUM(a.amount), 0) FROM DepositApplication a WHERE a.clientId = :clientId")
++    BigDecimal sumAmountByClientId(Long clientId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/DepositApplicationRequest.java b/src/main/java/net/officefloor/hq/app/deposit/DepositApplicationRequest.java
+new file mode 100644
+index 0000000..6ed7cad
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/deposit/DepositApplicationRequest.java
+@@ -0,0 +1,19 @@
++package net.officefloor.hq.app.deposit;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotEmpty;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++import java.util.List;
++
++/** Payload to put part of a client's held deposits toward their invoices, split across them. */
++public record DepositApplicationRequest(@NotEmpty List<@Valid @NotNull Allocation> allocations) {
++
++    /** The share of the deposits put toward one invoice. */
++    public record Allocation(
++            @NotNull Long invoiceId,
++            @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount) {
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/DepositApplicationResponse.java b/src/main/java/net/officefloor/hq/app/deposit/DepositApplicationResponse.java
+new file mode 100644
+index 0000000..0f519db
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/deposit/DepositApplicationResponse.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.deposit;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.payment.PaymentResponse;
++
++/** Deposits put toward a client's invoices and the payment recorded against each invoice. */
++public record DepositApplicationResponse(Long id, Long clientId, BigDecimal amount, LocalDate date,
++        List<PaymentResponse> allocations) {
++
++    public static DepositApplicationResponse from(DepositApplication application, List<PaymentResponse> allocations) {
++        return new DepositApplicationResponse(application.getId(), application.getClientId(),
++                application.getAmount(), application.getDate(), allocations);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/DepositRepository.java b/src/main/java/net/officefloor/hq/app/deposit/DepositRepository.java
+index c33c2e3..a97aace 100644
+--- a/src/main/java/net/officefloor/hq/app/deposit/DepositRepository.java
++++ b/src/main/java/net/officefloor/hq/app/deposit/DepositRepository.java
+@@ -1,10 +1,16 @@
+ package net.officefloor.hq.app.deposit;
+ 
++import java.math.BigDecimal;
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface DepositRepository extends JpaRepository<Deposit, Long> {
+ 
+     /** A client's deposits, oldest first. */
+     List<Deposit> findByClientIdOrderByDateAscIdAsc(Long clientId);
++
++    /** Total a client has paid in deposits (zero when none). */
++    @Query("SELECT COALESCE(SUM(d.amount), 0) FROM Deposit d WHERE d.clientId = :clientId")
++    BigDecimal sumAmountByClientId(Long clientId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/DepositService.java b/src/main/java/net/officefloor/hq/app/deposit/DepositService.java
+index 6b8ffeb..a545493 100644
+--- a/src/main/java/net/officefloor/hq/app/deposit/DepositService.java
++++ b/src/main/java/net/officefloor/hq/app/deposit/DepositService.java
+@@ -13,11 +13,14 @@ import org.springframework.web.server.ResponseStatusException;
+ public class DepositService {
+ 
+     private final DepositRepository deposits;
++    private final DepositApplicationRepository applications;
+     private final ClientRepository clients;
+     private final Audit audit;
+ 
+-    public DepositService(DepositRepository deposits, ClientRepository clients, Audit audit) {
++    public DepositService(DepositRepository deposits, DepositApplicationRepository applications,
++            ClientRepository clients, Audit audit) {
+         this.deposits = deposits;
++        this.applications = applications;
+         this.clients = clients;
+         this.audit = audit;
+     }
+@@ -27,9 +30,10 @@ public class DepositService {
+         requireClient(clientId);
+         List<DepositResponse> held = deposits.findByClientIdOrderByDateAscIdAsc(clientId).stream()
+                 .map(DepositResponse::from).toList();
+-        BigDecimal total = held.stream().map(DepositResponse::amount)
++        BigDecimal paid = held.stream().map(DepositResponse::amount)
+                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+-        return new ClientDepositsResponse(total, held);
++        BigDecimal applied = applications.sumAmountByClientId(clientId).setScale(2);
++        return new ClientDepositsResponse(paid.subtract(applied), applied, held);
+     }
+ 
+     /** Records money a client paid up front, before any invoice; it is held against the client. */
+diff --git a/src/main/java/net/officefloor/hq/app/payment/Payment.java b/src/main/java/net/officefloor/hq/app/payment/Payment.java
+index 1b20c8e..dc6246d 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/payment/Payment.java
+@@ -31,6 +31,10 @@ public class Payment {
+     @Column(name = "client_payment_id")
+     private Long clientPaymentId;
+ 
++    /** The deposit application this was put toward the invoice from; null when it was not paid from deposits. */
++    @Column(name = "deposit_application_id")
++    private Long depositApplicationId;
++
+     protected Payment() {
+     }
+ 
+@@ -45,6 +49,13 @@ public class Payment {
+         this.clientPaymentId = clientPaymentId;
+     }
+ 
++    /** A share of a client's held deposits put toward an invoice. */
++    public static Payment fromDeposits(Long invoiceId, BigDecimal amount, LocalDate date, Long depositApplicationId) {
++        Payment payment = new Payment(invoiceId, amount, date);
++        payment.depositApplicationId = depositApplicationId;
++        return payment;
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -64,4 +75,8 @@ public class Payment {
+     public Long getClientPaymentId() {
+         return clientPaymentId;
+     }
++
++    public Long getDepositApplicationId() {
++        return depositApplicationId;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+index 92fccbd..5f8e590 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+@@ -1,13 +1,21 @@
+ package net.officefloor.hq.app.payment;
+ 
+ import java.math.BigDecimal;
++import java.time.Clock;
+ import java.time.LocalDate;
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
++import java.util.function.Function;
++import java.util.function.Supplier;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.creditnote.CreditNoteRepository;
++import net.officefloor.hq.app.deposit.DepositApplication;
++import net.officefloor.hq.app.deposit.DepositApplicationRepository;
++import net.officefloor.hq.app.deposit.DepositApplicationRequest;
++import net.officefloor.hq.app.deposit.DepositApplicationResponse;
++import net.officefloor.hq.app.deposit.DepositRepository;
+ import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+@@ -23,16 +31,23 @@ public class PaymentService {
+     private final CreditNoteRepository creditNotes;
+     private final InvoiceRepository invoices;
+     private final ClientPaymentRepository clientPayments;
++    private final DepositRepository deposits;
++    private final DepositApplicationRepository depositApplications;
+     private final ClientRepository clients;
++    private final Clock clock;
+     private final Audit audit;
+ 
+     public PaymentService(PaymentRepository payments, CreditNoteRepository creditNotes, InvoiceRepository invoices,
+-            ClientPaymentRepository clientPayments, ClientRepository clients, Audit audit) {
++            ClientPaymentRepository clientPayments, DepositRepository deposits,
++            DepositApplicationRepository depositApplications, ClientRepository clients, Clock clock, Audit audit) {
+         this.payments = payments;
+         this.creditNotes = creditNotes;
+         this.invoices = invoices;
+         this.clientPayments = clientPayments;
++        this.deposits = deposits;
++        this.depositApplications = depositApplications;
+         this.clients = clients;
++        this.clock = clock;
+         this.audit = audit;
+     }
+ 
+@@ -49,7 +64,8 @@ public class PaymentService {
+      */
+     @Transactional
+     public PaymentResponse record(Long projectId, Long invoiceId, PaymentRequest request) {
+-        return apply(find(projectId, invoiceId), request.amount(), request.date(), null);
++        Invoice invoice = find(projectId, invoiceId);
++        return apply(invoice, request.amount(), () -> new Payment(invoice.getId(), request.amount(), request.date()));
+     }
+ 
+     /**
+@@ -59,30 +75,69 @@ public class PaymentService {
+      */
+     @Transactional
+     public ClientPaymentResponse recordForClient(Long clientId, ClientPaymentRequest request) {
+-        if (!clients.existsById(clientId)) {
+-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+-        }
+-        BigDecimal allocated = request.allocations().stream()
+-                .map(ClientPaymentRequest.Allocation::amount)
+-                .reduce(BigDecimal.ZERO, BigDecimal::add);
++        requireClient(clientId);
++        BigDecimal allocated = total(request.allocations(), ClientPaymentRequest.Allocation::amount);
+         if (allocated.compareTo(request.amount()) != 0) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                     "The shares must add up to the whole payment");
+         }
+-        Set<Long> seen = new HashSet<>();
+-        for (ClientPaymentRequest.Allocation a : request.allocations()) {
+-            if (!seen.add(a.invoiceId())) {
+-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Each invoice may be paid only once");
+-            }
+-        }
++        requireDistinct(request.allocations(), ClientPaymentRequest.Allocation::invoiceId);
+         ClientPayment lump = clientPayments.saveAndFlush(new ClientPayment(clientId, request.amount(), request.date()));
+         List<PaymentResponse> shares = request.allocations().stream()
+-                .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(), request.date(), lump.getId()))
++                .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(),
++                        () -> new Payment(a.invoiceId(), a.amount(), request.date(), lump.getId())))
+                 .toList();
+         return ClientPaymentResponse.from(lump, shares);
+     }
+ 
+-    private PaymentResponse apply(Invoice invoice, BigDecimal amount, LocalDate date, Long clientPaymentId) {
++    /**
++     * Puts part of a client's held deposits toward several of their owing invoices, today. The
++     * shares may not add up to more than is still held, each invoice may appear once, and each share
++     * is recorded as a payment against its own invoice under the same rules as a lump payment's.
++     */
++    @Transactional
++    public DepositApplicationResponse applyDeposits(Long clientId, DepositApplicationRequest request) {
++        requireClient(clientId);
++        BigDecimal allocated = total(request.allocations(), DepositApplicationRequest.Allocation::amount);
++        BigDecimal held = deposits.sumAmountByClientId(clientId)
++                .subtract(depositApplications.sumAmountByClientId(clientId));
++        if (allocated.compareTo(held) > 0) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "The shares add up to more than the deposits held");
++        }
++        requireDistinct(request.allocations(), DepositApplicationRequest.Allocation::invoiceId);
++        LocalDate today = LocalDate.now(clock);
++        DepositApplication application = depositApplications.saveAndFlush(
++                new DepositApplication(clientId, allocated, today));
++        List<PaymentResponse> shares = request.allocations().stream()
++                .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(),
++                        () -> Payment.fromDeposits(a.invoiceId(), a.amount(), today, application.getId())))
++                .toList();
++        audit.record("DEPOSIT_APPLIED id=" + application.getId() + " client=" + clientId
++                + " amount=" + application.getAmount().toPlainString());
++        return DepositApplicationResponse.from(application, shares);
++    }
++
++    private void requireClient(Long clientId) {
++        if (!clients.existsById(clientId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
++        }
++    }
++
++    private static <A> BigDecimal total(List<A> allocations, Function<A, BigDecimal> amount) {
++        return allocations.stream().map(amount).reduce(BigDecimal.ZERO, BigDecimal::add);
++    }
++
++    private static <A> void requireDistinct(List<A> allocations, Function<A, Long> invoiceId) {
++        Set<Long> seen = new HashSet<>();
++        for (A a : allocations) {
++            if (!seen.add(invoiceId.apply(a))) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Each invoice may be paid only once");
++            }
++        }
++    }
++
++    private PaymentResponse apply(Invoice invoice, BigDecimal amount, Supplier<Payment> payment) {
+         if (invoice.getStatus() == InvoiceStatus.DRAFT) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "Send the invoice before recording a payment");
+         }
+@@ -101,7 +156,7 @@ public class PaymentService {
+         if (settled.compareTo(invoice.getAmount()) > 0) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment is more than the balance due");
+         }
+-        Payment saved = payments.saveAndFlush(new Payment(invoice.getId(), amount, date, clientPaymentId));
++        Payment saved = payments.saveAndFlush(payment.get());
+         invoice.applySettledTotals(paid, credited);
+         invoices.flush();
+         audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount=" + saved.getAmount().toPlainString());
+diff --git a/src/main/resources/db/migration/V58__deposit_application.sql b/src/main/resources/db/migration/V58__deposit_application.sql
+new file mode 100644
+index 0000000..a2837e0
+--- /dev/null
++++ b/src/main/resources/db/migration/V58__deposit_application.sql
+@@ -0,0 +1,17 @@
++-- Part of a client's held deposits put toward their invoices in one go, split the same way as a lump
++-- payment. Each share is recorded as an ordinary payment against its invoice, linked back to the
++-- application it came from; what is still held is the deposits less everything applied.
++CREATE TABLE deposit_application (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    client_id  BIGINT         NOT NULL,
++    amount     DECIMAL(12, 2) NOT NULL,
++    applied_on DATE           NOT NULL,
++    CONSTRAINT deposit_application_client_fk FOREIGN KEY (client_id) REFERENCES client (id),
++    CONSTRAINT deposit_application_amount_positive CHECK (amount > 0)
++);
++
++CREATE INDEX deposit_application_client_idx ON deposit_application (client_id, applied_on);
++
++ALTER TABLE payment ADD COLUMN deposit_application_id BIGINT;
++ALTER TABLE payment ADD CONSTRAINT payment_deposit_application_fk
++    FOREIGN KEY (deposit_application_id) REFERENCES deposit_application (id);
