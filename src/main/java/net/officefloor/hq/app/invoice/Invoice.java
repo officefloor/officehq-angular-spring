@@ -36,6 +36,9 @@ import net.officefloor.hq.app.project.Project;
  * A tax-inclusive invoice (for a client whose prices already include tax) instead works the tax and
  * levy back out of the taxable lines after the discount: they are inside the price, so its amount is
  * just the subtotal less the discount, and the taxable base is what is left once they are taken out.
+ * <p>
+ * A tax-exempt invoice (for a tax-exempt client) has no taxable lines at all: it carries no tax or levy
+ * whatever its lines or rates say, so its amount is the subtotal less the discount.
  */
 @Entity
 @Table(name = "invoice")
@@ -65,6 +68,10 @@ public class Invoice {
     @Column(name = "tax_inclusive", nullable = false)
     private boolean taxInclusive;
 
+    /** Whether the invoice is for a tax-exempt client, so it carries no tax or levy whatever its lines say. */
+    @Column(name = "tax_exempt", nullable = false)
+    private boolean taxExempt;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private InvoiceStatus status = InvoiceStatus.DRAFT;
@@ -87,6 +94,7 @@ public class Invoice {
         this.issuedDate = issuedDate;
         this.dueDate = dueDate;
         this.taxInclusive = project.getClient().isTaxInclusive();
+        this.taxExempt = project.getClient().isTaxExempt();
     }
 
     public Long getId() {
@@ -134,6 +142,11 @@ public class Invoice {
         return taxInclusive;
     }
 
+    /** Whether the invoice is for a tax-exempt client, so none of its lines are taxed. */
+    public boolean isTaxExempt() {
+        return taxExempt;
+    }
+
     /**
      * What the sales tax is charged on: the taxable lines (leaving out tax-free ones) less the discount
      * taken off them, to the cent. On a tax-inclusive invoice that is what is left of them once the tax
@@ -170,9 +183,12 @@ public class Invoice {
         return sumOverTaxableLines(line -> line);
     }
 
-    /** Works a figure out on each taxable line after its discount, to the cent, and adds them up. */
+    /**
+     * Works a figure out on each taxable line after its discount, to the cent, and adds them up. A
+     * tax-exempt invoice has no taxable lines.
+     */
     private BigDecimal sumOverTaxableLines(UnaryOperator<BigDecimal> perLine) {
-        return lineItems.stream().filter(l -> !l.isTaxExempt()).map(InvoiceLineItem::getAmount)
+        return lineItems.stream().filter(l -> !taxExempt && !l.isTaxExempt()).map(InvoiceLineItem::getAmount)
                 .map(amount -> perLine.apply(amount.subtract(discountOn(amount))))
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
@@ -249,6 +265,12 @@ public class Invoice {
     /** Sets whether this invoice's prices already include tax and reworks its amount to match. */
     public void applyTaxInclusive(boolean taxInclusive) {
         this.taxInclusive = taxInclusive;
+        recalculateAmount();
+    }
+
+    /** Sets whether this invoice is for a tax-exempt client and reworks its amount to match. */
+    public void applyTaxExempt(boolean taxExempt) {
+        this.taxExempt = taxExempt;
         recalculateAmount();
     }
 

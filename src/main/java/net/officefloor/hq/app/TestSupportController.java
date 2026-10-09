@@ -76,10 +76,11 @@ public class TestSupportController {
             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
         }
         for (Map<String, Object> c : rows(fixture, "clients")) {
-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, archived, currency)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, archived, currency)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"),
-                    Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("archived")),
+                    Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
+                    Boolean.TRUE.equals(c.get("archived")),
                     c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString());
         }
         for (Map<String, Object> c : rows(fixture, "contacts")) {
@@ -146,6 +147,13 @@ public class TestSupportController {
             // percentage off the subtotal; sales tax and a levy each add their percentage of every taxable
             // line after its discount, rounded per line and then added up. The amount is the discounted
             // subtotal plus the tax plus the levy.
+            // An invoice for a tax-exempt client carries no tax or levy on any line.
+            long projectId = ((Number) i.get("projectId")).longValue();
+            Map<String, Object> client = jdbc.queryForMap(
+                    "SELECT c.tax_inclusive, c.tax_exempt FROM project p JOIN client c ON c.id = p.client_id WHERE p.id = ?",
+                    projectId);
+            boolean taxInclusive = Boolean.TRUE.equals(client.get("TAX_INCLUSIVE"));
+            boolean taxExempt = Boolean.TRUE.equals(client.get("TAX_EXEMPT"));
             BigDecimal subtotal = BigDecimal.ZERO.setScale(2);
             BigDecimal tax = BigDecimal.ZERO.setScale(2);
             BigDecimal levy = BigDecimal.ZERO.setScale(2);
@@ -153,7 +161,7 @@ public class TestSupportController {
                 BigDecimal line = new BigDecimal(l.get("qty").toString())
                         .multiply(new BigDecimal(l.get("unitPrice").toString())).setScale(2, RoundingMode.HALF_UP);
                 subtotal = subtotal.add(line);
-                if (!Boolean.TRUE.equals(l.get("taxExempt"))) {
+                if (!taxExempt && !Boolean.TRUE.equals(l.get("taxExempt"))) {
                     BigDecimal base = line.subtract(
                             line.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
                     tax = tax.add(base.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
@@ -164,14 +172,10 @@ public class TestSupportController {
             BigDecimal discounted = subtotal.subtract(discount);
             // An invoice for a tax-inclusive client already has the taxes inside its prices, so its amount is
             // just the discounted subtotal.
-            long projectId = ((Number) i.get("projectId")).longValue();
-            boolean taxInclusive = Boolean.TRUE.equals(jdbc.queryForObject(
-                    "SELECT c.tax_inclusive FROM project p JOIN client c ON c.id = p.client_id WHERE p.id = ?",
-                    Boolean.class, projectId));
-            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, levy_pct, tax_inclusive, status,"
-                    + " issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, levy_pct, tax_inclusive, tax_exempt,"
+                    + " status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
-                    taxInclusive ? discounted : discounted.add(tax).add(levy), discountPct, taxPct, levyPct, taxInclusive,
+                    taxInclusive ? discounted : discounted.add(tax).add(levy), discountPct, taxPct, levyPct, taxInclusive, taxExempt,
                     seedStatus(i.get("status")), issued, due);
             for (Map<String, Object> l : lineItems) {
                 if (l.get("id") != null) {

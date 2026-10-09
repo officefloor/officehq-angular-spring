@@ -37,6 +37,9 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
           (prices already include tax)
         }
       </p>
+      @if (inv.taxExempt) {
+        <p data-testid="invoice-tax-exempt">Client is tax exempt: no tax is charged on this invoice.</p>
+      }
       @if (inv.clientTaxNumber) {
         <p>Client tax number: <span data-testid="invoice-client-tax-number">{{ inv.clientTaxNumber }}</span></p>
       }

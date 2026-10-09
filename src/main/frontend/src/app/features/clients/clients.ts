@@ -112,6 +112,12 @@ import { Client, ClientService } from './client.service';
           Prices include tax
         </label>
       </div>
+      <div>
+        <label>
+          <input type="checkbox" formControlName="taxExempt" data-testid="client-form-tax-exempt" />
+          Tax exempt (no tax on any invoice)
+        </label>
+      </div>
       <button type="submit" data-testid="client-form-submit" [disabled]="saving()">Add client</button>
       @if (saveError()) {
         <p role="alert" data-testid="client-form-error">{{ saveError() }}</p>
@@ -268,6 +274,7 @@ export class Clients {
     taxNumber: ['', Validators.maxLength(50)],
     billingAddress: ['', Validators.maxLength(500)],
     taxInclusive: false,
+    taxExempt: false,
   });
 
   constructor() {
@@ -292,10 +299,10 @@ export class Clients {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, taxNumber, billingAddress, taxInclusive } = this.form.getRawValue();
+    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive }).subscribe({
+    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created]);
         this.form.reset();

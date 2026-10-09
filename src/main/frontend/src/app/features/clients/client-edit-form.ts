@@ -3,7 +3,7 @@ import { Component, ElementRef, OnInit, afterNextRender, inject, input, output, 
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Client, ClientService } from './client.service';
 
-// Form to correct one client's name, email, phone number, tax number or whether their prices include tax. Emits the saved client, or cancelled when abandoned.
+// Form to correct one client's name, email, phone number, tax number, whether their prices include tax or whether they are tax exempt. Emits the saved client, or cancelled when abandoned.
 @Component({
   selector: 'app-client-edit-form',
   imports: [ReactiveFormsModule],
@@ -111,6 +111,12 @@ import { Client, ClientService } from './client.service';
           Prices include tax
         </label>
       </div>
+      <div>
+        <label>
+          <input type="checkbox" formControlName="taxExempt" data-testid="client-edit-form-tax-exempt" />
+          Tax exempt (no tax on any invoice)
+        </label>
+      </div>
       <button type="submit" data-testid="client-edit-form-submit" [disabled]="saving()">Save</button>
       <button type="button" data-testid="client-edit-form-cancel" (click)="cancelled.emit()">Cancel</button>
       @if (saveError()) {
@@ -146,6 +152,7 @@ export class ClientEditForm implements OnInit {
     taxNumber: ['', Validators.maxLength(50)],
     billingAddress: ['', Validators.maxLength(500)],
     taxInclusive: false,
+    taxExempt: false,
   });
 
   constructor() {
@@ -153,8 +160,8 @@ export class ClientEditForm implements OnInit {
   }
 
   ngOnInit(): void {
-    const { name, email, phone, taxNumber, billingAddress, taxInclusive } = this.client();
-    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive });
+    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt } = this.client();
+    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt });
   }
 
   protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress'): boolean {
@@ -167,10 +174,10 @@ export class ClientEditForm implements OnInit {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, taxNumber, billingAddress, taxInclusive } = this.form.getRawValue();
+    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive }).subscribe({
+    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt }).subscribe({
       next: (updated) => {
         this.saving.set(false);
         this.saved.emit(updated);

@@ -19,6 +19,8 @@ export interface Client {
   billingAddress: string | null;
   /** Whether the client's prices already include tax, so it is worked back out of them rather than added on. */
   taxInclusive: boolean;
+  /** Whether the client is tax exempt, so none of their invoices carry any tax whatever the lines say. */
+  taxExempt: boolean;
   archived: boolean;
   /** The client's main contact; null until one is chosen. */
   primaryContact: { id: number; name: string } | null;

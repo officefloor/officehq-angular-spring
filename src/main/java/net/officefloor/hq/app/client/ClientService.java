@@ -70,6 +70,7 @@ public class ClientService {
         try {
             Client client = new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber(), request.trimmedBillingAddress());
             client.setTaxInclusive(Boolean.TRUE.equals(request.taxInclusive()));
+            client.setTaxExempt(Boolean.TRUE.equals(request.taxExempt()));
             return respond(clients.saveAndFlush(client));
         } catch (DataIntegrityViolationException e) {
             // Lost a race with a concurrent add of the same email; the unique constraint caught it.
@@ -82,7 +83,7 @@ public class ClientService {
 
     /**
      * Corrects a client's name, email, phone number, tax number and billing address; the email, once trimmed, must not belong to another client.
-     * When whether their prices include tax changes, their draft invoices are reworked to match; sent ones keep the
+     * When whether their prices include tax, or whether they are tax exempt, changes, their draft invoices are reworked to match; sent ones keep the
      * figures they were issued with. The change is recorded in the audit log.
      */
     @Transactional
@@ -97,6 +98,11 @@ public class ClientService {
             client.setTaxInclusive(request.taxInclusive());
             invoices.findByClientIdAndStatus(id, InvoiceStatus.DRAFT)
                     .forEach(i -> i.applyTaxInclusive(request.taxInclusive()));
+        }
+        if (request.taxExempt() != null && request.taxExempt() != client.isTaxExempt()) {
+            client.setTaxExempt(request.taxExempt());
+            invoices.findByClientIdAndStatus(id, InvoiceStatus.DRAFT)
+                    .forEach(i -> i.applyTaxExempt(request.taxExempt()));
         }
         try {
             clients.flush();
