@@ -1,0 +1,263 @@
+$ bin/build
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610100208/gated-chain1/.run/pw-artifacts
+
+Running 41 tests using 1 worker
+
+[1A[2K[1/41] [chromium] › cp01_clients.spec.ts:6:7 › clients › lists seeded clients, excluding archived
+[1A[2K  1) [chromium] › cp01_clients.spec.ts:6:7 › clients › lists seeded clients, excluding archived ────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveCount[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId(/^client-row-/)
+    Expected: [32m2[39m
+    Received: [31m3[39m
+    Call log:
+      [2m- expect.toHaveCount with timeout 5000ms[22m
+    [2m  - waiting for getByTestId(/^client-row-/)[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   unexpected value "3"[22m
+
+
+      16 |
+      17 |     await expect(page.getByTestId('clients-table')).toBeVisible();
+    > 18 |     await expect(page.getByTestId(/^client-row-/)).toHaveCount(2);
+         |                                                    ^
+      19 |     await expect(page.getByTestId('client-row-1').getByTestId('client-name')).toHaveText('Acme Ltd');
+      20 |     await expect(page.getByTestId('client-row-3')).toHaveCount(0);
+      21 |   });
+
+        at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp01_clients.spec.ts:18:52
+
+
+[1A[2K[2/41] [chromium] › cp01_clients.spec.ts:23:7 › clients › creates a client
+[1A[2K[3/41] [chromium] › cp02_client_email_validation.spec.ts:7:7 › client email validation › rejects a blank email
+[1A[2K[4/41] [chromium] › cp02_client_email_validation.spec.ts:20:7 › client email validation › rejects a malformed email
+[1A[2K[5/41] [chromium] › cp02_client_email_validation.spec.ts:33:7 › client email validation › accepts a valid email
+[1A[2K[6/41] [chromium] › cp03_projects.spec.ts:6:7 › projects › lists projects with their client name, excluding archived
+[1A[2K  2) [chromium] › cp03_projects.spec.ts:6:7 › projects › lists projects with their client name, excluding archived 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveCount[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId(/^project-row-/)
+    Expected: [32m1[39m
+    Received: [31m2[39m
+    Call log:
+      [2m- expect.toHaveCount with timeout 5000ms[22m
+    [2m  - waiting for getByTestId(/^project-row-/)[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+
+
+      16 |
+      17 |     await expect(page.getByTestId('projects-table')).toBeVisible();
+    > 18 |     await expect(page.getByTestId(/^project-row-/)).toHaveCount(1);
+         |                                                     ^
+      19 |     await expect(page.getByTestId('project-row-1').getByTestId('project-name')).toHaveText('Website Rebuild');
+      20 |     await expect(page.getByTestId('project-row-1').getByTestId('project-client')).toHaveText('Acme Ltd');
+      21 |     await expect(page.getByTestId('project-row-2')).toHaveCount(0);
+
+        at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp03_projects.spec.ts:18:53
+
+
+[1A[2K[7/41] [chromium] › cp03_projects.spec.ts:24:7 › projects › creates a project for a client
+[1A[2K[8/41] [chromium] › cp04_project_invoices.spec.ts:8:7 › project invoices › a project shows its invoices and their total
+[1A[2K[9/41] [chromium] › cp04_project_invoices.spec.ts:27:7 › project invoices › adding a line item to a new invoice sets its amount
+[1A[2K[10/41] [chromium] › cp05_invoice_pay_audit.spec.ts:8:7 › invoice payment › recording a full payment marks the invoice paid
+[1A[2K[11/41] [chromium] › cp06_client_search.spec.ts:6:7 › client search › filters clients by name and skips archived matches
+[1A[2K  3) [chromium] › cp06_client_search.spec.ts:6:7 › client search › filters clients by name and skips archived matches 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveCount[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId(/^client-row-/)
+    Expected: [32m3[39m
+    Received: [31m4[39m
+    Call log:
+      [2m- expect.toHaveCount with timeout 5000ms[22m
+    [2m  - waiting for getByTestId(/^client-row-/)[22m
+    [2m  -   locator resolved to 0 elements[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to 0 elements[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+    [2m  -   locator resolved to 4 elements[22m
+    [2m  -   unexpected value "4"[22m
+
+
+      15 |     await page.goto('/');
+      16 |     await page.getByTestId('nav-clients').click();
+    > 17 |     await expect(page.getByTestId(/^client-row-/)).toHaveCount(3); // archived excluded from the list
+         |                                                    ^
+      18 |
+      19 |     await page.getByTestId('client-search').fill('glob');
+      20 |     await expect(page.getByTestId(/^client-row-/)).toHaveCount(1);
+
+        at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp06_client_search.spec.ts:17:52
+
+
+[1A[2K[12/41] [chromium] › cp07_client_detail_projects.spec.ts:6:7 › client detail › lists the client's projects, excluding archived
+[1A[2K  4) [chromium] › cp07_client_detail_projects.spec.ts:6:7 › client detail › lists the client's projects, excluding archived 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveCount[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('client-projects-table').getByTestId(/^project-row-/)
+    Expected: [32m1[39m
+    Received: [31m2[39m
+    Call log:
+      [2m- expect.toHaveCount with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('client-projects-table').getByTestId(/^project-row-/)[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to 2 elements[22m
+    [2m  -   unexpected value "2"[22m
+
+
+      22 |     const owned = page.getByTestId('client-projects-table');
+      23 |     await expect(owned).toBeVisible();
+    > 24 |     await expect(owned.getByTestId(/^project-row-/)).toHaveCount(1);
+         |                                                      ^
+      25 |     await expect(owned.getByTestId('project-row-1').getByTestId('project-name')).toHaveText('Website Rebuild');
+      26 |     await expect(owned.getByTestId('project-row-2')).toHaveCount(0);
+      27 |     await expect(owned.getByTestId('project-row-3')).toHaveCount(0);
+
+        at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp07_client_detail_projects.spec.ts:24:54
+
+
+[1A[2K[13/41] [chromium] › cp08_dashboard.spec.ts:7:7 › dashboard › shows counts and the outstanding total
+[1A[2K[14/41] [chromium] › cp09_currency_format.spec.ts:9:7 › currency formatting › invoice amounts and totals show a currency symbol
+[1A[2K[15/41] [chromium] › cp10_invoice_amount_positive.spec.ts:7:7 › invoice amount validation › rejects a non-positive amount
+[1A[2K[16/41] [chromium] › cp10_invoice_amount_positive.spec.ts:24:7 › invoice amount validation › accepts a positive amount
+[1A[2K[17/41] [chromium] › cp11_invoice_dates.spec.ts:6:7 › invoice dates › an invoice shows its issue and due dates
+[1A[2K[18/41] [chromium] › cp12_invoice_sort_due.spec.ts:6:7 › sort invoices by due date › sorts the invoices earliest due first
+[1A[2K[19/41] [chromium] › cp13_invoice_lifecycle.spec.ts:8:7 › invoice lifecycle › sending a draft invoice moves it to sent and records it
+[1A[2K[20/41] [chromium] › cp13_invoice_lifecycle.spec.ts:24:7 › invoice lifecycle › a sent invoice becomes paid once a covering payment is recorded
+[1A[2K[21/41] [chromium] › cp14_all_invoices.spec.ts:6:7 › all invoices › lists invoices from every project with project and status
+[1A[2K[22/41] [chromium] › cp15_invoice_status_filter.spec.ts:6:7 › filter invoices by status › shows only invoices at the chosen stage
+[1A[2K[23/41] [chromium] › cp16_client_contacts.spec.ts:6:7 › client contacts › lists a client's contacts
+[1A[2K[24/41] [chromium] › cp16_client_contacts.spec.ts:31:7 › client contacts › adds a contact to a client
+[1A[2K[25/41] [chromium] › cp17_outstanding_sent_only.spec.ts:7:7 › outstanding counts sent invoices only › the outstanding total excludes drafts
+[1A[2K[26/41] [chromium] › cp18_contact_email_validation.spec.ts:6:7 › contact email validation › rejects a bad contact email
+[1A[2K[27/41] [chromium] › cp19_client_badges.spec.ts:6:7 › client badges › shows project and contact counts
+[1A[2K[28/41] [chromium] › cp20_project_tasks.spec.ts:7:7 › project tasks › lists tasks and lets me tick one off
+[1A[2K[29/41] [chromium] › cp21_invoice_line_items.spec.ts:7:7 › invoice line items › invoice amount is the sum of its line items
+[1A[2K[30/41] [chromium] › cp21_invoice_line_items.spec.ts:38:7 › invoice line items › adding a line item increases the invoice total
+[1A[2K[31/41] [chromium] › cp22_line_items_edit.spec.ts:6:7 › edit line items › removing a line item lowers the total
+[1A[2K[32/41] [chromium] › cp23_task_filter.spec.ts:6:7 › filter tasks › shows only open or only done tasks
+[1A[2K[33/41] [chromium] › cp24_project_delete_audit.spec.ts:8:7 › remove a project › removing archives the project and records it
+[1A[2K[34/41] [chromium] › cp25_project_archive.spec.ts:8:7 › archive a project › archiving hides the project but keeps it
+[1A[2K[35/41] [chromium] › cp26_project_tags.spec.ts:8:7 › project tags › shows, adds and removes tags on a project
+[1A[2K[36/41] [chromium] › cp27_project_tag_filter.spec.ts:6:7 › filter projects by tag › shows only projects with the chosen tag
+[1A[2K[37/41] [chromium] › cp28_project_notes.spec.ts:6:7 › project notes › shows notes newest first and adds a new one on top
+[1A[2K[38/41] [chromium] › cp29_client_archive.spec.ts:8:7 › archive a client › archiving hides the client but keeps it
+[1A[2K[39/41] [chromium] › cp30_invoice_payments.spec.ts:6:7 › invoice payments › shows and records payments on an invoice
+[1A[2K[40/41] [chromium] › cp31_invoice_amount_due.spec.ts:7:7 › invoice amount due › shows the amount due and a partial status when part paid
+[1A[2K  5) [chromium] › cp31_invoice_amount_due.spec.ts:7:7 › invoice amount due › shows the amount due and a partial status when part paid 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('invoice-row-1').getByTestId('invoice-status')
+    Expected string: [32m"PARTIAL"[39m
+    Received string: [31m"SENT"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('invoice-row-1').getByTestId('invoice-status')[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">SENT</td>[22m
+    [2m  -   unexpected value "SENT"[22m
+
+
+      17 |
+      18 |     await expect(page.getByTestId('invoice-row-1').getByTestId('invoice-due-amount')).toHaveText('$60.00');
+    > 19 |     await expect(page.getByTestId('invoice-row-1').getByTestId('invoice-status')).toHaveText('PARTIAL');
+         |                                                                                   ^
+      20 |   });
+      21 | });
+      22 |
+
+        at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp31_invoice_amount_due.spec.ts:19:83
+
+
+[1A[2K[41/41] [chromium] › cp32_invoice_status_derived.spec.ts:9:7 › derived invoice status › a part payment then full payment drive the status
+[1A[2K  5 failed
+    [chromium] › cp01_clients.spec.ts:6:7 › clients › lists seeded clients, excluding archived ─────
+    [chromium] › cp03_projects.spec.ts:6:7 › projects › lists projects with their client name, excluding archived 
+    [chromium] › cp06_client_search.spec.ts:6:7 › client search › filters clients by name and skips archived matches 
+    [chromium] › cp07_client_detail_projects.spec.ts:6:7 › client detail › lists the client's projects, excluding archived 
+    [chromium] › cp31_invoice_amount_due.spec.ts:7:7 › invoice amount due › shows the amount due and a partial status when part paid 
+  36 passed (47.8s)
