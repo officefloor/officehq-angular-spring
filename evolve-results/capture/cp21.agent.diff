@@ -1,0 +1,754 @@
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index 03365e8..e3c443e 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -37,4 +37,8 @@ export const routes: Routes = [
+     path: 'projects/:id',
+     loadComponent: () => import('./features/projects/project-detail').then((m) => m.ProjectDetail),
+   },
++  {
++    path: 'projects/:projectId/invoices/:invoiceId',
++    loadComponent: () => import('./features/invoices/invoice-detail').then((m) => m.InvoiceDetailPage),
++  },
+ ];
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+new file mode 100644
+index 0000000..32a87a5
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -0,0 +1,187 @@
++import { CurrencyPipe, DecimalPipe } from '@angular/common';
++import { Component, computed, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { RouterLink } from '@angular/router';
++import { InvoiceService } from './invoice.service';
++
++const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
++
++// A single invoice: the things it charges for (description, how many, price each), each line's
++// amount, and the invoice total worked out from them. Lines can be added while it is a draft.
++@Component({
++  selector: 'app-invoice-detail',
++  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink],
++  template: `
++    <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to project</a>
++    @if (invoice.error()) {
++      <p role="alert" data-testid="invoice-error">Could not load the invoice.</p>
++    } @else if (invoice.value(); as inv) {
++      <h1 data-testid="invoice-detail-title">Invoice #{{ inv.id }}</h1>
++      <p>
++        Status: <span data-testid="invoice-status">{{ inv.status }}</span> · Issued
++        <span data-testid="invoice-issued">{{ inv.issuedDate }}</span> · Due
++        <span data-testid="invoice-due">{{ inv.dueDate }}</span>
++      </p>
++
++      <section aria-labelledby="invoice-lineitems-heading">
++        <h2 id="invoice-lineitems-heading">Line items</h2>
++        @if (inv.lineItems.length === 0) {
++          <p data-testid="invoice-lineitems-empty">No line items yet.</p>
++        }
++        <table data-testid="invoice-lineitems-table">
++          <caption>What this invoice charges for</caption>
++          <thead>
++            <tr>
++              <th scope="col">Description</th>
++              <th scope="col">Quantity</th>
++              <th scope="col">Unit price</th>
++              <th scope="col">Amount</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (l of inv.lineItems; track l.id) {
++              <tr [attr.data-testid]="'lineitem-row-' + l.id">
++                <td data-testid="lineitem-description">{{ l.description }}</td>
++                <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
++                <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              </tr>
++            }
++          </tbody>
++          <tfoot>
++            <tr>
++              <th scope="row" colspan="3">Total</th>
++              <td data-testid="invoice-amount">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++            </tr>
++          </tfoot>
++        </table>
++      </section>
++
++      @if (inv.status === 'DRAFT') {
++        <form [formGroup]="form" (ngSubmit)="submit()" data-testid="lineitem-form" novalidate>
++          <h2>Add a line item</h2>
++          <div>
++            <label for="lineitem-description">Description</label>
++            <input
++              id="lineitem-description"
++              type="text"
++              formControlName="description"
++              data-testid="lineitem-form-description"
++              [attr.aria-invalid]="invalid('description')"
++              [attr.aria-describedby]="invalid('description') ? 'lineitem-description-error' : null"
++            />
++            @if (invalid('description')) {
++              <p id="lineitem-description-error" role="alert" data-testid="lineitem-form-description-error">
++                Description is required.
++              </p>
++            }
++          </div>
++          <div>
++            <label for="lineitem-qty">Quantity</label>
++            <input
++              id="lineitem-qty"
++              type="number"
++              inputmode="decimal"
++              min="0.01"
++              step="0.01"
++              formControlName="qty"
++              data-testid="lineitem-form-qty"
++              [attr.aria-invalid]="invalid('qty')"
++              [attr.aria-describedby]="invalid('qty') ? 'lineitem-qty-error' : null"
++            />
++            @if (invalid('qty')) {
++              <p id="lineitem-qty-error" role="alert" data-testid="lineitem-form-qty-error">
++                Enter a quantity greater than zero with at most two decimal places.
++              </p>
++            }
++          </div>
++          <div>
++            <label for="lineitem-unitprice">Unit price</label>
++            <input
++              id="lineitem-unitprice"
++              type="number"
++              inputmode="decimal"
++              min="0.01"
++              step="0.01"
++              formControlName="unitPrice"
++              data-testid="lineitem-form-unitprice"
++              [attr.aria-invalid]="invalid('unitPrice')"
++              [attr.aria-describedby]="invalid('unitPrice') ? 'lineitem-unitprice-error' : null"
++            />
++            @if (invalid('unitPrice')) {
++              <p id="lineitem-unitprice-error" role="alert" data-testid="lineitem-form-unitprice-error">
++                Enter a price greater than zero with at most two decimal places.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="lineitem-form-submit" [disabled]="saving()">Add line item</button>
++          @if (saveError()) {
++            <p role="alert" data-testid="lineitem-form-error">{{ saveError() }}</p>
++          }
++        </form>
++      }
++    }
++  `,
++})
++export class InvoiceDetailPage {
++  private readonly service = inject(InvoiceService);
++
++  /** Bound from the `:projectId` route parameter. */
++  readonly projectId = input.required<string>();
++  /** Bound from the `:invoiceId` route parameter. */
++  readonly invoiceId = input.required<string>();
++  protected readonly projectIdNumber = computed(() => Number(this.projectId()));
++
++  protected readonly invoice = rxResource({
++    params: () => ({ projectId: this.projectIdNumber(), invoiceId: Number(this.invoiceId()) }),
++    stream: ({ params }) => this.service.get(params.projectId, params.invoiceId),
++  });
++
++  // Work in whole cents so the total is exact rather than accumulating floating-point error.
++  protected lineCents(qty: number, unitPrice: number): number {
++    return Math.round(Math.round(qty * 100) * Math.round(unitPrice * 100) / 100);
++  }
++  protected readonly totalCents = computed(() =>
++    (this.invoice.hasValue() ? this.invoice.value().lineItems : []).reduce(
++      (sum, l) => sum + this.lineCents(l.qty, l.unitPrice),
++      0,
++    ),
++  );
++
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
++    qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++  });
++
++  protected invalid(name: 'description' | 'qty' | 'unitPrice'): boolean {
++    const control = this.form.controls[name];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.saveError.set(null);
++    const { description, qty, unitPrice } = this.form.getRawValue();
++    const item = { description: description.trim(), qty: Number(qty), unitPrice: Number(unitPrice) };
++    this.service.addLineItem(this.projectIdNumber(), Number(this.invoiceId()), item).subscribe({
++      next: (updated) => {
++        this.invoice.set(updated);
++        this.form.reset();
++        this.saving.set(false);
++      },
++      error: () => {
++        this.saveError.set('Could not add the line item. Please try again.');
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index c440393..90b269e 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -22,8 +22,29 @@ export interface InvoiceSummary extends Invoice {
+   projectName: string;
+ }
+ 
+-export interface NewInvoice {
++/** One thing an invoice charges for; its amount is quantity times unit price. */
++export interface LineItem {
++  id: number;
++  description: string;
++  qty: number;
++  unitPrice: number;
+   amount: number;
++}
++
++/** A single invoice with the line items it is built from. */
++export interface InvoiceDetail extends Invoice {
++  lineItems: LineItem[];
++}
++
++export interface NewLineItem {
++  description: string;
++  qty: number;
++  unitPrice: number;
++}
++
++export interface NewInvoice {
++  /** Raises the invoice as one figure; omit to start an empty draft built up from line items. */
++  amount?: number;
+   /** Defaults to today on the server when omitted. */
+   issuedDate?: string;
+   /** Defaults to 30 days after the issue date on the server when omitted. */
+@@ -48,6 +69,14 @@ export class InvoiceService {
+     return this.http.post<Invoice>(`/api/projects/${projectId}/invoices`, invoice);
+   }
+ 
++  get(projectId: number, invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.get<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}`);
++  }
++
++  addLineItem(projectId: number, invoiceId: number, item: NewLineItem): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items`, item);
++  }
++
+   send(projectId: number, invoiceId: number): Observable<Invoice> {
+     return this.http.post<Invoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+   }
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index c452d86..161d424 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -1,4 +1,5 @@
+ import { CurrencyPipe } from '@angular/common';
++import { RouterLink } from '@angular/router';
+ import { Component, computed, inject, input, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import {
+@@ -17,17 +18,17 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+ }
+ 
+ // A project's invoices: lists them with their issue and due dates, shows what they add up to, adds a
+-// new draft, sends a draft, and marks a sent one as paid.
++// new draft, sends a draft, and marks a sent one as paid. Each invoice opens onto its line items.
+ @Component({
+   selector: 'app-project-invoices',
+-  imports: [ReactiveFormsModule, CurrencyPipe],
++  imports: [ReactiveFormsModule, CurrencyPipe, RouterLink],
+   template: `
+     <section aria-labelledby="project-invoices-heading" data-testid="project-invoices">
+       <h2 id="project-invoices-heading">Invoices</h2>
+ 
+       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="invoice-form" novalidate>
+         <div>
+-          <label for="invoice-amount">Amount</label>
++          <label for="invoice-amount">Amount (optional, or leave blank and add line items)</label>
+           <input
+             id="invoice-amount"
+             type="number"
+@@ -41,7 +42,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+           />
+           @if (showError()) {
+             <p id="invoice-amount-error" role="alert" data-testid="invoice-form-amount-error">
+-              Enter an amount greater than zero with at most two decimal places.
++              Enter an amount greater than zero with at most two decimal places, or leave it blank.
+             </p>
+           }
+         </div>
+@@ -102,7 +103,14 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+           <tbody>
+             @for (i of rows(); track i.id) {
+               <tr [attr.data-testid]="'invoice-row-' + i.id">
+-                <td data-testid="invoice-id">#{{ i.id }}</td>
++                <td data-testid="invoice-id">
++                  <a
++                    [routerLink]="['/projects', projectId(), 'invoices', i.id]"
++                    [attr.data-testid]="'invoice-open-' + i.id"
++                    [attr.aria-label]="'Open invoice #' + i.id"
++                    >#{{ i.id }}</a
++                  >
++                </td>
+                 <td data-testid="invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                 <td data-testid="invoice-status">{{ i.status }}</td>
+                 <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
+@@ -183,10 +191,7 @@ export class ProjectInvoices {
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group(
+     {
+-      amount: [
+-        '',
+-        [Validators.required, Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)],
+-      ],
++      amount: ['', [Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)]],
+       issuedDate: [''],
+       dueDate: [''],
+     },
+@@ -211,7 +216,7 @@ export class ProjectInvoices {
+     this.saveError.set(null);
+     const { amount, issuedDate, dueDate } = this.form.getRawValue();
+     const invoice = {
+-      amount: Number(amount),
++      ...(amount !== '' && amount !== null ? { amount: Number(amount) } : {}),
+       ...(issuedDate ? { issuedDate } : {}),
+       ...(dueDate ? { dueDate } : {}),
+     };
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index f4008cb..aa60ae4 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
+@@ -43,6 +44,7 @@ public class TestSupportController {
+         try {
+             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
+@@ -79,17 +81,44 @@ public class TestSupportController {
+                     : LocalDate.parse(i.get("issuedDate").toString());
+             LocalDate due = i.get("dueDate") == null ? issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
+                     : LocalDate.parse(i.get("dueDate").toString());
++            long invoiceId = ((Number) i.get("id")).longValue();
++            List<Map<String, Object>> lineItems = rows(i, "lineItems");
++            // An invoice is the sum of its line items; a fixture giving only an amount describes an
++            // invoice raised as one figure, which is carried as a single line.
++            if (lineItems.isEmpty() && i.get("amount") != null) {
++                lineItems = List.of(Map.of("description", InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION,
++                        "qty", 1, "unitPrice", i.get("amount")));
++            }
++            BigDecimal amount = BigDecimal.ZERO;
++            for (Map<String, Object> l : lineItems) {
++                amount = amount.add(new BigDecimal(l.get("qty").toString())
++                        .multiply(new BigDecimal(l.get("unitPrice").toString())));
++            }
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, status, issued_date, due_date)"
+                     + " VALUES (?, ?, ?, ?, ?, ?)",
+-                    ((Number) i.get("id")).longValue(), ((Number) i.get("projectId")).longValue(),
+-                    new BigDecimal(i.get("amount").toString()),
++                    invoiceId, ((Number) i.get("projectId")).longValue(),
++                    amount.setScale(2, RoundingMode.HALF_UP),
+                     seedStatus(i.get("status")), issued, due);
++            for (Map<String, Object> l : lineItems) {
++                if (l.get("id") != null) {
++                    jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit_price)"
++                            + " VALUES (?, ?, ?, ?, ?)",
++                            ((Number) l.get("id")).longValue(), invoiceId, l.get("description"),
++                            new BigDecimal(l.get("qty").toString()), new BigDecimal(l.get("unitPrice").toString()));
++                } else {
++                    jdbc.update("INSERT INTO invoice_line_item (invoice_id, description, qty, unit_price)"
++                            + " VALUES (?, ?, ?, ?)",
++                            invoiceId, l.get("description"),
++                            new BigDecimal(l.get("qty").toString()), new BigDecimal(l.get("unitPrice").toString()));
++                }
++            }
+         }
+         // Continue generated ids after the explicitly seeded ones.
+         restartIdentity("client");
+         restartIdentity("contact");
+         restartIdentity("project");
+         restartIdentity("invoice");
++        restartIdentity("invoice_line_item");
+         restartIdentity("task");
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index a3165c7..c38586f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.invoice;
+ 
++import jakarta.persistence.CascadeType;
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.EnumType;
+@@ -10,12 +11,19 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.ManyToOne;
++import jakarta.persistence.OneToMany;
++import jakarta.persistence.OrderBy;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
+ import net.officefloor.hq.app.project.Project;
+ 
+-/** An invoice raised against a project. */
++/**
++ * An invoice raised against a project. It is built from line items, and its stored amount is always
++ * the sum of what each line charges.
++ */
+ @Entity
+ @Table(name = "invoice")
+ public class Invoice {
+@@ -29,7 +37,7 @@ public class Invoice {
+     private Project project;
+ 
+     @Column(nullable = false, precision = 12, scale = 2)
+-    private BigDecimal amount;
++    private BigDecimal amount = BigDecimal.ZERO.setScale(2);
+ 
+     @Enumerated(EnumType.STRING)
+     @Column(nullable = false, length = 16)
+@@ -41,12 +49,15 @@ public class Invoice {
+     @Column(name = "due_date", nullable = false)
+     private LocalDate dueDate;
+ 
++    @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
++    @OrderBy("id")
++    private List<InvoiceLineItem> lineItems = new ArrayList<>();
++
+     protected Invoice() {
+     }
+ 
+-    public Invoice(Project project, BigDecimal amount, LocalDate issuedDate, LocalDate dueDate) {
++    public Invoice(Project project, LocalDate issuedDate, LocalDate dueDate) {
+         this.project = project;
+-        this.amount = amount;
+         this.issuedDate = issuedDate;
+         this.dueDate = dueDate;
+     }
+@@ -75,6 +86,18 @@ public class Invoice {
+         return dueDate;
+     }
+ 
++    public List<InvoiceLineItem> getLineItems() {
++        return List.copyOf(lineItems);
++    }
++
++    /** Adds a line to this invoice and reworks its amount to include what the line charges. */
++    public InvoiceLineItem addLineItem(String description, BigDecimal qty, BigDecimal unitPrice) {
++        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unitPrice);
++        lineItems.add(item);
++        this.amount = lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
++        return item;
++    }
++
+     /** Marks this invoice as sent to the client. */
+     public void markSent() {
+         this.status = InvoiceStatus.SENT;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index 77fa83e..94d2673 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -32,6 +32,18 @@ public class InvoiceController {
+         return service.create(projectId, request);
+     }
+ 
++    @GetMapping("/{invoiceId}")
++    public InvoiceDetailResponse get(@PathVariable Long projectId, @PathVariable Long invoiceId) {
++        return service.get(projectId, invoiceId);
++    }
++
++    @PostMapping("/{invoiceId}/line-items")
++    @ResponseStatus(HttpStatus.CREATED)
++    public InvoiceDetailResponse addLineItem(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody LineItemRequest request) {
++        return service.addLineItem(projectId, invoiceId, request);
++    }
++
+     @PostMapping("/{invoiceId}/send")
+     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.send(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+new file mode 100644
+index 0000000..bae23ab
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++
++/** A single invoice together with the line items it is built from. */
++public record InvoiceDetailResponse(Long id, Long projectId, BigDecimal amount, InvoiceStatus status,
++        LocalDate issuedDate, LocalDate dueDate, List<LineItemResponse> lineItems) {
++
++    static InvoiceDetailResponse from(Invoice invoice) {
++        return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(), invoice.getAmount(),
++                invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
++                invoice.getLineItems().stream().map(LineItemResponse::from).toList());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
+new file mode 100644
+index 0000000..db5dfef
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
+@@ -0,0 +1,71 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.FetchType;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.ManyToOne;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++
++/** One thing an invoice charges for: a description, how many, and the price of each. */
++@Entity
++@Table(name = "invoice_line_item")
++public class InvoiceLineItem {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @ManyToOne(fetch = FetchType.LAZY, optional = false)
++    @JoinColumn(name = "invoice_id", nullable = false)
++    private Invoice invoice;
++
++    @Column(nullable = false)
++    private String description;
++
++    @Column(nullable = false, precision = 10, scale = 2)
++    private BigDecimal qty;
++
++    @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
++    private BigDecimal unitPrice;
++
++    protected InvoiceLineItem() {
++    }
++
++    InvoiceLineItem(Invoice invoice, String description, BigDecimal qty, BigDecimal unitPrice) {
++        this.invoice = invoice;
++        this.description = description;
++        this.qty = qty;
++        this.unitPrice = unitPrice;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Invoice getInvoice() {
++        return invoice;
++    }
++
++    public String getDescription() {
++        return description;
++    }
++
++    public BigDecimal getQty() {
++        return qty;
++    }
++
++    public BigDecimal getUnitPrice() {
++        return unitPrice;
++    }
++
++    /** What this line charges: quantity times unit price, to the cent. */
++    public BigDecimal getAmount() {
++        return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
+index c308d86..6ed3fdd 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
+@@ -2,19 +2,23 @@ package net.officefloor.hq.app.invoice;
+ 
+ import jakarta.validation.constraints.DecimalMin;
+ import jakarta.validation.constraints.Digits;
+-import jakarta.validation.constraints.NotNull;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
+ /**
+- * Payload to add an invoice to a project. The dates are optional: the issue date defaults to today
+- * and the due date to {@link #DEFAULT_TERM_DAYS} days after the issue date.
++ * Payload to add an invoice to a project. Everything is optional: without an amount the invoice
++ * starts as an empty draft to be built up from line items, while an amount is carried as a single
++ * line. The issue date defaults to today and the due date to {@link #DEFAULT_TERM_DAYS} days after
++ * the issue date.
+  */
+ public record InvoiceRequest(
+-        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
++        @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
+         LocalDate issuedDate,
+         LocalDate dueDate) {
+ 
+     /** Days between issue and due date when no due date is given. */
+     public static final int DEFAULT_TERM_DAYS = 30;
++
++    /** Description of the single line an invoice raised as one figure is given. */
++    public static final String SINGLE_AMOUNT_DESCRIPTION = "Invoice amount";
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index cf033c6..20f99ec 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.invoice;
+ 
++import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+@@ -51,10 +52,32 @@ public class InvoiceService {
+         if (due.isBefore(issued)) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Due date must not be before the issue date");
+         }
+-        Invoice saved = invoices.save(new Invoice(project, request.amount(), issued, due));
++        Invoice invoice = new Invoice(project, issued, due);
++        if (request.amount() != null) {
++            invoice.addLineItem(InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION, BigDecimal.ONE, request.amount());
++        }
++        Invoice saved = invoices.save(invoice);
+         return InvoiceResponse.from(saved);
+     }
+ 
++    /** A single invoice with its line items. */
++    @Transactional(readOnly = true)
++    public InvoiceDetailResponse get(Long projectId, Long invoiceId) {
++        return InvoiceDetailResponse.from(find(projectId, invoiceId));
++    }
++
++    /** Adds a line item to a draft invoice and reworks the invoice amount to match. */
++    @Transactional
++    public InvoiceDetailResponse addLineItem(Long projectId, Long invoiceId, LineItemRequest request) {
++        Invoice invoice = find(projectId, invoiceId);
++        if (invoice.getStatus() != InvoiceStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft invoice can be changed");
++        }
++        invoice.addLineItem(request.description().strip(), request.qty(), request.unitPrice());
++        invoices.flush();
++        return InvoiceDetailResponse.from(invoice);
++    }
++
+     /** Sends a draft invoice and records the sending in the audit log. */
+     @Transactional
+     public InvoiceResponse send(Long projectId, Long invoiceId) {
+@@ -62,6 +85,9 @@ public class InvoiceService {
+         if (invoice.getStatus() != InvoiceStatus.DRAFT) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft invoice can be sent");
+         }
++        if (invoice.getAmount().signum() == 0) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Add a line item before sending the invoice");
++        }
+         invoice.markSent();
+         invoices.flush();
+         audit.record("INVOICE_SENT id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java b/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
+new file mode 100644
+index 0000000..8e68385
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++
++/** Payload to add a line item to a draft invoice. */
++public record LineItemRequest(
++        @NotBlank @Size(max = 255) String description,
++        @NotNull @DecimalMin("0.01") @Digits(integer = 8, fraction = 2) BigDecimal qty,
++        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal unitPrice) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java b/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java
+new file mode 100644
+index 0000000..b7df694
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItemResponse.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++
++public record LineItemResponse(Long id, String description, BigDecimal qty, BigDecimal unitPrice,
++        BigDecimal amount) {
++
++    static LineItemResponse from(InvoiceLineItem item) {
++        return new LineItemResponse(item.getId(), item.getDescription(), item.getQty(), item.getUnitPrice(),
++                item.getAmount());
++    }
++}
+diff --git a/src/main/resources/db/migration/V10__invoice_line_items.sql b/src/main/resources/db/migration/V10__invoice_line_items.sql
+new file mode 100644
+index 0000000..bcbda66
+--- /dev/null
++++ b/src/main/resources/db/migration/V10__invoice_line_items.sql
+@@ -0,0 +1,22 @@
++-- An invoice is built from line items: a description, how many, and the price of each. The
++-- invoice amount is the sum of each line's quantity times unit price, so a draft with no lines yet
++-- is worth zero.
++CREATE TABLE invoice_line_item (
++    id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    invoice_id  BIGINT         NOT NULL,
++    description VARCHAR(255)   NOT NULL,
++    qty         DECIMAL(10, 2) NOT NULL,
++    unit_price  DECIMAL(12, 2) NOT NULL,
++    CONSTRAINT invoice_line_item_invoice_fk FOREIGN KEY (invoice_id) REFERENCES invoice (id),
++    CONSTRAINT invoice_line_item_qty_positive CHECK (qty > 0),
++    CONSTRAINT invoice_line_item_unit_price_positive CHECK (unit_price > 0)
++);
++
++CREATE INDEX invoice_line_item_invoice_idx ON invoice_line_item (invoice_id);
++
++ALTER TABLE invoice DROP CONSTRAINT invoice_amount_positive;
++ALTER TABLE invoice ADD CONSTRAINT invoice_amount_not_negative CHECK (amount >= 0);
++
++-- Existing invoices were raised as one figure: carry that figure over as a single line.
++INSERT INTO invoice_line_item (invoice_id, description, qty, unit_price)
++SELECT id, 'Invoice amount', 1, amount FROM invoice;
