@@ -1,0 +1,833 @@
+{
+  "checkpoint": 68,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48"
+  },
+  "checkpoint_id": "cp68_second_tax",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    49
+  ],
+  "request": {
+    "spec": "In some places there is a second tax on top, like a levy. Let me add a second tax rate as\nwell. Both taxes should be worked out and the total should include both.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nIn some places there is a second tax on top, like a levy. Let me add a second tax rate as\nwell. Both taxes should be worked out and the total should include both.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "ae632a9f160efe4519bd70b1bb56f82eafe56916",
+  "reset_sha": "",
+  "preagent_sha": "2941f11a2439dd95f80d3224fc203c082bac5a3c",
+  "prev_sha": "2941f11a2439dd95f80d3224fc203c082bac5a3c",
+  "base_sha": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5538788,
+    "input_tokens": 14,
+    "output_tokens": 6541,
+    "cache_read_tokens": 238094,
+    "cache_creation_tokens": 46923,
+    "num_turns": 8,
+    "duration_ms": 75722,
+    "duration_api_ms": 50545,
+    "model": "claude-opus-5-5",
+    "session_id": "796f5125-5bde-4238-834c-c7d6d4efa78d",
+    "stop_reason": "success",
+    "result_text": "Invoices can now carry a second tax (a levy) on top of the sales tax, and the total includes both. The acceptance test passes under `bin/e2e`.\n\n**How it's worked out:** the levy is a percentage of the same amount the sales tax is charged on, which is the taxable lines after the discount. It is not charged on top of the sales tax. The total is the discounted subtotal plus the sales tax plus the levy. In the test case, 20% tax and a 5% levy on $200 give $40 + $10, for a total of $250.\n\n**What changed:**\n- **Database:** a new migration, `V36__invoice_levy.sql`, adds a levy rate to invoices. It defaults to 0 and must be between 0 and 100. Existing invoices get no levy, so their amounts don't change.\n- **Server:**\n  - Invoices now have a levy rate and work out the levy amount, and both are returned with the invoice details.\n  - There's a new endpoint, `PUT /api/projects/{projectId}/invoices/{invoiceId}/levy`, for setting the levy on a draft invoice. It works the same way as the existing tax endpoint.\n  - The test seed endpoint accepts `levyPct`.\n- **Front end:**\n  - The invoice totals now show a levy line under the tax line. The amount is `invoice-tax-levy`, as the test expects, and the rate is `invoice-tax-levy-pct`.\n  - Draft invoices get a \"Levy\" form next to the \"Sales tax\" form for changing the rate.\n  - No existing `data-testid` was renamed or removed.\n\n**Not covered:** the levy can't be set when an invoice is created, and there's no default levy rate in the settings, so new invoices start at 0% and the rate is set from the invoice page. The test only checks how a seeded invoice is displayed, so the new levy form and endpoint haven't been tested.\n\nThe task description mentions an OfficeFloor server, but the codebase is standard Spring Boot (as `CLAUDE.md` says), so I followed its existing Spring patterns.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.5538788,
+        "num_turns": 8,
+        "duration_ms": 75722,
+        "duration_api_ms": 50545,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp68.agent.jsonl",
+  "agent_diff_file": "cp68.agent.diff",
+  "build_log_file": "cp68.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 82,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients, excluding archived": true,
+      "cp01_clients.spec.ts::creates a client with a unique email": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name, excluding archived": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adding a line item to a new invoice sets its amount": true,
+      "cp05_invoice_pay_audit.spec.ts::recording a full payment marks the invoice paid": true,
+      "cp06_client_search.spec.ts::filters clients by name and skips archived matches": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's active projects by default": true,
+      "cp08_dashboard.spec.ts::shows counts and per-currency outstanding totals": true,
+      "cp09_currency_format.spec.ts::invoice amounts and totals show commas": true,
+      "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount": true,
+      "cp10_invoice_amount_positive.spec.ts::accepts a positive amount": true,
+      "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates": true,
+      "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first": true,
+      "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it": true,
+      "cp13_invoice_lifecycle.spec.ts::a sent invoice becomes paid once a covering payment is recorded": false,
+      "cp14_all_invoices.spec.ts::lists invoices from every project with project and status": false,
+      "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage": false,
+      "cp16_client_contacts.spec.ts::lists a client's contacts": false,
+      "cp16_client_contacts.spec.ts::adds a contact to a client": false,
+      "cp17_outstanding_sent_only.spec.ts::outstanding is discounted, excludes drafts, and is per currency": false,
+      "cp18_contact_email_validation.spec.ts::rejects a bad contact email": false,
+      "cp19_client_badges.spec.ts::shows project and contact counts": false,
+      "cp20_project_tasks.spec.ts::lists tasks and lets me tick one off": false,
+      "cp21_invoice_line_items.spec.ts::invoice amount includes tax on the line-item total": false,
+      "cp22_line_items_edit.spec.ts::removing a line item lowers the total": false,
+      "cp23_task_filter.spec.ts::shows only open or only done tasks": false,
+      "cp24_project_delete_audit.spec.ts::removing archives the project and records it": false,
+      "cp25_project_archive.spec.ts::archiving hides the project but keeps it": false,
+      "cp26_project_tags.spec.ts::shows, adds and removes tags on a project": false,
+      "cp27_project_tag_filter.spec.ts::shows only projects with the chosen tag": false,
+      "cp28_project_notes.spec.ts::shows notes newest first and adds a new one on top": false,
+      "cp29_client_archive.spec.ts::archiving hides the client but keeps it": false,
+      "cp30_invoice_payments.spec.ts::shows and records payments on an invoice": false,
+      "cp31_invoice_amount_due.spec.ts::amount due uses the discounted total": false,
+      "cp32_invoice_status_derived.spec.ts::a part payment then full payment drive the status": false,
+      "cp33_client_statement.spec.ts::the total owed uses discounted amounts in the client currency": false,
+      "cp34_project_status.spec.ts::shows a project's status": false,
+      "cp34_project_status.spec.ts::sets the status when creating a project": false,
+      "cp35_project_status_filter.spec.ts::shows only projects at the chosen status": false,
+      "cp36_client_active_projects_default.spec.ts::shows active projects, with a toggle for the rest": false,
+      "cp37_project_budget.spec.ts::shows budget, invoiced and remaining": false,
+      "cp38_dashboard_overdue.spec.ts::counts sent invoices past their due date": false,
+      "cp39_invoice_pagination.spec.ts::pages through the invoice list ten at a time": false,
+      "cp40_thousands_separator.spec.ts::shows commas in large amounts in the client currency": false,
+      "cp41_invoice_cancel_audit.spec.ts::cancelling voids the invoice and records it": false,
+      "cp41_invoice_cancel_audit.spec.ts::a voided invoice is excluded from outstanding": false,
+      "cp42_client_primary_contact.spec.ts::shows and changes the main contact": false,
+      "cp43_global_search.spec.ts::finds matching clients and projects": false,
+      "cp44_client_unique_email.spec.ts::rejects a duplicate email": false,
+      "cp45_client_edit.spec.ts::updates a client name and email": false,
+      "cp46_line_item_qty_unit.spec.ts::shows quantity, unit and per-line amount": false,
+      "cp47_invoice_discount.spec.ts::shows subtotal, discount, tax and final total": false,
+      "cp48_discount_everywhere.spec.ts::the outstanding total uses the discounted amount per currency": false,
+      "cp49_sales_tax.spec.ts::adds tax after the discount (all lines taxable, no levy)": false,
+      "cp49_sales_tax.spec.ts::excludes tax-free lines from the tax base": false,
+      "cp49_sales_tax.spec.ts::adds a levy on top when one applies": false,
+      "cp50_combined_filter.spec.ts::shows active projects with the chosen label": false,
+      "cp51_client_sort.spec.ts::sorts clients by outstanding amount": false,
+      "cp52_project_to_job_rename.spec.ts::the section reads \"job\" while its testids stay unchanged": false,
+      "cp53_job_code.spec.ts::shows a job code": false,
+      "cp53_job_code.spec.ts::rejects a duplicate code": false,
+      "cp54_invoice_notes.spec.ts::shows and adds notes on an invoice": false,
+      "cp55_dashboard_top_clients.spec.ts::ranks clients by outstanding, shown in their currency": false,
+      "cp56_payment_allocation.spec.ts::splits one payment across two invoices": false,
+      "cp57_statement_by_job.spec.ts::groups invoices by job with subtotals": false,
+      "cp58_client_restore.spec.ts::restores an archived client": false,
+      "cp59_statement_printable.spec.ts::shows a printable statement with a grand total": false,
+      "cp60_multi_currency.spec.ts::sets a client currency and shows their money in it": false,
+      "cp60_multi_currency.spec.ts::home screen keeps totals separate per currency": false,
+      "cp61_default_tax_rate.spec.ts::new invoices start with the default tax rate": false,
+      "cp62_client_phone.spec.ts::shows a client phone number": false,
+      "cp63_line_tax_exempt.spec.ts::shows the tax-free marker and lets a line be marked exempt": false,
+      "cp64_tax_per_taxable_line.spec.ts::excludes tax-free lines from the tax": false,
+      "cp65_tax_summary_line.spec.ts::shows the taxable base, the rate label and the tax": false,
+      "cp66_client_tax_number.spec.ts::shows the client tax number on the client and the invoice": false,
+      "cp67_job_description.spec.ts::shows a job description": false,
+      "cp68_second_tax.spec.ts::adds a levy on top of the sales tax": false
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients, excluding archived",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 430,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client with a unique email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 373,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 273,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 255,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 368,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name, excluding archived",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 289,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 390,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 407,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adding a line item to a new invoice sets its amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 681,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::recording a full payment marks the invoice paid",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 671,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name and skips archived matches",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 291,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's active projects by default",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 351,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and per-currency outstanding totals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 301,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_currency_format.spec.ts::invoice amounts and totals show commas",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 433,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 421,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::accepts a positive amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 450,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 419,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 447,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 567,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::a sent invoice becomes paid once a covering payment is recorded",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 30004,
+        "failure": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m | Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n  \u001b[2m- waiting for getByTestId('invoice-open-1')\u001b[22m\n\n\n  31 |     await page.getByTestId('nav-projects').click();\n  32 |     await page.getByTestId('project-open-1').click();\n> 33 |     await page.getByTestId('invoice-open-1').click();\n     |                                              ^\n  34 |\n  35 |     await page.getByTestId('payment-form-amount').fill('100');\n  36 |     await page.getByTestId('payment-form-date').fill('2026-02-01');\n\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp13_invoice_lifecycle.spec.ts:33:46 | \u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+      },
+      {
+        "test_id": "cp14_all_invoices.spec.ts::lists invoices from every project with project and status",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 78,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp14_all_invoices.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 68,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp15_invoice_status_filter.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::lists a client's contacts",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 65,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp16_client_contacts.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::adds a contact to a client",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 72,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp16_client_contacts.spec.ts:32:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp17_outstanding_sent_only.spec.ts::outstanding is discounted, excludes drafts, and is per currency",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 65,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp17_outstanding_sent_only.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp18_contact_email_validation.spec.ts::rejects a bad contact email",
+        "category": "error",
+        "passed": false,
+        "duration_ms": 66,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp18_contact_email_validation.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp19_client_badges.spec.ts::shows project and contact counts",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 69,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp19_client_badges.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp20_project_tasks.spec.ts::lists tasks and lets me tick one off",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 67,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp20_project_tasks.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp21_invoice_line_items.spec.ts::invoice amount includes tax on the line-item total",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 72,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp21_invoice_line_items.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp22_line_items_edit.spec.ts::removing a line item lowers the total",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 67,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp22_line_items_edit.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp23_task_filter.spec.ts::shows only open or only done tasks",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 70,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp23_task_filter.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp24_project_delete_audit.spec.ts::removing archives the project and records it",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 69,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp24_project_delete_audit.spec.ts:9:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp25_project_archive.spec.ts::archiving hides the project but keeps it",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 68,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp25_project_archive.spec.ts:9:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp26_project_tags.spec.ts::shows, adds and removes tags on a project",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 67,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp26_project_tags.spec.ts:9:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp27_project_tag_filter.spec.ts::shows only projects with the chosen tag",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 66,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp27_project_tag_filter.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp28_project_notes.spec.ts::shows notes newest first and adds a new one on top",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 67,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp28_project_notes.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp29_client_archive.spec.ts::archiving hides the client but keeps it",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 72,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp29_client_archive.spec.ts:9:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp30_invoice_payments.spec.ts::shows and records payments on an invoice",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 66,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp30_invoice_payments.spec.ts:9:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp31_invoice_amount_due.spec.ts::amount due uses the discounted total",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 66,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp31_invoice_amount_due.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp32_invoice_status_derived.spec.ts::a part payment then full payment drive the status",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 70,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp32_invoice_status_derived.spec.ts:10:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp33_client_statement.spec.ts::the total owed uses discounted amounts in the client currency",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 70,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp33_client_statement.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp34_project_status.spec.ts::shows a project's status",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 68,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp34_project_status.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp34_project_status.spec.ts::sets the status when creating a project",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 68,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp34_project_status.spec.ts:18:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp35_project_status_filter.spec.ts::shows only projects at the chosen status",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 72,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp35_project_status_filter.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp36_client_active_projects_default.spec.ts::shows active projects, with a toggle for the rest",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 69,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp36_client_active_projects_default.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp37_project_budget.spec.ts::shows budget, invoiced and remaining",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 72,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp37_project_budget.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp38_dashboard_overdue.spec.ts::counts sent invoices past their due date",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 70,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp38_dashboard_overdue.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp39_invoice_pagination.spec.ts::pages through the invoice list ten at a time",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 66,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp39_invoice_pagination.spec.ts:10:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp40_thousands_separator.spec.ts::shows commas in large amounts in the client currency",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 69,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp40_thousands_separator.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp41_invoice_cancel_audit.spec.ts::cancelling voids the invoice and records it",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 68,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp41_invoice_cancel_audit.spec.ts:10:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp41_invoice_cancel_audit.spec.ts::a voided invoice is excluded from outstanding",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 68,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp41_invoice_cancel_audit.spec.ts:25:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp42_client_primary_contact.spec.ts::shows and changes the main contact",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 71,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp42_client_primary_contact.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp43_global_search.spec.ts::finds matching clients and projects",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 68,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp43_global_search.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp44_client_unique_email.spec.ts::rejects a duplicate email",
+        "category": "error",
+        "passed": false,
+        "duration_ms": 70,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp44_client_unique_email.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp45_client_edit.spec.ts::updates a client name and email",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 69,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp45_client_edit.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp46_line_item_qty_unit.spec.ts::shows quantity, unit and per-line amount",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 67,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp46_line_item_qty_unit.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp47_invoice_discount.spec.ts::shows subtotal, discount, tax and final total",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 71,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp47_invoice_discount.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp48_discount_everywhere.spec.ts::the outstanding total uses the discounted amount per currency",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 70,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp48_discount_everywhere.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp49_sales_tax.spec.ts::adds tax after the discount (all lines taxable, no levy)",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 67,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp49_sales_tax.spec.ts:10:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp49_sales_tax.spec.ts::excludes tax-free lines from the tax base",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 70,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp49_sales_tax.spec.ts:29:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp49_sales_tax.spec.ts::adds a levy on top when one applies",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 66,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp49_sales_tax.spec.ts:53:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp50_combined_filter.spec.ts::shows active projects with the chosen label",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 68,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp50_combined_filter.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp51_client_sort.spec.ts::sorts clients by outstanding amount",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 69,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp51_client_sort.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp52_project_to_job_rename.spec.ts::the section reads \"job\" while its testids stay unchanged",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 68,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp52_project_to_job_rename.spec.ts:11:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp53_job_code.spec.ts::shows a job code",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 69,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp53_job_code.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp53_job_code.spec.ts::rejects a duplicate code",
+        "category": "error",
+        "passed": false,
+        "duration_ms": 68,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp53_job_code.spec.ts:17:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp54_invoice_notes.spec.ts::shows and adds notes on an invoice",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 66,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp54_invoice_notes.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp55_dashboard_top_clients.spec.ts::ranks clients by outstanding, shown in their currency",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 67,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp55_dashboard_top_clients.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp56_payment_allocation.spec.ts::splits one payment across two invoices",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 67,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp56_payment_allocation.spec.ts:10:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp57_statement_by_job.spec.ts::groups invoices by job with subtotals",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 66,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp57_statement_by_job.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp58_client_restore.spec.ts::restores an archived client",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 68,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp58_client_restore.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp59_statement_printable.spec.ts::shows a printable statement with a grand total",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 69,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp59_statement_printable.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp60_multi_currency.spec.ts::sets a client currency and shows their money in it",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 66,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp60_multi_currency.spec.ts:9:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp60_multi_currency.spec.ts::home screen keeps totals separate per currency",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 67,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp60_multi_currency.spec.ts:28:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp61_default_tax_rate.spec.ts::new invoices start with the default tax rate",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 67,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp61_default_tax_rate.spec.ts:10:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp62_client_phone.spec.ts::shows a client phone number",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 66,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp62_client_phone.spec.ts:7:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp63_line_tax_exempt.spec.ts::shows the tax-free marker and lets a line be marked exempt",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 65,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp63_line_tax_exempt.spec.ts:10:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp64_tax_per_taxable_line.spec.ts::excludes tax-free lines from the tax",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 67,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp64_tax_per_taxable_line.spec.ts:11:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp65_tax_summary_line.spec.ts::shows the taxable base, the rate label and the tax",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 70,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp65_tax_summary_line.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp66_client_tax_number.spec.ts::shows the client tax number on the client and the invoice",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 70,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp66_client_tax_number.spec.ts:8:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp67_job_description.spec.ts::shows a job description",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 73,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp67_job_description.spec.ts:9:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      },
+      {
+        "test_id": "cp68_second_tax.spec.ts::adds a levy on top of the sales tax",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 69,
+        "failure": "Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n\n\n   at ../support/seed.ts:25\n\n  23 |   const api = await request.newContext({ baseURL: BASE });\n  24 |   try {\n> 25 |     await must(api.post('/__test__/reset'), 'POST /__test__/reset');\n     |                    ^\n  26 |     await must(api.post('/__test__/seed', { data: fixture }), 'POST /__test__/seed');\n  27 |   } finally {\n  28 |     await api.dispose();\n\n    at resetAndSeed (/home/daniel/ui-work/202610100208/gated-chain1/e2e/support/seed.ts:25:20)\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp68_second_tax.spec.ts:10:5 | Error: apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:3000\nCall log:\n  \u001b[2m- \u2192 POST http://localhost:3000/__test__/reset\u001b[22m\n\u001b[2m  -   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.31 Safari/537.36\u001b[22m\n\u001b[2m  -   accept: */*\u001b[22m\n\u001b[2m  -   accept-encoding: gzip,deflate,br\u001b[22m\n"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 7.05,
+            "impact": 648,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice-detail.ts",
+                "lang": "typescript",
+                "cost": 324,
+                "mutation": 324,
+                "godclass": 0,
+                "mut_fns": 3,
+                "new_fns": 0
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice-detail.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 18,
+                "cost": 180,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice-detail.ts",
+                "name": "next",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 18,
+                "cost": 72,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice-detail.ts",
+                "name": "error",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 18,
+                "cost": 72,
+                "kind": "mutation"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 2,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 35.16,
+            "impact": 1080,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java",
+                "lang": "java",
+                "cost": 180,
+                "mutation": 0,
+                "godclass": 180,
+                "mut_fns": 0,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java",
+                "name": "InvoiceService::applyLevy",
+                "container": "InvoiceService",
+                "cc": 1,
+                "wmc_other": 30,
+                "cost": 180,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 0,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
