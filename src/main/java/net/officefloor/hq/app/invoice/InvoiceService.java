@@ -272,6 +272,26 @@ public class InvoiceService {
         return toResponse(invoice);
     }
 
+    /**
+     * Writes off a sent or part-paid invoice as bad debt, so what is left on it no longer counts toward what is
+     * owed while the invoice stays on record, and records the write-off (the balance given up) in the audit log.
+     */
+    @Transactional
+    public InvoiceDetailResponse writeOff(Long projectId, Long invoiceId) {
+        Invoice invoice = find(projectId, invoiceId);
+        BigDecimal paid = payments.sumAmountByInvoiceId(invoiceId);
+        BigDecimal credited = creditNotes.sumAmountByInvoiceId(invoiceId);
+        if (!invoice.statusFor(paid, credited).isOwing()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a sent invoice with something still owed can be written off");
+        }
+        BigDecimal balance = invoice.amountDue(paid, credited);
+        invoice.markWrittenOff();
+        invoices.flush();
+        audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + balance.setScale(2).toPlainString());
+        return InvoiceDetailResponse.from(invoice);
+    }
+
     private InvoiceResponse toResponse(Invoice invoice) {
         return InvoiceResponse.from(invoice, payments.sumAmountByInvoiceId(invoice.getId()),
                 creditNotes.sumAmountByInvoiceId(invoice.getId()));

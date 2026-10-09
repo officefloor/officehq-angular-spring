@@ -112,6 +112,11 @@ public class InvoiceController {
         return service.send(projectId, invoiceId);
     }
 
+    @PostMapping("/{invoiceId}/write-off")
+    public InvoiceDetailResponse writeOff(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+        return service.writeOff(projectId, invoiceId);
+    }
+
     @PostMapping("/{invoiceId}/cancel")
     public InvoiceResponse cancel(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.cancel(projectId, invoiceId);

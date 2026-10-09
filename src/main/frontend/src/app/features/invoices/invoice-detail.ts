@@ -38,6 +38,16 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
         <span data-testid="invoice-issued">{{ inv.issuedDate }}</span> · Due
         <span data-testid="invoice-due">{{ inv.dueDate }}</span>
       </p>
+      @if (inv.status === 'SENT' || inv.status === 'PARTIAL') {
+        <p>
+          <button type="button" (click)="writeOff()" [disabled]="writingOff()" data-testid="invoice-write-off">
+            Write off as bad debt
+          </button>
+        </p>
+      }
+      @if (writeOffError()) {
+        <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
+      }
       <p>
         Tax: <span data-testid="invoice-tax-mode">{{ inv.taxInclusive ? 'Inclusive' : 'Exclusive' }}</span>
         @if (inv.taxInclusive) {
@@ -715,7 +725,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
         [projectId]="projectIdNumber()"
         [invoiceId]="inv.id"
         [currency]="inv.currency"
-        [canIssue]="inv.status !== 'DRAFT' && inv.status !== 'VOID'"
+        [canIssue]="inv.status !== 'DRAFT' && inv.status !== 'VOID' && inv.status !== 'WRITTEN_OFF'"
         (issued)="creditNotes.reload()"
       />
 
@@ -756,6 +766,25 @@ export class InvoiceDetailPage {
   protected lineCents(qty: number, unitPrice: number, discountPct: number): number {
     const gross = Math.round((Math.round(qty * 100) * Math.round(unitPrice * 10000)) / 10000);
     return gross - Math.round((gross * Math.round(discountPct * 100)) / 10000);
+  }
+
+  protected readonly writingOff = signal(false);
+  protected readonly writeOffError = signal<string | null>(null);
+
+  // Writes the invoice off as bad debt: it is kept on record but no longer counts toward what is owed.
+  protected writeOff(): void {
+    this.writingOff.set(true);
+    this.writeOffError.set(null);
+    this.service.writeOff(this.projectIdNumber(), Number(this.invoiceId())).subscribe({
+      next: (updated) => {
+        this.invoice.set(updated);
+        this.writingOff.set(false);
+      },
+      error: () => {
+        this.writeOffError.set('Could not write off the invoice. Please try again.');
+        this.writingOff.set(false);
+      },
+    });
   }
 
   protected readonly discountSaving = signal(false);

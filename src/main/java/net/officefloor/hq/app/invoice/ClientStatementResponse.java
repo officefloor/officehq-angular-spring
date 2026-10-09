@@ -42,7 +42,7 @@ public record ClientStatementResponse(Long clientId, String clientName, Currency
     /** Adds up the given figure across the invoices that are owed, leaving out drafts and void ones. */
     private static BigDecimal sum(List<Line> lines, Function<Line, BigDecimal> figure) {
         return lines.stream()
-                .filter(l -> l.status() != InvoiceStatus.DRAFT && l.status() != InvoiceStatus.VOID)
+                .filter(l -> l.status() != InvoiceStatus.DRAFT && !l.status().isClosedUnpaid())
                 .map(figure)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);

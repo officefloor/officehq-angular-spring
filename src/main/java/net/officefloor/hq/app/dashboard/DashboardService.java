@@ -1,11 +1,15 @@
 package net.officefloor.hq.app.dashboard;
 
+import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.client.ClientService;
+import net.officefloor.hq.app.client.Currency;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.project.ProjectRepository;
@@ -35,13 +39,19 @@ public class DashboardService {
 
     /**
      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
-     * on sent invoices that are not yet fully paid), plus how many of those sent invoices are past their due date, and
+     * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices are past their due date, and
      * the top clients ranked by what they owe.
      */
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
         List<InvoiceStatus> owing = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL);
-        List<DashboardResponse.CurrencyTotal> outstanding = clientService.outstandingByCurrency().entrySet().stream()
+        Map<Currency, BigDecimal> owed = new EnumMap<>(Currency.class);
+        // A currency whose debts were written off stays listed, showing nothing owed, so the write-off is visible.
+        clients.findAllById(invoices.sumAmountByStatusInPerClient(List.of(InvoiceStatus.WRITTEN_OFF)).stream()
+                .map(InvoiceRepository.ClientTotal::getClientId).toList())
+                .forEach(c -> owed.put(c.getCurrency(), BigDecimal.ZERO));
+        owed.putAll(clientService.outstandingByCurrency());
+        List<DashboardResponse.CurrencyTotal> outstanding = owed.entrySet().stream()
                 .map(e -> new DashboardResponse.CurrencyTotal(e.getKey(), e.getValue().setScale(2, RoundingMode.HALF_UP)))
                 .toList();
         long overdue = invoices.countByStatusInAndDueDateBefore(owing, LocalDate.now(clock));

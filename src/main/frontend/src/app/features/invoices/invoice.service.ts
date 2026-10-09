@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { CurrencyCode } from '../clients/client.service';
 
-export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'VOID'] as const;
+export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'VOID', 'WRITTEN_OFF'] as const;
 
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
@@ -272,6 +272,11 @@ export class InvoiceService {
 
   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+  }
+
+  /** Writes off a sent or part-paid invoice as bad debt so it is no longer owed; it then reads WRITTEN_OFF. */
+  writeOff(projectId: number, invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/write-off`, null);
   }
 
   /** Cancels a sent invoice so it is no longer owed; it then reads VOID. */

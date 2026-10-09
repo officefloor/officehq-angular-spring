@@ -51,6 +51,9 @@ public class CreditNoteService {
         if (invoice.getStatus() == InvoiceStatus.VOID) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been cancelled");
         }
+        if (invoice.getStatus() == InvoiceStatus.WRITTEN_OFF) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been written off");
+        }
         BigDecimal credited = creditNotes.sumAmountByInvoiceId(invoiceId).add(request.amount());
         if (credited.compareTo(invoice.getAmount()) > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Credit is more than the invoice amount");
