@@ -3,7 +3,7 @@ package net.officefloor.hq.app.client;
 import java.math.BigDecimal;
 import net.officefloor.hq.app.contact.Contact;
 
-public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, boolean archived, PrimaryContact primaryContact,
+public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, boolean taxInclusive, boolean archived, PrimaryContact primaryContact,
         Currency currency, BigDecimal outstanding) {
 
     /** Who the client's main contact is; null when none has been chosen. */
@@ -13,7 +13,7 @@ public record ClientResponse(Long id, String name, String email, String phone, S
     /** A client with what they still owe, in their currency: what is left to pay on their sent, not yet fully paid invoices. */
     public static ClientResponse from(Client client, BigDecimal outstanding) {
         Contact primary = client.getPrimaryContact();
-        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.isArchived(),
+        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.isTaxInclusive(), client.isArchived(),
                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
                 client.getCurrency(), outstanding);
     }

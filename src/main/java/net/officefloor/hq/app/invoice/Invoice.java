@@ -27,6 +27,10 @@ import net.officefloor.hq.app.project.Project;
  * their sum as a discount, then add a percentage sales tax on what is left of the taxable lines only
  * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
  * its stored amount is always that subtotal less the discount plus the tax plus the levy.
+ * <p>
+ * A tax-inclusive invoice (for a client whose prices already include tax) instead works the tax and
+ * levy back out of the taxable lines after the discount: they are inside the price, so its amount is
+ * just the subtotal less the discount, and the taxable base is what is left once they are taken out.
  */
 @Entity
 @Table(name = "invoice")
@@ -52,6 +56,10 @@ public class Invoice {
     @Column(name = "levy_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal levyPct = BigDecimal.ZERO.setScale(2);
 
+    /** Whether the prices already include the tax and levy, so they are backed out rather than added on. */
+    @Column(name = "tax_inclusive", nullable = false)
+    private boolean taxInclusive;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private InvoiceStatus status = InvoiceStatus.DRAFT;
@@ -73,6 +81,7 @@ public class Invoice {
         this.project = project;
         this.issuedDate = issuedDate;
         this.dueDate = dueDate;
+        this.taxInclusive = project.getClient().isTaxInclusive();
     }
 
     public Long getId() {
@@ -108,19 +117,24 @@ public class Invoice {
         return taxPct;
     }
 
-    /**
-     * What the sales tax is charged on: the taxable lines (leaving out tax-free ones) less the discount
-     * taken off them, to the cent.
-     */
-    public BigDecimal getTaxableBase() {
-        BigDecimal taxable = lineItems.stream().filter(l -> !l.isTaxExempt()).map(InvoiceLineItem::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
-        return taxable.subtract(discountOn(taxable));
+    /** Whether the prices already include the tax and levy, so they are worked back out rather than added on. */
+    public boolean isTaxInclusive() {
+        return taxInclusive;
     }
 
-    /** How much sales tax is added on the taxable base, to the cent. */
+    /**
+     * What the sales tax is charged on: the taxable lines (leaving out tax-free ones) less the discount
+     * taken off them, to the cent. On a tax-inclusive invoice that is what is left of them once the tax
+     * and levy inside them are taken out.
+     */
+    public BigDecimal getTaxableBase() {
+        BigDecimal gross = getDiscountedTaxable();
+        return taxInclusive ? gross.subtract(getTax()).subtract(getLevy()) : gross;
+    }
+
+    /** How much sales tax is added on the taxable base (or is inside it, when tax-inclusive), to the cent. */
     public BigDecimal getTax() {
-        return taxOn(getTaxableBase());
+        return taxInclusive ? includedIn(getDiscountedTaxable(), taxPct) : taxOn(getTaxableBase());
     }
 
     /** The levy (second tax) percentage added on top of the sales tax; zero when there is no levy. */
@@ -128,9 +142,25 @@ public class Invoice {
         return levyPct;
     }
 
-    /** How much levy is added on the taxable base, to the cent. */
+    /** How much levy is added on the taxable base (or is inside it, when tax-inclusive), to the cent. */
     public BigDecimal getLevy() {
-        return percentOf(getTaxableBase(), levyPct);
+        return taxInclusive ? includedIn(getDiscountedTaxable(), levyPct) : percentOf(getTaxableBase(), levyPct);
+    }
+
+    /** The taxable lines (leaving out tax-free ones) less the discount taken off them, to the cent. */
+    private BigDecimal getDiscountedTaxable() {
+        BigDecimal taxable = lineItems.stream().filter(l -> !l.isTaxExempt()).map(InvoiceLineItem::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
+        return taxable.subtract(discountOn(taxable));
+    }
+
+    /**
+     * The part of a tax-inclusive price that is the given percentage, worked back out of it: the price
+     * divided in proportion to the sales tax and levy rates it includes (e.g. 20% tax in 120 is 20).
+     */
+    private BigDecimal includedIn(BigDecimal price, BigDecimal pct) {
+        BigDecimal grossPct = BigDecimal.valueOf(100).add(taxPct).add(levyPct);
+        return price.multiply(pct).divide(grossPct, 2, RoundingMode.HALF_UP);
     }
 
     public InvoiceStatus getStatus() {
@@ -193,6 +223,12 @@ public class Invoice {
         recalculateAmount();
     }
 
+    /** Sets whether this invoice's prices already include tax and reworks its amount to match. */
+    public void applyTaxInclusive(boolean taxInclusive) {
+        this.taxInclusive = taxInclusive;
+        recalculateAmount();
+    }
+
     /** Sets the levy (second tax) percentage added to this invoice and reworks its amount to match. */
     public void applyLevy(BigDecimal levyPct) {
         this.levyPct = levyPct.setScale(2, RoundingMode.HALF_UP);
@@ -214,7 +250,7 @@ public class Invoice {
     private void recalculateAmount() {
         BigDecimal subtotal = getSubtotal();
         BigDecimal discounted = subtotal.subtract(discountOn(subtotal));
-        this.amount = discounted.add(getTax()).add(getLevy());
+        this.amount = taxInclusive ? discounted : discounted.add(getTax()).add(getLevy());
     }
 
     /** Marks this invoice as sent to the client. */

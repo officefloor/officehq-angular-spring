@@ -44,6 +44,9 @@ import { Client, ClientService } from './client.service';
         }
       </p>
       <p>
+        Prices: <span data-testid="client-tax-mode">{{ c.taxInclusive ? 'Include tax' : 'Tax added on' }}</span>
+      </p>
+      <p>
         Main contact:
         @if (c.primaryContact; as primary) {
           <span data-testid="client-primary-contact">{{ primary.name }}</span>

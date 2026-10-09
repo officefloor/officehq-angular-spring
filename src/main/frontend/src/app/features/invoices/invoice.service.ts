@@ -97,6 +97,8 @@ export interface InvoiceDetail extends Invoice {
   tax: number;
   levyPct: number;
   levy: number;
+  /** Whether the prices already include the tax and levy, so they are worked back out rather than added on. */
+  taxInclusive: boolean;
   lineItems: LineItem[];
   /** The client's tax registration number; null when they are not tax registered. */
   clientTaxNumber: string | null;

@@ -33,6 +33,9 @@ public class Client {
 
     private boolean archived;
 
+    /** Whether the client's prices already include tax, so tax is worked back out of them rather than added on. */
+    private boolean taxInclusive;
+
     /** The currency the client is billed in; all of their money is in it. */
     @Enumerated(EnumType.STRING)
     private Currency currency = Currency.USD;
@@ -78,6 +81,14 @@ public class Client {
         this.email = email;
         this.phone = phone;
         this.taxNumber = taxNumber;
+    }
+
+    public boolean isTaxInclusive() {
+        return taxInclusive;
+    }
+
+    public void setTaxInclusive(boolean taxInclusive) {
+        this.taxInclusive = taxInclusive;
     }
 
     public boolean isArchived() {

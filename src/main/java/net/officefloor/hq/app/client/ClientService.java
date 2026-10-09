@@ -68,8 +68,9 @@ public class ClientService {
             throw emailTaken();
         }
         try {
-            return respond(clients.saveAndFlush(
-                    new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber())));
+            Client client = new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber());
+            client.setTaxInclusive(Boolean.TRUE.equals(request.taxInclusive()));
+            return respond(clients.saveAndFlush(client));
         } catch (DataIntegrityViolationException e) {
             // Lost a race with a concurrent add of the same email; the unique constraint caught it.
             if (String.valueOf(e.getMessage()).toUpperCase().contains("CLIENT_EMAIL_UQ")) {
@@ -81,7 +82,8 @@ public class ClientService {
 
     /**
      * Corrects a client's name, email, phone number and tax number; the email, once trimmed, must not belong to another client.
-     * The change is recorded in the audit log.
+     * When whether their prices include tax changes, their draft invoices are reworked to match; sent ones keep the
+     * figures they were issued with. The change is recorded in the audit log.
      */
     @Transactional
     public ClientResponse update(Long id, ClientRequest request) {
@@ -91,6 +93,11 @@ public class ClientService {
             throw emailTaken();
         }
         client.rename(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber());
+        if (request.taxInclusive() != null && request.taxInclusive() != client.isTaxInclusive()) {
+            client.setTaxInclusive(request.taxInclusive());
+            invoices.findByClientIdAndStatus(id, InvoiceStatus.DRAFT)
+                    .forEach(i -> i.applyTaxInclusive(request.taxInclusive()));
+        }
         try {
             clients.flush();
         } catch (DataIntegrityViolationException e) {

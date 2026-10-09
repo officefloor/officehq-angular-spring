@@ -3,7 +3,7 @@ import { Component, ElementRef, OnInit, afterNextRender, inject, input, output, 
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Client, ClientService } from './client.service';
 
-// Form to correct one client's name, email, phone number or tax number. Emits the saved client, or cancelled when abandoned.
+// Form to correct one client's name, email, phone number, tax number or whether their prices include tax. Emits the saved client, or cancelled when abandoned.
 @Component({
   selector: 'app-client-edit-form',
   imports: [ReactiveFormsModule],
@@ -88,6 +88,12 @@ import { Client, ClientService } from './client.service';
           </p>
         }
       </div>
+      <div>
+        <label>
+          <input type="checkbox" formControlName="taxInclusive" data-testid="client-edit-form-tax-inclusive" />
+          Prices include tax
+        </label>
+      </div>
       <button type="submit" data-testid="client-edit-form-submit" [disabled]="saving()">Save</button>
       <button type="button" data-testid="client-edit-form-cancel" (click)="cancelled.emit()">Cancel</button>
       @if (saveError()) {
@@ -121,6 +127,7 @@ export class ClientEditForm implements OnInit {
     ],
     phone: ['', Validators.maxLength(50)],
     taxNumber: ['', Validators.maxLength(50)],
+    taxInclusive: false,
   });
 
   constructor() {
@@ -128,8 +135,8 @@ export class ClientEditForm implements OnInit {
   }
 
   ngOnInit(): void {
-    const { name, email, phone, taxNumber } = this.client();
-    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '' });
+    const { name, email, phone, taxNumber, taxInclusive } = this.client();
+    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', taxInclusive });
   }
 
   protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber'): boolean {
@@ -142,10 +149,10 @@ export class ClientEditForm implements OnInit {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, taxNumber } = this.form.getRawValue();
+    const { name, email, phone, taxNumber, taxInclusive } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null }).subscribe({
+    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, taxInclusive }).subscribe({
       next: (updated) => {
         this.saving.set(false);
         this.saved.emit(updated);

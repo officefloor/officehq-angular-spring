@@ -76,9 +76,10 @@ public class TestSupportController {
             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
         }
         for (Map<String, Object> c : rows(fixture, "clients")) {
-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, archived, currency) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, tax_inclusive, archived, currency)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"),
-                    Boolean.TRUE.equals(c.get("archived")),
+                    Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("archived")),
                     c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString());
         }
         for (Map<String, Object> c : rows(fixture, "contacts")) {
@@ -161,10 +162,16 @@ public class TestSupportController {
             BigDecimal levyPct = i.get("levyPct") == null ? BigDecimal.ZERO
                     : new BigDecimal(i.get("levyPct").toString());
             BigDecimal levy = taxableBase.multiply(levyPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, levy_pct, status, issued_date, due_date)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    invoiceId, ((Number) i.get("projectId")).longValue(),
-                    discounted.add(tax).add(levy), discountPct, taxPct, levyPct,
+            // An invoice for a tax-inclusive client already has the taxes inside its prices, so its amount is
+            // just the discounted subtotal.
+            long projectId = ((Number) i.get("projectId")).longValue();
+            boolean taxInclusive = Boolean.TRUE.equals(jdbc.queryForObject(
+                    "SELECT c.tax_inclusive FROM project p JOIN client c ON c.id = p.client_id WHERE p.id = ?",
+                    Boolean.class, projectId));
+            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, levy_pct, tax_inclusive, status,"
+                    + " issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    invoiceId, projectId,
+                    taxInclusive ? discounted : discounted.add(tax).add(levy), discountPct, taxPct, levyPct, taxInclusive,
                     seedStatus(i.get("status")), issued, due);
             for (Map<String, Object> l : lineItems) {
                 if (l.get("id") != null) {

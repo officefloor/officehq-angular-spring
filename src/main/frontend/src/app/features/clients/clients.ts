@@ -89,6 +89,12 @@ import { Client, ClientService } from './client.service';
           </p>
         }
       </div>
+      <div>
+        <label>
+          <input type="checkbox" formControlName="taxInclusive" data-testid="client-form-tax-inclusive" />
+          Prices include tax
+        </label>
+      </div>
       <button type="submit" data-testid="client-form-submit" [disabled]="saving()">Add client</button>
       @if (saveError()) {
         <p role="alert" data-testid="client-form-error">{{ saveError() }}</p>
@@ -243,6 +249,7 @@ export class Clients {
     ],
     phone: ['', Validators.maxLength(50)],
     taxNumber: ['', Validators.maxLength(50)],
+    taxInclusive: false,
   });
 
   constructor() {
@@ -267,10 +274,10 @@ export class Clients {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, taxNumber } = this.form.getRawValue();
+    const { name, email, phone, taxNumber, taxInclusive } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null }).subscribe({
+    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, taxInclusive }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created]);
         this.form.reset();

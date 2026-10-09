@@ -13,6 +13,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
 // amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
 // sales tax added on it after the discount, any levy (a second tax) added on the same base, and the final total including both taxes.
+// For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
 // Lines, the discount, the tax rate and the levy rate can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
@@ -27,6 +28,12 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
         Status: <span data-testid="invoice-status">{{ inv.status }}</span> · Issued
         <span data-testid="invoice-issued">{{ inv.issuedDate }}</span> · Due
         <span data-testid="invoice-due">{{ inv.dueDate }}</span>
+      </p>
+      <p>
+        Tax: <span data-testid="invoice-tax-mode">{{ inv.taxInclusive ? 'Inclusive' : 'Exclusive' }}</span>
+        @if (inv.taxInclusive) {
+          (prices already include tax)
+        }
       </p>
       @if (inv.clientTaxNumber) {
         <p>Client tax number: <span data-testid="invoice-client-tax-number">{{ inv.clientTaxNumber }}</span></p>
@@ -193,7 +200,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             </tr>
             <tr>
               <th scope="row" colspan="4" data-testid="invoice-tax-label">
-                Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)
+                Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
               </th>
               <td data-testid="invoice-tax">{{ inv.tax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
@@ -202,7 +209,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             </tr>
             <tr>
               <th scope="row" colspan="4" data-testid="invoice-tax-levy-label">
-                Levy (<span data-testid="invoice-tax-levy-pct">{{ inv.levyPct | number: '1.0-2' : 'en-US' }}</span>%)
+                Levy (<span data-testid="invoice-tax-levy-pct">{{ inv.levyPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
               </th>
               <td data-testid="invoice-tax-levy">{{ inv.levy | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
