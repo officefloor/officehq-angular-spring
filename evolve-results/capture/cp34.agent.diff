@@ -1,0 +1,372 @@
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index 39ec1f0..7dbfb10 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -7,7 +7,7 @@ import { ProjectTags } from '../tags/project-tags';
+ import { ProjectTasks } from '../tasks/project-tasks';
+ import { ProjectService } from './project.service';
+ 
+-// A single project's page: its name and client, its tags, its tasks, its notes, and its invoices.
++// A single project's page: its name, client and status, its tags, its tasks, its notes, and its invoices.
+ @Component({
+   selector: 'app-project-detail',
+   imports: [RouterLink, ProjectInvoices, ProjectNotes, ProjectTags, ProjectTasks],
+@@ -18,6 +18,7 @@ import { ProjectService } from './project.service';
+     } @else if (project.value(); as p) {
+       <h1 data-testid="project-detail-name">{{ p.name }}</h1>
+       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
++      <p>Status: <span data-testid="project-detail-status">{{ p.status }}</span></p>
+       <app-project-tags [projectId]="projectId()" />
+       <app-project-tasks [projectId]="projectId()" />
+       <app-project-notes [projectId]="projectId()" />
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index e1d3c6e..4863d8a 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -2,17 +2,28 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ 
++export type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'FINISHED';
++
++/** The statuses a project can be marked with, in the order they are offered. */
++export const PROJECT_STATUSES: { value: ProjectStatus; label: string }[] = [
++  { value: 'ACTIVE', label: 'Active' },
++  { value: 'ON_HOLD', label: 'On hold' },
++  { value: 'FINISHED', label: 'Finished' },
++];
++
+ export interface Project {
+   id: number;
+   name: string;
+   clientId: number;
+   clientName: string;
+   archived: boolean;
++  status: ProjectStatus;
+ }
+ 
+ export interface NewProject {
+   name: string;
+   clientId: number;
++  status: ProjectStatus;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+@@ -39,6 +50,10 @@ export class ProjectService {
+     return this.http.post<Project>('/api/projects', project);
+   }
+ 
++  changeStatus(id: number, status: ProjectStatus): Observable<Project> {
++    return this.http.put<Project>(`/api/projects/${id}/status`, { status });
++  }
++
+   archive(id: number): Observable<Project> {
+     return this.http.post<Project>(`/api/projects/${id}/archive`, null);
+   }
+diff --git a/src/main/frontend/src/app/features/projects/projects.ts b/src/main/frontend/src/app/features/projects/projects.ts
+index c724314..b2da4ad 100644
+--- a/src/main/frontend/src/app/features/projects/projects.ts
++++ b/src/main/frontend/src/app/features/projects/projects.ts
+@@ -3,12 +3,13 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
+ import { RouterLink } from '@angular/router';
+ import { Client, ClientService } from '../clients/client.service';
+ import { Tag, TagService } from '../tags/tag.service';
+-import { Project, ProjectService } from './project.service';
++import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './project.service';
+ 
+ // Projects page: add a project for a client and list all projects with their client's name; each
+ // project opens its detail page and can be archived once it is no longer needed. Archived projects
+ // are kept but left off the list unless the archived toggle is on, where they can be restored. The
+-// list can be narrowed to the projects carrying a chosen tag.
++// list can be narrowed to the projects carrying a chosen tag. Each project is marked active, on hold
++// or finished, chosen when it is added and changeable from its row.
+ @Component({
+   selector: 'app-projects',
+   imports: [ReactiveFormsModule, RouterLink],
+@@ -52,6 +53,14 @@ import { Project, ProjectService } from './project.service';
+           </p>
+         }
+       </div>
++      <div>
++        <label for="project-status">Status</label>
++        <select id="project-status" formControlName="status" data-testid="project-form-status">
++          @for (s of statuses; track s.value) {
++            <option [value]="s.value">{{ s.label }}</option>
++          }
++        </select>
++      </div>
+       <button type="submit" data-testid="project-form-submit" [disabled]="saving()">
+         Add project
+       </button>
+@@ -102,6 +111,7 @@ import { Project, ProjectService } from './project.service';
+           <tr>
+             <th scope="col">Name</th>
+             <th scope="col">Client</th>
++            <th scope="col">Status</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+         </thead>
+@@ -115,6 +125,24 @@ import { Project, ProjectService } from './project.service';
+                 }
+               </td>
+               <td data-testid="project-client">{{ p.clientName }}</td>
++              <td>
++                <span data-testid="project-status">{{ p.status }}</span>
++                <label class="visually-hidden" [for]="'project-status-select-' + p.id"
++                  >Change status of {{ p.name }}</label
++                >
++                <select
++                  #statusSelect
++                  [id]="'project-status-select-' + p.id"
++                  [attr.data-testid]="'project-status-select-' + p.id"
++                  [value]="p.status"
++                  [disabled]="deleting() === p.id"
++                  (change)="changeStatus(p, statusSelect.value)"
++                >
++                  @for (s of statuses; track s.value) {
++                    <option [value]="s.value">{{ s.label }}</option>
++                  }
++                </select>
++              </td>
+               <td>
+                 <a
+                   [routerLink]="['/projects', p.id]"
+@@ -168,10 +196,12 @@ export class Projects {
+   protected readonly showArchived = signal(false);
+   protected readonly tags = signal<Tag[]>([]);
+   protected readonly tagFilter = signal<number | null>(null);
++  protected readonly statuses = PROJECT_STATUSES;
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+     clientId: ['', Validators.required],
++    status: ['ACTIVE' as ProjectStatus, Validators.required],
+   });
+ 
+   constructor() {
+@@ -190,10 +220,10 @@ export class Projects {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, clientId } = this.form.getRawValue();
++    const { name, clientId, status } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.create({ name: name.trim(), clientId: Number(clientId) }).subscribe({
++    this.service.create({ name: name.trim(), clientId: Number(clientId), status }).subscribe({
+       next: (created) => {
+         // A new project carries no tags, so it only belongs on an unfiltered list.
+         if (this.tagFilter() === null) {
+@@ -219,6 +249,21 @@ export class Projects {
+     this.load();
+   }
+ 
++  protected changeStatus(project: Project, status: string): void {
++    this.deleting.set(project.id);
++    this.deleteError.set(null);
++    this.service.changeStatus(project.id, status as ProjectStatus).subscribe({
++      next: (changed) => {
++        this.projects.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
++        this.deleting.set(null);
++      },
++      error: () => {
++        this.deleteError.set(`Could not change the status of ${project.name}. Please try again.`);
++        this.deleting.set(null);
++      },
++    });
++  }
++
+   protected archive(project: Project): void {
+     this.deleting.set(project.id);
+     this.deleteError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 015a5d6..d3e2ebb 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -9,6 +9,7 @@ import java.util.List;
+ import java.util.Map;
+ import net.officefloor.hq.app.invoice.InvoiceRequest;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
++import net.officefloor.hq.app.project.ProjectStatus;
+ import org.springframework.context.annotation.Profile;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -73,9 +74,10 @@ public class TestSupportController {
+                     c.get("name"), c.get("email"), c.get("role"));
+         }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+-            jdbc.update("INSERT INTO project (id, name, client_id) VALUES (?, ?, ?)",
++            jdbc.update("INSERT INTO project (id, name, client_id, status) VALUES (?, ?, ?, ?)",
+                     ((Number) p.get("id")).longValue(), p.get("name"),
+-                    ((Number) p.get("clientId")).longValue());
++                    ((Number) p.get("clientId")).longValue(),
++                    p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString());
+         }
+         for (Map<String, Object> t : rows(fixture, "tags")) {
+             jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+index 83ad670..0e6bcde 100644
+--- a/src/main/java/net/officefloor/hq/app/project/Project.java
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -1,6 +1,8 @@
+ package net.officefloor.hq.app.project;
+ 
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EnumType;
++import jakarta.persistence.Enumerated;
+ import jakarta.persistence.FetchType;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+@@ -32,6 +34,9 @@ public class Project {
+ 
+     private boolean archived;
+ 
++    @Enumerated(EnumType.STRING)
++    private ProjectStatus status = ProjectStatus.ACTIVE;
++
+     @ManyToMany
+     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
+             inverseJoinColumns = @JoinColumn(name = "tag_id"))
+@@ -65,6 +70,14 @@ public class Project {
+         this.archived = archived;
+     }
+ 
++    public ProjectStatus getStatus() {
++        return status;
++    }
++
++    public void setStatus(ProjectStatus status) {
++        this.status = status;
++    }
++
+     /** The tags labelling this project; add or remove to tag or untag it. */
+     public Set<Tag> getTags() {
+         return tags;
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectController.java b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+index 7e421f8..819b8a9 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RequestParam;
+@@ -39,6 +40,11 @@ public class ProjectController {
+         return service.create(request);
+     }
+ 
++    @PutMapping("/{id}/status")
++    public ProjectResponse changeStatus(@PathVariable Long id, @Valid @RequestBody ProjectStatusRequest request) {
++        return service.changeStatus(id, request.status());
++    }
++
+     @PostMapping("/{id}/archive")
+     public ProjectResponse archive(@PathVariable Long id) {
+         return service.archive(id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java b/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java
+index 1294481..4d548ff 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java
+@@ -4,8 +4,9 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ 
+-/** Payload to create a project for a client. */
++/** Payload to create a project for a client; without a status the project starts active. */
+ public record ProjectRequest(
+         @NotBlank @Size(max = 255) String name,
+-        @NotNull Long clientId) {
++        @NotNull Long clientId,
++        ProjectStatus status) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+index dda5bee..e743515 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+@@ -1,9 +1,11 @@
+ package net.officefloor.hq.app.project;
+ 
+-public record ProjectResponse(Long id, String name, Long clientId, String clientName, boolean archived) {
++public record ProjectResponse(Long id, String name, Long clientId, String clientName, boolean archived,
++        ProjectStatus status) {
+ 
+     static ProjectResponse from(Project project) {
+         return new ProjectResponse(project.getId(), project.getName(),
+-                project.getClient().getId(), project.getClient().getName(), project.isArchived());
++                project.getClient().getId(), project.getClient().getName(), project.isArchived(),
++                project.getStatus());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index 6c7a912..480c25c 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -56,10 +56,27 @@ public class ProjectService {
+     public ProjectResponse create(ProjectRequest request) {
+         Client client = clients.findById(request.clientId())
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown client"));
+-        Project saved = projects.save(new Project(request.name().trim(), client));
++        Project project = new Project(request.name().trim(), client);
++        if (request.status() != null) {
++            project.setStatus(request.status());
++        }
++        Project saved = projects.save(project);
+         return ProjectResponse.from(saved);
+     }
+ 
++    /** Marks a project active, on hold or finished, recording the change in the audit log. */
++    @Transactional
++    public ProjectResponse changeStatus(Long id, ProjectStatus status) {
++        Project project = projects.findByIdWithClient(id)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++        if (project.getStatus() != status) {
++            project.setStatus(status);
++            projects.flush();
++            audit.record("PROJECT_STATUS_CHANGED id=" + id + " status=" + status);
++        }
++        return ProjectResponse.from(project);
++    }
++
+     /**
+      * Archives a project: it drops off the project lists but is kept, with its tasks and invoices,
+      * and the archiving is recorded in the audit log.
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectStatus.java b/src/main/java/net/officefloor/hq/app/project/ProjectStatus.java
+new file mode 100644
+index 0000000..77ec855
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectStatus.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.project;
++
++/** Where a project stands: being worked on, paused, or done. */
++public enum ProjectStatus {
++    ACTIVE,
++    ON_HOLD,
++    FINISHED
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectStatusRequest.java b/src/main/java/net/officefloor/hq/app/project/ProjectStatusRequest.java
+new file mode 100644
+index 0000000..e20eb12
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectStatusRequest.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.project;
++
++import jakarta.validation.constraints.NotNull;
++
++/** Payload to mark a project active, on hold or finished. */
++public record ProjectStatusRequest(@NotNull ProjectStatus status) {
++}
+diff --git a/src/main/resources/db/migration/V18__project_status.sql b/src/main/resources/db/migration/V18__project_status.sql
+new file mode 100644
+index 0000000..8fa403b
+--- /dev/null
++++ b/src/main/resources/db/migration/V18__project_status.sql
+@@ -0,0 +1,4 @@
++-- A project is marked active, on hold or finished; existing projects are taken to be active.
++ALTER TABLE project ADD COLUMN status VARCHAR(16) DEFAULT 'ACTIVE' NOT NULL;
++
++ALTER TABLE project ADD CONSTRAINT project_status_valid CHECK (status IN ('ACTIVE', 'ON_HOLD', 'FINISHED'));
