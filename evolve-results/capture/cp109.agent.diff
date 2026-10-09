@@ -1,0 +1,1580 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-currency.ts b/src/main/frontend/src/app/features/clients/client-currency.ts
+index 661dff9..000d002 100644
+--- a/src/main/frontend/src/app/features/clients/client-currency.ts
++++ b/src/main/frontend/src/app/features/clients/client-currency.ts
+@@ -1,5 +1,6 @@
+-import { Component, inject, input, linkedSignal, output, signal } from '@angular/core';
+-import { CURRENCIES, Client, ClientService, CurrencyCode } from './client.service';
++import { Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
++import { Client, ClientService, CurrencyCode } from './client.service';
++import { CurrencyService } from '../currencies/currency.service';
+ 
+ // The currency a client is billed in, with a picker to change it. All of the client's money is shown in it.
+ @Component({
+@@ -16,7 +17,7 @@ import { CURRENCIES, Client, ClientService, CurrencyCode } from './client.servic
+         [value]="selected()"
+         (change)="selected.set($any($event.target).value)"
+       >
+-        @for (code of currencies; track code) {
++        @for (code of currencies(); track code) {
+           <option [value]="code" [selected]="code === selected()">{{ code }}</option>
+         }
+       </select>
+@@ -34,7 +35,13 @@ export class ClientCurrency {
+   /** Emits the client once their currency has been saved. */
+   readonly changed = output<Client>();
+ 
+-  protected readonly currencies = CURRENCIES;
++  private readonly currencyService = inject(CurrencyService);
++
++  // The known currencies, always including the client's own even before the list loads.
++  protected readonly currencies = computed(() => {
++    const codes = this.currencyService.list().map((c) => c.code);
++    return codes.includes(this.client().currency) ? codes : [this.client().currency, ...codes];
++  });
+   protected readonly selected = linkedSignal<CurrencyCode>(() => this.client().currency);
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index d50e71d..46c34de 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -1,5 +1,5 @@
+-import { CurrencyPipe } from '@angular/common';
+ import { Component, computed, inject, input, signal, viewChild } from '@angular/core';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { Router, RouterLink } from '@angular/router';
+ import { ClientContacts } from '../contacts/client-contacts';
+@@ -15,7 +15,7 @@ import { Client, ClientService } from './client.service';
+ // A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [CurrencyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge],
++  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -90,7 +90,7 @@ import { Client, ClientService } from './client.service';
+           <li>
+             Billed to date:
+             <span data-testid="client-lifetime-billed">{{
+-              summary.value().lifetimeBilled | currency: c.currency : 'symbol' : '1.2-2' : 'en-US'
++              summary.value().lifetimeBilled | money: c.currency
+             }}</span>
+           </li>
+         </ul>
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index abbc1ae..9df58c8 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -2,10 +2,8 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ 
+-/** The currencies a client can be billed in, by ISO 4217 code. */
+-export const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD'] as const;
+-
+-export type CurrencyCode = (typeof CURRENCIES)[number];
++/** A currency a client can be billed in, by ISO 4217 code; the known ones come from the currency service. */
++export type CurrencyCode = string;
+ 
+ export interface Client {
+   id: number;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index edcec40..18cdecd 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -1,5 +1,5 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+-import { CurrencyPipe } from '@angular/common';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { Component, computed, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+@@ -12,7 +12,7 @@ import { Client, ClientService } from './client.service';
+ // can be corrected in place from its row. Key accounts carry a marker beside their name. The list can be sorted by name or by how much each client owes.
+ @Component({
+   selector: 'app-clients',
+-  imports: [CurrencyPipe, ReactiveFormsModule, RouterLink, ClientEditForm],
++  imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm],
+   styles: `
+     .key-account {
+       margin-inline-start: 0.5em;
+@@ -223,7 +223,7 @@ import { Client, ClientService } from './client.service';
+                   }
+                 </td>
+                 <td data-testid="client-email">{{ c.email }}</td>
+-                <td data-testid="client-outstanding">{{ c.outstanding | currency: c.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                <td data-testid="client-outstanding">{{ c.outstanding | money: c.currency }}</td>
+                 <td>
+                   <a
+                     [routerLink]="['/clients', c.id]"
+diff --git a/src/main/frontend/src/app/features/credit-notes/invoice-credit-notes.ts b/src/main/frontend/src/app/features/credit-notes/invoice-credit-notes.ts
+index cb03440..128f1c6 100644
+--- a/src/main/frontend/src/app/features/credit-notes/invoice-credit-notes.ts
++++ b/src/main/frontend/src/app/features/credit-notes/invoice-credit-notes.ts
+@@ -1,4 +1,5 @@
+-import { CurrencyPipe, DatePipe } from '@angular/common';
++import { DatePipe } from '@angular/common';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+@@ -12,7 +13,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ // another once the invoice has been sent and while it is not cancelled.
+ @Component({
+   selector: 'app-invoice-credit-notes',
+-  imports: [ReactiveFormsModule, CurrencyPipe, DatePipe],
++  imports: [MoneyPipe, ReactiveFormsModule, DatePipe],
+   template: `
+     <section aria-labelledby="invoice-credit-notes-heading" data-testid="invoice-credit-notes">
+       <h2 id="invoice-credit-notes-heading">Credit notes</h2>
+@@ -34,14 +35,14 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+               @for (c of creditNotes.value(); track c.id) {
+                 <tr [attr.data-testid]="'credit-note-row-' + c.id">
+                   <td data-testid="credit-note-date">{{ c.issuedAt | date: 'yyyy-MM-dd' }}</td>
+-                  <td data-testid="credit-note-amount">{{ c.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  <td data-testid="credit-note-amount">{{ c.amount | money: currency() }}</td>
+                 </tr>
+               }
+             </tbody>
+             <tfoot>
+               <tr>
+                 <th scope="row">Credited</th>
+-                <td data-testid="invoice-credited-total">{{ creditedCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                <td data-testid="invoice-credited-total">{{ creditedCents() / 100 | money: currency() }}</td>
+               </tr>
+             </tfoot>
+           </table>
+diff --git a/src/main/frontend/src/app/features/credit/client-credit.ts b/src/main/frontend/src/app/features/credit/client-credit.ts
+index 847436c..f90866e 100644
+--- a/src/main/frontend/src/app/features/credit/client-credit.ts
++++ b/src/main/frontend/src/app/features/credit/client-credit.ts
+@@ -1,5 +1,5 @@
+-import { CurrencyPipe } from '@angular/common';
+ import { Component, inject, input, output, signal } from '@angular/core';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { CurrencyCode } from '../clients/client.service';
+@@ -10,14 +10,14 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ // How much credit a client has to spend: their unused deposits and credit notes added up, and a form to refund some of it back to them.
+ @Component({
+   selector: 'app-client-credit',
+-  imports: [CurrencyPipe, ReactiveFormsModule],
++  imports: [MoneyPipe, ReactiveFormsModule],
+   template: `
+     @if (credit.error()) {
+       <p role="alert" data-testid="client-available-credit-error">Could not load the client's available credit.</p>
+     } @else if (credit.hasValue()) {
+       <p>
+         Available credit:
+-        <span data-testid="client-available-credit">{{ credit.value().total | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
++        <span data-testid="client-available-credit">{{ credit.value().total | money: currency() }}</span>
+       </p>
+     }
+     <form [formGroup]="form" (ngSubmit)="submit()" data-testid="refund-form" aria-label="Refund credit" novalidate>
+diff --git a/src/main/frontend/src/app/features/currencies/currency-rounding.ts b/src/main/frontend/src/app/features/currencies/currency-rounding.ts
+new file mode 100644
+index 0000000..efec049
+--- /dev/null
++++ b/src/main/frontend/src/app/features/currencies/currency-rounding.ts
+@@ -0,0 +1,109 @@
++import { Component, inject, signal } from '@angular/core';
++import { DecimalPipe } from '@angular/common';
++import { Currency, CurrencyService } from './currency.service';
++
++/** The usual rounding steps: to the cent, to five or ten cents, and so on up to the whole unit. */
++const STEPS = [0.01, 0.05, 0.1, 0.25, 0.5, 1];
++
++// How each currency rounds: amounts in a currency are shown rounded to its step, e.g. the nearest five cents.
++@Component({
++  selector: 'app-currency-rounding',
++  imports: [DecimalPipe],
++  template: `
++    <section aria-labelledby="currency-rounding-heading" data-testid="currency-rounding">
++      <h2 id="currency-rounding-heading">Currency rounding</h2>
++      <p id="currency-rounding-hint">Amounts in each currency are shown rounded to the nearest multiple of its step.</p>
++      @if (service.currencies.error()) {
++        <p role="alert" data-testid="currency-rounding-load-error">Could not load the currencies.</p>
++      } @else {
++        <table data-testid="currency-rounding-table">
++          <caption class="visually-hidden">Rounding step for each currency</caption>
++          <thead>
++            <tr>
++              <th scope="col">Currency</th>
++              <th scope="col">Symbol</th>
++              <th scope="col">Round to</th>
++              <th scope="col"><span class="visually-hidden">Actions</span></th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (c of service.list(); track c.code) {
++              <tr [attr.data-testid]="'currency-rounding-row-' + c.code">
++                <th scope="row" data-testid="currency-code">{{ c.code }}</th>
++                <td data-testid="currency-symbol">{{ c.symbol }}</td>
++                <td>
++                  <label class="visually-hidden" [for]="'currency-rounding-step-' + c.code">Round {{ c.code }} to</label>
++                  <select
++                    [id]="'currency-rounding-step-' + c.code"
++                    [attr.data-testid]="'currency-rounding-step-' + c.code"
++                    aria-describedby="currency-rounding-hint"
++                    (change)="choose(c.code, $any($event.target).value)"
++                  >
++                    @for (step of stepsFor(c); track step) {
++                      <option [value]="step" [selected]="step === chosen(c)">{{ step | number: '1.2-2' : 'en-US' }}</option>
++                    }
++                  </select>
++                </td>
++                <td>
++                  <button
++                    type="button"
++                    [attr.data-testid]="'currency-rounding-save-' + c.code"
++                    [attr.aria-label]="'Save rounding for ' + c.code"
++                    [disabled]="busy() === c.code"
++                    (click)="save(c)"
++                  >
++                    Save
++                  </button>
++                </td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
++      @if (saved()) {
++        <p role="status" data-testid="currency-rounding-saved">Rounding for {{ saved() }} saved.</p>
++      }
++      @if (saveError()) {
++        <p role="alert" data-testid="currency-rounding-error">{{ saveError() }}</p>
++      }
++    </section>
++  `,
++})
++export class CurrencyRounding {
++  protected readonly service = inject(CurrencyService);
++
++  // Steps picked but not yet saved, by currency code.
++  private readonly picked = signal<Record<string, number>>({});
++  protected readonly busy = signal<string | null>(null);
++  protected readonly saved = signal<string | null>(null);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected stepsFor(currency: Currency): number[] {
++    return STEPS.includes(currency.roundingStep) ? STEPS : [...STEPS, currency.roundingStep].sort((a, b) => a - b);
++  }
++
++  protected chosen(currency: Currency): number {
++    return this.picked()[currency.code] ?? currency.roundingStep;
++  }
++
++  protected choose(code: string, value: string): void {
++    this.picked.update((p) => ({ ...p, [code]: Number(value) }));
++  }
++
++  protected save(currency: Currency): void {
++    this.busy.set(currency.code);
++    this.saved.set(null);
++    this.saveError.set(null);
++    this.service.changeRounding(currency.code, this.chosen(currency)).subscribe({
++      next: (updated) => {
++        this.picked.update(({ [updated.code]: _, ...rest }) => rest);
++        this.busy.set(null);
++        this.saved.set(updated.code);
++      },
++      error: () => {
++        this.saveError.set(`Could not save the rounding for ${currency.code}. Please try again.`);
++        this.busy.set(null);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/currencies/currency.service.ts b/src/main/frontend/src/app/features/currencies/currency.service.ts
+new file mode 100644
+index 0000000..bfaec3d
+--- /dev/null
++++ b/src/main/frontend/src/app/features/currencies/currency.service.ts
+@@ -0,0 +1,35 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, computed, inject } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { Observable, tap } from 'rxjs';
++
++/** A currency clients can be billed in, with the symbol its amounts are shown with and the step they round to. */
++export interface Currency {
++  code: string;
++  symbol: string;
++  /** Amounts in this currency are shown rounded to the nearest multiple of this (0.05 for five cents). */
++  roundingStep: number;
++}
++
++@Injectable({ providedIn: 'root' })
++export class CurrencyService {
++  private readonly http = inject(HttpClient);
++
++  /** The known currencies, loaded once and kept up to date as their rounding is changed. */
++  readonly currencies = rxResource({ stream: () => this.http.get<Currency[]>('/api/currencies') });
++
++  readonly list = computed(() => (this.currencies.hasValue() ? this.currencies.value() : []));
++
++  private readonly byCode = computed(() => new Map(this.list().map((c) => [c.code, c])));
++
++  /** The currency with this code, if it is known (and has loaded). */
++  find(code: string): Currency | undefined {
++    return this.byCode().get(code);
++  }
++
++  changeRounding(code: string, roundingStep: number): Observable<Currency> {
++    return this.http
++      .put<Currency>(`/api/currencies/${encodeURIComponent(code)}/rounding`, { roundingStep })
++      .pipe(tap((updated) => this.currencies.update((list) => (list ?? []).map((c) => (c.code === updated.code ? updated : c)))));
++  }
++}
+diff --git a/src/main/frontend/src/app/features/currencies/money.pipe.ts b/src/main/frontend/src/app/features/currencies/money.pipe.ts
+new file mode 100644
+index 0000000..002f108
+--- /dev/null
++++ b/src/main/frontend/src/app/features/currencies/money.pipe.ts
+@@ -0,0 +1,31 @@
++import { Pipe, PipeTransform, inject } from '@angular/core';
++import { formatNumber, getCurrencySymbol } from '@angular/common';
++import { CurrencyService } from './currency.service';
++
++/** Rounds an amount to the nearest multiple of the step (both in whole cents), halves away from zero. */
++export function roundToStep(amount: number, step: number): number {
++  const stepCents = Math.max(1, Math.round(step * 100));
++  const cents = Math.round(Math.abs(amount) * 100);
++  return (Math.sign(amount) * Math.round(cents / stepCents) * stepCents) / 100;
++}
++
++/**
++ * Shows an amount in a currency: with the currency's symbol and rounded to the currency's rounding step
++ * (e.g. to the nearest five cents). Pass `rounded` false for rates such as unit prices, which are shown as
++ * they are. Impure so it picks up the currencies once they load or their rounding changes.
++ */
++@Pipe({ name: 'money', pure: false })
++export class MoneyPipe implements PipeTransform {
++  private readonly currencies = inject(CurrencyService);
++
++  transform(value: number | null | undefined, code: string, digitsInfo = '1.2-2', rounded = true): string | null {
++    if (value === null || value === undefined) {
++      return null;
++    }
++    const currency = this.currencies.find(code);
++    const symbol = currency?.symbol ?? getCurrencySymbol(code, 'wide', 'en-US');
++    const amount = rounded ? roundToStep(value, currency?.roundingStep ?? 0.01) : value;
++    const sign = amount < 0 ? '-' : '';
++    return sign + symbol + formatNumber(Math.abs(amount), 'en-US', digitsInfo);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index e2bcb31..3a2692f 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -1,5 +1,5 @@
+-import { CurrencyPipe } from '@angular/common';
+ import { Component, inject, signal } from '@angular/core';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService, DashboardSummary } from './dashboard.service';
+ 
+ // Dashboard page: how many clients and projects there are, and the total still owed in each currency
+@@ -9,7 +9,7 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
+ // each in their own currency.
+ @Component({
+   selector: 'app-dashboard',
+-  imports: [CurrencyPipe],
++  imports: [MoneyPipe],
+   template: `
+     <h1>Dashboard</h1>
+ 
+@@ -28,7 +28,7 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
+         <div>
+           <dt>Outstanding</dt>
+           @for (t of s.outstanding; track t.currency) {
+-            <dd [attr.data-testid]="'dashboard-outstanding-' + t.currency">{{ t.amount | currency: t.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
++            <dd [attr.data-testid]="'dashboard-outstanding-' + t.currency">{{ t.amount | money: t.currency }}</dd>
+           } @empty {
+             <dd data-testid="dashboard-outstanding-none">Nothing owed</dd>
+           }
+@@ -46,7 +46,7 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
+             @for (c of s.topClients; track c.id) {
+               <li [attr.data-testid]="'top-client-row-' + c.id">
+                 <span data-testid="top-client-name">{{ c.name }}</span>:
+-                <span data-testid="top-client-amount">{{ c.outstanding | currency: c.currency : 'symbol' : '1.2-2' : 'en-US' }}</span>
++                <span data-testid="top-client-amount">{{ c.outstanding | money: c.currency }}</span>
+               </li>
+             }
+           </ol>
+diff --git a/src/main/frontend/src/app/features/deposits/client-deposits.ts b/src/main/frontend/src/app/features/deposits/client-deposits.ts
+index 0229771..546237a 100644
+--- a/src/main/frontend/src/app/features/deposits/client-deposits.ts
++++ b/src/main/frontend/src/app/features/deposits/client-deposits.ts
+@@ -1,5 +1,5 @@
+-import { CurrencyPipe } from '@angular/common';
+ import { Component, inject, input, signal } from '@angular/core';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { CurrencyCode } from '../clients/client.service';
+@@ -10,7 +10,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ // The deposits a client has paid up front, before any invoice, with what is still held, how much has been put toward invoices or refunded, and a form to record another.
+ @Component({
+   selector: 'app-client-deposits',
+-  imports: [ReactiveFormsModule, CurrencyPipe],
++  imports: [MoneyPipe, ReactiveFormsModule],
+   template: `
+     <section aria-labelledby="client-deposits-heading" data-testid="client-deposits">
+       <h2 id="client-deposits-heading">Deposits</h2>
+@@ -18,18 +18,18 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+         <p role="alert" data-testid="client-deposits-error">Could not load the client's deposits.</p>
+       } @else if (deposits.hasValue()) {
+         <p>
+-          Held: <span data-testid="client-deposit-total">{{ deposits.value().total | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
++          Held: <span data-testid="client-deposit-total">{{ deposits.value().total | money: currency() }}</span>
+         </p>
+         @if (deposits.value().applied > 0) {
+           <p>
+             Put toward invoices:
+-            <span data-testid="client-deposit-applied">{{ deposits.value().applied | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
++            <span data-testid="client-deposit-applied">{{ deposits.value().applied | money: currency() }}</span>
+           </p>
+         }
+         @if (deposits.value().refunded > 0) {
+           <p>
+             Refunded:
+-            <span data-testid="client-deposit-refunded">{{ deposits.value().refunded | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
++            <span data-testid="client-deposit-refunded">{{ deposits.value().refunded | money: currency() }}</span>
+           </p>
+         }
+         @if (deposits.value().deposits.length > 0) {
+@@ -37,7 +37,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+             @for (d of deposits.value().deposits; track d.id) {
+               <li [attr.data-testid]="'client-deposit-' + d.id">
+                 <span data-testid="client-deposit-date">{{ d.date }}</span>:
+-                <span data-testid="client-deposit-amount">{{ d.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
++                <span data-testid="client-deposit-amount">{{ d.amount | money: currency() }}</span>
+               </li>
+             }
+           </ul>
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index ad9c320..6fad709 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -1,5 +1,5 @@
+-import { CurrencyPipe } from '@angular/common';
+ import { Component, computed, inject, input, signal } from '@angular/core';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { InvoiceService } from './invoice.service';
+@@ -13,7 +13,7 @@ import { InvoiceService } from './invoice.service';
+ // with the app's navigation and the page's controls left off the printed copy.
+ @Component({
+   selector: 'app-client-statement',
+-  imports: [CurrencyPipe, RouterLink],
++  imports: [MoneyPipe, RouterLink],
+   styles: `
+     .statement-actions {
+       display: flex;
+@@ -73,13 +73,13 @@ import { InvoiceService } from './invoice.service';
+           <h2 id="statement-summary-heading">Summary</h2>
+           <dl class="statement-summary">
+             <dt>Total invoiced</dt>
+-            <dd data-testid="statement-total-invoiced">{{ s.invoiced | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
++            <dd data-testid="statement-total-invoiced">{{ s.invoiced | money: s.currency }}</dd>
+             <dt>Tax</dt>
+-            <dd data-testid="client-statement-tax-total">{{ s.tax | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
++            <dd data-testid="client-statement-tax-total">{{ s.tax | money: s.currency }}</dd>
+             <dt>Less paid</dt>
+-            <dd data-testid="statement-total-paid">{{ s.paid | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
++            <dd data-testid="statement-total-paid">{{ s.paid | money: s.currency }}</dd>
+             <dt class="statement-grand-total">Grand total owed</dt>
+-            <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
++            <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | money: s.currency }}</dd>
+           </dl>
+         </section>
+         <section aria-labelledby="statement-asof-heading" data-testid="statement-asof">
+@@ -94,7 +94,7 @@ import { InvoiceService } from './invoice.service';
+           } @else if (balanceAsOf.value(); as b) {
+             <p aria-live="polite">
+               Owed as at {{ b.asOf }}:
+-              <strong data-testid="client-balance-asof">{{ b.balance | currency: b.currency : 'symbol' : '1.2-2' : 'en-US' }}</strong>
++              <strong data-testid="client-balance-asof">{{ b.balance | money: b.currency }}</strong>
+             </p>
+           }
+         </section>
+@@ -121,15 +121,15 @@ import { InvoiceService } from './invoice.service';
+                     <td data-testid="statement-entry-description">{{ e.description }}</td>
+                     <td class="statement-money" data-testid="statement-entry-charge">
+                       @if (e.charge !== null) {
+-                        {{ e.charge | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}
++                        {{ e.charge | money: s.currency }}
+                       }
+                     </td>
+                     <td class="statement-money" data-testid="statement-entry-credit">
+                       @if (e.credit !== null) {
+-                        {{ e.credit | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}
++                        {{ e.credit | money: s.currency }}
+                       }
+                     </td>
+-                    <td class="statement-money" data-testid="statement-running-balance">{{ e.balance | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                    <td class="statement-money" data-testid="statement-running-balance">{{ e.balance | money: s.currency }}</td>
+                   </tr>
+                 }
+               </tbody>
+@@ -172,19 +172,19 @@ import { InvoiceService } from './invoice.service';
+                     <td data-testid="statement-invoice-status">{{ i.status }}</td>
+                     <td data-testid="statement-invoice-issued">{{ i.issuedDate }}</td>
+                     <td data-testid="statement-invoice-due">{{ i.dueDate }}</td>
+-                    <td data-testid="statement-invoice-amount">{{ i.amount | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+-                    <td data-testid="statement-invoice-tax">{{ i.tax | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+-                    <td data-testid="statement-invoice-due-amount">{{ i.amountDue | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                    <td data-testid="statement-invoice-amount">{{ i.amount | money: s.currency }}</td>
++                    <td data-testid="statement-invoice-tax">{{ i.tax | money: s.currency }}</td>
++                    <td data-testid="statement-invoice-due-amount">{{ i.amountDue | money: s.currency }}</td>
+                   </tr>
+                 }
+                 <tr>
+                   <th scope="row" colspan="6">Tax on {{ job.projectName }}</th>
+-                  <td data-testid="statement-project-tax">{{ job.tax | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  <td data-testid="statement-project-tax">{{ job.tax | money: s.currency }}</td>
+                   <td></td>
+                 </tr>
+                 <tr>
+                   <th scope="row" colspan="7">Subtotal owed on {{ job.projectName }}</th>
+-                  <td data-testid="statement-project-subtotal">{{ job.subtotal | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  <td data-testid="statement-project-subtotal">{{ job.subtotal | money: s.currency }}</td>
+                 </tr>
+               </tbody>
+             }
+@@ -192,7 +192,7 @@ import { InvoiceService } from './invoice.service';
+         }
+         <p>
+           Total owed:
+-          <strong data-testid="client-outstanding-total">{{ s.outstanding | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</strong>
++          <strong data-testid="client-outstanding-total">{{ s.outstanding | money: s.currency }}</strong>
+         </p>
+       </article>
+     }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 70006a6..da0d75d 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -1,4 +1,5 @@
+-import { CurrencyPipe, DecimalPipe } from '@angular/common';
++import { DecimalPipe } from '@angular/common';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { Component, Injector, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
+ import { rxResource, toSignal } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+@@ -26,7 +27,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+-  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, Notes],
++  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, Notes],
+   template: `
+     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
+     @if (invoice.error()) {
+@@ -160,7 +161,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                       (keydown.escape)="cancelEdit(l.id)"
+                     />
+                   </td>
+-                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice, l.discountPct) / 100 | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice, l.discountPct) / 100 | money: inv.currency }}</td>
+                   <td>
+                     <button
+                       type="button"
+@@ -183,13 +184,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                   </td>
+                   <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
+                   <td data-testid="lineitem-unit">{{ l.unit ?? '' }}</td>
+-                  <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: inv.currency : 'symbol' : '1.2-4' : 'en-US' }}</td>
++                  <td data-testid="lineitem-unitprice">{{ l.unitPrice | money: inv.currency : '1.2-4' : false }}</td>
+                   <td data-testid="lineitem-discount">
+                     @if (l.discountPct > 0) {
+                       {{ l.discountPct | number: '1.0-2' : 'en-US' }}%
+                     }
+                   </td>
+-                  <td data-testid="lineitem-amount">{{ l.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  <td data-testid="lineitem-amount">{{ l.amount | money: inv.currency }}</td>
+                   @if (inv.status === 'DRAFT') {
+                     <td>
+                       <button
+@@ -220,7 +221,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+           <tfoot>
+             <tr>
+               <th scope="row" colspan="5">Subtotal</th>
+-              <td data-testid="invoice-subtotal">{{ inv.subtotal | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-subtotal">{{ inv.subtotal | money: inv.currency }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+@@ -229,13 +230,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+               <tr [attr.data-testid]="'discount-row-' + d.id">
+                 <th scope="row" colspan="5" data-testid="discount-row-label">
+                   @if (d.discountAmount > 0) {
+-                    Discount {{ $index + 1 }} ({{ d.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }} off)
++                    Discount {{ $index + 1 }} ({{ d.discountAmount | money: inv.currency }} off)
+                   } @else {
+-                    Discount {{ $index + 1 }} ({{ d.discountPct | number: '1.0-2' : 'en-US' }}%@if (d.discountCap !== null) {, up to <span data-testid="discount-row-cap">{{ d.discountCap | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span>})
++                    Discount {{ $index + 1 }} ({{ d.discountPct | number: '1.0-2' : 'en-US' }}%@if (d.discountCap !== null) {, up to <span data-testid="discount-row-cap">{{ d.discountCap | money: inv.currency }}</span>})
+                   }
+                 </th>
+                 <td>
+-                  <span [attr.data-testid]="'breakdown-discount-row-' + d.id">-<span data-testid="discount-row-amount">{{ d.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span></span>
++                  <span [attr.data-testid]="'breakdown-discount-row-' + d.id">-<span data-testid="discount-row-amount">{{ d.amount | money: inv.currency }}</span></span>
+                 </td>
+                 @if (inv.status === 'DRAFT') {
+                   <td>
+@@ -255,21 +256,21 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+             <tr>
+               <th scope="row" colspan="5">
+                 @if (inv.discounts.length > 1) {
+-                  Combined discount (@if (inv.discountPct > 0) {<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%}@if (inv.discountPct > 0 && inv.discountAmount > 0) { + }@if (inv.discountAmount > 0) {<span data-testid="invoice-discount-amount">{{ inv.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span> off})
++                  Combined discount (@if (inv.discountPct > 0) {<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%}@if (inv.discountPct > 0 && inv.discountAmount > 0) { + }@if (inv.discountAmount > 0) {<span data-testid="invoice-discount-amount">{{ inv.discountAmount | money: inv.currency }}</span> off})
+                 } @else if (inv.discountAmount > 0) {
+-                  Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span> off)
++                  Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | money: inv.currency }}</span> off)
+                 } @else {
+                   Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%)
+                 }
+               </th>
+-              <td data-testid="invoice-discount">{{ inv.discount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-discount">{{ inv.discount | money: inv.currency }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+             </tr>
+             <tr>
+               <th scope="row" colspan="5">Taxable amount (excludes tax-free lines)</th>
+-              <td data-testid="invoice-taxable-base">{{ inv.taxableBase | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-taxable-base">{{ inv.taxableBase | money: inv.currency }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+@@ -278,7 +279,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+               <th scope="row" colspan="5" data-testid="invoice-tax-label">
+                 Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
+               </th>
+-              <td data-testid="invoice-tax">{{ inv.tax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-tax">{{ inv.tax | money: inv.currency }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+@@ -287,14 +288,14 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+               <th scope="row" colspan="5" data-testid="invoice-tax-levy-label">
+                 Levy (<span data-testid="invoice-tax-levy-pct">{{ inv.levyPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
+               </th>
+-              <td data-testid="invoice-tax-levy">{{ inv.levy | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-tax-levy">{{ inv.levy | money: inv.currency }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+             </tr>
+             <tr>
+               <th scope="row" colspan="5">Surcharge</th>
+-              <td data-testid="invoice-surcharge">{{ inv.surcharge | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-surcharge">{{ inv.surcharge | money: inv.currency }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+@@ -308,7 +309,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+             </tr>
+             <tr>
+               <th scope="row" colspan="5">Total before tax</th>
+-              <td data-testid="invoice-total-ex-tax">{{ inv.totalExTax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-total-ex-tax">{{ inv.totalExTax | money: inv.currency }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+@@ -317,10 +318,10 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+               <tr data-testid="invoice-minimum-applied">
+                 <th scope="row" colspan="5">
+                   Minimum charge applied (net total
+-                  <span data-testid="invoice-net-total">{{ inv.netTotal | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span>
++                  <span data-testid="invoice-net-total">{{ inv.netTotal | money: inv.currency }}</span>
+                   is under the minimum)
+                 </th>
+-                <td data-testid="invoice-minimum-charge">{{ inv.minimumCharge | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                <td data-testid="invoice-minimum-charge">{{ inv.minimumCharge | money: inv.currency }}</td>
+                 @if (inv.status === 'DRAFT') {
+                   <td></td>
+                 }
+@@ -328,21 +329,21 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+             }
+             <tr>
+               <th scope="row" colspan="5">Total</th>
+-              <td data-testid="invoice-amount">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-amount">{{ inv.amount | money: inv.currency }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+             </tr>
+             <tr>
+               <th scope="row" colspan="5">Total after tax</th>
+-              <td data-testid="invoice-total-inc-tax">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-total-inc-tax">{{ inv.amount | money: inv.currency }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+             </tr>
+             <tr>
+               <th scope="row" colspan="5">Total savings (all discounts added together)</th>
+-              <td data-testid="invoice-total-savings">{{ inv.totalSavings | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-total-savings">{{ inv.totalSavings | money: inv.currency }}</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+               }
+@@ -354,7 +355,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                   <span data-testid="invoice-early-pay-days">{{ inv.earlyPaymentDays }}</span> days) for
+                   <span data-testid="invoice-early-pay-pct">{{ inv.earlyPaymentPct | number: '1.0-2' : 'en-US' }}</span>% off
+                 </th>
+-                <td data-testid="invoice-early-pay-amount">{{ inv.earlyPaymentAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                <td data-testid="invoice-early-pay-amount">{{ inv.earlyPaymentAmount | money: inv.currency }}</td>
+                 @if (inv.status === 'DRAFT') {
+                   <td></td>
+                 }
+diff --git a/src/main/frontend/src/app/features/invoices/invoices.ts b/src/main/frontend/src/app/features/invoices/invoices.ts
+index 3f3a8d5..1fb9aab 100644
+--- a/src/main/frontend/src/app/features/invoices/invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/invoices.ts
+@@ -1,5 +1,5 @@
+-import { CurrencyPipe } from '@angular/common';
+ import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { INVOICE_STATUSES, InvoicePage, InvoiceService, InvoiceStatus } from './invoice.service';
+@@ -8,7 +8,7 @@ import { INVOICE_STATUSES, InvoicePage, InvoiceService, InvoiceStatus } from './
+ // and the stage it is at. The list can be narrowed to a single stage.
+ @Component({
+   selector: 'app-invoices',
+-  imports: [CurrencyPipe, RouterLink],
++  imports: [MoneyPipe, RouterLink],
+   template: `
+     <h1>Invoices</h1>
+ 
+@@ -53,7 +53,7 @@ import { INVOICE_STATUSES, InvoicePage, InvoiceService, InvoiceStatus } from './
+               <td data-testid="invoice-project">
+                 <a [routerLink]="['/projects', i.projectId]">{{ i.projectName }}</a>
+               </td>
+-              <td data-testid="invoice-amount">{{ i.amount | currency: i.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-amount">{{ i.amount | money: i.currency }}</td>
+               <td data-testid="invoice-status">{{ i.status }}</td>
+               <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
+               <td data-testid="invoice-due">{{ i.dueDate }}</td>
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index 31842b2..89ab7bc 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -1,5 +1,5 @@
+-import { CurrencyPipe } from '@angular/common';
+ import { RouterLink } from '@angular/router';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import {
+@@ -24,7 +24,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+ // opens onto its line items and payments. Invoices with a credit put against them are flagged.
+ @Component({
+   selector: 'app-project-invoices',
+-  imports: [ReactiveFormsModule, CurrencyPipe, RouterLink],
++  imports: [MoneyPipe, ReactiveFormsModule, RouterLink],
+   template: `
+     <section aria-labelledby="project-invoices-heading" data-testid="project-invoices">
+       <h2 id="project-invoices-heading">Invoices</h2>
+@@ -151,8 +151,8 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+                     >#{{ i.id }}</a
+                   >
+                 </td>
+-                <td data-testid="invoice-amount">{{ i.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+-                <td data-testid="invoice-due-amount">{{ i.amountDue | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                <td data-testid="invoice-amount">{{ i.amount | money: currency() }}</td>
++                <td data-testid="invoice-due-amount">{{ i.amountDue | money: currency() }}</td>
+                 <td data-testid="invoice-status">
+                   {{ i.status }}
+                   @if (i.creditApplied) {
+@@ -190,7 +190,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+           <tfoot>
+             <tr>
+               <th scope="row">Total</th>
+-              <td data-testid="project-invoices-total">{{ totalCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="project-invoices-total">{{ totalCents() / 100 | money: currency() }}</td>
+               <td colspan="5"></td>
+             </tr>
+           </tfoot>
+diff --git a/src/main/frontend/src/app/features/payments/client-payment.ts b/src/main/frontend/src/app/features/payments/client-payment.ts
+index 4444646..0000763 100644
+--- a/src/main/frontend/src/app/features/payments/client-payment.ts
++++ b/src/main/frontend/src/app/features/payments/client-payment.ts
+@@ -1,4 +1,5 @@
+-import { CurrencyPipe, formatCurrency, getCurrencySymbol } from '@angular/common';
++import { formatCurrency, getCurrencySymbol } from '@angular/common';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { Observable } from 'rxjs';
+@@ -28,7 +29,7 @@ export type PaymentSource = 'payment' | 'deposit';
+ // shares may not add up to more than is held.
+ @Component({
+   selector: 'app-client-payment',
+-  imports: [ReactiveFormsModule, CurrencyPipe],
++  imports: [MoneyPipe, ReactiveFormsModule],
+   template: `
+     <section aria-labelledby="client-payment-heading" data-testid="client-payment">
+       <h2 id="client-payment-heading">{{ fromDeposit() ? 'Put a deposit toward invoices' : 'Record a payment' }}</h2>
+@@ -42,7 +43,7 @@ export type PaymentSource = 'payment' | 'deposit';
+             @if (fromDeposit()) {
+               <p>
+                 Deposits held:
+-                <span data-testid="payment-deposit-held">{{ heldCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
++                <span data-testid="payment-deposit-held">{{ heldCents() / 100 | money: currency() }}</span>
+               </p>
+             } @else {
+               <div>
+@@ -93,7 +94,7 @@ export type PaymentSource = 'payment' | 'deposit';
+                 <p id="client-payment-credit-note">
+                   @if (useCredit()) {
+                     Credit available:
+-                    <span data-testid="payment-credit-available">{{ creditCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>.
++                    <span data-testid="payment-credit-available">{{ creditCents() / 100 | money: currency() }}</span>.
+                   }
+                   Any of the payment not allocated is kept as credit for the client.
+                 </p>
+@@ -114,7 +115,7 @@ export type PaymentSource = 'payment' | 'deposit';
+                   <tr [attr.data-testid]="'payment-alloc-row-' + i.id">
+                     <td>#{{ i.id }}</td>
+                     <td>{{ i.projectName }}</td>
+-                    <td data-testid="payment-alloc-due">{{ i.amountDue | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                    <td data-testid="payment-alloc-due">{{ i.amountDue | money: currency() }}</td>
+                     <td>
+                       <input
+                         type="number"
+@@ -133,16 +134,16 @@ export type PaymentSource = 'payment' | 'deposit';
+               <tfoot>
+                 <tr>
+                   <th scope="row" colspan="3">Allocated</th>
+-                  <td data-testid="payment-alloc-total">{{ allocatedCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  <td data-testid="payment-alloc-total">{{ allocatedCents() / 100 | money: currency() }}</td>
+                 </tr>
+                 @if (!fromDeposit()) {
+                   <tr>
+                     <th scope="row" colspan="3">From credit</th>
+-                    <td data-testid="payment-from-credit">{{ fromCreditCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                    <td data-testid="payment-from-credit">{{ fromCreditCents() / 100 | money: currency() }}</td>
+                   </tr>
+                   <tr>
+                     <th scope="row" colspan="3">Kept as credit</th>
+-                    <td data-testid="payment-to-credit">{{ toCreditCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                    <td data-testid="payment-to-credit">{{ toCreditCents() / 100 | money: currency() }}</td>
+                   </tr>
+                 }
+               </tfoot>
+diff --git a/src/main/frontend/src/app/features/payments/invoice-payments.ts b/src/main/frontend/src/app/features/payments/invoice-payments.ts
+index 09f4ca1..8a7f5e6 100644
+--- a/src/main/frontend/src/app/features/payments/invoice-payments.ts
++++ b/src/main/frontend/src/app/features/payments/invoice-payments.ts
+@@ -1,5 +1,5 @@
+-import { CurrencyPipe } from '@angular/common';
+ import { HttpErrorResponse } from '@angular/common/http';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+@@ -12,7 +12,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ // another payment while the invoice is sent and not yet fully paid.
+ @Component({
+   selector: 'app-invoice-payments',
+-  imports: [ReactiveFormsModule, CurrencyPipe],
++  imports: [MoneyPipe, ReactiveFormsModule],
+   template: `
+     <section aria-labelledby="invoice-payments-heading" data-testid="invoice-payments">
+       <h2 id="invoice-payments-heading">Payments</h2>
+@@ -34,18 +34,18 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+             @for (p of payments.value(); track p.id) {
+               <tr [attr.data-testid]="'payment-row-' + p.id">
+                 <td data-testid="payment-date">{{ p.date }}</td>
+-                <td data-testid="payment-amount">{{ p.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                <td data-testid="payment-amount">{{ p.amount | money: currency() }}</td>
+               </tr>
+             }
+           </tbody>
+           <tfoot>
+             <tr>
+               <th scope="row">Paid</th>
+-              <td data-testid="invoice-paid-total">{{ paidCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-paid-total">{{ paidCents() / 100 | money: currency() }}</td>
+             </tr>
+             <tr>
+               <th scope="row">Balance due</th>
+-              <td data-testid="invoice-balance-due">{{ balanceCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              <td data-testid="invoice-balance-due">{{ balanceCents() / 100 | money: currency() }}</td>
+             </tr>
+           </tfoot>
+         </table>
+diff --git a/src/main/frontend/src/app/features/projects/project-budget.ts b/src/main/frontend/src/app/features/projects/project-budget.ts
+index b0fa9b7..051c0ab 100644
+--- a/src/main/frontend/src/app/features/projects/project-budget.ts
++++ b/src/main/frontend/src/app/features/projects/project-budget.ts
+@@ -1,5 +1,5 @@
+-import { CurrencyPipe } from '@angular/common';
+ import { Component, inject, input, signal } from '@angular/core';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { ProjectService } from './project.service';
+@@ -9,7 +9,7 @@ import { CurrencyCode } from '../clients/client.service';
+ // and what is left. Set or change the budget, or clear it by leaving the amount blank.
+ @Component({
+   selector: 'app-project-budget',
+-  imports: [ReactiveFormsModule, CurrencyPipe],
++  imports: [MoneyPipe, ReactiveFormsModule],
+   template: `
+     <section aria-labelledby="project-budget-heading" data-testid="project-budget-section">
+       <h2 id="project-budget-heading">Budget</h2>
+@@ -24,17 +24,17 @@ import { CurrencyCode } from '../clients/client.service';
+             @if (b.budget === null) {
+               No budget set
+             } @else {
+-              {{ b.budget | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}
++              {{ b.budget | money: currency() }}
+             }
+           </dd>
+           <dt>Invoiced</dt>
+-          <dd data-testid="project-invoiced">{{ b.invoiced | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</dd>
++          <dd data-testid="project-invoiced">{{ b.invoiced | money: currency() }}</dd>
+           <dt>Remaining</dt>
+           <dd data-testid="project-remaining" [class.over]="b.remaining !== null && b.remaining < 0">
+             @if (b.remaining === null) {
+               —
+             } @else {
+-              {{ b.remaining | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}
++              {{ b.remaining | money: currency() }}
+             }
+           </dd>
+         </dl>
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 42f156d..a8b0320 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -2,11 +2,12 @@ import { Component, effect, inject, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { SettingsService } from './settings.service';
++import { CurrencyRounding } from '../currencies/currency-rounding';
+ 
+-// The app-wide settings: the standard sales tax rate that every new invoice starts with.
++// The app-wide settings: the standard sales tax rate that every new invoice starts with, and how each currency rounds.
+ @Component({
+   selector: 'app-settings',
+-  imports: [ReactiveFormsModule],
++  imports: [ReactiveFormsModule, CurrencyRounding],
+   template: `
+     <h1>Settings</h1>
+     @if (settings.error()) {
+@@ -41,6 +42,7 @@ import { SettingsService } from './settings.service';
+         <p role="alert" data-testid="settings-save-error">{{ saveError() }}</p>
+       }
+     </form>
++    <app-currency-rounding />
+   `,
+ })
+ export class SettingsPage {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 1426e3e..7de31fc 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -10,7 +10,7 @@ import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+-import net.officefloor.hq.app.client.Currency;
++import net.officefloor.hq.app.currency.Currency;
+ import net.officefloor.hq.app.invoice.InvoiceRequest;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.project.ProjectStatus;
+@@ -68,6 +68,10 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
++            // Back to the standard currencies, each rounding to the cent.
++            jdbc.execute("DELETE FROM currency");
++            jdbc.execute("INSERT INTO currency (code, symbol, rounding_step) VALUES ('USD', '$', 0.01), ('EUR', '€', 0.01),"
++                    + " ('GBP', '£', 0.01), ('CAD', 'CA$', 0.01), ('AUD', 'A$', 0.01)");
+         } finally {
+             jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+         }
+@@ -82,6 +86,13 @@ public class TestSupportController {
+         if (fixture.get("asOf") != null) {
+             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
+         }
++        // A fixture currency is added, or replaces the standard one with the same code; its rounding step
++        // defaults to the cent and its symbol to its code.
++        for (Map<String, Object> c : rows(fixture, "currencies")) {
++            jdbc.update("MERGE INTO currency (code, symbol, rounding_step) KEY (code) VALUES (?, ?, ?)",
++                    c.get("code"), c.get("symbol") == null ? c.get("code") + " " : c.get("symbol"),
++                    c.get("roundingStep") == null ? new BigDecimal("0.01") : decimal(c.get("roundingStep")));
++        }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+             jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct)"
+                     + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+@@ -89,7 +100,7 @@ public class TestSupportController {
+                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
+                     Boolean.TRUE.equals(c.get("keyAccount")),
+                     Boolean.TRUE.equals(c.get("archived")),
+-                    c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString(),
++                    c.get("currency") == null ? Currency.DEFAULT : c.get("currency").toString(),
+                     decimal(c.get("defaultDiscountPct")));
+         }
+         for (Map<String, Object> c : rows(fixture, "contacts")) {
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index 0aedc31..747186f 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -2,8 +2,6 @@ package net.officefloor.hq.app.client;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
+-import jakarta.persistence.EnumType;
+-import jakarta.persistence.Enumerated;
+ import jakarta.persistence.FetchType;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+@@ -14,6 +12,7 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import net.officefloor.hq.app.contact.Contact;
++import net.officefloor.hq.app.currency.Currency;
+ 
+ /** A client of the office. */
+ @Entity
+@@ -53,8 +52,8 @@ public class Client {
+     private BigDecimal defaultDiscountPct = BigDecimal.ZERO.setScale(2);
+ 
+     /** The currency the client is billed in; all of their money is in it. */
+-    @Enumerated(EnumType.STRING)
+-    private Currency currency = Currency.USD;
++    @Column(nullable = false)
++    private String currency = Currency.DEFAULT;
+ 
+     /** The client's main contact, one of its own contacts; none until one is chosen. */
+     @ManyToOne(fetch = FetchType.LAZY)
+@@ -145,11 +144,11 @@ public class Client {
+         this.archived = archived;
+     }
+ 
+-    public Currency getCurrency() {
++    public String getCurrency() {
+         return currency;
+     }
+ 
+-    public void setCurrency(Currency currency) {
++    public void setCurrency(String currency) {
+         this.currency = currency;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientCurrencyRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientCurrencyRequest.java
+index 10d8851..ca29e28 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientCurrencyRequest.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientCurrencyRequest.java
+@@ -1,7 +1,7 @@
+ package net.officefloor.hq.app.client;
+ 
+-import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.NotBlank;
+ 
+ /** Payload to change the currency a client is billed in. */
+-public record ClientCurrencyRequest(@NotNull Currency currency) {
++public record ClientCurrencyRequest(@NotBlank String currency) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index c25ac51..0869359 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -4,7 +4,7 @@ import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+ public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, boolean taxInclusive, boolean taxExempt, boolean keyAccount, BigDecimal defaultDiscountPct, boolean archived, PrimaryContact primaryContact,
+-        Currency currency, BigDecimal outstanding) {
++        String currency, BigDecimal outstanding) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+     public record PrimaryContact(Long id, String name) {
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 39cb163..9e4bebe 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -2,13 +2,15 @@ package net.officefloor.hq.app.client;
+ 
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+-import java.util.EnumMap;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.TreeMap;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.contact.ContactRepository;
+ import net.officefloor.hq.app.creditnote.CreditNoteRepository;
++import net.officefloor.hq.app.currency.Currency;
++import net.officefloor.hq.app.currency.CurrencyService;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+@@ -29,16 +31,18 @@ public class ClientService {
+     private final InvoiceRepository invoices;
+     private final PaymentRepository payments;
+     private final CreditNoteRepository creditNotes;
++    private final CurrencyService currencies;
+     private final Audit audit;
+ 
+     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
+-            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes, Audit audit) {
++            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes, CurrencyService currencies, Audit audit) {
+         this.clients = clients;
+         this.projects = projects;
+         this.contacts = contacts;
+         this.invoices = invoices;
+         this.payments = payments;
+         this.creditNotes = creditNotes;
++        this.currencies = currencies;
+         this.audit = audit;
+     }
+ 
+@@ -138,9 +142,12 @@ public class ClientService {
+ 
+     /** Changes the currency a client is billed in, recording the change in the audit log. */
+     @Transactional
+-    public ClientResponse changeCurrency(Long id, Currency currency) {
++    public ClientResponse changeCurrency(Long id, String currency) {
+         Client client = find(id);
+-        if (client.getCurrency() != currency) {
++        if (!currencies.exists(currency)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown currency");
++        }
++        if (!client.getCurrency().equals(currency)) {
+             client.setCurrency(currency);
+             clients.flush();
+             audit.record("CLIENT_CURRENCY_CHANGED id=" + id + " currency=" + currency);
+@@ -192,7 +199,7 @@ public class ClientService {
+         }
+         Client source = find(id);
+         Client target = find(targetId);
+-        if (source.getCurrency() != target.getCurrency()) {
++        if (!source.getCurrency().equals(target.getCurrency())) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "Only clients billed in the same currency can be merged");
+         }
+@@ -250,9 +257,9 @@ public class ClientService {
+      * in different currencies are never added together. Currencies nothing is owed in are left out.
+      */
+     @Transactional(readOnly = true)
+-    public Map<Currency, BigDecimal> outstandingByCurrency() {
++    public Map<String, BigDecimal> outstandingByCurrency() {
+         Map<Long, BigDecimal> owed = outstandingByClient();
+-        Map<Currency, BigDecimal> totals = new EnumMap<>(Currency.class);
++        Map<String, BigDecimal> totals = new TreeMap<>(Currency.ORDER);
+         clients.findAllById(owed.keySet())
+                 .forEach(c -> totals.merge(c.getCurrency(), owed.get(c.getId()), BigDecimal::add));
+         totals.values().removeIf(amount -> amount.signum() == 0);
+diff --git a/src/main/java/net/officefloor/hq/app/client/Currency.java b/src/main/java/net/officefloor/hq/app/client/Currency.java
+deleted file mode 100644
+index 43db446..0000000
+--- a/src/main/java/net/officefloor/hq/app/client/Currency.java
++++ /dev/null
+@@ -1,6 +0,0 @@
+-package net.officefloor.hq.app.client;
+-
+-/** The currencies a client can be billed in, by ISO 4217 code. */
+-public enum Currency {
+-    USD, EUR, GBP, CAD, AUD
+-}
+diff --git a/src/main/java/net/officefloor/hq/app/currency/Currency.java b/src/main/java/net/officefloor/hq/app/currency/Currency.java
+new file mode 100644
+index 0000000..fadb2c2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/currency/Currency.java
+@@ -0,0 +1,57 @@
++package net.officefloor.hq.app.currency;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.util.Comparator;
++import java.util.List;
++
++/**
++ * A currency clients can be billed in, by ISO 4217 code, with the symbol its amounts are shown with and
++ * the step they are rounded to when shown (0.05 rounds to the nearest five cents).
++ */
++@Entity
++@Table(name = "currency")
++public class Currency {
++
++    /** The currency a client is billed in unless another is chosen. */
++    public static final String DEFAULT = "USD";
++
++    /** The original currencies come first in their usual order; any others follow by code. */
++    private static final List<String> STANDARD = List.of("USD", "EUR", "GBP", "CAD", "AUD");
++
++    public static final Comparator<String> ORDER = Comparator
++            .comparingInt((String code) -> STANDARD.contains(code) ? STANDARD.indexOf(code) : STANDARD.size())
++            .thenComparing(Comparator.naturalOrder());
++
++    @Id
++    private String code;
++
++    @Column(nullable = false)
++    private String symbol;
++
++    @Column(name = "rounding_step", nullable = false, precision = 10, scale = 2)
++    private BigDecimal roundingStep = new BigDecimal("0.01");
++
++    protected Currency() {
++    }
++
++    public String getCode() {
++        return code;
++    }
++
++    public String getSymbol() {
++        return symbol;
++    }
++
++    public BigDecimal getRoundingStep() {
++        return roundingStep;
++    }
++
++    public void setRoundingStep(BigDecimal roundingStep) {
++        this.roundingStep = roundingStep.setScale(2, RoundingMode.HALF_UP);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/currency/CurrencyController.java b/src/main/java/net/officefloor/hq/app/currency/CurrencyController.java
+new file mode 100644
+index 0000000..57af2b3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/currency/CurrencyController.java
+@@ -0,0 +1,31 @@
++package net.officefloor.hq.app.currency;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/currencies")
++public class CurrencyController {
++
++    private final CurrencyService service;
++
++    public CurrencyController(CurrencyService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<CurrencyResponse> list() {
++        return service.list();
++    }
++
++    @PutMapping("/{code}/rounding")
++    public CurrencyResponse changeRounding(@PathVariable String code, @Valid @RequestBody CurrencyRoundingRequest request) {
++        return service.changeRounding(code, request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/currency/CurrencyRepository.java b/src/main/java/net/officefloor/hq/app/currency/CurrencyRepository.java
+new file mode 100644
+index 0000000..8405bef
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/currency/CurrencyRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.currency;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface CurrencyRepository extends JpaRepository<Currency, String> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/currency/CurrencyResponse.java b/src/main/java/net/officefloor/hq/app/currency/CurrencyResponse.java
+new file mode 100644
+index 0000000..37a1035
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/currency/CurrencyResponse.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.currency;
++
++import java.math.BigDecimal;
++
++public record CurrencyResponse(String code, String symbol, BigDecimal roundingStep) {
++
++    public static CurrencyResponse from(Currency currency) {
++        return new CurrencyResponse(currency.getCode(), currency.getSymbol(), currency.getRoundingStep());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/currency/CurrencyRoundingRequest.java b/src/main/java/net/officefloor/hq/app/currency/CurrencyRoundingRequest.java
+new file mode 100644
+index 0000000..e980713
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/currency/CurrencyRoundingRequest.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.currency;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/** Payload to change the step a currency's amounts are rounded to, in whole cents (0.01 or more). */
++public record CurrencyRoundingRequest(
++        @NotNull @DecimalMin("0.01") @Digits(integer = 8, fraction = 2) BigDecimal roundingStep) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/currency/CurrencyService.java b/src/main/java/net/officefloor/hq/app/currency/CurrencyService.java
+new file mode 100644
+index 0000000..5eebaf0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/currency/CurrencyService.java
+@@ -0,0 +1,48 @@
++package net.officefloor.hq.app.currency;
++
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class CurrencyService {
++
++    private final CurrencyRepository currencies;
++    private final Audit audit;
++
++    public CurrencyService(CurrencyRepository currencies, Audit audit) {
++        this.currencies = currencies;
++        this.audit = audit;
++    }
++
++    /** The known currencies, the original ones first. */
++    @Transactional(readOnly = true)
++    public List<CurrencyResponse> list() {
++        return currencies.findAll().stream()
++                .sorted((a, b) -> Currency.ORDER.compare(a.getCode(), b.getCode()))
++                .map(CurrencyResponse::from)
++                .toList();
++    }
++
++    /** Whether the code names a known currency. */
++    @Transactional(readOnly = true)
++    public boolean exists(String code) {
++        return code != null && currencies.existsById(code);
++    }
++
++    /** Changes the step a currency's amounts are rounded to, recording the change in the audit log. */
++    @Transactional
++    public CurrencyResponse changeRounding(String code, CurrencyRoundingRequest request) {
++        Currency currency = currencies.findById(code)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown currency"));
++        if (currency.getRoundingStep().compareTo(request.roundingStep()) != 0) {
++            currency.setRoundingStep(request.roundingStep());
++            currencies.flush();
++            audit.record("CURRENCY_ROUNDING_CHANGED code=" + code + " step=" + currency.getRoundingStep().toPlainString());
++        }
++        return CurrencyResponse.from(currency);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+index 79fc4f8..30973b1 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+@@ -2,7 +2,6 @@ package net.officefloor.hq.app.dashboard;
+ 
+ import java.math.BigDecimal;
+ import java.util.List;
+-import net.officefloor.hq.app.client.Currency;
+ 
+ /**
+  * Summary figures for the dashboard, with the clients who owe the most. What is outstanding is
+@@ -12,10 +11,10 @@ public record DashboardResponse(long clients, long projects, List<CurrencyTotal>
+         List<TopClient> topClients) {
+ 
+     /** What is still owed in one currency. */
+-    public record CurrencyTotal(Currency currency, BigDecimal amount) {
++    public record CurrencyTotal(String currency, BigDecimal amount) {
+     }
+ 
+     /** A client and what they still owe, in their currency. */
+-    public record TopClient(Long id, String name, Currency currency, BigDecimal outstanding) {
++    public record TopClient(Long id, String name, String currency, BigDecimal outstanding) {
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 20e17fe..3f5023b 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -4,12 +4,12 @@ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.Clock;
+ import java.time.LocalDate;
+-import java.util.EnumMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.TreeMap;
+ import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.client.ClientService;
+-import net.officefloor.hq.app.client.Currency;
++import net.officefloor.hq.app.currency.Currency;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.project.ProjectRepository;
+@@ -45,7 +45,7 @@ public class DashboardService {
+     @Transactional(readOnly = true)
+     public DashboardResponse summary() {
+         List<InvoiceStatus> owing = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL);
+-        Map<Currency, BigDecimal> owed = new EnumMap<>(Currency.class);
++        Map<String, BigDecimal> owed = new TreeMap<>(Currency.ORDER);
+         // A currency whose debts were written off stays listed, showing nothing owed, so the write-off is visible.
+         clients.findAllById(invoices.sumAmountByStatusInPerClient(List.of(InvoiceStatus.WRITTEN_OFF)).stream()
+                 .map(InvoiceRepository.ClientTotal::getClientId).toList())
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientBalanceAsOfResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientBalanceAsOfResponse.java
+index 398f97e..5d1ca62 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientBalanceAsOfResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientBalanceAsOfResponse.java
+@@ -2,8 +2,7 @@ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+-import net.officefloor.hq.app.client.Currency;
+ 
+ /** What a client owed as at the end of a chosen day, in the client's currency (negative when in credit). */
+-public record ClientBalanceAsOfResponse(Long clientId, Currency currency, LocalDate asOf, BigDecimal balance) {
++public record ClientBalanceAsOfResponse(Long clientId, String currency, LocalDate asOf, BigDecimal balance) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+index a94805d..b217825 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -8,7 +8,6 @@ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.function.Function;
+-import net.officefloor.hq.app.client.Currency;
+ 
+ /**
+  * A client's statement: all of their invoices, each with the project it is for and how much is left
+@@ -20,10 +19,10 @@ import net.officefloor.hq.app.client.Currency;
+  * is in the client's currency. Finally it gives the running account: every invoice, payment, credit note, deposit and
+  * refund in date order, each with the balance owed once it is counted.
+  */
+-public record ClientStatementResponse(Long clientId, String clientName, Currency currency, List<Line> invoices, List<Job> jobs,
++public record ClientStatementResponse(Long clientId, String clientName, String currency, List<Line> invoices, List<Job> jobs,
+         BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax, List<StatementEntry> entries) {
+ 
+-    static ClientStatementResponse from(Long clientId, String clientName, Currency currency, List<Line> invoices,
++    static ClientStatementResponse from(Long clientId, String clientName, String currency, List<Line> invoices,
+             List<StatementEntry> entries) {
+         Map<Long, List<Line>> byProject = new LinkedHashMap<>();
+         invoices.forEach(l -> byProject.computeIfAbsent(l.projectId(), id -> new ArrayList<>()).add(l));
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 250371f..c6b50b9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -3,7 +3,6 @@ package net.officefloor.hq.app.invoice;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+-import net.officefloor.hq.app.client.Currency;
+ 
+ /**
+  * A single invoice together with the line items it is built from: their subtotal, each discount on it
+@@ -18,7 +17,7 @@ import net.officefloor.hq.app.client.Currency;
+  * before it, whether the minimum was billed because the net total came out under it, and the total
+  * savings (the line discounts and the invoice's discounts added together).
+  */
+-public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal totalExTax,
++public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+         BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
+         BigDecimal levyPct, BigDecimal levy, BigDecimal surcharge, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+index e437731..1cdc63d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+@@ -2,13 +2,12 @@ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+-import net.officefloor.hq.app.client.Currency;
+ 
+ /**
+  * An invoice, with how much of it is still left to pay after the payments made and credit notes raised against
+  * it (nothing once void), and whether any credit has been put against it.
+  */
+-public record InvoiceResponse(Long id, Long projectId, Currency currency, BigDecimal amount, InvoiceStatus status,
++public record InvoiceResponse(Long id, Long projectId, String currency, BigDecimal amount, InvoiceStatus status,
+         LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue,
+         boolean creditApplied) {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceSummaryResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceSummaryResponse.java
+index 9a55053..df04f46 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceSummaryResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceSummaryResponse.java
+@@ -2,10 +2,9 @@ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+-import net.officefloor.hq.app.client.Currency;
+ 
+ /** An invoice as listed across all projects: carries the name of the project it is for. */
+-public record InvoiceSummaryResponse(Long id, Long projectId, String projectName, Currency currency, BigDecimal amount,
++public record InvoiceSummaryResponse(Long id, Long projectId, String projectName, String currency, BigDecimal amount,
+         InvoiceStatus status, LocalDate issuedDate, LocalDate dueDate) {
+ 
+     static InvoiceSummaryResponse from(Invoice invoice) {
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+index 84b0722..3567f47 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+@@ -1,9 +1,8 @@
+ package net.officefloor.hq.app.project;
+ 
+-import net.officefloor.hq.app.client.Currency;
+ 
+ public record ProjectResponse(Long id, String name, String code, Long clientId, String clientName, boolean archived,
+-        ProjectStatus status, Currency currency, String description, boolean billable,
++        ProjectStatus status, String currency, String description, boolean billable,
+         boolean closed) {
+ 
+     public static ProjectResponse from(Project project) {
+diff --git a/src/main/resources/db/migration/V62__currency_rounding.sql b/src/main/resources/db/migration/V62__currency_rounding.sql
+new file mode 100644
+index 0000000..7d4ee1f
+--- /dev/null
++++ b/src/main/resources/db/migration/V62__currency_rounding.sql
+@@ -0,0 +1,19 @@
++-- The currencies clients can be billed in, each with the symbol its amounts are shown with and the step
++-- its amounts are rounded to when shown (0.01 rounds to the cent; 0.05 to the nearest five cents).
++CREATE TABLE currency (
++    code VARCHAR(3) PRIMARY KEY,
++    symbol VARCHAR(8) NOT NULL,
++    rounding_step DECIMAL(10, 2) DEFAULT 0.01 NOT NULL,
++    CONSTRAINT currency_rounding_step_positive CHECK (rounding_step > 0)
++);
++
++INSERT INTO currency (code, symbol, rounding_step) VALUES
++    ('USD', '$', 0.01),
++    ('EUR', '€', 0.01),
++    ('GBP', '£', 0.01),
++    ('CAD', 'CA$', 0.01),
++    ('AUD', 'A$', 0.01);
++
++-- A client's currency is now any known currency rather than a fixed list.
++ALTER TABLE client DROP CONSTRAINT client_currency_known;
++ALTER TABLE client ADD CONSTRAINT client_currency_fk FOREIGN KEY (currency) REFERENCES currency (code);
