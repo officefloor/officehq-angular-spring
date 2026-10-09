@@ -2,6 +2,8 @@ package net.officefloor.hq.app.invoice;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -28,6 +30,10 @@ public class Invoice {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private InvoiceStatus status = InvoiceStatus.UNPAID;
+
     protected Invoice() {
     }
 
@@ -46,5 +52,14 @@ public class Invoice {
 
     public BigDecimal getAmount() {
         return amount;
+    }
+
+    public InvoiceStatus getStatus() {
+        return status;
+    }
+
+    /** Marks this invoice as paid. */
+    public void markPaid() {
+        this.status = InvoiceStatus.PAID;
     }
 }

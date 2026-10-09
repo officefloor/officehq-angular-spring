@@ -2,10 +2,13 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+export type InvoiceStatus = 'UNPAID' | 'PAID';
+
 export interface Invoice {
   id: number;
   projectId: number;
   amount: number;
+  status: InvoiceStatus;
 }
 
 export interface NewInvoice {
@@ -22,5 +25,9 @@ export class InvoiceService {
 
   create(projectId: number, invoice: NewInvoice): Observable<Invoice> {
     return this.http.post<Invoice>(`/api/projects/${projectId}/invoices`, invoice);
+  }
+
+  pay(projectId: number, invoiceId: number): Observable<Invoice> {
+    return this.http.post<Invoice>(`/api/projects/${projectId}/invoices/${invoiceId}/pay`, null);
   }
 }

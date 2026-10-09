@@ -31,4 +31,9 @@ public class InvoiceController {
     public InvoiceResponse create(@PathVariable Long projectId, @Valid @RequestBody InvoiceRequest request) {
         return service.create(projectId, request);
     }
+
+    @PostMapping("/{invoiceId}/pay")
+    public InvoiceResponse pay(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+        return service.pay(projectId, invoiceId);
+    }
 }

@@ -4,7 +4,8 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { InvoiceService } from './invoice.service';
 
-// A project's invoices: lists them, shows what they add up to, and adds a new one by amount.
+// A project's invoices: lists them, shows what they add up to, adds a new one by amount, and marks
+// one as paid.
 @Component({
   selector: 'app-project-invoices',
   imports: [ReactiveFormsModule, DecimalPipe],
@@ -51,6 +52,8 @@ import { InvoiceService } from './invoice.service';
             <tr>
               <th scope="col">Invoice</th>
               <th scope="col">Amount</th>
+              <th scope="col">Status</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -58,6 +61,20 @@ import { InvoiceService } from './invoice.service';
               <tr [attr.data-testid]="'invoice-row-' + i.id">
                 <td data-testid="invoice-id">#{{ i.id }}</td>
                 <td data-testid="invoice-amount">{{ i.amount | number: '1.2-2' : 'en-US' }}</td>
+                <td data-testid="invoice-status">{{ i.status }}</td>
+                <td>
+                  @if (i.status === 'UNPAID') {
+                    <button
+                      type="button"
+                      [attr.data-testid]="'invoice-pay-' + i.id"
+                      [attr.aria-label]="'Mark invoice #' + i.id + ' as paid'"
+                      [disabled]="paying() === i.id"
+                      (click)="pay(i.id)"
+                    >
+                      Mark paid
+                    </button>
+                  }
+                </td>
               </tr>
             }
           </tbody>
@@ -65,9 +82,13 @@ import { InvoiceService } from './invoice.service';
             <tr>
               <th scope="row">Total</th>
               <td data-testid="project-invoices-total">{{ totalCents() / 100 | number: '1.2-2' : 'en-US' }}</td>
+              <td colspan="2"></td>
             </tr>
           </tfoot>
         </table>
+        @if (payError()) {
+          <p role="alert" data-testid="invoice-pay-error">{{ payError() }}</p>
+        }
       }
     </section>
   `,
@@ -89,6 +110,9 @@ export class ProjectInvoices {
 
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
+
+  protected readonly paying = signal<number | null>(null);
+  protected readonly payError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     amount: [
@@ -119,6 +143,21 @@ export class ProjectInvoices {
       error: () => {
         this.saveError.set('Could not save the invoice. Please try again.');
         this.saving.set(false);
+      },
+    });
+  }
+
+  protected pay(invoiceId: number): void {
+    this.paying.set(invoiceId);
+    this.payError.set(null);
+    this.service.pay(this.projectId(), invoiceId).subscribe({
+      next: (paid) => {
+        this.invoices.update((list) => (list ?? []).map((i) => (i.id === paid.id ? paid : i)));
+        this.paying.set(null);
+      },
+      error: () => {
+        this.payError.set('Could not mark the invoice as paid. Please try again.');
+        this.paying.set(null);
       },
     });
   }

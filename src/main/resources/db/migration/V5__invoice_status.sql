@@ -1,0 +1,3 @@
+ALTER TABLE invoice ADD COLUMN status VARCHAR(16) DEFAULT 'UNPAID' NOT NULL;
+
+ALTER TABLE invoice ADD CONSTRAINT invoice_status_valid CHECK (status IN ('UNPAID', 'PAID'));

@@ -60,9 +60,10 @@ public class TestSupportController {
                     ((Number) p.get("clientId")).longValue());
         }
         for (Map<String, Object> i : rows(fixture, "invoices")) {
-            jdbc.update("INSERT INTO invoice (id, project_id, amount) VALUES (?, ?, ?)",
+            jdbc.update("INSERT INTO invoice (id, project_id, amount, status) VALUES (?, ?, ?, ?)",
                     ((Number) i.get("id")).longValue(), ((Number) i.get("projectId")).longValue(),
-                    new BigDecimal(i.get("amount").toString()));
+                    new BigDecimal(i.get("amount").toString()),
+                    i.getOrDefault("status", "UNPAID"));
         }
         // Continue generated ids after the explicitly seeded ones.
         restartIdentity("client");
