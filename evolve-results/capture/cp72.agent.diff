@@ -1,0 +1,312 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 6400d73..d1f9737 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -9,6 +9,8 @@ import { InvoicePayments } from '../payments/invoice-payments';
+ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+ 
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
++// A unit price may be a fraction of a cent; each line is rounded to the cent on its own.
++const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ 
+ // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
+ // amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
+@@ -113,7 +115,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                       type="number"
+                       inputmode="decimal"
+                       min="0.01"
+-                      step="0.01"
++                      step="0.0001"
+                       [formControl]="editForm.controls.unitPrice"
+                       data-testid="lineitem-edit-unitprice"
+                       aria-label="Unit price"
+@@ -145,8 +147,8 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                   </td>
+                   <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
+                   <td data-testid="lineitem-unit">{{ l.unit ?? '' }}</td>
+-                  <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+-                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: inv.currency : 'symbol' : '1.2-4' : 'en-US' }}</td>
++                  <td data-testid="lineitem-amount">{{ l.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                   @if (inv.status === 'DRAFT') {
+                     <td>
+                       <button
+@@ -389,7 +391,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+               type="number"
+               inputmode="decimal"
+               min="0.01"
+-              step="0.01"
++              step="0.0001"
+               formControlName="unitPrice"
+               data-testid="lineitem-form-unitprice"
+               [attr.aria-invalid]="invalid('unitPrice')"
+@@ -397,7 +399,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+             />
+             @if (invalid('unitPrice')) {
+               <p id="lineitem-unitprice-error" role="alert" data-testid="lineitem-form-unitprice-error">
+-                Enter a price greater than zero with at most two decimal places.
++                Enter a price greater than zero with at most four decimal places.
+               </p>
+             }
+           </div>
+@@ -441,9 +443,10 @@ export class InvoiceDetailPage {
+     stream: ({ params }) => this.service.get(params.projectId, params.invoiceId),
+   });
+ 
+-  // Work in whole cents so the total is exact rather than accumulating floating-point error.
++  // Work in whole cents (and ten-thousandths of a unit price) so the line is exact rather than
++  // accumulating floating-point error; each line is rounded to the cent on its own.
+   protected lineCents(qty: number, unitPrice: number): number {
+-    return Math.round(Math.round(qty * 100) * Math.round(unitPrice * 100) / 100);
++    return Math.round((Math.round(qty * 100) * Math.round(unitPrice * 10000)) / 10000);
+   }
+ 
+   protected readonly discountSaving = signal(false);
+@@ -570,7 +573,7 @@ export class InvoiceDetailPage {
+     description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
+     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+     unit: ['', [Validators.maxLength(50)]],
+-    unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(FOUR_DECIMALS)]],
+     taxExempt: false,
+   });
+ 
+@@ -610,7 +613,7 @@ export class InvoiceDetailPage {
+     description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
+     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+     unit: ['', [Validators.maxLength(50)]],
+-    unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(FOUR_DECIMALS)]],
+     taxExempt: false,
+   });
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 47bb9e1..de0689c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -136,32 +136,32 @@ public class TestSupportController {
+                 lineItems = List.of(Map.of("description", InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION,
+                         "qty", 1, "unitPrice", i.get("amount")));
+             }
+-            BigDecimal amount = BigDecimal.ZERO;
+-            BigDecimal taxable = BigDecimal.ZERO;
++            BigDecimal discountPct = i.get("discountPct") == null ? BigDecimal.ZERO
++                    : new BigDecimal(i.get("discountPct").toString());
++            BigDecimal taxPct = i.get("taxPct") == null ? BigDecimal.ZERO
++                    : new BigDecimal(i.get("taxPct").toString());
++            BigDecimal levyPct = i.get("levyPct") == null ? BigDecimal.ZERO
++                    : new BigDecimal(i.get("levyPct").toString());
++            // Each line is rounded to the cent first and the rounded lines are added up. A discount takes a
++            // percentage off the subtotal; sales tax and a levy each add their percentage of every taxable
++            // line after its discount, rounded per line and then added up. The amount is the discounted
++            // subtotal plus the tax plus the levy.
++            BigDecimal subtotal = BigDecimal.ZERO.setScale(2);
++            BigDecimal tax = BigDecimal.ZERO.setScale(2);
++            BigDecimal levy = BigDecimal.ZERO.setScale(2);
+             for (Map<String, Object> l : lineItems) {
+                 BigDecimal line = new BigDecimal(l.get("qty").toString())
+                         .multiply(new BigDecimal(l.get("unitPrice").toString())).setScale(2, RoundingMode.HALF_UP);
+-                amount = amount.add(line);
++                subtotal = subtotal.add(line);
+                 if (!Boolean.TRUE.equals(l.get("taxExempt"))) {
+-                    taxable = taxable.add(line);
++                    BigDecimal base = line.subtract(
++                            line.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
++                    tax = tax.add(base.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
++                    levy = levy.add(base.multiply(levyPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+                 }
+             }
+-            // A discount takes a percentage off the line items' subtotal, then sales tax adds a percentage
+-            // of what is left of the taxable lines only, and a levy adds its own percentage of that same taxable
+-            // base; the amount is the discounted subtotal plus the tax plus the levy.
+-            BigDecimal subtotal = amount.setScale(2, RoundingMode.HALF_UP);
+-            BigDecimal discountPct = i.get("discountPct") == null ? BigDecimal.ZERO
+-                    : new BigDecimal(i.get("discountPct").toString());
+             BigDecimal discount = subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+             BigDecimal discounted = subtotal.subtract(discount);
+-            BigDecimal taxPct = i.get("taxPct") == null ? BigDecimal.ZERO
+-                    : new BigDecimal(i.get("taxPct").toString());
+-            BigDecimal taxableBase = taxable.subtract(
+-                    taxable.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+-            BigDecimal tax = taxableBase.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+-            BigDecimal levyPct = i.get("levyPct") == null ? BigDecimal.ZERO
+-                    : new BigDecimal(i.get("levyPct").toString());
+-            BigDecimal levy = taxableBase.multiply(levyPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+             // An invoice for a tax-inclusive client already has the taxes inside its prices, so its amount is
+             // just the discounted subtotal.
+             long projectId = ((Number) i.get("projectId")).longValue();
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 0be2f85..f74fbdd 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -20,6 +20,7 @@ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Optional;
++import java.util.function.UnaryOperator;
+ import net.officefloor.hq.app.project.Project;
+ 
+ /**
+@@ -28,6 +29,10 @@ import net.officefloor.hq.app.project.Project;
+  * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
+  * its stored amount is always that subtotal less the discount plus the tax plus the levy.
+  * <p>
++ * Every figure is worked out line by line: each line is rounded to the cent first and the rounded lines
++ * are then added up, and the tax and levy are likewise worked out and rounded on each taxable line before
++ * being added up, so the totals are sums of rounded lines rather than a rounded sum.
++ * <p>
+  * A tax-inclusive invoice (for a client whose prices already include tax) instead works the tax and
+  * levy back out of the taxable lines after the discount: they are inside the price, so its amount is
+  * just the subtotal less the discount, and the taxable base is what is left once they are taken out.
+@@ -109,10 +114,9 @@ public class Invoice {
+         return discountPct;
+     }
+ 
+-    /** What the line items add up to, before any discount. */
++    /** What the line items add up to, before any discount: the sum of each line rounded to the cent. */
+     public BigDecimal getSubtotal() {
+-        return lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add)
+-                .setScale(2, RoundingMode.HALF_UP);
++        return lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
+     /** How much the discount takes off the subtotal, to the cent. */
+@@ -140,9 +144,12 @@ public class Invoice {
+         return taxInclusive ? gross.subtract(getTax()).subtract(getLevy()) : gross;
+     }
+ 
+-    /** How much sales tax is added on the taxable base (or is inside it, when tax-inclusive), to the cent. */
++    /**
++     * How much sales tax is added on the taxable base (or is inside it, when tax-inclusive): the tax on
++     * each taxable line rounded to the cent, added up.
++     */
+     public BigDecimal getTax() {
+-        return taxInclusive ? includedIn(getDiscountedTaxable(), taxPct) : taxOn(getTaxableBase());
++        return sumOverTaxableLines(this::taxOn);
+     }
+ 
+     /** The levy (second tax) percentage added on top of the sales tax; zero when there is no levy. */
+@@ -150,16 +157,24 @@ public class Invoice {
+         return levyPct;
+     }
+ 
+-    /** How much levy is added on the taxable base (or is inside it, when tax-inclusive), to the cent. */
++    /**
++     * How much levy is added on the taxable base (or is inside it, when tax-inclusive): the levy on each
++     * taxable line rounded to the cent, added up.
++     */
+     public BigDecimal getLevy() {
+-        return taxInclusive ? includedIn(getDiscountedTaxable(), levyPct) : percentOf(getTaxableBase(), levyPct);
++        return sumOverTaxableLines(this::levyOn);
+     }
+ 
+-    /** The taxable lines (leaving out tax-free ones) less the discount taken off them, to the cent. */
++    /** The taxable lines (leaving out tax-free ones), each less the discount taken off it, added up. */
+     private BigDecimal getDiscountedTaxable() {
+-        BigDecimal taxable = lineItems.stream().filter(l -> !l.isTaxExempt()).map(InvoiceLineItem::getAmount)
+-                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
+-        return taxable.subtract(discountOn(taxable));
++        return sumOverTaxableLines(line -> line);
++    }
++
++    /** Works a figure out on each taxable line after its discount, to the cent, and adds them up. */
++    private BigDecimal sumOverTaxableLines(UnaryOperator<BigDecimal> perLine) {
++        return lineItems.stream().filter(l -> !l.isTaxExempt()).map(InvoiceLineItem::getAmount)
++                .map(amount -> perLine.apply(amount.subtract(discountOn(amount))))
++                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
+     /**
+@@ -247,8 +262,14 @@ public class Invoice {
+         return subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+     }
+ 
+-    private BigDecimal taxOn(BigDecimal taxableBase) {
+-        return percentOf(taxableBase, taxPct);
++    /** The sales tax on one discounted taxable line (or inside it, when tax-inclusive), to the cent. */
++    private BigDecimal taxOn(BigDecimal line) {
++        return taxInclusive ? includedIn(line, taxPct) : percentOf(line, taxPct);
++    }
++
++    /** The levy on one discounted taxable line (or inside it, when tax-inclusive), to the cent. */
++    private BigDecimal levyOn(BigDecimal line) {
++        return taxInclusive ? includedIn(line, levyPct) : percentOf(line, levyPct);
+     }
+ 
+     private static BigDecimal percentOf(BigDecimal base, BigDecimal pct) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
+index cd0d9e4..9c6b1ac 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
+@@ -34,7 +34,7 @@ public class InvoiceLineItem {
+     @Column(length = 50)
+     private String unit;
+ 
+-    @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
++    @Column(name = "unit_price", nullable = false, precision = 14, scale = 4)
+     private BigDecimal unitPrice;
+ 
+     @Column(name = "tax_exempt", nullable = false)
+@@ -91,7 +91,7 @@ public class InvoiceLineItem {
+         return taxExempt;
+     }
+ 
+-    /** What this line charges: quantity times unit price, to the cent. */
++    /** What this line charges: quantity times unit price, rounded to the cent on its own before lines are added up. */
+     public BigDecimal getAmount() {
+         return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java b/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
+index 386716b..dafa041 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
+@@ -7,12 +7,12 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ 
+-/** Payload to add, or change, a line item on a draft invoice. The unit is optional; a line is taxable unless marked tax-exempt. */
++/** Payload to add, or change, a line item on a draft invoice. The unit price may be given to a fraction of a cent (up to four decimal places); the unit is optional; a line is taxable unless marked tax-exempt. */
+ public record LineItemRequest(
+         @NotBlank @Size(max = 255) String description,
+         @NotNull @DecimalMin("0.01") @Digits(integer = 8, fraction = 2) BigDecimal qty,
+         @Size(max = 50) String unit,
+-        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal unitPrice,
++        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 4) BigDecimal unitPrice,
+         Boolean taxExempt) {
+ 
+     /** The unit with surrounding blanks removed, or null when none was given. */
+diff --git a/src/main/resources/db/migration/V38__round_each_line.sql b/src/main/resources/db/migration/V38__round_each_line.sql
+new file mode 100644
+index 0000000..dd3d16b
+--- /dev/null
++++ b/src/main/resources/db/migration/V38__round_each_line.sql
+@@ -0,0 +1,29 @@
++-- Each line is worked out and rounded to the cent first, then the lines are added up, so a unit price
++-- can now be given to a fraction of a cent (up to four decimal places): two lines of 10.005 are 10.01
++-- each and 20.02 together. The sales tax and levy are likewise worked out and rounded on each taxable
++-- line (after its discount) and then added up. Rework the stored amount of draft invoices that add tax
++-- on top to match; tax-inclusive drafts owe the discounted subtotal, which is unchanged, and invoices
++-- already sent keep the amount they were issued for.
++ALTER TABLE invoice_line_item ALTER COLUMN unit_price DECIMAL(14, 4);
++
++ALTER TABLE invoice ADD COLUMN rework_subtotal DECIMAL(14, 2);
++ALTER TABLE invoice ADD COLUMN rework_taxes DECIMAL(14, 2);
++
++UPDATE invoice i SET
++    rework_subtotal = (SELECT COALESCE(SUM(ROUND(l.qty * l.unit_price, 2)), 0)
++                       FROM invoice_line_item l WHERE l.invoice_id = i.id),
++    rework_taxes = (SELECT COALESCE(SUM(
++                        ROUND((ROUND(l.qty * l.unit_price, 2)
++                               - ROUND(ROUND(l.qty * l.unit_price, 2) * i.discount_pct / 100, 2)) * i.tax_pct / 100, 2)
++                        + ROUND((ROUND(l.qty * l.unit_price, 2)
++                               - ROUND(ROUND(l.qty * l.unit_price, 2) * i.discount_pct / 100, 2)) * i.levy_pct / 100, 2)), 0)
++                    FROM invoice_line_item l WHERE l.invoice_id = i.id AND NOT l.tax_exempt)
++WHERE i.status = 'DRAFT'
++  AND NOT i.tax_inclusive
++  AND EXISTS (SELECT 1 FROM invoice_line_item l WHERE l.invoice_id = i.id);
++
++UPDATE invoice SET amount = rework_subtotal - ROUND(rework_subtotal * discount_pct / 100, 2) + rework_taxes
++WHERE rework_subtotal IS NOT NULL;
++
++ALTER TABLE invoice DROP COLUMN rework_subtotal;
++ALTER TABLE invoice DROP COLUMN rework_taxes;
