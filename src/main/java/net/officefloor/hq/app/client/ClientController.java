@@ -49,6 +49,11 @@ public class ClientController {
         return service.update(id, request);
     }
 
+    @PutMapping("/{id}/currency")
+    public ClientResponse changeCurrency(@PathVariable Long id, @Valid @RequestBody ClientCurrencyRequest request) {
+        return service.changeCurrency(id, request.currency());
+    }
+
     @PostMapping("/{id}/archive")
     public ClientResponse archive(@PathVariable Long id) {
         return service.archive(id);

@@ -67,11 +67,11 @@ import { InvoiceService } from './invoice.service';
           <h2 id="statement-summary-heading">Summary</h2>
           <dl class="statement-summary">
             <dt>Total invoiced</dt>
-            <dd data-testid="statement-total-invoiced">{{ s.invoiced | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+            <dd data-testid="statement-total-invoiced">{{ s.invoiced | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
             <dt>Less paid</dt>
-            <dd data-testid="statement-total-paid">{{ s.paid | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+            <dd data-testid="statement-total-paid">{{ s.paid | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
             <dt class="statement-grand-total">Grand total owed</dt>
-            <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+            <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
           </dl>
         </section>
         @if (s.invoices.length === 0) {
@@ -109,13 +109,13 @@ import { InvoiceService } from './invoice.service';
                     <td data-testid="statement-invoice-status">{{ i.status }}</td>
                     <td data-testid="statement-invoice-issued">{{ i.issuedDate }}</td>
                     <td data-testid="statement-invoice-due">{{ i.dueDate }}</td>
-                    <td data-testid="statement-invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
-                    <td data-testid="statement-invoice-due-amount">{{ i.amountDue | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                    <td data-testid="statement-invoice-amount">{{ i.amount | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                    <td data-testid="statement-invoice-due-amount">{{ i.amountDue | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
                   </tr>
                 }
                 <tr>
                   <th scope="row" colspan="6">Subtotal owed on {{ job.projectName }}</th>
-                  <td data-testid="statement-project-subtotal">{{ job.subtotal | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="statement-project-subtotal">{{ job.subtotal | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
                 </tr>
               </tbody>
             }
@@ -123,7 +123,7 @@ import { InvoiceService } from './invoice.service';
         }
         <p>
           Total owed:
-          <strong data-testid="client-outstanding-total">{{ s.outstanding | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</strong>
+          <strong data-testid="client-outstanding-total">{{ s.outstanding | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</strong>
         </p>
       </article>
     }

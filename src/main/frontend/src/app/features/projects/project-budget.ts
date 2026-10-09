@@ -3,6 +3,7 @@ import { Component, inject, input, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ProjectService } from './project.service';
+import { CurrencyCode } from '../clients/client.service';
 
 // A project's budget: what it is, how much has been invoiced against it (sent invoices, paid or not),
 // and what is left. Set or change the budget, or clear it by leaving the amount blank.
@@ -23,17 +24,17 @@ import { ProjectService } from './project.service';
             @if (b.budget === null) {
               No budget set
             } @else {
-              {{ b.budget | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}
+              {{ b.budget | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}
             }
           </dd>
           <dt>Invoiced</dt>
-          <dd data-testid="project-invoiced">{{ b.invoiced | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+          <dd data-testid="project-invoiced">{{ b.invoiced | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</dd>
           <dt>Remaining</dt>
           <dd data-testid="project-remaining" [class.over]="b.remaining !== null && b.remaining < 0">
             @if (b.remaining === null) {
               —
             } @else {
-              {{ b.remaining | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}
+              {{ b.remaining | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}
             }
           </dd>
         </dl>
@@ -85,6 +86,8 @@ export class ProjectBudgetPanel {
   private readonly service = inject(ProjectService);
 
   readonly projectId = input.required<number>();
+  /** The currency of the client the job is for; the money shown is in it. */
+  readonly currency = input.required<CurrencyCode>();
 
   protected readonly budget = rxResource({
     params: () => this.projectId(),

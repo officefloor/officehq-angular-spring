@@ -1,17 +1,27 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { CurrencyCode } from '../clients/client.service';
 
 export interface TopClient {
   id: number;
   name: string;
+  /** The client's currency; what they owe is in it. */
+  currency: CurrencyCode;
   outstanding: number;
+}
+
+/** What is still owed in one currency; different currencies are never added together. */
+export interface CurrencyTotal {
+  currency: CurrencyCode;
+  amount: number;
 }
 
 export interface DashboardSummary {
   clients: number;
   projects: number;
-  outstanding: number;
+  /** What is still owed, one total per currency anything is owed in. */
+  outstanding: CurrencyTotal[];
   overdue: number;
   topClients: TopClient[];
 }

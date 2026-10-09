@@ -1,11 +1,12 @@
 import { CurrencyPipe } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { DashboardService, DashboardSummary } from './dashboard.service';
 
-// Dashboard page: how many clients and projects there are, and the total still owed (what is left
-// to pay on invoices that have been sent but not yet fully paid; drafts are not counted), and how
-// many of those sent invoices are past their due date. Also lists the top five clients ranked by
-// what they still owe.
+// Dashboard page: how many clients and projects there are, and the total still owed in each currency
+// (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
+// counted; amounts in different currencies are never added together), and how many of those sent
+// invoices are past their due date. Also lists the top five clients ranked by what they still owe,
+// each in their own currency.
 @Component({
   selector: 'app-dashboard',
   imports: [CurrencyPipe],
@@ -26,7 +27,11 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
         </div>
         <div>
           <dt>Outstanding</dt>
-          <dd data-testid="dashboard-outstanding-total">{{ outstanding() | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+          @for (t of s.outstanding; track t.currency) {
+            <dd [attr.data-testid]="'dashboard-outstanding-' + t.currency">{{ t.amount | currency: t.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+          } @empty {
+            <dd data-testid="dashboard-outstanding-none">Nothing owed</dd>
+          }
         </div>
         <div>
           <dt>Overdue invoices</dt>
@@ -41,7 +46,7 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
             @for (c of s.topClients; track c.id) {
               <li [attr.data-testid]="'top-client-row-' + c.id">
                 <span data-testid="top-client-name">{{ c.name }}</span>:
-                <span data-testid="top-client-amount">{{ c.outstanding | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</span>
+                <span data-testid="top-client-amount">{{ c.outstanding | currency: c.currency : 'symbol' : '1.2-2' : 'en-US' }}</span>
               </li>
             }
           </ol>
@@ -57,7 +62,6 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
 export class Dashboard {
   protected readonly summary = signal<DashboardSummary | null>(null);
   protected readonly loadError = signal<string | null>(null);
-  protected readonly outstanding = computed(() => this.summary()?.outstanding ?? 0);
 
   constructor() {
     inject(DashboardService)

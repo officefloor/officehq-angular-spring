@@ -8,18 +8,19 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import net.officefloor.hq.app.client.Currency;
 
 /**
  * A client's statement: all of their invoices, each with the project it is for and how much is left
  * to pay, the same invoices grouped by job with what is owed on each job, and the total still owed
  * (what is left to pay across their sent invoices; drafts and void ones are not owed). For the printable
  * summary it also gives the total invoiced on those owed invoices and how much of that has been paid,
- * so the total still owed is what was invoiced less what was paid.
+ * so the total still owed is what was invoiced less what was paid. All of it is in the client's currency.
  */
-public record ClientStatementResponse(Long clientId, String clientName, List<Line> invoices, List<Job> jobs,
+public record ClientStatementResponse(Long clientId, String clientName, Currency currency, List<Line> invoices, List<Job> jobs,
         BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding) {
 
-    static ClientStatementResponse from(Long clientId, String clientName, List<Line> invoices) {
+    static ClientStatementResponse from(Long clientId, String clientName, Currency currency, List<Line> invoices) {
         Map<Long, List<Line>> byProject = new LinkedHashMap<>();
         invoices.forEach(l -> byProject.computeIfAbsent(l.projectId(), id -> new ArrayList<>()).add(l));
         List<Job> jobs = byProject.values().stream()
@@ -27,7 +28,7 @@ public record ClientStatementResponse(Long clientId, String clientName, List<Lin
                 .toList();
         BigDecimal outstanding = owed(invoices);
         BigDecimal invoiced = sum(invoices, Line::amount);
-        return new ClientStatementResponse(clientId, clientName, invoices, jobs, invoiced,
+        return new ClientStatementResponse(clientId, clientName, currency, invoices, jobs, invoiced,
                 invoiced.subtract(outstanding), outstanding);
     }
 

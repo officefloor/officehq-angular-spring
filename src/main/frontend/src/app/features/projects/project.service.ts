@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { CurrencyCode } from '../clients/client.service';
 
 export type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'FINISHED';
 
@@ -20,6 +21,8 @@ export interface Project {
   clientName: string;
   archived: boolean;
   status: ProjectStatus;
+  /** The currency of the client the job is for. */
+  currency: CurrencyCode;
 }
 
 /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */

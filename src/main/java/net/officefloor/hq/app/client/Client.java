@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.client;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -24,6 +26,10 @@ public class Client {
     private String email;
 
     private boolean archived;
+
+    /** The currency the client is billed in; all of their money is in it. */
+    @Enumerated(EnumType.STRING)
+    private Currency currency = Currency.USD;
 
     /** The client's main contact, one of its own contacts; none until one is chosen. */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -62,6 +68,14 @@ public class Client {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public Currency getCurrency() {
+        return currency;
+    }
+
+    public void setCurrency(Currency currency) {
+        this.currency = currency;
     }
 
     public Contact getPrimaryContact() {

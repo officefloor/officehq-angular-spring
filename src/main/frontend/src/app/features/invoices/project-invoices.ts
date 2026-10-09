@@ -10,6 +10,7 @@ import {
   Validators,
 } from '@angular/forms';
 import { InvoiceService, ProjectInvoice } from './invoice.service';
+import { CurrencyCode } from '../clients/client.service';
 
 // ISO yyyy-MM-dd strings compare correctly as plain strings.
 function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
@@ -113,8 +114,8 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
                     >#{{ i.id }}</a
                   >
                 </td>
-                <td data-testid="invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
-                <td data-testid="invoice-due-amount">{{ i.amountDue | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                <td data-testid="invoice-amount">{{ i.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                <td data-testid="invoice-due-amount">{{ i.amountDue | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
                 <td data-testid="invoice-status">{{ i.status }}</td>
                 <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
                 <td data-testid="invoice-due">{{ i.dueDate }}</td>
@@ -147,7 +148,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
           <tfoot>
             <tr>
               <th scope="row">Total</th>
-              <td data-testid="project-invoices-total">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="project-invoices-total">{{ totalCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
               <td colspan="5"></td>
             </tr>
           </tfoot>
@@ -166,6 +167,8 @@ export class ProjectInvoices {
   private readonly service = inject(InvoiceService);
 
   readonly projectId = input.required<number>();
+  /** The currency of the client the job is for; the money shown is in it. */
+  readonly currency = input.required<CurrencyCode>();
   /** Emits when an invoice is sent or cancelled, changing how much has been invoiced on the project. */
   readonly invoiced = output<void>();
 

@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { CurrencyCode } from '../clients/client.service';
 
 export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'VOID'] as const;
 
@@ -9,6 +10,8 @@ export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 export interface Invoice {
   id: number;
   projectId: number;
+  /** The currency of the client the invoice is for; its money is in it. */
+  currency: CurrencyCode;
   amount: number;
   status: InvoiceStatus;
   /** ISO date (yyyy-MM-dd) the invoice was issued. */
@@ -53,6 +56,8 @@ export interface StatementJob {
 export interface ClientStatement {
   clientId: number;
   clientName: string;
+  /** The client's currency; every figure on the statement is in it. */
+  currency: CurrencyCode;
   invoices: StatementInvoice[];
   jobs: StatementJob[];
   /** The total invoiced on the client's sent invoices (drafts and void ones are left out). */

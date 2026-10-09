@@ -62,7 +62,7 @@ public class InvoiceService {
         List<ClientStatementResponse.Line> lines = found.stream()
                 .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
                 .toList();
-        return ClientStatementResponse.from(client.getId(), client.getName(), lines);
+        return ClientStatementResponse.from(client.getId(), client.getName(), client.getCurrency(), lines);
     }
 
     private Map<Long, BigDecimal> paidByInvoice(List<Invoice> found) {

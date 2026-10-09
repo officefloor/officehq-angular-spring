@@ -53,7 +53,7 @@ import { INVOICE_STATUSES, InvoicePage, InvoiceService, InvoiceStatus } from './
               <td data-testid="invoice-project">
                 <a [routerLink]="['/projects', i.projectId]">{{ i.projectName }}</a>
               </td>
-              <td data-testid="invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-amount">{{ i.amount | currency: i.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               <td data-testid="invoice-status">{{ i.status }}</td>
               <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
               <td data-testid="invoice-due">{{ i.dueDate }}</td>

@@ -121,7 +121,7 @@ import { Client, ClientService } from './client.service';
                   }
                 </td>
                 <td data-testid="client-email">{{ c.email }}</td>
-                <td data-testid="client-outstanding">{{ c.outstanding | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                <td data-testid="client-outstanding">{{ c.outstanding | currency: c.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
                 <td>
                   <a
                     [routerLink]="['/clients', c.id]"

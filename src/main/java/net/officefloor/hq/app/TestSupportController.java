@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.client.Currency;
 import net.officefloor.hq.app.invoice.InvoiceRequest;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.project.ProjectStatus;
@@ -74,9 +75,10 @@ public class TestSupportController {
             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
         }
         for (Map<String, Object> c : rows(fixture, "clients")) {
-            jdbc.update("INSERT INTO client (id, name, email, archived) VALUES (?, ?, ?, ?)",
+            jdbc.update("INSERT INTO client (id, name, email, archived, currency) VALUES (?, ?, ?, ?, ?)",
                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"),
-                    Boolean.TRUE.equals(c.get("archived")));
+                    Boolean.TRUE.equals(c.get("archived")),
+                    c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString());
         }
         for (Map<String, Object> c : rows(fixture, "contacts")) {
             jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",

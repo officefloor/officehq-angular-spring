@@ -2,6 +2,7 @@ package net.officefloor.hq.app.client;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -102,6 +103,18 @@ public class ClientService {
         return respond(client);
     }
 
+    /** Changes the currency a client is billed in, recording the change in the audit log. */
+    @Transactional
+    public ClientResponse changeCurrency(Long id, Currency currency) {
+        Client client = find(id);
+        if (client.getCurrency() != currency) {
+            client.setCurrency(currency);
+            clients.flush();
+            audit.record("CLIENT_CURRENCY_CHANGED id=" + id + " currency=" + currency);
+        }
+        return respond(client);
+    }
+
     private static ResponseStatusException emailTaken() {
         return new ResponseStatusException(HttpStatus.CONFLICT, "A client with this email already exists");
     }
@@ -159,6 +172,20 @@ public class ClientService {
         Map<Long, Client> found = new HashMap<>();
         clients.findAllById(top).forEach(c -> found.put(c.getId(), c));
         return top.stream().map(id -> ClientResponse.from(found.get(id), owed.get(id))).toList();
+    }
+
+    /**
+     * What is still owed in each currency, each client's debt counted in their own currency; amounts
+     * in different currencies are never added together. Currencies nothing is owed in are left out.
+     */
+    @Transactional(readOnly = true)
+    public Map<Currency, BigDecimal> outstandingByCurrency() {
+        Map<Long, BigDecimal> owed = outstandingByClient();
+        Map<Currency, BigDecimal> totals = new EnumMap<>(Currency.class);
+        clients.findAllById(owed.keySet())
+                .forEach(c -> totals.merge(c.getCurrency(), owed.get(c.getId()), BigDecimal::add));
+        totals.values().removeIf(amount -> amount.signum() == 0);
+        return totals;
     }
 
     private ClientResponse respond(Client client) {

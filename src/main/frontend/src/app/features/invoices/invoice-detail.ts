@@ -102,7 +102,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                       (keydown.escape)="cancelEdit(l.id)"
                     />
                   </td>
-                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
                   <td>
                     <button
                       type="button"
@@ -120,8 +120,8 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                   <td data-testid="lineitem-description">{{ l.description }}</td>
                   <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
                   <td data-testid="lineitem-unit">{{ l.unit ?? '' }}</td>
-                  <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
-                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
                   @if (inv.status === 'DRAFT') {
                     <td>
                       <button
@@ -152,7 +152,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
           <tfoot>
             <tr>
               <th scope="row" colspan="4">Subtotal</th>
-              <td data-testid="invoice-subtotal">{{ inv.subtotal | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-subtotal">{{ inv.subtotal | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
@@ -161,7 +161,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
               <th scope="row" colspan="4">
                 Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%)
               </th>
-              <td data-testid="invoice-discount">{{ inv.discount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-discount">{{ inv.discount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
@@ -170,14 +170,14 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
               <th scope="row" colspan="4">
                 Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)
               </th>
-              <td data-testid="invoice-tax">{{ inv.tax | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-tax">{{ inv.tax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
             </tr>
             <tr>
               <th scope="row" colspan="4">Total</th>
-              <td data-testid="invoice-amount">{{ inv.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-amount">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
@@ -329,6 +329,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
         [projectId]="projectIdNumber()"
         [invoiceId]="inv.id"
         [invoiceAmount]="inv.amount"
+        [currency]="inv.currency"
         [canRecord]="inv.status === 'SENT' || inv.status === 'PARTIAL'"
         (recorded)="invoice.reload()"
       />

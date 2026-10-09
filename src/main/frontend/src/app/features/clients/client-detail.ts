@@ -5,12 +5,13 @@ import { ClientContacts } from '../contacts/client-contacts';
 import { Contact } from '../contacts/contact.service';
 import { ClientPaymentForm } from '../payments/client-payment';
 import { ClientProjects } from '../projects/client-projects';
-import { ClientService } from './client.service';
+import { ClientCurrency } from './client-currency';
+import { Client, ClientService } from './client.service';
 
-// A single client's page: their name, email and main contact, a link to their statement, a form to record a lump payment split across their invoices, counts of their projects and contacts, their contacts, and the projects being done for them.
+// A single client's page: their name, email, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, counts of their projects and contacts, their contacts, and the projects being done for them.
 @Component({
   selector: 'app-client-detail',
-  imports: [RouterLink, ClientContacts, ClientProjects, ClientPaymentForm],
+  imports: [RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm],
   styles: `
     .client-badges {
       display: flex;
@@ -34,6 +35,7 @@ import { ClientService } from './client.service';
           <span data-testid="client-primary-contact-none">None chosen</span>
         }
       </p>
+      <app-client-currency [client]="c" (changed)="currencyChanged($event)" />
       @if (summary.hasValue()) {
         <ul class="client-badges" aria-label="At a glance" data-testid="client-badges">
           <li>
@@ -114,6 +116,10 @@ export class ClientDetail {
     if (!this.client.value()?.primaryContact) {
       this.client.reload();
     }
+  }
+
+  protected currencyChanged(client: Client): void {
+    this.client.set(client);
   }
 
   protected primaryChanged(contact: Contact): void {

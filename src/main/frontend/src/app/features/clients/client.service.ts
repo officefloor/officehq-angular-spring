@@ -2,6 +2,11 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+/** The currencies a client can be billed in, by ISO 4217 code. */
+export const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD'] as const;
+
+export type CurrencyCode = (typeof CURRENCIES)[number];
+
 export interface Client {
   id: number;
   name: string;
@@ -9,7 +14,9 @@ export interface Client {
   archived: boolean;
   /** The client's main contact; null until one is chosen. */
   primaryContact: { id: number; name: string } | null;
-  /** What is left to pay on the client's sent, not yet fully paid invoices. */
+  /** The currency the client is billed in; all of their money is shown in it. */
+  currency: CurrencyCode;
+  /** What is left to pay on the client's sent, not yet fully paid invoices, in their currency. */
   outstanding: number;
 }
 
@@ -19,7 +26,7 @@ export interface ClientSummary {
   contactCount: number;
 }
 
-export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'outstanding'>;
+export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'outstanding'>;
 
 @Injectable({ providedIn: 'root' })
 export class ClientService {
@@ -43,6 +50,10 @@ export class ClientService {
 
   update(id: number, client: NewClient): Observable<Client> {
     return this.http.put<Client>(`/api/clients/${id}`, client);
+  }
+
+  changeCurrency(id: number, currency: CurrencyCode): Observable<Client> {
+    return this.http.put<Client>(`/api/clients/${id}/currency`, { currency });
   }
 
   archive(id: number): Observable<Client> {

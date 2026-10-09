@@ -1,4 +1,4 @@
-import { CurrencyPipe } from '@angular/common';
+import { CurrencyPipe, formatCurrency, getCurrencySymbol } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
@@ -79,7 +79,7 @@ function toCents(value: string | number): number | null {
                   <tr [attr.data-testid]="'payment-alloc-row-' + i.id">
                     <td>#{{ i.id }}</td>
                     <td>{{ i.projectName }}</td>
-                    <td data-testid="payment-alloc-due">{{ i.amountDue | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                    <td data-testid="payment-alloc-due">{{ i.amountDue | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
                     <td>
                       <input
                         type="number"
@@ -98,7 +98,7 @@ function toCents(value: string | number): number | null {
               <tfoot>
                 <tr>
                   <th scope="row" colspan="3">Allocated</th>
-                  <td data-testid="payment-alloc-total">{{ allocatedCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="payment-alloc-total">{{ allocatedCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
                 </tr>
               </tfoot>
             </table>
@@ -124,6 +124,9 @@ export class ClientPaymentForm {
     params: () => this.clientId(),
     stream: ({ params }) => this.invoices.statementForClient(params),
   });
+
+  /** The client's currency; the payment and its allocations are in it. */
+  protected readonly currency = computed(() => (this.statement.hasValue() ? this.statement.value().currency : 'USD'));
 
   /** The client's sent invoices that still have something left to pay. */
   protected readonly owing = computed(() =>
@@ -232,6 +235,6 @@ export class ClientPaymentForm {
   }
 
   private format(cents: number): string {
-    return `$${(cents / 100).toFixed(2)}`;
+    return formatCurrency(cents / 100, 'en-US', getCurrencySymbol(this.currency(), 'narrow', 'en-US'), this.currency(), '1.2-2');
   }
 }

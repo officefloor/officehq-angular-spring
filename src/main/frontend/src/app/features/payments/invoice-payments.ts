@@ -4,6 +4,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { PaymentService } from './payment.service';
+import { CurrencyCode } from '../clients/client.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
@@ -33,18 +34,18 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             @for (p of payments.value(); track p.id) {
               <tr [attr.data-testid]="'payment-row-' + p.id">
                 <td data-testid="payment-date">{{ p.date }}</td>
-                <td data-testid="payment-amount">{{ p.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                <td data-testid="payment-amount">{{ p.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
               </tr>
             }
           </tbody>
           <tfoot>
             <tr>
               <th scope="row">Paid</th>
-              <td data-testid="invoice-paid-total">{{ paidCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-paid-total">{{ paidCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
             </tr>
             <tr>
               <th scope="row">Balance due</th>
-              <td data-testid="invoice-balance-due">{{ balanceCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-balance-due">{{ balanceCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
             </tr>
           </tfoot>
         </table>
@@ -104,6 +105,8 @@ export class InvoicePayments {
   readonly invoiceId = input.required<number>();
   /** The invoice total, which the payments count down. */
   readonly invoiceAmount = input.required<number>();
+  /** The currency of the client the job is for; the money shown is in it. */
+  readonly currency = input.required<CurrencyCode>();
   /** Payments can be recorded once the invoice has been sent, until it is fully paid. */
   readonly canRecord = input.required<boolean>();
   /** Emits once a payment has been recorded, as it may change the invoice's status. */

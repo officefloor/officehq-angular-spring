@@ -20,11 +20,11 @@ import { ProjectService } from './project.service';
       <h1 data-testid="project-detail-name">{{ p.name }}</h1>
       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
       <p>Status: <span data-testid="project-detail-status">{{ p.status }}</span></p>
-      <app-project-budget [projectId]="projectId()" />
+      <app-project-budget [projectId]="projectId()" [currency]="p.currency" />
       <app-project-tags [projectId]="projectId()" />
       <app-project-tasks [projectId]="projectId()" />
       <app-notes [projectId]="projectId()" />
-      <app-project-invoices [projectId]="projectId()" (invoiced)="budget()?.reload()" />
+      <app-project-invoices [projectId]="projectId()" [currency]="p.currency" (invoiced)="budget()?.reload()" />
     }
   `,
 })
