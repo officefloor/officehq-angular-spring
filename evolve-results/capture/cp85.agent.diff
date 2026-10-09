@@ -1,0 +1,518 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index d5bb966..0ed683d 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -217,7 +217,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                   @if (d.discountAmount > 0) {
+                     Discount {{ $index + 1 }} ({{ d.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }} off)
+                   } @else {
+-                    Discount {{ $index + 1 }} ({{ d.discountPct | number: '1.0-2' : 'en-US' }}%)
++                    Discount {{ $index + 1 }} ({{ d.discountPct | number: '1.0-2' : 'en-US' }}%@if (d.discountCap !== null) {, up to <span data-testid="discount-row-cap">{{ d.discountCap | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span>})
+                   }
+                 </th>
+                 <td data-testid="discount-row-amount">{{ d.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+@@ -386,6 +386,25 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 </p>
+               }
+             </div>
++            <div>
++              <label for="discount-cap">Most it takes off (optional)</label>
++              <input
++                id="discount-cap"
++                type="number"
++                inputmode="decimal"
++                min="0.01"
++                step="0.01"
++                formControlName="discountCap"
++                data-testid="discount-form-cap"
++                [attr.aria-invalid]="discountCapInvalid()"
++                [attr.aria-describedby]="discountCapInvalid() ? 'discount-cap-error' : null"
++              />
++              @if (discountCapInvalid()) {
++                <p id="discount-cap-error" role="alert" data-testid="discount-form-cap-error">
++                  Enter an amount above 0 with at most two decimal places, or leave it empty for no cap.
++                </p>
++              }
++            </div>
+           }
+           <button type="submit" data-testid="discount-form-submit" [disabled]="discountSaving()">Apply discount</button>
+           <button type="button" data-testid="discount-form-add" [disabled]="discountSaving()" (click)="addDiscount()">
+@@ -672,6 +691,7 @@ export class InvoiceDetailPage {
+     discountType: ['pct' as 'pct' | 'amount'],
+     discountPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
+     discountAmount: ['', [Validators.required, Validators.min(0), Validators.pattern(TWO_DECIMALS)]],
++    discountCap: ['', [Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+   });
+ 
+   // Whether the discount is taken off as a percentage or a fixed amount, as chosen in the form.
+@@ -687,6 +707,7 @@ export class InvoiceDetailPage {
+         discountType: inv.discountAmount > 0 ? 'amount' : 'pct',
+         discountPct: String(inv.discountPct),
+         discountAmount: String(inv.discountAmount),
++        discountCap: inv.discounts.length === 1 && inv.discounts[0].discountCap !== null ? String(inv.discounts[0].discountCap) : '',
+       });
+     }
+   });
+@@ -696,6 +717,11 @@ export class InvoiceDetailPage {
+     return control.invalid && (control.touched || control.dirty);
+   }
+ 
++  protected discountCapInvalid(): boolean {
++    const control = this.discountForm.controls.discountCap;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
+   protected discountAmountInvalid(): boolean {
+     const control = this.discountForm.controls.discountAmount;
+     return control.invalid && (control.touched || control.dirty);
+@@ -706,7 +732,7 @@ export class InvoiceDetailPage {
+     const chosen = this.chosenDiscount();
+     if (chosen) {
+       this.saveDiscount(
+-        this.service.applyDiscount(this.projectIdNumber(), Number(this.invoiceId()), chosen.pct, chosen.amount),
++        this.service.applyDiscount(this.projectIdNumber(), Number(this.invoiceId()), chosen.pct, chosen.amount, chosen.cap),
+         'Could not apply the discount. Please try again.',
+       );
+     }
+@@ -723,7 +749,7 @@ export class InvoiceDetailPage {
+       return;
+     }
+     this.saveDiscount(
+-      this.service.addDiscount(this.projectIdNumber(), Number(this.invoiceId()), chosen.pct, chosen.amount),
++      this.service.addDiscount(this.projectIdNumber(), Number(this.invoiceId()), chosen.pct, chosen.amount, chosen.cap),
+       'Could not add the discount. Please try again.',
+     );
+   }
+@@ -735,17 +761,21 @@ export class InvoiceDetailPage {
+     );
+   }
+ 
+-  // The percentage or amount chosen in the form (only the chosen kind; the other is zero), or null when it is invalid.
+-  private chosenDiscount(): { pct: number; amount: number } | null {
+-    const { discountType, discountPct, discountAmount } = this.discountForm.controls;
+-    const field = discountType.value === 'amount' ? discountAmount : discountPct;
+-    if (field.invalid) {
+-      field.markAsTouched();
++  // The percentage (with any cap) or amount chosen in the form (only the chosen kind; the other is zero), or null when it is invalid.
++  private chosenDiscount(): { pct: number; amount: number; cap: number | null } | null {
++    const { discountType, discountPct, discountAmount, discountCap } = this.discountForm.controls;
++    const isPct = discountType.value === 'pct';
++    const fields = isPct ? [discountPct, discountCap] : [discountAmount];
++    const invalid = fields.filter((f) => f.invalid);
++    if (invalid.length > 0) {
++      invalid.forEach((f) => f.markAsTouched());
+       return null;
+     }
++    const pct = isPct ? Number(discountPct.value) : 0;
+     return {
+-      pct: discountType.value === 'pct' ? Number(discountPct.value) : 0,
+-      amount: discountType.value === 'amount' ? Number(discountAmount.value) : 0,
++      pct,
++      amount: isPct ? 0 : Number(discountAmount.value),
++      cap: pct > 0 && discountCap.value ? Number(discountCap.value) : null,
+     };
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index d77ba80..47ab42d 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -96,6 +96,8 @@ export interface InvoiceDiscount {
+   id: number;
+   discountPct: number;
+   discountAmount: number;
++  /** The most a percentage discount takes off; null when it is not capped. */
++  discountCap: number | null;
+   /** What this discount actually takes off the subtotal. */
+   amount: number;
+ }
+@@ -206,19 +208,24 @@ export class InvoiceService {
+     return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`);
+   }
+ 
+-  /** Sets the percentage or the flat amount taken off a draft invoice (the other being zero); zero for both removes the discount. */
+-  applyDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0): Observable<InvoiceDetail> {
++  /**
++   * Sets the percentage (optionally capped at the most it takes off) or the flat amount taken off a draft
++   * invoice (the other being zero); zero for both removes the discount.
++   */
++  applyDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0, discountCap: number | null = null): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discount`, {
+       discountPct,
+       discountAmount,
++      discountCap,
+     });
+   }
+ 
+   /** Adds another percentage or flat amount discount to a draft invoice (the other being zero). */
+-  addDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0): Observable<InvoiceDetail> {
++  addDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0, discountCap: number | null = null): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discounts`, {
+       discountPct,
+       discountAmount,
++      discountCap,
+     });
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index c164241..b272d19 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -7,6 +7,7 @@ import java.time.Instant;
+ import java.time.LocalDate;
+ import java.time.ZoneOffset;
+ import java.util.ArrayList;
++import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import net.officefloor.hq.app.client.Currency;
+@@ -157,16 +158,19 @@ public class TestSupportController {
+             boolean taxInclusive = Boolean.TRUE.equals(client.get("TAX_INCLUSIVE"));
+             boolean taxExempt = Boolean.TRUE.equals(client.get("TAX_EXEMPT"));
+             // An invoice may carry several discounts, each a percentage ("pct") or a flat amount ("amount");
+-            // an older fixture gives at most one as discountPct / discountAmount.
++            // an older fixture gives at most one as discountPct / discountAmount. A percentage may be capped
++            // at the most it takes off ("cap", or discountCap alongside discountPct).
+             List<Map<String, Object>> discounts = new ArrayList<>(rows(i, "discounts"));
+             if (i.get("discountPct") != null && new BigDecimal(i.get("discountPct").toString()).signum() > 0) {
+-                discounts.add(Map.of("pct", i.get("discountPct")));
++                Map<String, Object> pctDiscount = new HashMap<>(Map.of("pct", i.get("discountPct")));
++                if (i.get("discountCap") != null) {
++                    pctDiscount.put("cap", i.get("discountCap"));
++                }
++                discounts.add(pctDiscount);
+             }
+             if (i.get("discountAmount") != null && new BigDecimal(i.get("discountAmount").toString()).signum() > 0) {
+                 discounts.add(Map.of("amount", i.get("discountAmount")));
+             }
+-            BigDecimal discountPct = discounts.stream().map(d -> decimal(d.get("pct")))
+-                    .reduce(BigDecimal.ZERO, BigDecimal::add).min(BigDecimal.valueOf(100));
+             // The percentages each take their share of the subtotal (never more than is left); the flat
+             // amounts are then taken off what is left and shared across the lines in proportion to what
+             // each charges.
+@@ -177,13 +181,26 @@ public class TestSupportController {
+                 return gross.subtract(gross.multiply(lineDiscountPct(l)).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+             }).toList();
+             BigDecimal subtotal = lines.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++            // A percentage whose cap limits it is shared across the lines like a flat amount; the others are
++            // taken off each line as a percentage.
++            BigDecimal discountPct = BigDecimal.ZERO;
++            BigDecimal cappedDiscount = BigDecimal.ZERO.setScale(2);
+             BigDecimal left = subtotal;
+             for (Map<String, Object> d : discounts) {
+                 if (decimal(d.get("pct")).signum() > 0) {
+-                    left = left.subtract(subtotal.multiply(decimal(d.get("pct"))).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+-                            .min(left.max(BigDecimal.ZERO.setScale(2))));
++                    BigDecimal share = subtotal.multiply(decimal(d.get("pct"))).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
++                    boolean capped = d.get("cap") != null && share.compareTo(decimal(d.get("cap"))) > 0;
++                    BigDecimal taken = (capped ? decimal(d.get("cap")).setScale(2, RoundingMode.HALF_UP) : share)
++                            .min(left.max(BigDecimal.ZERO.setScale(2)));
++                    if (capped) {
++                        cappedDiscount = cappedDiscount.add(taken);
++                    } else {
++                        discountPct = discountPct.add(decimal(d.get("pct")));
++                    }
++                    left = left.subtract(taken);
+                 }
+             }
++            discountPct = discountPct.min(BigDecimal.valueOf(100));
+             BigDecimal pctDiscount = subtotal.subtract(left);
+             for (Map<String, Object> d : discounts) {
+                 if (decimal(d.get("pct")).signum() == 0) {
+@@ -192,13 +209,14 @@ public class TestSupportController {
+                 }
+             }
+             BigDecimal flatDiscount = subtotal.subtract(left).subtract(pctDiscount);
++            BigDecimal sharedDiscount = flatDiscount.add(cappedDiscount);
+             BigDecimal tax = BigDecimal.ZERO.setScale(2);
+             BigDecimal levy = BigDecimal.ZERO.setScale(2);
+             for (int n = 0; n < lineItems.size(); n++) {
+                 BigDecimal line = lines.get(n);
+                 if (!taxExempt && !Boolean.TRUE.equals(lineItems.get(n).get("taxExempt"))) {
+                     BigDecimal flatShare = subtotal.signum() == 0 ? BigDecimal.ZERO
+-                            : flatDiscount.multiply(line).divide(subtotal, 2, RoundingMode.HALF_UP);
++                            : sharedDiscount.multiply(line).divide(subtotal, 2, RoundingMode.HALF_UP);
+                     BigDecimal base = line.subtract(
+                             line.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
+                             .subtract(flatShare);
+@@ -225,11 +243,12 @@ public class TestSupportController {
+                     earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due);
+             for (Map<String, Object> d : discounts) {
+                 if (d.get("id") != null) {
+-                    jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount) VALUES (?, ?, ?, ?)",
+-                            ((Number) d.get("id")).longValue(), invoiceId, decimal(d.get("pct")), decimal(d.get("amount")));
++                    jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount, discount_cap) VALUES (?, ?, ?, ?, ?)",
++                            ((Number) d.get("id")).longValue(), invoiceId, decimal(d.get("pct")), decimal(d.get("amount")),
++                            d.get("cap") == null ? null : decimal(d.get("cap")));
+                 } else {
+-                    jdbc.update("INSERT INTO invoice_discount (invoice_id, discount_pct, discount_amount) VALUES (?, ?, ?)",
+-                            invoiceId, decimal(d.get("pct")), decimal(d.get("amount")));
++                    jdbc.update("INSERT INTO invoice_discount (invoice_id, discount_pct, discount_amount, discount_cap) VALUES (?, ?, ?, ?)",
++                            invoiceId, decimal(d.get("pct")), decimal(d.get("amount")), d.get("cap") == null ? null : decimal(d.get("cap")));
+                 }
+             }
+             for (Map<String, Object> l : lineItems) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/DiscountRequest.java b/src/main/java/net/officefloor/hq/app/invoice/DiscountRequest.java
+index 4a93efd..93da6f6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/DiscountRequest.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/DiscountRequest.java
+@@ -9,11 +9,13 @@ import java.math.BigDecimal;
+ 
+ /**
+  * Payload for a discount on a draft invoice: either a percentage taken off or a flat amount taken off
+- * (omitted is none), never both. Setting the discount with zero for both removes all discounts.
++ * (omitted is none), never both. A percentage discount may be capped at the most it takes off (omitted is
++ * no cap). Setting the discount with zero for both removes all discounts.
+  */
+ public record DiscountRequest(
+         @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal discountPct,
+-        @DecimalMin("0") @Digits(integer = 10, fraction = 2) BigDecimal discountAmount) {
++        @DecimalMin("0") @Digits(integer = 10, fraction = 2) BigDecimal discountAmount,
++        @DecimalMin(value = "0", inclusive = false) @Digits(integer = 10, fraction = 2) BigDecimal discountCap) {
+ 
+     /** The flat amount taken off, zero when none is given. */
+     public BigDecimal flatAmount() {
+@@ -25,4 +27,10 @@ public record DiscountRequest(
+     public boolean isOneKind() {
+         return discountPct == null || discountPct.signum() == 0 || flatAmount().signum() == 0;
+     }
++
++    /** Only a percentage discount can be capped. */
++    @AssertTrue(message = "Only a percentage discount can be capped")
++    public boolean isCapOnPercentage() {
++        return discountCap == null || (discountPct != null && discountPct.signum() > 0);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 12ed2df..187b156 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -26,7 +26,7 @@ import net.officefloor.hq.app.project.Project;
+ /**
+  * An invoice raised against a project. It is built from line items, and can take several discounts off
+  * their sum before tax, each either a percentage or a flat amount (the percentages each taking their share
+- * of the subtotal first, then the flat amounts, shared across the lines in proportion to what each
++ * of the subtotal first (a percentage capped at a maximum never taking off more than that), then the flat amounts, shared across the lines in proportion to what each
+  * charges; together never more than the subtotal), then add a percentage sales tax on what is left of the taxable lines only
+  * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
+  * its stored amount is always that subtotal less the discount plus the tax plus the levy, plus any flat
+@@ -168,14 +168,15 @@ public class Invoice {
+ 
+     /**
+      * How much one of this invoice's discounts actually takes off the subtotal, to the cent. The
+-     * percentages are taken first, each its share of the subtotal, then the flat amounts in the order
+-     * they were added; none takes off more than is left after those before it.
++     * percentages are taken first, each its share of the subtotal (never more than its cap, if it has
++     * one), then the flat amounts in the order they were added; none takes off more than is left after
++     * those before it.
+      */
+     public BigDecimal discountTakenBy(InvoiceDiscount discount) {
+         BigDecimal subtotal = getSubtotal();
+         BigDecimal left = subtotal;
+         for (InvoiceDiscount d : discountsInOrderTaken()) {
+-            BigDecimal wanted = d.isPercentage() ? percentOf(subtotal, d.getDiscountPct()) : d.getDiscountAmount();
++            BigDecimal wanted = d.isPercentage() ? percentWanted(subtotal, d) : d.getDiscountAmount();
+             BigDecimal taken = wanted.min(left.max(BigDecimal.ZERO.setScale(2)));
+             if (d == discount) {
+                 return taken;
+@@ -185,6 +186,18 @@ public class Invoice {
+         return BigDecimal.ZERO.setScale(2);
+     }
+ 
++    /** What a percentage discount asks to take off the subtotal: its share, never more than its cap. */
++    private static BigDecimal percentWanted(BigDecimal subtotal, InvoiceDiscount discount) {
++        BigDecimal share = percentOf(subtotal, discount.getDiscountPct());
++        return isCappedAt(subtotal, discount) ? share.min(discount.getDiscountCap()) : share;
++    }
++
++    /** Whether a discount's cap limits what it takes off the given subtotal. */
++    private static boolean isCappedAt(BigDecimal subtotal, InvoiceDiscount discount) {
++        return discount.getDiscountCap() != null
++                && percentOf(subtotal, discount.getDiscountPct()).compareTo(discount.getDiscountCap()) > 0;
++    }
++
+     /** The percentage discounts first, then the flat ones, each in the order they were added. */
+     private List<InvoiceDiscount> discountsInOrderTaken() {
+         List<InvoiceDiscount> ordered = new ArrayList<>(discounts.stream().filter(InvoiceDiscount::isPercentage).toList());
+@@ -369,7 +382,15 @@ public class Invoice {
+      * being zero; zero for both leaves no discount), and reworks its amount to match.
+      */
+     public void applyDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
+-        InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount);
++        applyDiscount(discountPct, discountAmount, null);
++    }
++
++    /**
++     * Replaces this invoice's discounts with a single one, either a percentage (optionally capped at the
++     * most it takes off) or a flat amount, and reworks its amount to match.
++     */
++    public void applyDiscount(BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discountCap) {
++        InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount, discountCap);
+         discounts.clear();
+         if (discountPct.signum() != 0 || discountAmount.signum() != 0) {
+             discounts.add(discount);
+@@ -382,10 +403,18 @@ public class Invoice {
+      * and reworks its amount to match.
+      */
+     public InvoiceDiscount addDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
++        return addDiscount(discountPct, discountAmount, null);
++    }
++
++    /**
++     * Adds another discount to this invoice, either a percentage (optionally capped at the most it takes
++     * off) or a flat amount, and reworks its amount to match.
++     */
++    public InvoiceDiscount addDiscount(BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discountCap) {
+         if (discountPct.signum() == 0 && discountAmount.signum() == 0) {
+             throw new IllegalArgumentException("A discount takes off a percentage or a flat amount");
+         }
+-        InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount);
++        InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount, discountCap);
+         discounts.add(discount);
+         recalculateAmount();
+         return discount;
+@@ -442,22 +471,32 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The discount taken off one line, to the cent: the percentages together, plus its share of what the
+-     * flat amounts take off in proportion to what the line charges out of the subtotal.
++     * The discount taken off one line, to the cent: the uncapped percentages together, plus its share of
++     * what the flat amounts and the capped percentages take off in proportion to what the line charges
++     * out of the subtotal.
+      */
+     private BigDecimal discountOn(BigDecimal line) {
+-        BigDecimal pct = percentOf(line, getDiscountPct());
+         BigDecimal subtotal = getSubtotal();
++        BigDecimal pct = percentOf(line, uncappedPct(subtotal));
+         if (subtotal.signum() == 0) {
+             return pct;
+         }
+-        BigDecimal flatShare = flatDiscount().multiply(line).divide(subtotal, 2, RoundingMode.HALF_UP);
++        BigDecimal flatShare = sharedDiscount(subtotal).multiply(line).divide(subtotal, 2, RoundingMode.HALF_UP);
+         return pct.add(flatShare);
+     }
+ 
+-    /** What the flat discounts actually take off the subtotal together: never more than is left after the percentages. */
+-    private BigDecimal flatDiscount() {
+-        return discounts.stream().filter(d -> !d.isPercentage()).map(this::discountTakenBy)
++    /** The percentages not limited by a cap, added up (never more than 100). */
++    private BigDecimal uncappedPct(BigDecimal subtotal) {
++        return discounts.stream().filter(d -> d.isPercentage() && !isCappedAt(subtotal, d)).map(InvoiceDiscount::getDiscountPct)
++                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add).min(BigDecimal.valueOf(100).setScale(2));
++    }
++
++    /**
++     * What the flat discounts and the capped percentages actually take off the subtotal together, shared
++     * across the lines in proportion to what each charges.
++     */
++    private BigDecimal sharedDiscount(BigDecimal subtotal) {
++        return discounts.stream().filter(d -> !d.isPercentage() || isCappedAt(subtotal, d)).map(this::discountTakenBy)
+                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 4f3d1c3..1bb2edc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -37,6 +37,6 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency,
+                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
+                 invoice.getProject().getClient().getTaxNumber(),
+                 invoice.getDiscounts().stream().map(d -> new InvoiceDiscountResponse(d.getId(), d.getDiscountPct(),
+-                        d.getDiscountAmount(), invoice.discountTakenBy(d))).toList());
++                        d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDiscount.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDiscount.java
+index daf03df..3f9ac29 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDiscount.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDiscount.java
+@@ -31,16 +31,28 @@ public class InvoiceDiscount {
+     @Column(name = "discount_amount", nullable = false, precision = 12, scale = 2)
+     private BigDecimal discountAmount = BigDecimal.ZERO.setScale(2);
+ 
++    /** The most a percentage discount takes off; null when it is not capped. */
++    @Column(name = "discount_cap", precision = 12, scale = 2)
++    private BigDecimal discountCap;
++
+     protected InvoiceDiscount() {
+     }
+ 
+     InvoiceDiscount(Invoice invoice, BigDecimal discountPct, BigDecimal discountAmount) {
++        this(invoice, discountPct, discountAmount, null);
++    }
++
++    InvoiceDiscount(Invoice invoice, BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discountCap) {
+         if (discountPct.signum() != 0 && discountAmount.signum() != 0) {
+             throw new IllegalArgumentException("A discount is either a percentage or a flat amount, not both");
+         }
++        if (discountCap != null && discountPct.signum() == 0) {
++            throw new IllegalArgumentException("Only a percentage discount can be capped");
++        }
+         this.invoice = invoice;
+         this.discountPct = discountPct.setScale(2, RoundingMode.HALF_UP);
+         this.discountAmount = discountAmount.setScale(2, RoundingMode.HALF_UP);
++        this.discountCap = discountCap == null ? null : discountCap.setScale(2, RoundingMode.HALF_UP);
+     }
+ 
+     public Long getId() {
+@@ -57,6 +69,11 @@ public class InvoiceDiscount {
+         return discountAmount;
+     }
+ 
++    /** The most this percentage discount takes off; null when it is not capped. */
++    public BigDecimal getDiscountCap() {
++        return discountCap;
++    }
++
+     /** Whether this discount is a percentage of the subtotal rather than a flat amount. */
+     public boolean isPercentage() {
+         return discountPct.signum() > 0;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDiscountResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDiscountResponse.java
+index c9b9215..7924470 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDiscountResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDiscountResponse.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
+ 
+-/** One discount on an invoice: its percentage or flat amount, and how much it actually takes off. */
+-public record InvoiceDiscountResponse(Long id, BigDecimal discountPct, BigDecimal discountAmount, BigDecimal amount) {
++/** One discount on an invoice: its percentage (and any cap on it) or flat amount, and how much it actually takes off. */
++public record InvoiceDiscountResponse(Long id, BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discountCap,
++        BigDecimal amount) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 9269c29..1ded4de 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -146,7 +146,7 @@ public class InvoiceService {
+     @Transactional
+     public InvoiceDetailResponse applyDiscount(Long projectId, Long invoiceId, DiscountRequest request) {
+         Invoice invoice = findDraft(projectId, invoiceId);
+-        invoice.applyDiscount(request.discountPct(), request.flatAmount());
++        invoice.applyDiscount(request.discountPct(), request.flatAmount(), request.discountCap());
+         invoices.flush();
+         return InvoiceDetailResponse.from(invoice);
+     }
+@@ -158,7 +158,7 @@ public class InvoiceService {
+         if (request.discountPct().signum() == 0 && request.flatAmount().signum() == 0) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A discount takes off a percentage or a flat amount");
+         }
+-        invoice.addDiscount(request.discountPct(), request.flatAmount());
++        invoice.addDiscount(request.discountPct(), request.flatAmount(), request.discountCap());
+         invoices.flush();
+         return InvoiceDetailResponse.from(invoice);
+     }
+diff --git a/src/main/resources/db/migration/V49__discount_cap.sql b/src/main/resources/db/migration/V49__discount_cap.sql
+new file mode 100644
+index 0000000..97b510f
+--- /dev/null
++++ b/src/main/resources/db/migration/V49__discount_cap.sql
+@@ -0,0 +1,6 @@
++-- A percentage discount can be capped at a maximum amount, so a large invoice never has more than that
++-- taken off by it. Existing discounts have no cap, so their amounts are unchanged.
++ALTER TABLE invoice_discount ADD COLUMN discount_cap DECIMAL(12, 2);
++
++ALTER TABLE invoice_discount ADD CONSTRAINT invoice_discount_cap_positive CHECK (discount_cap IS NULL OR discount_cap > 0);
++ALTER TABLE invoice_discount ADD CONSTRAINT invoice_discount_cap_on_pct CHECK (discount_cap IS NULL OR discount_pct > 0);
