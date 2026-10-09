@@ -1,0 +1,64 @@
+diff --git a/src/main/frontend/src/app/features/payments/invoice-payments.ts b/src/main/frontend/src/app/features/payments/invoice-payments.ts
+index 8a7f5e6..d537ca5 100644
+--- a/src/main/frontend/src/app/features/payments/invoice-payments.ts
++++ b/src/main/frontend/src/app/features/payments/invoice-payments.ts
+@@ -28,23 +28,25 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+             <tr>
+               <th scope="col">Date</th>
+               <th scope="col">Amount</th>
++              <th scope="col">Balance after</th>
+             </tr>
+           </thead>
+           <tbody>
+-            @for (p of payments.value(); track p.id) {
+-              <tr [attr.data-testid]="'payment-row-' + p.id">
+-                <td data-testid="payment-date">{{ p.date }}</td>
+-                <td data-testid="payment-amount">{{ p.amount | money: currency() }}</td>
++            @for (row of rows(); track row.payment.id) {
++              <tr [attr.data-testid]="'payment-row-' + row.payment.id">
++                <td data-testid="payment-date">{{ row.payment.date }}</td>
++                <td data-testid="payment-amount">{{ row.payment.amount | money: currency() }}</td>
++                <td data-testid="payment-running-balance">{{ row.balanceCents / 100 | money: currency() }}</td>
+               </tr>
+             }
+           </tbody>
+           <tfoot>
+             <tr>
+-              <th scope="row">Paid</th>
++              <th scope="row" colspan="2">Paid</th>
+               <td data-testid="invoice-paid-total">{{ paidCents() / 100 | money: currency() }}</td>
+             </tr>
+             <tr>
+-              <th scope="row">Balance due</th>
++              <th scope="row" colspan="2">Balance due</th>
+               <td data-testid="invoice-balance-due">{{ balanceCents() / 100 | money: currency() }}</td>
+             </tr>
+           </tfoot>
+@@ -123,10 +125,25 @@ export class InvoicePayments {
+   protected readonly paidCents = computed(() =>
+     (this.payments.hasValue() ? this.payments.value() : []).reduce((sum, p) => sum + Math.round(p.amount * 100), 0),
+   );
+-  protected readonly balanceCents = computed(() =>
+-    Math.round(this.invoiceAmount() * 100) - Math.round(this.credited() * 100) - this.paidCents(),
++  protected readonly balanceCents = computed(() => this.openingCents() - this.paidCents());
++
++  /** What is owed before any payment: the invoice total less what has been credited. */
++  private readonly openingCents = computed(
++    () => Math.round(this.invoiceAmount() * 100) - Math.round(this.credited() * 100),
+   );
+ 
++  /** The payments in date order, each with the balance still due once it was paid. */
++  protected readonly rows = computed(() => {
++    const sorted = [...(this.payments.hasValue() ? this.payments.value() : [])].sort(
++      (a, b) => a.date.localeCompare(b.date) || a.id - b.id,
++    );
++    let balanceCents = this.openingCents();
++    return sorted.map((payment) => {
++      balanceCents -= Math.round(payment.amount * 100);
++      return { payment, balanceCents };
++    });
++  });
++
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+ 
