@@ -32,6 +32,12 @@ public class SettingsService {
         return find().getDefaultTaxPct();
     }
 
+    /** The currency foreign invoices are converted into for the business's own totals. */
+    @Transactional(readOnly = true)
+    public String homeCurrency() {
+        return find().getHomeCurrency();
+    }
+
     private Settings find() {
         return settings.findById(Settings.ID)
                 .orElseThrow(() -> new IllegalStateException("The settings row is missing"));

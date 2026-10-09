@@ -14,6 +14,7 @@ import net.officefloor.hq.app.creditnote.CreditNote;
 import net.officefloor.hq.app.creditnote.CreditNoteRepository;
 import net.officefloor.hq.app.deposit.Deposit;
 import net.officefloor.hq.app.deposit.DepositRepository;
+import net.officefloor.hq.app.fx.FxRateService;
 import net.officefloor.hq.app.payment.Payment;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.Project;
@@ -39,11 +40,12 @@ public class InvoiceService {
     private final DepositRepository deposits;
     private final RefundRepository refunds;
     private final SettingsService settings;
+    private final FxRateService fxRates;
     private final Audit audit;
 
     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
             CreditNoteRepository creditNotes, ClientRepository clients, DepositRepository deposits,
-            RefundRepository refunds, SettingsService settings, Audit audit) {
+            RefundRepository refunds, SettingsService settings, FxRateService fxRates, Audit audit) {
         this.invoices = invoices;
         this.projects = projects;
         this.clients = clients;
@@ -52,6 +54,7 @@ public class InvoiceService {
         this.payments = payments;
         this.creditNotes = creditNotes;
         this.settings = settings;
+        this.fxRates = fxRates;
         this.audit = audit;
     }
 
@@ -203,7 +206,7 @@ public class InvoiceService {
     @Transactional(readOnly = true)
     public InvoiceDetailResponse get(Long projectId, Long invoiceId) {
         Invoice invoice = find(projectId, invoiceId);
-        return InvoiceDetailResponse.from(invoice, invoice.statusFor(payments.sumAmountByInvoiceId(invoiceId),
+        return detail(invoice, invoice.statusFor(payments.sumAmountByInvoiceId(invoiceId),
                 creditNotes.sumAmountByInvoiceId(invoiceId)));
     }
 
@@ -214,7 +217,7 @@ public class InvoiceService {
         invoice.addLineItem(request.description().strip(), request.qty(), request.normalizedUnit(), request.unitPrice(),
                 request.exempt(), request.lineDiscountPct());
         invoices.flush();
-        return InvoiceDetailResponse.from(invoice);
+        return detail(invoice);
     }
 
     /** Changes a line item on a draft invoice and reworks the invoice amount to match. */
@@ -226,7 +229,7 @@ public class InvoiceService {
         invoice.updateLineItem(item, request.description().strip(), request.qty(), request.normalizedUnit(),
                 request.unitPrice(), request.exempt(), request.lineDiscountPct());
         invoices.flush();
-        return InvoiceDetailResponse.from(invoice);
+        return detail(invoice);
     }
 
     /** Removes a line item from a draft invoice and reworks the invoice amount to match. */
@@ -235,7 +238,7 @@ public class InvoiceService {
         Invoice invoice = findDraft(projectId, invoiceId);
         invoice.removeLineItem(findLineItem(invoice, lineItemId));
         invoices.flush();
-        return InvoiceDetailResponse.from(invoice);
+        return detail(invoice);
     }
 
     /** Replaces the discounts on a draft invoice with a single percentage or flat one and reworks the invoice amount to match. */
@@ -244,7 +247,7 @@ public class InvoiceService {
         Invoice invoice = findDraft(projectId, invoiceId);
         invoice.applyDiscount(request.discountPct(), request.flatAmount(), request.discountCap());
         invoices.flush();
-        return InvoiceDetailResponse.from(invoice);
+        return detail(invoice);
     }
 
     /** Adds another percentage or flat discount to a draft invoice and reworks the invoice amount to match. */
@@ -256,7 +259,7 @@ public class InvoiceService {
         }
         invoice.addDiscount(request.discountPct(), request.flatAmount(), request.discountCap());
         invoices.flush();
-        return InvoiceDetailResponse.from(invoice);
+        return detail(invoice);
     }
 
     /** Removes one discount from a draft invoice and reworks the invoice amount to match. */
@@ -266,7 +269,7 @@ public class InvoiceService {
         invoice.removeDiscount(invoice.findDiscount(discountId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Discount not found")));
         invoices.flush();
-        return InvoiceDetailResponse.from(invoice);
+        return detail(invoice);
     }
 
     /** Sets the sales tax percentage on a draft invoice and reworks the invoice amount to match. */
@@ -275,7 +278,7 @@ public class InvoiceService {
         Invoice invoice = findDraft(projectId, invoiceId);
         invoice.applyTax(request.taxPct());
         invoices.flush();
-        return InvoiceDetailResponse.from(invoice);
+        return detail(invoice);
     }
 
     /** Sets the levy (second tax) percentage on a draft invoice and reworks the invoice amount to match. */
@@ -284,7 +287,7 @@ public class InvoiceService {
         Invoice invoice = findDraft(projectId, invoiceId);
         invoice.applyLevy(request.levyPct());
         invoices.flush();
-        return InvoiceDetailResponse.from(invoice);
+        return detail(invoice);
     }
 
     /** Sets the flat surcharge on a draft invoice and reworks the invoice amount to match. */
@@ -293,7 +296,7 @@ public class InvoiceService {
         Invoice invoice = findDraft(projectId, invoiceId);
         invoice.applySurcharge(request.surcharge());
         invoices.flush();
-        return InvoiceDetailResponse.from(invoice);
+        return detail(invoice);
     }
 
     /** Sets the minimum charge on a draft invoice and reworks the invoice amount to match. */
@@ -302,7 +305,7 @@ public class InvoiceService {
         Invoice invoice = findDraft(projectId, invoiceId);
         invoice.applyMinimumCharge(request.minimumCharge());
         invoices.flush();
-        return InvoiceDetailResponse.from(invoice);
+        return detail(invoice);
     }
 
     /** Sets the early-payment discount offered on a draft invoice. */
@@ -311,7 +314,7 @@ public class InvoiceService {
         Invoice invoice = findDraft(projectId, invoiceId);
         invoice.applyEarlyPayment(request.earlyPaymentPct(), request.earlyPaymentDays());
         invoices.flush();
-        return InvoiceDetailResponse.from(invoice);
+        return detail(invoice);
     }
 
     /** Sends a draft invoice and records the sending in the audit log. */
@@ -364,7 +367,7 @@ public class InvoiceService {
         invoice.markWrittenOff();
         invoices.flush();
         audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + balance.setScale(2).toPlainString());
-        return InvoiceDetailResponse.from(invoice);
+        return detail(invoice);
     }
 
     private InvoiceResponse toResponse(Invoice invoice) {
@@ -389,5 +392,21 @@ public class InvoiceService {
     private static InvoiceLineItem findLineItem(Invoice invoice, Long lineItemId) {
         return invoice.findLineItem(lineItemId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown line item"));
+    }
+
+    private InvoiceDetailResponse detail(Invoice invoice) {
+        return detail(invoice, invoice.getStatus());
+    }
+
+    /**
+     * The invoice in full; a foreign invoice also converted into the home currency at the exchange rate
+     * from its issue date, so a later rate never changes what it was worth.
+     */
+    private InvoiceDetailResponse detail(Invoice invoice, InvoiceStatus status) {
+        String home = settings.homeCurrency();
+        String currency = invoice.getProject().getClient().getCurrency();
+        BigDecimal homeAmount = currency.equals(home) ? null
+                : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount()).orElse(null);
+        return InvoiceDetailResponse.from(invoice, status, home, homeAmount);
     }
 }

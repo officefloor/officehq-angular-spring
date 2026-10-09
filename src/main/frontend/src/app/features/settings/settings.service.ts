@@ -6,6 +6,8 @@ import { Observable } from 'rxjs';
 export interface Settings {
   /** The sales tax percentage a new invoice starts with. */
   defaultTaxPct: number;
+  /** The currency foreign invoices are converted into for the business's own totals (read-only). */
+  homeCurrency?: string;
 }
 
 @Injectable({ providedIn: 'root' })

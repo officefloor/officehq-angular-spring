@@ -184,6 +184,13 @@ export interface InvoiceDetail extends Invoice {
   minimumApplied: boolean;
   /** How much the client saves: the line discounts and the invoice's discounts added together. */
   totalSavings: number;
+  /** The currency the business keeps its own totals in. */
+  homeCurrency: string;
+  /**
+   * A foreign invoice's amount converted into the home currency at the exchange rate from its issue date;
+   * null when it is already in the home currency or there is no rate for that date.
+   */
+  homeAmount: number | null;
 }
 
 export interface NewLineItem {

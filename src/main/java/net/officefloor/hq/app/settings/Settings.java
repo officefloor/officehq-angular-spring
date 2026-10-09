@@ -22,11 +22,19 @@ public class Settings {
     @Column(name = "default_tax_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal defaultTaxPct = BigDecimal.ZERO.setScale(2);
 
+    /** The currency foreign invoices are converted into for the business's own totals. */
+    @Column(name = "home_currency", nullable = false, length = 3)
+    private String homeCurrency = "USD";
+
     protected Settings() {
     }
 
     public BigDecimal getDefaultTaxPct() {
         return defaultTaxPct;
+    }
+
+    public String getHomeCurrency() {
+        return homeCurrency;
     }
 
     public void setDefaultTaxPct(BigDecimal defaultTaxPct) {

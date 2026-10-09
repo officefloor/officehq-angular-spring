@@ -22,6 +22,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 // never taxed), the total before tax, and the final total including both taxes (also shown as the total after tax).
 // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
 // When the net total comes out under the invoice's minimum charge, the minimum is billed instead and marked as applied.
+// A foreign invoice also shows its total in the home currency, converted at the exchange rate from its issue date.
 // It also shows the total savings: every line discount and invoice discount added together.
 // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the set number of days.
 // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
@@ -334,6 +335,19 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                 <td></td>
               }
             </tr>
+            @if (inv.currency !== inv.homeCurrency) {
+              <tr>
+                <th scope="row" colspan="5">Total in {{ inv.homeCurrency }} (at the rate on {{ inv.issuedDate }})</th>
+                @if (inv.homeAmount !== null) {
+                  <td data-testid="invoice-home-amount">{{ inv.homeAmount | money: inv.homeCurrency }}</td>
+                } @else {
+                  <td data-testid="invoice-home-amount-missing">No exchange rate</td>
+                }
+                @if (inv.status === 'DRAFT') {
+                  <td></td>
+                }
+              </tr>
+            }
             <tr>
               <th scope="row" colspan="5">Total after tax</th>
               <td data-testid="invoice-total-inc-tax">{{ inv.amount | money: inv.currency }}</td>

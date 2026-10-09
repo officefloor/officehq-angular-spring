@@ -68,6 +68,7 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE fx_rate RESTART IDENTITY");
             // Back to the standard currencies, each rounding to the cent and shown with two decimals.
             jdbc.execute("DELETE FROM currency");
             jdbc.execute("INSERT INTO currency (code, symbol, rounding_step) VALUES ('USD', '$', 0.01), ('EUR', '€', 0.01),"
@@ -75,7 +76,7 @@ public class TestSupportController {
         } finally {
             jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
         }
-        jdbc.update("UPDATE app_settings SET default_tax_pct = 0 WHERE id = 1");
+        jdbc.update("UPDATE app_settings SET default_tax_pct = 0, home_currency = 'USD' WHERE id = 1");
     }
 
     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
@@ -93,6 +94,14 @@ public class TestSupportController {
                     c.get("code"), c.get("symbol") == null ? c.get("code") + " " : c.get("symbol"),
                     c.get("roundingStep") == null ? new BigDecimal("0.01") : decimal(c.get("roundingStep")),
                     c.get("decimals") == null ? 2 : ((Number) c.get("decimals")).intValue());
+        }
+        if (fixture.get("homeCurrency") != null) {
+            jdbc.update("UPDATE app_settings SET home_currency = ? WHERE id = 1", fixture.get("homeCurrency").toString());
+        }
+        // An exchange rate: from its date, one unit of the currency is worth "rate" units of the home currency.
+        for (Map<String, Object> r : rows(fixture, "fxRates")) {
+            jdbc.update("INSERT INTO fx_rate (currency, rate_date, rate) VALUES (?, ?, ?)",
+                    r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
         }
         for (Map<String, Object> c : rows(fixture, "clients")) {
             jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct)"

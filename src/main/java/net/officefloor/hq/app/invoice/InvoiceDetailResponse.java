@@ -15,7 +15,9 @@ import java.util.List;
  * must be paid within, the last day to pay, and the reduced amount; null when none is offered), and the
  * client's tax number (null when the client is not tax registered), the minimum charge, the net total
  * before it, whether the minimum was billed because the net total came out under it, and the total
- * savings (the line discounts and the invoice's discounts added together).
+ * savings (the line discounts and the invoice's discounts added together). A foreign invoice also gives
+ * the home currency and its amount converted into it at the exchange rate from the invoice's issue date
+ * (null when the invoice is already in the home currency or there is no rate for that date).
  */
 public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
         BigDecimal subtotal,
@@ -24,14 +26,14 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
         BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
         InvoiceStatus status, LocalDate issuedDate,
         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts,
-        BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings) {
+        BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
+        String homeCurrency, BigDecimal homeAmount) {
 
-    static InvoiceDetailResponse from(Invoice invoice) {
-        return from(invoice, invoice.getStatus());
-    }
-
-    /** The invoice with the given status, as worked out from what has been paid and credited against it. */
-    static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status) {
+    /**
+     * The invoice with the given status, as worked out from what has been paid and credited against it, and
+     * its amount in the home currency.
+     */
+    static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status, String homeCurrency, BigDecimal homeAmount) {
         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
@@ -46,6 +48,6 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
                 invoice.getDiscounts().stream().map(d -> new InvoiceDiscountResponse(d.getId(), d.getDiscountPct(),
                         d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList(),
                 invoice.getMinimumCharge(), invoice.getNetTotal(), invoice.isMinimumApplied(),
-                invoice.getTotalSavings());
+                invoice.getTotalSavings(), homeCurrency, homeAmount);
     }
 }
