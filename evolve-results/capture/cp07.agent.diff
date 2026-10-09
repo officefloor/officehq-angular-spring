@@ -1,0 +1,305 @@
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index 0c2c923..accbb5e 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -14,6 +14,10 @@ export const routes: Routes = [
+     data: { section: 'clients', label: 'Clients', order: 1 },
+     loadComponent: () => import('./features/clients/clients').then((m) => m.Clients),
+   },
++  {
++    path: 'clients/:id',
++    loadComponent: () => import('./features/clients/client-detail').then((m) => m.ClientDetail),
++  },
+   {
+     path: 'projects',
+     data: { section: 'projects', label: 'Projects', order: 2 },
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+new file mode 100644
+index 0000000..0697529
+--- /dev/null
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -0,0 +1,33 @@
++import { Component, computed, inject, input } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { RouterLink } from '@angular/router';
++import { ClientProjects } from '../projects/client-projects';
++import { ClientService } from './client.service';
++
++// A single client's page: their name and email, and the projects being done for them.
++@Component({
++  selector: 'app-client-detail',
++  imports: [RouterLink, ClientProjects],
++  template: `
++    <a routerLink="/clients" data-testid="client-back">Back to clients</a>
++    @if (client.error()) {
++      <p role="alert" data-testid="client-error">Could not load the client.</p>
++    } @else if (client.value(); as c) {
++      <h1 data-testid="client-detail-name">{{ c.name }}</h1>
++      <p>Email: <span data-testid="client-detail-email">{{ c.email }}</span></p>
++      <app-client-projects [clientId]="clientId()" />
++    }
++  `,
++})
++export class ClientDetail {
++  private readonly service = inject(ClientService);
++
++  /** Bound from the `:id` route parameter. */
++  readonly id = input.required<string>();
++  protected readonly clientId = computed(() => Number(this.id()));
++
++  protected readonly client = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.service.get(params),
++  });
++}
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 4eb3b04..7579135 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -18,6 +18,10 @@ export class ClientService {
+     return this.http.get<Client[]>('/api/clients');
+   }
+ 
++  get(id: number): Observable<Client> {
++    return this.http.get<Client>(`/api/clients/${id}`);
++  }
++
+   create(client: NewClient): Observable<Client> {
+     return this.http.post<Client>('/api/clients', client);
+   }
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 4092e84..2ccba36 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -1,11 +1,13 @@
+ import { Component, computed, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { RouterLink } from '@angular/router';
+ import { Client, ClientService } from './client.service';
+ 
+-// Clients page: add a client (name + email) and list all clients, filterable by name.
++// Clients page: add a client (name + email) and list all clients, filterable by name; each client
++// opens its detail page.
+ @Component({
+   selector: 'app-clients',
+-  imports: [ReactiveFormsModule],
++  imports: [ReactiveFormsModule, RouterLink],
+   template: `
+     <h1>Clients</h1>
+ 
+@@ -73,6 +75,7 @@ import { Client, ClientService } from './client.service';
+             <tr>
+               <th scope="col">Name</th>
+               <th scope="col">Email</th>
++              <th scope="col"><span class="visually-hidden">Actions</span></th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -80,6 +83,14 @@ import { Client, ClientService } from './client.service';
+               <tr [attr.data-testid]="'client-row-' + c.id">
+                 <td data-testid="client-name">{{ c.name }}</td>
+                 <td data-testid="client-email">{{ c.email }}</td>
++                <td>
++                  <a
++                    [routerLink]="['/clients', c.id]"
++                    [attr.data-testid]="'client-open-' + c.id"
++                    [attr.aria-label]="'Open ' + c.name"
++                    >Open</a
++                  >
++                </td>
+               </tr>
+             }
+           </tbody>
+diff --git a/src/main/frontend/src/app/features/projects/client-projects.ts b/src/main/frontend/src/app/features/projects/client-projects.ts
+new file mode 100644
+index 0000000..b9bffe9
+--- /dev/null
++++ b/src/main/frontend/src/app/features/projects/client-projects.ts
+@@ -0,0 +1,56 @@
++import { Component, computed, inject, input } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { RouterLink } from '@angular/router';
++import { ProjectService } from './project.service';
++
++// A client's projects: the projects listing scoped to one client; each project opens its detail page.
++@Component({
++  selector: 'app-client-projects',
++  imports: [RouterLink],
++  template: `
++    <section aria-labelledby="client-projects-heading" data-testid="client-projects">
++      <h2 id="client-projects-heading">Projects</h2>
++      @if (projects.error()) {
++        <p role="alert" data-testid="client-projects-error">Could not load the projects.</p>
++      } @else if (list().length === 0) {
++        <p data-testid="client-projects-empty">No projects for this client yet.</p>
++      } @else {
++        <table data-testid="client-projects-table">
++          <caption>Projects for this client</caption>
++          <thead>
++            <tr>
++              <th scope="col">Name</th>
++              <th scope="col"><span class="visually-hidden">Actions</span></th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (p of list(); track p.id) {
++              <tr [attr.data-testid]="'project-row-' + p.id">
++                <td data-testid="project-name">{{ p.name }}</td>
++                <td>
++                  <a
++                    [routerLink]="['/projects', p.id]"
++                    [attr.data-testid]="'project-open-' + p.id"
++                    [attr.aria-label]="'Open ' + p.name"
++                    >Open</a
++                  >
++                </td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
++    </section>
++  `,
++})
++export class ClientProjects {
++  private readonly service = inject(ProjectService);
++
++  readonly clientId = input.required<number>();
++
++  protected readonly projects = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.service.listForClient(params),
++  });
++  protected readonly list = computed(() => (this.projects.hasValue() ? this.projects.value() : []));
++}
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index 538182f..385fc6d 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -22,6 +22,10 @@ export class ProjectService {
+     return this.http.get<Project[]>('/api/projects');
+   }
+ 
++  listForClient(clientId: number): Observable<Project[]> {
++    return this.http.get<Project[]>(`/api/clients/${clientId}/projects`);
++  }
++
+   get(id: number): Observable<Project> {
+     return this.http.get<Project>(`/api/projects/${id}`);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index 5842ddd..8a256ad 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
+ import java.util.List;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -25,6 +26,11 @@ public class ClientController {
+         return service.list();
+     }
+ 
++    @GetMapping("/{id}")
++    public ClientResponse get(@PathVariable Long id) {
++        return service.get(id);
++    }
++
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClientResponse create(@Valid @RequestBody ClientRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 6777622..a8beae3 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -2,8 +2,10 @@ package net.officefloor.hq.app.client;
+ 
+ import java.util.List;
+ import org.springframework.data.domain.Sort;
++import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ @Service
+ public class ClientService {
+@@ -19,6 +21,12 @@ public class ClientService {
+         return clients.findAll(Sort.by("id")).stream().map(ClientResponse::from).toList();
+     }
+ 
++    @Transactional(readOnly = true)
++    public ClientResponse get(Long id) {
++        return clients.findById(id).map(ClientResponse::from)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
++    }
++
+     @Transactional
+     public ClientResponse create(ClientRequest request) {
+         Client saved = clients.save(new Client(request.name().trim(), request.email().trim()));
+diff --git a/src/main/java/net/officefloor/hq/app/project/ClientProjectController.java b/src/main/java/net/officefloor/hq/app/project/ClientProjectController.java
+new file mode 100644
+index 0000000..eb72fd8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ClientProjectController.java
+@@ -0,0 +1,24 @@
++package net.officefloor.hq.app.project;
++
++import java.util.List;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The projects being done for a client. */
++@RestController
++@RequestMapping("/api/clients/{clientId}/projects")
++public class ClientProjectController {
++
++    private final ProjectService service;
++
++    public ClientProjectController(ProjectService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<ProjectResponse> list(@PathVariable Long clientId) {
++        return service.listForClient(clientId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index 3648c76..a874031 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -11,6 +11,10 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+     @Query("SELECT p FROM Project p JOIN FETCH p.client ORDER BY p.id")
+     List<Project> findAllWithClient();
+ 
++    /** A client's projects with their client loaded in the same query. */
++    @Query("SELECT p FROM Project p JOIN FETCH p.client c WHERE c.id = :clientId ORDER BY p.id")
++    List<Project> findByClientIdWithClient(Long clientId);
++
+     /** One project with its client loaded in the same query. */
+     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
+     Optional<Project> findByIdWithClient(Long id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index 3d6ac49..b779fd4 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -24,6 +24,14 @@ public class ProjectService {
+         return projects.findAllWithClient().stream().map(ProjectResponse::from).toList();
+     }
+ 
++    @Transactional(readOnly = true)
++    public List<ProjectResponse> listForClient(Long clientId) {
++        if (!clients.existsById(clientId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
++        }
++        return projects.findByClientIdWithClient(clientId).stream().map(ProjectResponse::from).toList();
++    }
++
+     @Transactional(readOnly = true)
+     public ProjectResponse get(Long id) {
+         return projects.findByIdWithClient(id).map(ProjectResponse::from)

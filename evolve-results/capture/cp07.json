@@ -1,0 +1,369 @@
+{
+  "checkpoint": 7,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48"
+  },
+  "checkpoint_id": "cp07_client_detail_projects",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "When I open a client show me the projects I am doing for them.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nWhen I open a client show me the projects I am doing for them.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "781c41eb244d4ad205a8239e33837b735baaaec7",
+  "reset_sha": "",
+  "preagent_sha": "d9d83c67c1c730717ca7cd34c640f1287e78f861",
+  "prev_sha": "d9d83c67c1c730717ca7cd34c640f1287e78f861",
+  "base_sha": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3427346,
+    "input_tokens": 12,
+    "output_tokens": 5019,
+    "cache_read_tokens": 146013,
+    "cache_creation_tokens": 26638,
+    "num_turns": 6,
+    "duration_ms": 62410,
+    "duration_api_ms": 40772,
+    "model": "claude-opus-5-5",
+    "session_id": "c4724454-1d21-49cf-a4e8-80ce8d49816e",
+    "stop_reason": "success",
+    "result_text": "When you open a client, their page now lists the projects you're doing for them. `bin/e2e` passes.\n\nOne note first: your request said OfficeFloor server, but this app's server is Spring Boot (the package is just named `net.officefloor.hq`). I followed CLAUDE.md and the existing code and wrote Spring controllers.\n\n**Server**\n- `GET /api/clients/{id}` returns a single client, or a 404 if it doesn't exist.\n- `GET /api/clients/{clientId}/projects` returns that client's projects in id order, or a 404 for an unknown client. It's in a new `ClientProjectController`, with a new repository query and service method behind it.\n- **No database migration was needed.** The `project.client_id` foreign key and its index already exist in `V3__create_project.sql`.\n\n**Front end**\n- **Clients list:** each row now has an \"Open\" link (`client-open-<id>`) that goes to the client's page.\n- **Client page** (new route `clients/:id`, `client-detail.ts`): shows the client's name and email, with a back link and an error message if the client can't be loaded.\n- **Client's projects** (`client-projects.ts`): a table (`client-projects-table`) that reuses the existing `project-row-<id>`, `project-name` and `project-open-<id>` test ids. Each project links to its own page. It shows a message when the client has no projects or the list fails to load.\n\nNo existing `data-testid` was renamed or removed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.3427346,
+        "num_turns": 6,
+        "duration_ms": 62410,
+        "duration_api_ms": 40772,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp07.agent.jsonl",
+  "agent_diff_file": "cp07.agent.diff",
+  "build_log_file": "cp07.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 13,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's projects": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 420,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 500,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 241,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 244,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 244,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 261,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 345,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 398,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 485,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 535,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 476,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 294,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's projects",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 345,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 2.29,
+            "impact": 210,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/src/app/app.routes.ts",
+                "lang": "typescript",
+                "cost": 21,
+                "mutation": 21,
+                "godclass": 0,
+                "mut_fns": 2,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/client-projects.ts",
+                "lang": "typescript",
+                "cost": 7,
+                "mutation": 0,
+                "godclass": 7,
+                "mut_fns": 0,
+                "new_fns": 3
+              },
+              {
+                "path": "src/main/frontend/src/app/features/clients/client-detail.ts",
+                "lang": "typescript",
+                "cost": 4,
+                "mutation": 0,
+                "godclass": 4,
+                "mut_fns": 0,
+                "new_fns": 2
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/project.service.ts",
+                "lang": "typescript",
+                "cost": 3,
+                "mutation": 0,
+                "godclass": 3,
+                "mut_fns": 0,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/src/app/app.routes.ts",
+                "name": "loadComponent",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 7,
+                "cost": 14,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/app.routes.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 7,
+                "cost": 7,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/client-projects.ts",
+                "name": "rxResource",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/project.service.ts",
+                "name": "listForClient",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 1,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/clients/client-detail.ts",
+                "name": "params",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 2,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/clients/client-detail.ts",
+                "name": "stream",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 2,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/client-projects.ts",
+                "name": "stream",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 2,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/client-projects.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 2,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 1,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 9.77,
+            "impact": 300,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/project/ProjectService.java",
+                "lang": "java",
+                "cost": 48,
+                "mutation": 0,
+                "godclass": 48,
+                "mut_fns": 0,
+                "new_fns": 1
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/client/ClientService.java",
+                "lang": "java",
+                "cost": 12,
+                "mutation": 0,
+                "godclass": 12,
+                "mut_fns": 0,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/project/ProjectService.java",
+                "name": "ProjectService::listForClient",
+                "container": "ProjectService",
+                "cc": 2,
+                "wmc_other": 4,
+                "cost": 48,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/client/ClientService.java",
+                "name": "ClientService::get",
+                "container": "ClientService",
+                "cc": 1,
+                "wmc_other": 3,
+                "cost": 12,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 1,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
