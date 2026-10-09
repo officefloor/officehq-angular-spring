@@ -1,0 +1,1918 @@
+# The ordered, cumulative checkpoint stream. Each is applied on top of the committed result of the
+# previous one, GROWING ONE APP FROM A NEAR-EMPTY BASE (no tables at cp01) via ~250 plain-English
+# change requests. Domain: a generic business app — CLIENTS, PROJECTS (renamed to JOBS at cp52),
+# INVOICES — what an OfficeHQ user actually builds. See DESIGN.md.
+#
+# EACH CHECKPOINT:
+#   request : the plain-English change request, as a non-technical user would type it (given to
+#             the agent, self-contained, no checkpoint numbers).
+#   test    : the experimenter-authored Playwright spec — the OBJECTIVE gate — also shown to the
+#             agent so it knows the exact data-testid anchors, values, and audit records to satisfy.
+#   type    : additive | mutative.  mutates : the prior checkpoint numbers a mutative revises.
+#
+# TWO ASSERTION CHANNELS (DESIGN.md §3): the UI (data-testid) for user-visible behaviour, and the
+# known AUDIT FILE for side-effects (support/audit.ts). Data is arranged per-spec via /__test__
+# (reset+seed; reset also clears the audit file). Once introduced, a data-testid is immutable public
+# API — never renamed/removed except by a mutative checkpoint that ships the updated prior specs.
+#
+# MUTATIVE checkpoints ship updated copies of the prior specs they break in a sibling
+# `acceptance/specs/cp<NN>/` folder (auto-discovered; installed by basename so they WIN over the
+# prior originals in the cumulative gate suite). Each updated copy must carry forward ALL earlier
+# mutations to that basename. A regression on a checkpoint listed in `mutates` is INTENDED; breakage
+# on any other prior is a true regression (incl. seed-path breakage — DESIGN.md §6).
+#
+# BLIND: each checkpoint runs a fresh agent with no memory of prior checkpoints and WITHOUT the
+# prior specs — only the current code, its request, and its own spec.
+
+checkpoints:
+  - id: cp01_clients
+    type: additive
+    test: acceptance/specs/cp01_clients.spec.ts
+    request: |
+      I want to keep track of my clients. Let me add a client with their name and email.
+      Show me all my clients in one list.
+
+  - id: cp02_client_email_validation
+    type: additive
+    test: acceptance/specs/cp02_client_email_validation.spec.ts
+    request: |
+      Every client needs an email. Do not let me save one without a proper email address.
+
+  - id: cp03_projects
+    type: additive
+    test: acceptance/specs/cp03_projects.spec.ts
+    request: |
+      I want to track the projects I do for clients. Let me add a project and pick which client it
+      is for. Show each project with the client's name.
+
+  - id: cp04_project_invoices
+    type: additive
+    test: acceptance/specs/cp04_project_invoices.spec.ts
+    request: |
+      When I open a project I want to see its invoices. Show me what they add up to. Let me add a
+      new invoice for an amount.
+
+  - id: cp05_invoice_pay_audit
+    type: additive
+    test: acceptance/specs/cp05_invoice_pay_audit.spec.ts
+    request: |
+      Let me mark an invoice as paid. Keep a record every time I do so I can check back later.
+
+  - id: cp06_client_search
+    type: additive
+    test: acceptance/specs/cp06_client_search.spec.ts
+    request: |
+      My client list is getting long. Give me a box to search for a client by name.
+
+  - id: cp07_client_detail_projects
+    type: additive
+    test: acceptance/specs/cp07_client_detail_projects.spec.ts
+    request: |
+      When I open a client show me the projects I am doing for them.
+
+  - id: cp08_dashboard
+    type: additive
+    test: acceptance/specs/cp08_dashboard.spec.ts
+    request: |
+      I want a home screen. Show me how many clients and projects I have. Show me how much money I
+      am still owed.
+
+  - id: cp09_currency_format
+    type: mutative
+    mutates: [4, 8]
+    test: acceptance/specs/cp09_currency_format.spec.ts
+    request: |
+      Show money properly everywhere. Use a dollar sign and cents, like $100.00.
+
+  - id: cp10_invoice_amount_positive
+    type: additive
+    test: acceptance/specs/cp10_invoice_amount_positive.spec.ts
+    request: |
+      Do not let me add an invoice for nothing. The amount has to be more than zero.
+
+  - id: cp11_invoice_dates
+    type: additive
+    test: acceptance/specs/cp11_invoice_dates.spec.ts
+    request: |
+      Put two dates on each invoice. One for when it went out. One for when it is due. Show them both.
+
+  - id: cp12_invoice_sort_due
+    type: additive
+    test: acceptance/specs/cp12_invoice_sort_due.spec.ts
+    request: |
+      Let me sort a project's invoices by their due date.
+
+  - id: cp13_invoice_lifecycle
+    type: mutative
+    mutates: [5]
+    test: acceptance/specs/cp13_invoice_lifecycle.spec.ts
+    request: |
+      Invoices should move through stages. First a draft. Then I send it. Then it gets paid. Keep a
+      record when I send one. Only let me take payment once it has been sent.
+
+  - id: cp14_all_invoices
+    type: additive
+    test: acceptance/specs/cp14_all_invoices.spec.ts
+    request: |
+      Give me one place that lists all my invoices from every project. Show which project each one
+      is for. Show what stage it is at.
+
+  - id: cp15_invoice_status_filter
+    type: additive
+    test: acceptance/specs/cp15_invoice_status_filter.spec.ts
+    request: |
+      Let me narrow that list to one stage. For example only the ones I have sent.
+
+  - id: cp16_client_contacts
+    type: additive
+    test: acceptance/specs/cp16_client_contacts.spec.ts
+    request: |
+      For each client let me keep their contacts. Store a name, an email and their role. Show them
+      on the client's page.
+
+  - id: cp17_outstanding_sent_only
+    type: mutative
+    mutates: [8]
+    test: acceptance/specs/cp17_outstanding_sent_only.spec.ts
+    request: |
+      The money I am owed should only count invoices I have actually sent. Do not count drafts.
+
+  - id: cp18_contact_email_validation
+    type: additive
+    test: acceptance/specs/cp18_contact_email_validation.spec.ts
+    request: |
+      Contacts need a good email too. Do not let me save one with a bad email.
+
+  - id: cp19_client_badges
+    type: additive
+    test: acceptance/specs/cp19_client_badges.spec.ts
+    request: |
+      On a client's page show me how many projects and contacts they have.
+
+  - id: cp20_project_tasks
+    type: additive
+    test: acceptance/specs/cp20_project_tasks.spec.ts
+    request: |
+      Let me keep a task list on each project. Let me tick things off as I finish them.
+
+  - id: cp21_invoice_line_items
+    type: mutative
+    mutates: [4]
+    test: acceptance/specs/cp21_invoice_line_items.spec.ts
+    request: |
+      I do not want to type one figure for an invoice. Let me list the things I am charging for.
+      For each one give a description, how many, and the price each. Work out the total for me.
+
+  - id: cp22_line_items_edit
+    type: additive
+    test: acceptance/specs/cp22_line_items_edit.spec.ts
+    request: |
+      Let me change or remove those charge lines on an invoice. Update the total when I do.
+
+  - id: cp23_task_filter
+    type: additive
+    test: acceptance/specs/cp23_task_filter.spec.ts
+    request: |
+      Let me see just the open tasks on a project. Or just the finished ones.
+
+  - id: cp24_project_delete_audit
+    type: additive
+    test: acceptance/specs/cp24_project_delete_audit.spec.ts
+    request: |
+      Let me delete a project I no longer need. Keep a record that I did.
+
+  - id: cp25_project_archive
+    type: mutative
+    mutates: [3, 7, 24]
+    test: acceptance/specs/cp25_project_archive.spec.ts
+    request: |
+      Do not really delete a project. Just tuck it away so it drops off my lists. Keep it off the
+      main project list and off the list on the client's page. I do not want to lose anything.
+      Note it when I do.
+
+  - id: cp26_project_tags
+    type: additive
+    test: acceptance/specs/cp26_project_tags.spec.ts
+    request: |
+      Let me put labels on projects so I can group them.
+
+  - id: cp27_project_tag_filter
+    type: additive
+    test: acceptance/specs/cp27_project_tag_filter.spec.ts
+    request: |
+      Let me filter my projects by label.
+
+  - id: cp28_project_notes
+    type: additive
+    test: acceptance/specs/cp28_project_notes.spec.ts
+    request: |
+      Let me write notes on a project. Show the newest one first.
+
+  - id: cp29_client_archive
+    type: mutative
+    mutates: [1, 6]
+    test: acceptance/specs/cp29_client_archive.spec.ts
+    request: |
+      Let me tuck away clients I no longer work with. They should drop off my list and my search.
+      I do not want to lose them. Note it when I do.
+
+  - id: cp30_invoice_payments
+    type: additive
+    test: acceptance/specs/cp30_invoice_payments.spec.ts
+    request: |
+      Let me record what a client has paid on an invoice. Store the amount and the date. Show it on
+      the invoice.
+
+  - id: cp31_invoice_amount_due
+    type: additive
+    test: acceptance/specs/cp31_invoice_amount_due.spec.ts
+    request: |
+      Show me how much is still left to pay on each invoice after any payments.
+
+  - id: cp32_invoice_status_derived
+    type: mutative
+    mutates: [5, 13, 31]
+    test: acceptance/specs/cp32_invoice_status_derived.spec.ts
+    request: |
+      Work out for me whether an invoice is paid, part paid or still owing. Base it on the payments
+      I have recorded. I do not want to flip it to paid by hand anymore.
+
+  - id: cp33_client_statement
+    type: additive
+    test: acceptance/specs/cp33_client_statement.spec.ts
+    request: |
+      Give me a statement for a client. Put all their invoices in one place. Show the total they
+      still owe me.
+
+  - id: cp34_project_status
+    type: additive
+    test: acceptance/specs/cp34_project_status.spec.ts
+    request: |
+      Let me mark a project as active, on hold or finished. Show which it is.
+
+  - id: cp35_project_status_filter
+    type: additive
+    test: acceptance/specs/cp35_project_status_filter.spec.ts
+    request: |
+      Let me filter projects by active, on hold or finished.
+
+  - id: cp36_client_active_projects_default
+    type: mutative
+    mutates: [7]
+    test: acceptance/specs/cp36_client_active_projects_default.spec.ts
+    request: |
+      On a client's page show me just their active projects by default. Give me a way to also see
+      the finished and hidden ones.
+
+  - id: cp37_project_budget
+    type: additive
+    test: acceptance/specs/cp37_project_budget.spec.ts
+    request: |
+      Let me set a budget on a project. Show how much I have invoiced against it. Show what is left.
+
+  - id: cp38_dashboard_overdue
+    type: additive
+    test: acceptance/specs/cp38_dashboard_overdue.spec.ts
+    request: |
+      On the home screen tell me how many sent invoices are overdue.
+
+  - id: cp39_invoice_pagination
+    type: additive
+    test: acceptance/specs/cp39_invoice_pagination.spec.ts
+    request: |
+      The invoice list is huge now. Show it a page at a time with next and previous.
+
+  - id: cp40_thousands_separator
+    type: mutative
+    mutates: [9, 21, 33]
+    test: acceptance/specs/cp40_thousands_separator.spec.ts
+    request: |
+      For bigger amounts put commas in. Show it like $1,234.50. Do this everywhere an amount shows,
+      including on the invoices and on the client statement.
+
+  - id: cp41_invoice_cancel_audit
+    type: additive
+    test: acceptance/specs/cp41_invoice_cancel_audit.spec.ts
+    request: |
+      Let me cancel an invoice I sent by mistake. It should stop counting toward what I am owed.
+      Note it.
+
+  - id: cp42_client_primary_contact
+    type: additive
+    test: acceptance/specs/cp42_client_primary_contact.spec.ts
+    request: |
+      Let me pick a main contact for each client. Show who it is.
+
+  - id: cp43_global_search
+    type: additive
+    test: acceptance/specs/cp43_global_search.spec.ts
+    request: |
+      Give me one search box. Have it look across both clients and projects.
+
+  - id: cp44_client_unique_email
+    type: mutative
+    mutates: [1]
+    test: acceptance/specs/cp44_client_unique_email.spec.ts
+    request: |
+      Do not let me add two clients with the same email.
+
+  - id: cp45_client_edit
+    type: additive
+    test: acceptance/specs/cp45_client_edit.spec.ts
+    request: |
+      Let me fix a client's name or email from the list.
+
+  - id: cp46_line_item_qty_unit
+    type: additive
+    test: acceptance/specs/cp46_line_item_qty_unit.spec.ts
+    request: |
+      On the charge lines let me say how many and the unit. Show the amount for each line.
+
+  - id: cp47_invoice_discount
+    type: additive
+    test: acceptance/specs/cp47_invoice_discount.spec.ts
+    request: |
+      Let me take a percentage off an invoice as a discount. Show the subtotal, the discount and the
+      final total.
+
+  - id: cp48_discount_everywhere
+    type: mutative
+    mutates: [17, 31, 33]
+    test: acceptance/specs/cp48_discount_everywhere.spec.ts
+    request: |
+      Make sure that discount shows up everywhere I check what is owed. That means the invoice, the
+      statement and the home screen.
+
+  - id: cp49_sales_tax
+    type: mutative
+    mutates: [21, 47]
+    test: acceptance/specs/cp49_sales_tax.spec.ts
+    request: |
+      Let me add sales tax on top. Work it out after the discount. The amount shown for each invoice
+      should include the tax.
+
+  - id: cp50_combined_filter
+    type: additive
+    test: acceptance/specs/cp50_combined_filter.spec.ts
+    request: |
+      Let me filter by two things at once. For example active projects that have a certain label.
+
+  - id: cp51_client_sort
+    type: additive
+    test: acceptance/specs/cp51_client_sort.spec.ts
+    request: |
+      Let me sort my clients by name. Or by how much they owe me.
+
+  - id: cp52_project_to_job_rename
+    type: mutative
+    # A pure RELABEL (visible "project" -> "job"). data-testid is the stable contract the suite binds
+    # to and must NOT change (CLAUDE.md), so this revises NO prior spec's assertions — the historic
+    # specs keep their project-* testids untouched. Its own spec asserts only the visible-text change.
+    mutates: []
+    test: acceptance/specs/cp52_project_to_job_rename.spec.ts
+    request: |
+      I call these jobs, not projects. Please use that word everywhere.
+
+  - id: cp53_job_code
+    # Adding a required unique code CHANGES the job-creation contract, so this is mutative: the
+    # create tests for jobs (cp03) and job status on create (cp34) must now supply a code. Without
+    # updating them they would create a job with no code and fail — a test gap, not agent erosion.
+    type: mutative
+    mutates: [3, 34]
+    test: acceptance/specs/cp53_job_code.spec.ts
+    request: |
+      Give each job a short reference code, set when creating the job. Keep it unique so no two jobs
+      share one.
+
+  - id: cp54_invoice_notes
+    type: additive
+    test: acceptance/specs/cp54_invoice_notes.spec.ts
+    request: |
+      Let me add notes to invoices too. Not just jobs.
+
+  - id: cp55_dashboard_top_clients
+    type: additive
+    test: acceptance/specs/cp55_dashboard_top_clients.spec.ts
+    request: |
+      On the home screen show me my top five clients. Rank them by how much they owe.
+
+  - id: cp56_payment_allocation
+    type: mutative
+    mutates: [30, 31, 32]
+    test: acceptance/specs/cp56_payment_allocation.spec.ts
+    request: |
+      Sometimes a client pays one lump sum for several invoices. Let me split that payment across
+      them. Each invoice's balance should come out right.
+
+  - id: cp57_statement_by_job
+    type: mutative
+    mutates: [33]
+    test: acceptance/specs/cp57_statement_by_job.spec.ts
+    request: |
+      On a client's statement group the invoices by job. Show a subtotal for each job.
+
+  - id: cp58_client_restore
+    type: additive
+    test: acceptance/specs/cp58_client_restore.spec.ts
+    request: |
+      Let me bring back a client I tucked away earlier. I might start working with them again.
+
+  - id: cp59_statement_printable
+    type: additive
+    test: acceptance/specs/cp59_statement_printable.spec.ts
+    request: |
+      Give me a clean printable summary of a client's statement. Show the grand total they owe.
+
+  - id: cp60_multi_currency
+    type: mutative
+    # 41 belongs here: cp60 replaces the single `dashboard-outstanding-total` with one
+    # `dashboard-outstanding-<CUR>` row per currency, which makes cp41's assertion on that anchor
+    # obsolete by design. It was previously undeclared, so cp41 broke at cp60 in 10 of 10 chains
+    # and was counted as a true regression rather than an intended mutation.
+    mutates: [8, 17, 33, 40, 41, 48, 55]
+    test: acceptance/specs/cp60_multi_currency.spec.ts
+    request: |
+      Different clients pay me in different currencies. Let me set each client's currency. Show
+      their money in that currency everywhere I see it, including on their statement. On the home
+      screen keep the totals separate for each currency. Show each client's figure in their own
+      currency in the top clients list too. Do not add different currencies together.
+
+# ===================================================================================================
+# LONG-HORIZON EXTENSION — ACT II (cp61-120): "the calculation deepens"
+# ---------------------------------------------------------------------------------------------------
+# Act I (cp01-60) grew the app and established the invoice money pipeline. From here the stream
+# CONCENTRATES: ~80% of checkpoints target `area: billing` — the one spine
+#   lineItems -> subtotal -> discount(s) -> tax -> rounding -> TOTAL
+#             -> payments/allocation -> amountDue -> status  (re-read by statement, dashboard, aging)
+# so change keeps landing on the same code and erosion pressure accumulates there (docs/
+# LONG_HORIZON_DESIGN.md). Change TYPE follows a 3-additive : 1-mutative rhythm (every 4th
+# checkpoint mutative) to match spring-petclinic-rest-long-degradation and stay realistic: in real
+# life you ADD features far more often than you revise them. Off-spine checkpoints (clients/jobs/
+# tasks) are the low-pressure control region. Run harness.checkpoint_lint to audit both properties
+# BEFORE a run. `area:` is metadata the blind agent never sees (only `request` + the visible spec).
+# ===================================================================================================
+
+  # ---- B1 (cp61-76): tax gets real --------------------------------------------------------------
+  - id: cp61_default_tax_rate
+    type: additive
+    area: billing
+    test: acceptance/specs/cp61_default_tax_rate.spec.ts
+    request: |
+      Let me set a standard tax rate once in my settings. New invoices should start with that rate
+      already filled in, and I can still change it on an invoice.
+
+  - id: cp62_client_phone
+    type: additive
+    area: clients
+    test: acceptance/specs/cp62_client_phone.spec.ts
+    request: |
+      Let me keep a phone number for a client. Show it on their page.
+
+  - id: cp63_line_tax_exempt
+    type: additive
+    area: billing
+    test: acceptance/specs/cp63_line_tax_exempt.spec.ts
+    request: |
+      Some things I charge for are not taxable. Let me mark a charge line as tax-free so no tax is
+      worked out on it.
+
+  - id: cp64_tax_per_taxable_line
+    type: mutative
+    area: billing
+    mutates: [49]
+    test: acceptance/specs/cp64_tax_per_taxable_line.spec.ts
+    request: |
+      Work out the tax from only the charge lines that are taxable, not the whole invoice. The tax
+      I am shown should ignore the tax-free lines.
+
+  - id: cp65_tax_summary_line
+    type: additive
+    area: billing
+    test: acceptance/specs/cp65_tax_summary_line.spec.ts
+    request: |
+      On the invoice show me a clear tax line — what was taxed and how much tax that came to.
+
+  - id: cp66_client_tax_number
+    type: additive
+    area: billing
+    test: acceptance/specs/cp66_client_tax_number.spec.ts
+    request: |
+      Some clients are tax registered. Let me record their tax number and show it on their invoices.
+
+  - id: cp67_job_description
+    type: additive
+    area: jobs
+    test: acceptance/specs/cp67_job_description.spec.ts
+    request: |
+      Let me write a short description for a job. Show it on the job.
+
+  - id: cp68_second_tax
+    type: mutative
+    area: billing
+    mutates: [49]
+    test: acceptance/specs/cp68_second_tax.spec.ts
+    request: |
+      In some places there is a second tax on top, like a levy. Let me add a second tax rate as
+      well. Both taxes should be worked out and the total should include both.
+
+  - id: cp69_tax_inclusive_pricing
+    type: additive
+    area: billing
+    test: acceptance/specs/cp69_tax_inclusive_pricing.spec.ts
+    request: |
+      For some clients my prices already include tax. For those let me show the tax that is baked
+      into the price, worked back out of the total.
+
+  - id: cp70_total_ex_and_inc_tax
+    type: additive
+    area: billing
+    test: acceptance/specs/cp70_total_ex_and_inc_tax.spec.ts
+    request: |
+      On the invoice show me the total both before tax and after tax, so I can see both figures.
+
+  - id: cp71_tax_rounding_per_line
+    type: additive
+    area: billing
+    test: acceptance/specs/cp71_tax_rounding_per_line.spec.ts
+    request: |
+      Round the tax to the nearest cent on each taxable line. I do not want long trailing decimals.
+
+  - id: cp72_round_per_line_then_sum
+    type: mutative
+    area: billing
+    mutates: [21, 49]
+    test: acceptance/specs/cp72_round_per_line_then_sum.spec.ts
+    request: |
+      Work out and round each line to the cent first, then add the lines up. Do the same for the
+      tax. The invoice total should be the sum of the rounded lines, not a rounded sum.
+
+  - id: cp73_client_billing_address
+    type: additive
+    area: clients
+    test: acceptance/specs/cp73_client_billing_address.spec.ts
+    request: |
+      Let me store a billing address for a client and show it on their page.
+
+  - id: cp74_tax_exempt_client
+    type: additive
+    area: billing
+    test: acceptance/specs/cp74_tax_exempt_client.spec.ts
+    request: |
+      Let me mark a whole client as tax exempt. Then none of their invoices should have any tax,
+      whatever the lines say.
+
+  - id: cp75_effective_tax_rate
+    type: additive
+    area: billing
+    test: acceptance/specs/cp75_effective_tax_rate.spec.ts
+    request: |
+      Show me the overall tax rate that actually ended up on each invoice, as a percentage.
+
+  - id: cp76_statement_tax_totals
+    type: mutative
+    area: billing
+    mutates: [33, 57]
+    test: acceptance/specs/cp76_statement_tax_totals.spec.ts
+    request: |
+      On a client's statement show the tax as well — the tax for each job and the tax across the
+      whole statement, alongside the amounts.
+
+  # ---- B2 (cp77-92): discounts and adjustments deepen -------------------------------------------
+  - id: cp77_fixed_amount_discount
+    type: additive
+    area: billing
+    test: acceptance/specs/cp77_fixed_amount_discount.spec.ts
+    request: |
+      Let me take a flat dollar amount off an invoice as a discount, not only a percentage.
+
+  - id: cp78_client_key_account
+    type: additive
+    area: clients
+    test: acceptance/specs/cp78_client_key_account.spec.ts
+    request: |
+      Let me flag some clients as key accounts and show a marker next to them.
+
+  - id: cp79_line_discount
+    type: additive
+    area: billing
+    test: acceptance/specs/cp79_line_discount.spec.ts
+    request: |
+      Let me take a discount off a single charge line. Show that line's amount after its discount.
+
+  - id: cp80_discount_pct_or_fixed
+    type: mutative
+    area: billing
+    mutates: [47, 48]
+    test: acceptance/specs/cp80_discount_pct_or_fixed.spec.ts
+    request: |
+      An invoice discount should be either a percentage or a flat amount — my choice. Either way take
+      it off before tax, and show the discount clearly.
+
+  - id: cp81_early_payment_discount
+    type: additive
+    area: billing
+    test: acceptance/specs/cp81_early_payment_discount.spec.ts
+    request: |
+      Offer an early-payment discount: if it is paid within a set number of days, show the reduced
+      amount they would pay.
+
+  - id: cp82_surcharge
+    type: additive
+    area: billing
+    test: acceptance/specs/cp82_surcharge.spec.ts
+    request: |
+      Let me add a surcharge to an invoice, like a small handling fee. It should add to the total.
+
+  - id: cp83_task_due_date
+    type: additive
+    area: tasks
+    test: acceptance/specs/cp83_task_due_date.spec.ts
+    request: |
+      Let me put a due date on a task and show it.
+
+  - id: cp84_stacked_discounts
+    type: mutative
+    area: billing
+    mutates: [47]
+    test: acceptance/specs/cp84_stacked_discounts.spec.ts
+    request: |
+      Sometimes there is more than one discount on an invoice. Let me add several, show each one,
+      and show the combined discount before tax.
+
+  - id: cp85_discount_cap
+    type: additive
+    area: billing
+    test: acceptance/specs/cp85_discount_cap.spec.ts
+    request: |
+      Let me cap a percentage discount at a maximum dollar amount, so a big invoice does not give
+      away too much.
+
+  - id: cp86_job_billable_flag
+    type: additive
+    area: jobs
+    test: acceptance/specs/cp86_job_billable_flag.spec.ts
+    request: |
+      Let me mark a job as billable or not, and show which it is.
+
+  - id: cp87_discount_as_breakdown_line
+    type: additive
+    area: billing
+    test: acceptance/specs/cp87_discount_as_breakdown_line.spec.ts
+    request: |
+      In the invoice breakdown show each discount as its own negative line so the maths is obvious.
+
+  - id: cp88_line_level_discount_in_subtotal
+    type: mutative
+    area: billing
+    mutates: [21, 80]
+    test: acceptance/specs/cp88_line_level_discount_in_subtotal.spec.ts
+    request: |
+      When a charge line has its own discount, the invoice subtotal should already have that taken
+      off before the invoice discount and tax are worked out.
+
+  - id: cp89_minimum_charge
+    type: additive
+    area: billing
+    test: acceptance/specs/cp89_minimum_charge.spec.ts
+    request: |
+      Set a minimum charge for an invoice. If the net total comes out under it, bill the minimum
+      instead and show that is what happened.
+
+  - id: cp90_total_savings
+    type: additive
+    area: billing
+    test: acceptance/specs/cp90_total_savings.spec.ts
+    request: |
+      Show the client how much they saved on an invoice — all the discounts added together.
+
+  - id: cp91_client_default_discount
+    type: additive
+    area: billing
+    test: acceptance/specs/cp91_client_default_discount.spec.ts
+    request: |
+      Let me set a standard discount for a client so their new invoices start with it applied.
+
+  - id: cp92_adjustments_everywhere
+    type: mutative
+    area: billing
+    mutates: [48]
+    test: acceptance/specs/cp92_adjustments_everywhere.spec.ts
+    request: |
+      Everywhere I check what a client owes — the invoice, their statement and the home screen — it
+      must take account of every discount and every surcharge, not just the percentage discount.
+
+  # ---- B3 (cp93-108): credits, write-offs, deposits ---------------------------------------------
+  - id: cp93_credit_note
+    type: additive
+    area: billing
+    test: acceptance/specs/cp93_credit_note.spec.ts
+    request: |
+      Let me raise a credit note against an invoice for an amount, so I can give some money back.
+      Note it.
+
+  - id: cp94_credit_reduces_balance
+    type: additive
+    area: billing
+    test: acceptance/specs/cp94_credit_reduces_balance.spec.ts
+    request: |
+      A credit note should reduce how much that invoice and that client still owe me.
+
+  - id: cp95_task_assignee
+    type: additive
+    area: tasks
+    test: acceptance/specs/cp95_task_assignee.spec.ts
+    request: |
+      Let me say who a task is for, and show their name on it.
+
+  - id: cp96_status_with_credits
+    type: mutative
+    area: billing
+    mutates: [32, 56]
+    test: acceptance/specs/cp96_status_with_credits.spec.ts
+    request: |
+      Work out an invoice's status from its payments AND any credit notes. If a credit clears what
+      is left, treat it as settled, not still owing.
+
+  - id: cp97_write_off
+    type: additive
+    area: billing
+    test: acceptance/specs/cp97_write_off.spec.ts
+    request: |
+      Let me write an invoice off as bad debt. It should stop counting toward what I am owed but I
+      want to keep the record. Note it.
+
+  - id: cp98_client_deposit
+    type: additive
+    area: billing
+    test: acceptance/specs/cp98_client_deposit.spec.ts
+    request: |
+      Let me record a deposit a client pays me up front, before any invoice.
+
+  - id: cp99_client_lifetime_billed
+    type: additive
+    area: billing
+    test: acceptance/specs/cp99_client_lifetime_billed.spec.ts
+    request: |
+      On a client's page show me the total I have ever billed them.
+
+  - id: cp100_deposit_allocation
+    type: mutative
+    area: billing
+    mutates: [56]
+    test: acceptance/specs/cp100_deposit_allocation.spec.ts
+    request: |
+      Let me put a client's deposit toward their invoices, the same way I split a payment. Each
+      invoice's balance should drop by its share.
+
+  - id: cp101_available_credit
+    type: additive
+    area: billing
+    test: acceptance/specs/cp101_available_credit.spec.ts
+    request: |
+      Show me how much credit a client has to spend — their unused deposits and credit notes added
+      up.
+
+  - id: cp102_job_close
+    type: additive
+    area: jobs
+    test: acceptance/specs/cp102_job_close.spec.ts
+    request: |
+      Let me close a job. Once closed I should not be able to raise a new invoice on it.
+
+  - id: cp103_refund
+    type: additive
+    area: billing
+    test: acceptance/specs/cp103_refund.spec.ts
+    request: |
+      Let me refund a client's unused credit or deposit back to them. Note it, and reduce their
+      available credit.
+
+  - id: cp104_statement_running_balance
+    type: mutative
+    area: billing
+    mutates: [33]
+    test: acceptance/specs/cp104_statement_running_balance.spec.ts
+    request: |
+      Turn the statement into a running account: list invoices, payments, credits and deposits in
+      date order with a running balance down the side.
+
+  - id: cp105_balance_as_of_date
+    type: additive
+    area: billing
+    test: acceptance/specs/cp105_balance_as_of_date.spec.ts
+    request: |
+      Let me see what a client owed me as at a date I pick, not just right now.
+
+  - id: cp106_credit_applied_flag
+    type: additive
+    area: billing
+    test: acceptance/specs/cp106_credit_applied_flag.spec.ts
+    request: |
+      Mark the invoices that have had a credit put against them so I can spot them.
+
+  - id: cp107_client_merge
+    type: additive
+    area: clients
+    test: acceptance/specs/cp107_client_merge.spec.ts
+    request: |
+      I sometimes end up with the same client twice. Let me merge two clients into one.
+
+  - id: cp108_payment_consumes_credit
+    type: mutative
+    area: billing
+    mutates: [96, 100]
+    test: acceptance/specs/cp108_payment_consumes_credit.spec.ts
+    request: |
+      When a client pays, let one payment settle several invoices and use up any deposit or credit
+      first, leaving any extra as credit. All the balances should still add up.
+
+  # ---- B4 (cp109-120): currency depth, late fees, aging, and the grand sweep --------------------
+  - id: cp109_currency_rounding_rule
+    type: additive
+    area: billing
+    test: acceptance/specs/cp109_currency_rounding_rule.spec.ts
+    request: |
+      Let me set how each currency rounds — some round to the nearest five cents. Use that rule when
+      I show amounts in that currency.
+
+  - id: cp110_currency_display
+    type: additive
+    area: billing
+    test: acceptance/specs/cp110_currency_display.spec.ts
+    request: |
+      Show each client's amounts with the right symbol and the right number of decimals for their
+      currency.
+
+  - id: cp111_job_reopen
+    type: additive
+    area: jobs
+    test: acceptance/specs/cp111_job_reopen.spec.ts
+    request: |
+      Let me reopen a job I closed, so I can invoice on it again.
+
+  - id: cp112_fx_at_invoice_date
+    type: mutative
+    area: billing
+    mutates: [60]
+    test: acceptance/specs/cp112_fx_at_invoice_date.spec.ts
+    request: |
+      When I convert a foreign invoice for my home-currency totals, use the exchange rate from the
+      invoice's date. Keep each currency's own totals separate as before.
+
+  - id: cp113_invoice_original_and_converted
+    type: additive
+    area: billing
+    test: acceptance/specs/cp113_invoice_original_and_converted.spec.ts
+    request: |
+      On a foreign-currency invoice show both the original amount and what it comes to in my home
+      currency.
+
+  - id: cp114_late_fee_accrual
+    type: additive
+    area: billing
+    test: acceptance/specs/cp114_late_fee_accrual.spec.ts
+    request: |
+      Charge a late fee on sent invoices that are overdue — so much per day late. Show what it has
+      grown to.
+
+  - id: cp115_client_export
+    type: additive
+    area: clients
+    test: acceptance/specs/cp115_client_export.spec.ts
+    request: |
+      Let me export a client's contact details to a simple file.
+
+  - id: cp116_overdue_includes_late_fees
+    type: mutative
+    area: billing
+    mutates: [38]
+    test: acceptance/specs/cp116_overdue_includes_late_fees.spec.ts
+    request: |
+      The overdue figure on the home screen should include the late fees that have built up, not
+      just the original amounts.
+
+  - id: cp117_aging_breakdown
+    type: additive
+    area: billing
+    test: acceptance/specs/cp117_aging_breakdown.spec.ts
+    request: |
+      Show me how old a client's debt is — how much is current, how much is 30 to 60 days, and how
+      much is more than 60 days overdue.
+
+  - id: cp118_client_sort_key_account
+    type: additive
+    area: clients
+    test: acceptance/specs/cp118_client_sort_key_account.spec.ts
+    request: |
+      Sort my clients with the key accounts first, then by name.
+
+  - id: cp119_tax_summary_report
+    type: additive
+    area: billing
+    test: acceptance/specs/cp119_tax_summary_report.spec.ts
+    request: |
+      Give me a tax summary for a date range — the total tax I charged over that period.
+
+  - id: cp120_one_money_rule_everywhere
+    type: mutative
+    area: billing
+    mutates: [40, 60]
+    test: acceptance/specs/cp120_one_money_rule_everywhere.spec.ts
+    request: |
+      Every amount I see anywhere — on an invoice, a statement, the home screen, the aging view and
+      the tax summary — must be shown with the same rounding, the same thousands separators and the
+      right currency. No screen should show money differently from another.
+
+# ===================================================================================================
+# ACT III (cp121-180): "money over time" — currency depth, payments & allocation, retentions,
+# instalments, late fees, recurring, terms. Still ~80% billing, same 3:1 A-A-A-M rhythm. Each
+# mutative revises the latest version of the spec(s) it names (ship the updated copy in its cp<NN>/
+# override folder, built on the most recent prior version — see docs/LONG_HORIZON_DESIGN.md §6).
+# ===================================================================================================
+
+  - id: cp121_fx_rate_table
+    type: additive
+    area: billing
+    test: acceptance/specs/cp121_fx_rate_table.spec.ts
+    request: |
+      Let me record an exchange rate for a currency on a date, so I can keep a history of rates.
+
+  - id: cp122_invoice_converted_home
+    type: additive
+    area: billing
+    test: acceptance/specs/cp122_invoice_converted_home.spec.ts
+    request: |
+      On a foreign invoice show what it comes to in my home currency, using the rate for the
+      invoice's date.
+
+  - id: cp123_client_language
+    type: additive
+    area: clients
+    test: acceptance/specs/cp123_client_language.spec.ts
+    request: |
+      Let me record which language a client prefers and show it on their page.
+
+  - id: cp124_dashboard_converted_total
+    type: mutative
+    area: billing
+    mutates: [60]
+    test: acceptance/specs/cp124_dashboard_converted_total.spec.ts
+    request: |
+      On the home screen also give me one grand total in my home currency, converting each invoice
+      at its own date's rate. Keep the separate per-currency totals as well.
+
+  - id: cp125_multiple_partial_payments
+    type: additive
+    area: billing
+    test: acceptance/specs/cp125_multiple_partial_payments.spec.ts
+    request: |
+      Let me record several part payments against one invoice over time, and always show what is
+      still left.
+
+  - id: cp126_invoice_payment_history
+    type: additive
+    area: billing
+    test: acceptance/specs/cp126_invoice_payment_history.spec.ts
+    request: |
+      On an invoice show the payments in date order with a running balance after each one.
+
+  - id: cp127_task_checklist
+    type: additive
+    area: tasks
+    test: acceptance/specs/cp127_task_checklist.spec.ts
+    request: |
+      Let me add a checklist of sub-items to a task and tick them off.
+
+  - id: cp128_cross_currency_allocation
+    type: mutative
+    area: billing
+    mutates: [56]
+    test: acceptance/specs/cp128_cross_currency_allocation.spec.ts
+    request: |
+      When I split one payment across invoices that are in different currencies, convert each share
+      at the payment's date so every invoice's balance comes out right in its own currency.
+
+  - id: cp129_retention
+    type: additive
+    area: billing
+    test: acceptance/specs/cp129_retention.spec.ts
+    request: |
+      Let me hold back a percentage of an invoice as retention that is not due yet. Show the held
+      amount.
+
+  - id: cp130_retention_separate
+    type: additive
+    area: billing
+    test: acceptance/specs/cp130_retention_separate.spec.ts
+    request: |
+      Show the retained amount separately from what the client owes me right now.
+
+  - id: cp131_release_retention
+    type: additive
+    area: billing
+    test: acceptance/specs/cp131_release_retention.spec.ts
+    request: |
+      Let me release a retention when the job is finished. Once released it becomes due.
+
+  - id: cp132_due_excludes_retention
+    type: mutative
+    area: billing
+    mutates: [31]
+    test: acceptance/specs/cp132_due_excludes_retention.spec.ts
+    request: |
+      The amount due on an invoice should not include retention that has not been released yet.
+
+  - id: cp133_instalment_plan
+    type: additive
+    area: billing
+    test: acceptance/specs/cp133_instalment_plan.spec.ts
+    request: |
+      Let me split an invoice into scheduled instalments, each with an amount and a date.
+
+  - id: cp134_next_instalment
+    type: additive
+    area: billing
+    test: acceptance/specs/cp134_next_instalment.spec.ts
+    request: |
+      Show me the next instalment due on an invoice and the date it is due.
+
+  - id: cp135_job_dates
+    type: additive
+    area: jobs
+    test: acceptance/specs/cp135_job_dates.spec.ts
+    request: |
+      Let me set a start date and an end date on a job and show them.
+
+  - id: cp136_status_from_instalments
+    type: mutative
+    area: billing
+    mutates: [32]
+    test: acceptance/specs/cp136_status_from_instalments.spec.ts
+    request: |
+      For an invoice on an instalment plan, work out its status from the schedule — on track if the
+      due instalments are paid, behind if one is overdue.
+
+  - id: cp137_overdue_interest
+    type: additive
+    area: billing
+    test: acceptance/specs/cp137_overdue_interest.spec.ts
+    request: |
+      Charge interest on an instalment that is paid late, worked out from how late it is.
+
+  - id: cp138_total_interest
+    type: additive
+    area: billing
+    test: acceptance/specs/cp138_total_interest.spec.ts
+    request: |
+      Show the total interest that has built up on an invoice.
+
+  - id: cp139_client_account_manager
+    type: additive
+    area: clients
+    test: acceptance/specs/cp139_client_account_manager.spec.ts
+    request: |
+      Let me record who looks after each client and show their name.
+
+  - id: cp140_overdue_buckets
+    type: mutative
+    area: billing
+    mutates: [38]
+    test: acceptance/specs/cp140_overdue_buckets.spec.ts
+    request: |
+      On the home screen split the overdue figure by how overdue it is, and include any interest
+      that has built up.
+
+  - id: cp141_recurring_invoice
+    type: additive
+    area: billing
+    test: acceptance/specs/cp141_recurring_invoice.spec.ts
+    request: |
+      Let me set up an invoice that repeats every month for a fixed amount.
+
+  - id: cp142_upcoming_recurring
+    type: additive
+    area: billing
+    test: acceptance/specs/cp142_upcoming_recurring.spec.ts
+    request: |
+      Show me the recurring invoices that are coming up and when.
+
+  - id: cp143_task_priority
+    type: additive
+    area: tasks
+    test: acceptance/specs/cp143_task_priority.spec.ts
+    request: |
+      Let me set a priority on a task and show it.
+
+  - id: cp144_recurring_creates_draft
+    type: mutative
+    area: billing
+    mutates: [13]
+    test: acceptance/specs/cp144_recurring_creates_draft.spec.ts
+    request: |
+      When a recurring invoice is due, create it as a draft I can review before sending, not a
+      finished invoice.
+
+  - id: cp145_pause_recurring
+    type: additive
+    area: billing
+    test: acceptance/specs/cp145_pause_recurring.spec.ts
+    request: |
+      Let me pause a recurring invoice so it stops generating, and resume it later.
+
+  - id: cp146_prorate_first
+    type: additive
+    area: billing
+    test: acceptance/specs/cp146_prorate_first.spec.ts
+    request: |
+      Pro-rate the first recurring invoice by the number of days left in the period.
+
+  - id: cp147_credit_limit
+    type: additive
+    area: billing
+    test: acceptance/specs/cp147_credit_limit.spec.ts
+    request: |
+      Let me set a credit limit for a client.
+
+  - id: cp148_block_over_limit
+    type: mutative
+    area: billing
+    mutates: [13]
+    test: acceptance/specs/cp148_block_over_limit.spec.ts
+    request: |
+      Warn me and do not let me send an invoice that would take a client over their credit limit.
+
+  - id: cp149_credit_used
+    type: additive
+    area: billing
+    test: acceptance/specs/cp149_credit_used.spec.ts
+    request: |
+      Show how much of a client's credit limit is used up by what they already owe.
+
+  - id: cp150_partial_write_off
+    type: additive
+    area: billing
+    test: acceptance/specs/cp150_partial_write_off.spec.ts
+    request: |
+      Let me write off just part of an invoice as bad debt, not the whole thing.
+
+  - id: cp151_write_off_in_breakdown
+    type: additive
+    area: billing
+    test: acceptance/specs/cp151_write_off_in_breakdown.spec.ts
+    request: |
+      Show any write-off as its own line in the invoice breakdown.
+
+  - id: cp152_status_with_write_off
+    type: mutative
+    area: billing
+    mutates: [96]
+    test: acceptance/specs/cp152_status_with_write_off.spec.ts
+    request: |
+      When part of an invoice is written off, work its status out from what is genuinely still owed
+      after the write-off.
+
+  - id: cp153_foreign_payment
+    type: additive
+    area: billing
+    test: acceptance/specs/cp153_foreign_payment.spec.ts
+    request: |
+      Let me record a payment in a different currency from the invoice, converting it at the
+      payment's date.
+
+  - id: cp154_fx_gain_loss
+    type: additive
+    area: billing
+    test: acceptance/specs/cp154_fx_gain_loss.spec.ts
+    request: |
+      When a foreign payment settles an invoice, show me the small gain or loss from the rate moving.
+
+  - id: cp155_job_file_ref
+    type: additive
+    area: jobs
+    test: acceptance/specs/cp155_job_file_ref.spec.ts
+    request: |
+      Let me note a file reference against a job and show it.
+
+  - id: cp156_statement_client_currency
+    type: mutative
+    area: billing
+    mutates: [104]
+    test: acceptance/specs/cp156_statement_client_currency.spec.ts
+    request: |
+      Show a client's statement in their own currency, and give the converted home-currency total
+      at the bottom.
+
+  - id: cp157_payment_terms
+    type: additive
+    area: billing
+    test: acceptance/specs/cp157_payment_terms.spec.ts
+    request: |
+      Let me set payment terms for a client, like net 30 days.
+
+  - id: cp158_due_date_from_terms
+    type: additive
+    area: billing
+    test: acceptance/specs/cp158_due_date_from_terms.spec.ts
+    request: |
+      Work out an invoice's due date from the client's payment terms and the invoice date.
+
+  - id: cp159_client_contact_history
+    type: additive
+    area: clients
+    test: acceptance/specs/cp159_client_contact_history.spec.ts
+    request: |
+      Let me keep a history of when I contacted a client and show it newest first.
+
+  - id: cp160_due_date_derived
+    type: mutative
+    area: billing
+    mutates: [11]
+    test: acceptance/specs/cp160_due_date_derived.spec.ts
+    request: |
+      Let the due date come from the payment terms by default, but still let me override it on a
+      single invoice.
+
+  - id: cp161_settlement_rebate
+    type: additive
+    area: billing
+    test: acceptance/specs/cp161_settlement_rebate.spec.ts
+    request: |
+      Give a small rebate when a client pays before the due date. Show the rebate on the payment.
+
+  - id: cp162_rebate_on_payment
+    type: additive
+    area: billing
+    test: acceptance/specs/cp162_rebate_on_payment.spec.ts
+    request: |
+      When the rebate applies, show the reduced amount the client actually needed to pay.
+
+  - id: cp163_task_filter_assignee
+    type: additive
+    area: tasks
+    test: acceptance/specs/cp163_task_filter_assignee.spec.ts
+    request: |
+      Let me filter tasks by who they are assigned to.
+
+  - id: cp164_rebate_uses_terms
+    type: mutative
+    area: billing
+    mutates: [81]
+    test: acceptance/specs/cp164_rebate_uses_terms.spec.ts
+    request: |
+      Base the early-payment discount window on the client's own payment terms, not a fixed number
+      of days.
+
+  - id: cp165_bulk_send
+    type: additive
+    area: billing
+    test: acceptance/specs/cp165_bulk_send.spec.ts
+    request: |
+      Let me send all the draft invoices for a job in one go.
+
+  - id: cp166_send_confirmation
+    type: additive
+    area: billing
+    test: acceptance/specs/cp166_send_confirmation.spec.ts
+    request: |
+      After a bulk send tell me how many invoices went out.
+
+  - id: cp167_archive_contact
+    type: additive
+    area: clients
+    test: acceptance/specs/cp167_archive_contact.spec.ts
+    request: |
+      Let me archive a contact I no longer deal with, keeping the record.
+
+  - id: cp168_outstanding_excludes
+    type: mutative
+    area: billing
+    mutates: [17]
+    test: acceptance/specs/cp168_outstanding_excludes.spec.ts
+    request: |
+      What a client owes should count only sent invoices that are not cancelled and not written off.
+
+  - id: cp169_po_number
+    type: additive
+    area: billing
+    test: acceptance/specs/cp169_po_number.spec.ts
+    request: |
+      Let me put a purchase-order number on an invoice.
+
+  - id: cp170_po_on_statement
+    type: additive
+    area: billing
+    test: acceptance/specs/cp170_po_on_statement.spec.ts
+    request: |
+      Show the purchase-order number on the invoice and on the statement.
+
+  - id: cp171_job_category
+    type: additive
+    area: jobs
+    test: acceptance/specs/cp171_job_category.spec.ts
+    request: |
+      Let me put a job into a category and show it.
+
+  - id: cp172_statement_date_range
+    type: mutative
+    area: billing
+    mutates: [104]
+    test: acceptance/specs/cp172_statement_date_range.spec.ts
+    request: |
+      Let me run a client's statement for a date range I choose, with an opening balance and a
+      closing balance.
+
+  - id: cp173_statement_aged
+    type: additive
+    area: billing
+    test: acceptance/specs/cp173_statement_aged.spec.ts
+    request: |
+      On the statement show how the balance breaks down by age — current, 30, 60 and 90 days.
+
+  - id: cp174_email_statement
+    type: additive
+    area: billing
+    test: acceptance/specs/cp174_email_statement.spec.ts
+    request: |
+      Let me email a statement to a client and keep a note that I did.
+
+  - id: cp175_client_billing_contact
+    type: additive
+    area: clients
+    test: acceptance/specs/cp175_client_billing_contact.spec.ts
+    request: |
+      Let me name a separate billing contact for a client.
+
+  - id: cp176_top_clients_converted
+    type: mutative
+    area: billing
+    mutates: [55]
+    test: acceptance/specs/cp176_top_clients_converted.spec.ts
+    request: |
+      Rank my top clients by what they owe converted into my home currency, so I can compare across
+      currencies.
+
+  - id: cp177_cashflow_forecast
+    type: additive
+    area: billing
+    test: acceptance/specs/cp177_cashflow_forecast.spec.ts
+    request: |
+      Show me a simple forecast of money coming in, from the scheduled instalments.
+
+  - id: cp178_dispute_flag
+    type: additive
+    area: billing
+    test: acceptance/specs/cp178_dispute_flag.spec.ts
+    request: |
+      Let me mark an invoice as disputed. It still counts as owed but I want it flagged.
+
+  - id: cp179_dashboard_overdue_tasks
+    type: additive
+    area: tasks
+    test: acceptance/specs/cp179_dashboard_overdue_tasks.spec.ts
+    request: |
+      On the home screen show me how many tasks are overdue.
+
+  - id: cp180_disputed_status
+    type: mutative
+    area: billing
+    mutates: [32]
+    test: acceptance/specs/cp180_disputed_status.spec.ts
+    request: |
+      Show disputed invoices with their own status and keep them out of the normal overdue chase.
+
+# ===================================================================================================
+# ACT IV (cp181-240): "rollups reuse the calc" — revenue, tax, aging and dashboard reporting. Every
+# report RE-READS the invoice total/owed rule, so this act is where a mutative stack must either
+# reuse the one calculation or re-derive it. Periodic mutatives force consistency across all the
+# read sites. Still ~80% billing, 3:1 A-A-A-M.
+# ===================================================================================================
+
+  - id: cp181_revenue_report
+    type: additive
+    area: billing
+    test: acceptance/specs/cp181_revenue_report.spec.ts
+    request: |
+      Give me a revenue report for a date range — the total I billed over that period.
+
+  - id: cp182_revenue_by_job
+    type: additive
+    area: billing
+    test: acceptance/specs/cp182_revenue_by_job.spec.ts
+    request: |
+      Break the revenue down by job so I can see which jobs earned the most.
+
+  - id: cp183_client_segments
+    type: additive
+    area: clients
+    test: acceptance/specs/cp183_client_segments.spec.ts
+    request: |
+      Let me put clients into segments and see how many are in each.
+
+  - id: cp184_statement_one_money_rule
+    type: mutative
+    area: billing
+    mutates: [33]
+    test: acceptance/specs/cp184_statement_one_money_rule.spec.ts
+    request: |
+      Make sure every figure on the statement uses the same rounding and currency rule as the
+      invoices themselves, so nothing is a cent out.
+
+  - id: cp185_revenue_trend
+    type: additive
+    area: billing
+    test: acceptance/specs/cp185_revenue_trend.spec.ts
+    request: |
+      Show my revenue month by month so I can see the trend.
+
+  - id: cp186_recognition_basis
+    type: additive
+    area: billing
+    test: acceptance/specs/cp186_recognition_basis.spec.ts
+    request: |
+      Let me choose whether revenue counts when an invoice is sent or when it is paid.
+
+  - id: cp187_tasks_by_job
+    type: additive
+    area: tasks
+    test: acceptance/specs/cp187_tasks_by_job.spec.ts
+    request: |
+      Let me see tasks grouped by the job they belong to.
+
+  - id: cp188_report_respects_basis
+    type: mutative
+    area: billing
+    mutates: [186]
+    test: acceptance/specs/cp188_report_respects_basis.spec.ts
+    request: |
+      The revenue report should follow whichever basis I picked — billed when sent, or counted when
+      paid.
+
+  - id: cp189_tax_report
+    type: additive
+    area: billing
+    test: acceptance/specs/cp189_tax_report.spec.ts
+    request: |
+      Give me a tax report for a period broken down by tax rate.
+
+  - id: cp190_tax_collected_vs_base
+    type: additive
+    area: billing
+    test: acceptance/specs/cp190_tax_collected_vs_base.spec.ts
+    request: |
+      On the tax report show the taxable base alongside the tax collected.
+
+  - id: cp191_export_client_list
+    type: additive
+    area: clients
+    test: acceptance/specs/cp191_export_client_list.spec.ts
+    request: |
+      Let me export my client list to a simple file.
+
+  - id: cp192_tax_split_primary_levy
+    type: mutative
+    area: billing
+    mutates: [119]
+    test: acceptance/specs/cp192_tax_split_primary_levy.spec.ts
+    request: |
+      Split the tax summary into the main tax and the levy, each totalled for the period.
+
+  - id: cp193_aging_report
+    type: additive
+    area: billing
+    test: acceptance/specs/cp193_aging_report.spec.ts
+    request: |
+      Give me an aging report across all clients — how much is current, 30, 60 and over 90 days.
+
+  - id: cp194_aging_drilldown
+    type: additive
+    area: billing
+    test: acceptance/specs/cp194_aging_drilldown.spec.ts
+    request: |
+      Let me click an aging bucket and see the invoices that make it up.
+
+  - id: cp195_job_profitability
+    type: additive
+    area: billing
+    test: acceptance/specs/cp195_job_profitability.spec.ts
+    request: |
+      Show a job's profit — what I invoiced against its budget.
+
+  - id: cp196_budget_net_of_tax
+    type: mutative
+    area: billing
+    mutates: [37]
+    test: acceptance/specs/cp196_budget_net_of_tax.spec.ts
+    request: |
+      Compare a job's budget against what I invoiced using the amounts before tax, not the
+      tax-inclusive totals.
+
+  - id: cp197_kpi_outstanding
+    type: additive
+    area: billing
+    test: acceptance/specs/cp197_kpi_outstanding.spec.ts
+    request: |
+      On the home screen show total outstanding across all currencies converted to my home currency.
+
+  - id: cp198_kpi_days_to_pay
+    type: additive
+    area: billing
+    test: acceptance/specs/cp198_kpi_days_to_pay.spec.ts
+    request: |
+      Show the average number of days my clients take to pay.
+
+  - id: cp199_dashboard_new_clients
+    type: additive
+    area: clients
+    test: acceptance/specs/cp199_dashboard_new_clients.spec.ts
+    request: |
+      On the home screen show how many new clients I took on this month.
+
+  - id: cp200_kpi_excludes
+    type: mutative
+    area: billing
+    mutates: [8]
+    test: acceptance/specs/cp200_kpi_excludes.spec.ts
+    request: |
+      The outstanding figure on the home screen should be in my home currency and leave out disputed
+      and written-off invoices.
+
+  - id: cp201_kpi_billings
+    type: additive
+    area: billing
+    test: acceptance/specs/cp201_kpi_billings.spec.ts
+    request: |
+      Show this month's billings on the home screen.
+
+  - id: cp202_kpi_collection_rate
+    type: additive
+    area: billing
+    test: acceptance/specs/cp202_kpi_collection_rate.spec.ts
+    request: |
+      Show what share of what I billed has actually been collected.
+
+  - id: cp203_dashboard_open_tasks
+    type: additive
+    area: tasks
+    test: acceptance/specs/cp203_dashboard_open_tasks.spec.ts
+    request: |
+      Show how many tasks are still open on the home screen.
+
+  - id: cp204_top_clients_kpi_consistent
+    type: mutative
+    area: billing
+    mutates: [55]
+    test: acceptance/specs/cp204_top_clients_kpi_consistent.spec.ts
+    request: |
+      Make the top-clients figures on the home screen use exactly the same converted balances as the
+      top-clients list, so they never disagree.
+
+  - id: cp205_compare_periods
+    type: additive
+    area: billing
+    test: acceptance/specs/cp205_compare_periods.spec.ts
+    request: |
+      Let me compare revenue for two periods side by side.
+
+  - id: cp206_year_to_date
+    type: additive
+    area: billing
+    test: acceptance/specs/cp206_year_to_date.spec.ts
+    request: |
+      Show my year-to-date billings and collections.
+
+  - id: cp207_pin_clients
+    type: additive
+    area: clients
+    test: acceptance/specs/cp207_pin_clients.spec.ts
+    request: |
+      Let me pin a few favourite clients to the top of my list.
+
+  - id: cp208_statement_opening_closing
+    type: mutative
+    area: billing
+    mutates: [104]
+    test: acceptance/specs/cp208_statement_opening_closing.spec.ts
+    request: |
+      On a date-range statement make the opening balance, the movements and the closing balance all
+      reconcile exactly.
+
+  - id: cp209_statement_payments_in_period
+    type: additive
+    area: billing
+    test: acceptance/specs/cp209_statement_payments_in_period.spec.ts
+    request: |
+      On the statement list the payments received within the period.
+
+  - id: cp210_statement_credits_in_period
+    type: additive
+    area: billing
+    test: acceptance/specs/cp210_statement_credits_in_period.spec.ts
+    request: |
+      On the statement list the credits issued within the period.
+
+  - id: cp211_reorder_jobs
+    type: additive
+    area: jobs
+    test: acceptance/specs/cp211_reorder_jobs.spec.ts
+    request: |
+      Let me drag my jobs into the order I want and keep it.
+
+  - id: cp212_printable_date_range
+    type: mutative
+    area: billing
+    mutates: [59]
+    test: acceptance/specs/cp212_printable_date_range.spec.ts
+    request: |
+      Make the printable statement match the date range I chose, with the aged breakdown included.
+
+  - id: cp213_remittance_advice
+    type: additive
+    area: billing
+    test: acceptance/specs/cp213_remittance_advice.spec.ts
+    request: |
+      When a payment comes in, show a remittance note listing which invoices it covered.
+
+  - id: cp214_unallocated_as_credit
+    type: additive
+    area: billing
+    test: acceptance/specs/cp214_unallocated_as_credit.spec.ts
+    request: |
+      If a payment is more than the invoices it was put against, show the leftover as the client's
+      credit.
+
+  - id: cp215_client_lifetime_value
+    type: additive
+    area: billing
+    test: acceptance/specs/cp215_client_lifetime_value.spec.ts
+    request: |
+      On a client's page show their lifetime value to me.
+
+  - id: cp216_lifetime_nets_credits
+    type: mutative
+    area: billing
+    mutates: [99]
+    test: acceptance/specs/cp216_lifetime_nets_credits.spec.ts
+    request: |
+      The lifetime total should be what they actually paid me — net of credits and write-offs.
+
+  - id: cp217_collections_forecast
+    type: additive
+    area: billing
+    test: acceptance/specs/cp217_collections_forecast.spec.ts
+    request: |
+      Forecast how much I can expect to collect in the next 30 days.
+
+  - id: cp218_overdue_trend
+    type: additive
+    area: billing
+    test: acceptance/specs/cp218_overdue_trend.spec.ts
+    request: |
+      Show how my overdue total has changed over recent months.
+
+  - id: cp219_dashboard_task_completion
+    type: additive
+    area: tasks
+    test: acceptance/specs/cp219_dashboard_task_completion.spec.ts
+    request: |
+      Show what share of tasks I have completed on the home screen.
+
+  - id: cp220_aging_by_due_date
+    type: mutative
+    area: billing
+    mutates: [117]
+    test: acceptance/specs/cp220_aging_by_due_date.spec.ts
+    request: |
+      Work the aging out from each invoice's due date, not the date it was raised.
+
+  - id: cp221_budget_target
+    type: additive
+    area: billing
+    test: acceptance/specs/cp221_budget_target.spec.ts
+    request: |
+      Let me set a billings target and track my billings against it.
+
+  - id: cp222_variance_to_target
+    type: additive
+    area: billing
+    test: acceptance/specs/cp222_variance_to_target.spec.ts
+    request: |
+      Show how far ahead or behind my target I am.
+
+  - id: cp223_segment_by_revenue
+    type: additive
+    area: clients
+    test: acceptance/specs/cp223_segment_by_revenue.spec.ts
+    request: |
+      Let me group clients into bands by how much revenue they bring in.
+
+  - id: cp224_kpi_exclusions_consistent
+    type: mutative
+    area: billing
+    mutates: [200]
+    test: acceptance/specs/cp224_kpi_exclusions_consistent.spec.ts
+    request: |
+      Make every money figure on the home screen leave out written-off and disputed invoices in the
+      same way, so the numbers agree with each other.
+
+  - id: cp225_export_revenue
+    type: additive
+    area: billing
+    test: acceptance/specs/cp225_export_revenue.spec.ts
+    request: |
+      Let me export the revenue report to a file.
+
+  - id: cp226_export_aging
+    type: additive
+    area: billing
+    test: acceptance/specs/cp226_export_aging.spec.ts
+    request: |
+      Let me export the aging report to a file.
+
+  - id: cp227_job_list_outstanding
+    type: additive
+    area: billing
+    test: acceptance/specs/cp227_job_list_outstanding.spec.ts
+    request: |
+      On the job list show what is still outstanding on each job.
+
+  - id: cp228_revenue_excludes_nonbillable
+    type: mutative
+    area: billing
+    mutates: [182]
+    test: acceptance/specs/cp228_revenue_excludes_nonbillable.spec.ts
+    request: |
+      Leave non-billable jobs out of the revenue-by-job figures.
+
+  - id: cp229_tax_liability
+    type: additive
+    area: billing
+    test: acceptance/specs/cp229_tax_liability.spec.ts
+    request: |
+      Show my tax liability for a period — the tax I collected.
+
+  - id: cp230_tax_adjustment
+    type: additive
+    area: billing
+    test: acceptance/specs/cp230_tax_adjustment.spec.ts
+    request: |
+      Let me record a manual tax adjustment for a period.
+
+  - id: cp231_client_notes_timeline
+    type: additive
+    area: clients
+    test: acceptance/specs/cp231_client_notes_timeline.spec.ts
+    request: |
+      Show a client's notes as a timeline, newest first.
+
+  - id: cp232_tax_report_nets_adjustments
+    type: mutative
+    area: billing
+    mutates: [192]
+    test: acceptance/specs/cp232_tax_report_nets_adjustments.spec.ts
+    request: |
+      The tax report total should take account of any tax adjustments I recorded.
+
+  - id: cp233_cash_this_week
+    type: additive
+    area: billing
+    test: acceptance/specs/cp233_cash_this_week.spec.ts
+    request: |
+      Show how much cash I collected this week on the home screen.
+
+  - id: cp234_dashboard_base_currency
+    type: additive
+    area: billing
+    test: acceptance/specs/cp234_dashboard_base_currency.spec.ts
+    request: |
+      Let me choose which currency the home-screen totals are shown in.
+
+  - id: cp235_top_overdue_clients
+    type: additive
+    area: billing
+    test: acceptance/specs/cp235_top_overdue_clients.spec.ts
+    request: |
+      On the home screen show the clients with the most overdue.
+
+  - id: cp236_dashboard_all_base_currency
+    type: mutative
+    area: billing
+    mutates: [200]
+    test: acceptance/specs/cp236_dashboard_all_base_currency.spec.ts
+    request: |
+      Show every money figure on the home screen in the base currency I chose, converting
+      consistently.
+
+  - id: cp237_client_financial_summary
+    type: additive
+    area: billing
+    test: acceptance/specs/cp237_client_financial_summary.spec.ts
+    request: |
+      Give me a one-screen financial summary for a client — billed, paid, outstanding and overdue.
+
+  - id: cp238_dashboard_disputes
+    type: additive
+    area: billing
+    test: acceptance/specs/cp238_dashboard_disputes.spec.ts
+    request: |
+      Show how much is tied up in disputed invoices on the home screen.
+
+  - id: cp239_dashboard_tasks_this_week
+    type: additive
+    area: tasks
+    test: acceptance/specs/cp239_dashboard_tasks_this_week.spec.ts
+    request: |
+      Show the tasks due this week on the home screen.
+
+  - id: cp240_dashboard_one_rule
+    type: mutative
+    area: billing
+    mutates: [200]
+    test: acceptance/specs/cp240_dashboard_one_rule.spec.ts
+    request: |
+      Every figure on the home screen must use the base currency, the same rounding, and leave out
+      written-off and disputed invoices — one consistent rule across the whole screen.
+
+# ===================================================================================================
+# ACT V (cp241-250): "stress finale" — whole-stack consistency sweeps and two REVERSALS. The
+# reversals (remove the levy; collapse stacked discounts back to one) test whether the stack can
+# REMOVE accumulated complexity from the spine, or whether it has fossilised — the cruelest test of
+# an additive-vs-mutative architecture. Still ~80% billing, 3:1 A-A-A-M.
+# ===================================================================================================
+
+  - id: cp241_invoice_full_view
+    type: additive
+    area: billing
+    test: acceptance/specs/cp241_invoice_full_view.spec.ts
+    request: |
+      Give me a complete view of an invoice showing every figure — lines, discounts, tax, levy,
+      retention, total and what is due — all at once.
+
+  - id: cp242_account_statement_full
+    type: additive
+    area: billing
+    test: acceptance/specs/cp242_account_statement_full.spec.ts
+    request: |
+      Give me a full account statement for a client with every rule applied — balances, aging,
+      credits and the converted total.
+
+  - id: cp243_bulk_tag_clients
+    type: additive
+    area: clients
+    test: acceptance/specs/cp243_bulk_tag_clients.spec.ts
+    request: |
+      Let me select several clients and tag them all at once.
+
+  - id: cp244_remove_levy
+    type: mutative
+    area: billing
+    mutates: [49]
+    test: acceptance/specs/cp244_remove_levy.spec.ts
+    request: |
+      The second tax is being scrapped. Remove the levy entirely — invoices should show only the one
+      tax again and every total should work out as if the levy never existed.
+
+  - id: cp245_invoice_snapshot
+    type: additive
+    area: billing
+    test: acceptance/specs/cp245_invoice_snapshot.spec.ts
+    request: |
+      Let me see a sent invoice exactly as it was at the time I sent it, even if rules changed later.
+
+  - id: cp246_adjustment_note
+    type: additive
+    area: billing
+    test: acceptance/specs/cp246_adjustment_note.spec.ts
+    request: |
+      Let me correct a sent invoice by issuing an adjustment note against it rather than editing it.
+
+  - id: cp247_archive_jobs_bulk
+    type: additive
+    area: jobs
+    test: acceptance/specs/cp247_archive_jobs_bulk.spec.ts
+    request: |
+      Let me archive all my completed jobs in one go.
+
+  - id: cp248_single_discount
+    type: mutative
+    area: billing
+    mutates: [47]
+    test: acceptance/specs/cp248_single_discount.spec.ts
+    request: |
+      I only want one discount per invoice again. Collapse any stacked discounts back to a single
+      discount and remove the ability to add more than one.
+
+  - id: cp249_amounts_match_totals
+    type: additive
+    area: billing
+    test: acceptance/specs/cp249_amounts_match_totals.spec.ts
+    request: |
+      Wherever an invoice's amount appears — the list, the statement, the dashboard — it must match
+      the invoice's own total to the cent.
+
+  - id: cp250_grand_reconciliation
+    type: additive
+    area: billing
+    test: acceptance/specs/cp250_grand_reconciliation.spec.ts
+    request: |
+      Give me one reconciliation screen where the sum of every client's balance equals my total
+      outstanding, so I can prove the books balance.

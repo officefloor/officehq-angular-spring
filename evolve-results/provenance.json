@@ -1,0 +1,79 @@
+{
+  "run_id": "202610100208",
+  "model": "claude-opus-5-5",
+  "harness_git_sha": "ec8e9e267a6485981bf1d1194b737c71ecdd961f",
+  "harness_git_dirty": false,
+  "tool_versions": {
+    "python": "3.14.4",
+    "lizard": "1.24.1",
+    "git": "git version 2.53.0",
+    "java": "openjdk version \"17.0.20.1\" 2026-08-18",
+    "mvn": "Apache Maven 3.9.16 (2bdd9fddda4b155ebf8000e807eb73fd829a51d5)",
+    "jscpd": "cpd 5.0.14",
+    "astgrep": "ast-grep 0.45.3",
+    "claude": "2.1.286 (Claude Code)"
+  },
+  "agent_env": {
+    "invocation": {
+      "cli": "claude",
+      "model": "claude-opus-5-5",
+      "main_flags": [
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--model",
+        "claude-opus-5-5",
+        "--dangerously-skip-permissions"
+      ],
+      "probe_flags": [
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--model",
+        "claude-opus-5-5",
+        "--dangerously-skip-permissions",
+        "--allowedTools",
+        "Read,Grep,Glob,Bash"
+      ]
+    },
+    "settings_files": [
+      {
+        "path": "~/.claude/settings.json",
+        "exists": true,
+        "sha256": "4c272d9a99b4a7a8eb432fb1c43d09419fbea3278de1fbc60021cbd8eea171bc"
+      },
+      {
+        "path": "~/.claude/settings.local.json",
+        "exists": false,
+        "sha256": null
+      },
+      {
+        "path": "/etc/claude-code/managed-settings.json",
+        "exists": false,
+        "sha256": null
+      }
+    ],
+    "mcp_servers": {},
+    "env_var_names": [
+      "CLAUDE_CODE_OAUTH_TOKEN"
+    ],
+    "python_env_stripped": [
+      "VIRTUAL_ENV",
+      "PATH"
+    ]
+  },
+  "condition": "gated",
+  "chain": 1,
+  "branch": "evolve/202610100208/gated/chain1",
+  "base_ref": "base-empty",
+  "base_commit": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48",
+  "app_repo": "/home/daniel/officehq-angular-spring",
+  "app_origin": "git@github.com:officefloor/officehq-angular-spring.git",
+  "stack": "officehq-angular-spring",
+  "resumed_at": null,
+  "confinement": {
+    "requested": true,
+    "landlock_abi": 8,
+    "no_confine_env": false
+  }
+}

@@ -1,0 +1,250 @@
+# ui-long-degradation-test configuration. STUB — fill in as the harness is built.
+# Models the OfficeHQ change loop (DESIGN.md): ONE application, grown from a near-empty base by
+# ~250 English change requests, each a full-stack change (schema + OfficeFloor server + front-end).
+# ${VARS} and ~ are expanded from the environment; relative paths anchor inside this repo.
+
+model: claude-opus-5-5          # the fixed coding agent (exact id, no floating alias, so it stays
+                                #   constant across the whole run). Override per run with --model
+chains: 10                      # independent runs per condition, run SEQUENTIALLY when
+                                #   --chain is omitted. 10 is the EXPERIMENT default: a
+                                #   per-arm distribution stable enough to test whether two
+                                #   stacks differ by more than their own chain-to-chain
+                                #   spread. Drop it (e.g. --chain 1, or lower this value) for
+                                #   a cheap smoke/iteration run; a single chain is one run.
+active_condition: gated         # which intervention condition to run by default (see `conditions`)
+agent_timeout: 3600
+
+checkpoints_file: checkpoints.yaml
+
+limits:
+  # rate/cost limits for the agent turn (lift from the REST arm)
+
+# THE APP: the single external code folder that EVOLVES over the run (DESIGN.md §2, §14). One
+# Spring Boot app — base front-end shell + Spring-with-OfficeFloor plugin + Flyway (empty H2, no
+# tables) + the whole-stack start/stop scripts + the /__test__ seed endpoint — all in one repo.
+# Only ever READ at base_ref; the harness mirrors it into work_root/sandbox (copy/sync + Landlock)
+# for the agent turn, and builds+runs it whole for the gate. Rebuilt each checkpoint; always one
+# JVM (embedded H2, static SPA), so embeddable under Landlock (§15).
+app:
+  # The STACK REPO IS NOT CONFIGURED HERE. One base repo = one technology stack, a home-level
+  # sibling dir named ~/officehq-<frontend>-<backend> (front-end and backend both named — either
+  # may vary), and one harness drives many of them (DESIGN.md §10). A path in this file would make
+  # every run silently about whichever stack was edited into it last, so it is passed per run:
+  #     --repo ~/officehq-react-officefloor
+  # It is then logged at every checkpoint and written into the commits (per-checkpoint capture
+  # `stack` + the chain manifest), together with that repo's `origin` remote — so a chain branch
+  # can always be tied back to the remote it lives on.
+  base_ref: base-empty              # base shell + Spring/OfficeFloor + Flyway (no tables) + scripts
+  build_cmd: bin/build              # Maven build: front-end -> src/main/resources/static, then
+                                    #   spring-boot repackage -> one runnable jar
+  start_cmd: bin/start              # java -jar app.jar --server.port=$PORT --spring.profiles.active=e2e;
+                                    #   Flyway migrates empty H2 up to this checkpoint's schema on
+                                    #   boot; Spring serves the SPA (static/) + OfficeFloor REST
+  stop_cmd: bin/stop                # kill the JVM / free PORT (in-mem H2 dies with it). Idempotent.
+  port: 3000
+  health_url: http://localhost:3000/actuator/health   # Spring Actuator; correctness.wait_ready
+  # Erosion is measured per layer (DESIGN.md §8): front-end TS (file-scope container) and backend
+  # Java (class-scope, comparable to the REST arm) tracked as SEPARATE series.
+  # FALLBACK ONLY. The layer source roots are declared by the STACK, in its own `stack.yaml` at
+  # base_ref (harness.stack_layers) — same reasoning as `--repo` above: one harness drives many
+  # stacks, and a glob sitting here matches NOTHING for a stack whose front-end is templates or
+  # .svelte, making every frontend_* column read 0/None, which looks like an answer. A stack that
+  # declares stack.yaml overrides this; one that predates it falls back here (the run logs which).
+  source_globs:
+    frontend: ["src/main/frontend/**/*.{ts,tsx}"]     # full-fidelity format so its erosion shows
+    backend:  ["src/main/java/**/*.java"]
+  # A CONTRACT check, not an erosion measure: files the stack declares frozen, so a checkpoint that
+  # moves one is reported. It can only see surfaces listed up front, and the react arm showed why
+  # that is not enough — it declared `router/**` while the churn went into the feature pages. The
+  # erosion questions are answered without any list by metrics.hot_surface (which files the run
+  # keeps reopening) and metrics.reedit_line_stats (how much settled code a checkpoint destroyed,
+  # and how old it was) — both git-only, so they compare across technologies.
+  shared_surfaces:                  # boundary-violation targets, both layers (metrics.boundary_violations)
+    frontend: ["src/main/frontend/router/**", "src/main/frontend/ui/**"]
+    backend:  ["src/main/resources/officefloor/**"]   # wiring/config the backend shouldn't need to churn
+
+# Intervention CONDITIONS (DESIGN.md §10) — NOT front-end architectures. This is the harness's
+# comparison slot (the REST arm's strategy dimension). The primary run is `gated`; `just-solve` is
+# the ungated control that quantifies what ImpactGate buys on full-stack erosion.
+conditions:
+  gated:              # the real OfficeHQ loop: compile · tests · ImpactGate · security
+    # prompt_template + impact_gate settings (below)
+  just-solve:         # ungated control — plain "implement this request", no ImpactGate refactor
+    # prompt_template only
+
+prompt_strategies:
+  just-solve:
+    # template: |
+    #   <the constant prompt; the data-testid immutability rule + how to run ./e2e live in the
+    #    pinned CLAUDE.md/AGENTS.md. {request} is the checkpoint's plain-English change request.>
+
+# Correctness oracle: build the app, bring the whole app up on app.port, drive with Playwright
+# bound to data-testid ONLY (DESIGN.md §3, §5, §9, §14).
+acceptance:
+  specs_dir: acceptance/specs      # authored cpNN specs live HERE (in the harness repo)
+  dest_subpath: e2e/specs          # copied into the app worktree's Playwright project (e2e/specs)
+  base_url: http://localhost:3000  # = app.port; Playwright hits ONLY this (never the domain API/DB)
+  # Data is seeded PER-SPEC in beforeEach via the app's profile-guarded test-support endpoint
+  # (DESIGN.md §9): POST /__test__/reset + POST /__test__/seed. Schema is Flyway-on-boot.
+  seed_endpoint: /__test__
+  audit_file: .run/audit.log       # second assertion channel (DESIGN.md §3): audited side-effects
+                                   # are written one-record-per-line here; specs read it (support/
+                                   # audit.ts). /__test__/reset clears it. bin/start+bin/e2e set AUDIT_FILE.
+  agent_test_cmd: bin/e2e          # the command the AGENT runs to test as it works (DESIGN.md §15):
+                                   # build + app.start + run the VISIBLE spec(s) only + app.stop.
+                                   # Pinned so agent edits to it don't reach the gate.
+
+# The `gated` condition (DESIGN.md §8, §10). After each implement turn the staged diff is scored
+# PER LAYER (front-end TS + backend Java) by impact-gate, grading the change's composite against
+# ImpactGate's SHIPPED per-language seed (java + typescript already ship — no TS corpus needed);
+# a layer over block_percentile triggers a quality-gated refactor turn, then the change is
+# re-attempted. Advisory / record-and-continue: after max_refactors the change is accepted anyway
+# so the chain reaches the last checkpoint (the grades are measured, not enforced).
+impact_gate:
+  # cmd: ["/abs/path/to/impact-gate"]   # default: ~/ImpactGate/.venv/bin/impact-gate, else PATH
+  block_percentile: 98
+  warn_percentile: 90
+  # Cognitive Complexity gate (Campbell 2018), ON by default here. A checkpoint also blocks when
+  # any method it TOUCHED (in either layer) exceeds this. It catches deeply nested, hard to read
+  # methods that the change impact percentile cannot see. Requires an impact-gate build with the
+  # cognitive gate (the --cognitive-max flag). Set to null to turn it off.
+  cognitive_max: 20
+  # curve_prior_weight: 200   # K in w=n/(n+K) blending project baseline vs shipped seed (CLI default)
+  max_refactors: 2            # refactor attempts before accepting a still-flagged change
+  max_review_turns: 2         # quality-gate review turns per refactor
+  # baseline_files: {backend: /abs/backend-baseline.json, frontend: /abs/frontend-baseline.json}
+  #   OPTIONAL project distributions (impact-gate baseline). Omitted -> grade vs the shipped seed.
+  quality_gate:
+    enabled: true
+    jscpd_min_tokens: 50
+    jscpd_min_lines: 5
+    jscpd_formats: "java,typescript,tsx,javascript,jsx"
+  # refactor_prompt / review_prompt override the built-in templates in run_experiment.py.
+
+tools:
+  jscpd: tools/node_modules/.bin/jscpd        # clone detector (both layers), PINNED in tools/
+  astgrep: tools/node_modules/.bin/ast-grep   # ast-grep CLI (both layers), PINNED in tools/;
+                               #   NOT the unrelated npm package that also publishes `ast-grep`
+  astgrep_rules: astgrep-rules # java-wasteful.yml + typescript-wasteful.yml (resolved vs harness root)
+  # Structural-metrics tools for the BACKEND (Java) layer only (metrics.compute_all / analyze).
+  # Each is optional: unset or missing -> those columns stay BLANK (never zero). See harness/placement.py.
+  java: java                   # JRE on PATH; drives the CK tool
+  pmd: tools/pmd/bin/pmd       # PMD binary — DOWNLOADED by setup.sh, pinned by
+                               #   tools/pmd-version.txt. Was a path into a sibling private repo,
+                               #   which no one else has; self-contained now.
+  pmd_metrics_rules: pmd-rules/java-metrics.xml   # cognitive/NPath VALUES + GodClass/DataClass verdicts
+  ck: tools/ck/ck.jar          # Chidamber-Kemerer suite — DOWNLOADED by setup.sh, pinned by
+                               #   tools/ck-version.txt + ck-sha256.txt (unset -> ck_* blank)
+  # PINS (a different build of a tool makes a run incomparable, so these are checked, not assumed):
+  #   jscpd + ast-grep -> tools/package.json; lizard + numpy/matplotlib/PyYAML -> requirements.txt
+  #   (exact versions); PMD -> tools/pmd-version.txt; ck -> tools/ck-version.txt + ck-sha256.txt;
+  #   node + npm -> each stack's pom.xml (node.version / npm.version); Playwright -> the stack's
+  #   e2e/package.json; JRE -> tools/java-version.txt (capture.py also records the live
+  #   `java -version` per run as the audit trail).
+
+# Filesystem confinement for the agent turn (Linux Landlock; no root/bwrap). Identical to the REST
+# arm; fails CLOSED — every turn calls landlock.verify_denied() on the withheld material and
+# refuses to start if any is reachable. Check support here:
+#   .venv/bin/python -c 'from harness import landlock; print(landlock.abi_version())'  # >=1
+#
+# NETWORK POLICY: internet is ALLOWED during the agent turn. Confinement is FILESYSTEM-ONLY — its
+# sole job is to stop the blind agent reading withheld material by walking the filesystem from /
+# (the harness repo, checkpoints.yaml, work_root's .git history of the sequence, Trash). The agent
+# needs egress to reach the model API, the Maven/npm registries, and each architecture's own
+# reference docs (OfficeFloor / TanStack / Spring / React / htmx), so NO network namespace, proxy,
+# or egress block is applied anywhere — and none should be added.
+isolation:
+  # Pinned files are restored to authored before the gate (DESIGN.md §15). Pin only the FIXED
+  # operational scaffolding — NOT the evolving app code (incl. the /__test__ endpoint, which
+  # evolves with the schema; a break there is a seed-path regression, §6).
+  # Also pin the fixed test-support CLIENT helpers: seed.ts is the Arrange plumbing (its fail-loud
+  # check makes a broken /__test__ contract visible) and audit.ts reads the audit file. The EVOLVING
+  # seed surface is the SERVER /__test__ endpoint in the app, not these clients, so pinning them stops
+  # an agent weakening the check to mask a seed-path regression (restored to base_ref before the gate).
+  pin_files: ["AGENTS.md", "CLAUDE.md", "bin/build", "bin/start", "bin/stop", "bin/e2e",
+              "e2e/support/seed.ts", "e2e/support/audit.ts"]
+  agent_confinement:
+    enabled: true
+    # The agent runs the WHOLE app to test (DESIGN.md §15), so the toolchain must be on the
+    # allowlist. Landlock is filesystem-only — loopback serving + Playwright are unaffected.
+    extra_ro_binds: []   # the JRE, node + Playwright browser binaries
+    extra_rw_binds: []   # under the sandbox: build output, Playwright cache, tmp, npm/pnpm store.
+                         #   H2 is in-memory, so there is no DB data dir to bind.
+    # NOTE (DESIGN.md §15): the app is a single Spring Boot jar (embedded H2 + static SPA), one JVM
+    # — embeddable under Landlock. A Docker/daemon-backed stack could not run here.
+
+paths:
+  # Both MUST be absolute, EXTERNAL, and SEPARATE (see the REST arm's paths note): the agent's cwd
+  # is sandbox_root, so it must have no worktree/.git/results siblings to walk into. work_root
+  # holds per-chain worktrees; sandbox_root IS the agent's cwd, rebuilt fresh each turn (a
+  # dedicated dir — a home/root path is refused).
+  work_root: ${HOME}/ui-work
+  sandbox_root: ${HOME}/ui-sandbox
+  results_csv: results/records.csv
+
+# ---------------------------------------------------------------------------------------------------
+# COMPREHENSION PROBE (cold reader) — the per-ACT readability/completeness check, mirrored from
+# spring-petclinic-rest-long-degradation-test. At each Act boundary a FRESH read-only agent (no
+# memory, no git history, and the acceptance specs excluded from its view) reads the evolved code
+# and (1) enumerates every rule applied to the invoice money pipeline and (2) judges how hard the
+# logic was to find/follow. `probe_recall` = fraction of that Act's expected rules the cold reader
+# could name (a crude completeness proxy); `probe_cache_read_tokens`/`probe_cost_usd` = the
+# comprehension-COST proxy (a tangled mutative codebase costs more to read). The raw answer is
+# captured (cp<NN>.probe.jsonl) for the qualitative "all rules implemented + readable" read.
+# Advisory only: a probe error never aborts the run. See docs/LONG_HORIZON_DESIGN.md.
+probe:
+  enabled: true
+  at_checkpoints: [60, 120, 180, 240, 250]   # end of Acts I, II, III, IV, V
+  question: |
+    Read the application code as it currently stands and answer WITHOUT changing anything.
+    1. List, in order, every rule, adjustment and side-effect applied when working out what a
+       customer invoice totals and what is still owed on it — line items, discounts, tax, rounding,
+       payments, credits, retention, currency and status. Name each one.
+    2. In one or two sentences, say how hard it was to find and follow that logic: is it in one
+       clear place a new developer could pick up, or scattered and tangled across the code?
+  # Crude recall ground-truth per Act boundary (case-insensitive substring match; grade properly
+  # offline). Cumulative: each Act's rules plus the prior Acts'. cp250 drops the two rules the Act V
+  # reversals REMOVE (levy, stacked discounts) and adds the finale concepts — so a stack that still
+  # surfaces a levy at cp250 failed to reverse. The absolute value is rough; the signal is the
+  # trajectory across Acts and the Angular/Spring-vs-Tanstack/OfficeFloor gap at the same boundary.
+  expected:
+    60: ["line item", "quantity", "unit price", "subtotal", "discount", "tax", "payment",
+         "amount due", "outstanding", "paid", "partial", "status", "statement", "allocation",
+         "currency", "audit", "overdue", "cancel", "sent", "due date"]
+    120: ["line item", "quantity", "unit price", "subtotal", "discount", "tax", "payment",
+          "amount due", "outstanding", "paid", "partial", "status", "statement", "allocation",
+          "currency", "audit", "overdue", "cancel", "sent", "due date",
+          "tax-free", "exempt", "levy", "inclusive", "rounding", "surcharge", "credit note",
+          "write-off", "deposit", "running balance", "fixed", "stacked", "cap", "minimum",
+          "available credit", "refund", "taxable"]
+    180: ["line item", "quantity", "unit price", "subtotal", "discount", "tax", "payment",
+          "amount due", "outstanding", "paid", "partial", "status", "statement", "allocation",
+          "currency", "audit", "overdue", "cancel", "sent", "due date",
+          "tax-free", "exempt", "levy", "inclusive", "rounding", "surcharge", "credit note",
+          "write-off", "deposit", "running balance", "fixed", "stacked", "cap", "minimum",
+          "available credit", "refund", "taxable",
+          "exchange rate", "retention", "instalment", "interest", "recurring", "credit limit",
+          "payment terms", "purchase order", "aging", "dispute", "late fee", "fx"]
+    240: ["line item", "quantity", "unit price", "subtotal", "discount", "tax", "payment",
+          "amount due", "outstanding", "paid", "partial", "status", "statement", "allocation",
+          "currency", "audit", "overdue", "cancel", "sent", "due date",
+          "tax-free", "exempt", "levy", "inclusive", "rounding", "surcharge", "credit note",
+          "write-off", "deposit", "running balance", "fixed", "stacked", "cap", "minimum",
+          "available credit", "refund", "taxable",
+          "exchange rate", "retention", "instalment", "interest", "recurring", "credit limit",
+          "payment terms", "purchase order", "aging", "dispute", "late fee", "fx",
+          "revenue", "recognition", "tax report", "profitability", "days to pay", "collection rate",
+          "year to date", "opening balance", "closing balance", "remittance", "lifetime",
+          "forecast", "target", "variance", "base currency"]
+    250: ["line item", "quantity", "unit price", "subtotal", "discount", "tax", "payment",
+          "amount due", "outstanding", "paid", "partial", "status", "statement", "allocation",
+          "currency", "audit", "overdue", "cancel", "sent", "due date",
+          "tax-free", "exempt", "inclusive", "rounding", "surcharge", "credit note",
+          "write-off", "deposit", "running balance", "fixed", "cap", "minimum",
+          "available credit", "refund", "taxable",
+          "exchange rate", "retention", "instalment", "interest", "recurring", "credit limit",
+          "payment terms", "purchase order", "aging", "dispute", "late fee", "fx",
+          "revenue", "recognition", "tax report", "profitability", "days to pay", "collection rate",
+          "year to date", "opening balance", "closing balance", "remittance", "lifetime",
+          "forecast", "target", "variance", "base currency",
+          "snapshot", "adjustment note", "reconciliation"]
