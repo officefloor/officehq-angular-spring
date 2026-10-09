@@ -17,7 +17,8 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 // sales tax added on it after the discount, any levy (a second tax) added on the same base, the effective tax rate
 // (the tax and levy as a percentage of the total before tax), the total before tax, and the final total including both taxes (also shown as the total after tax).
 // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
-// Lines, the discount, the tax rate and the levy rate can be changed while it is a draft.
+// When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the set number of days.
+// Lines, the discount, the tax rate, the levy rate and the early-payment discount can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, Notes],
@@ -275,6 +276,19 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                 <td></td>
               }
             </tr>
+            @if (inv.earlyPaymentAmount !== null) {
+              <tr data-testid="invoice-early-pay">
+                <th scope="row" colspan="5">
+                  Pay by <span data-testid="invoice-early-pay-by">{{ inv.earlyPaymentBy }}</span> (within
+                  <span data-testid="invoice-early-pay-days">{{ inv.earlyPaymentDays }}</span> days) for
+                  <span data-testid="invoice-early-pay-pct">{{ inv.earlyPaymentPct | number: '1.0-2' : 'en-US' }}</span>% off
+                </th>
+                <td data-testid="invoice-early-pay-amount">{{ inv.earlyPaymentAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                @if (inv.status === 'DRAFT') {
+                  <td></td>
+                }
+              </tr>
+            }
           </tfoot>
         </table>
         @if (editError()) {
@@ -397,6 +411,53 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
           <button type="submit" data-testid="levy-form-submit" [disabled]="levySaving()">Apply levy</button>
           @if (levyError()) {
             <p role="alert" data-testid="levy-form-error">{{ levyError() }}</p>
+          }
+        </form>
+
+        <form [formGroup]="earlyPayForm" (ngSubmit)="applyEarlyPayment()" data-testid="early-pay-form" novalidate>
+          <h2>Early-payment discount</h2>
+          <div>
+            <label for="early-pay-pct">Percentage off when paid early</label>
+            <input
+              id="early-pay-pct"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              max="100"
+              step="0.01"
+              formControlName="earlyPaymentPct"
+              data-testid="early-pay-form-pct"
+              [attr.aria-invalid]="earlyPayInvalid('earlyPaymentPct')"
+              [attr.aria-describedby]="earlyPayInvalid('earlyPaymentPct') ? 'early-pay-pct-error' : null"
+            />
+            @if (earlyPayInvalid('earlyPaymentPct')) {
+              <p id="early-pay-pct-error" role="alert" data-testid="early-pay-form-pct-error">
+                Enter a percentage from 0 to 100 with at most two decimal places.
+              </p>
+            }
+          </div>
+          <div>
+            <label for="early-pay-days">Paid within this many days of issue</label>
+            <input
+              id="early-pay-days"
+              type="number"
+              inputmode="numeric"
+              min="0"
+              step="1"
+              formControlName="earlyPaymentDays"
+              data-testid="early-pay-form-days"
+              [attr.aria-invalid]="earlyPayInvalid('earlyPaymentDays')"
+              [attr.aria-describedby]="earlyPayInvalid('earlyPaymentDays') ? 'early-pay-days-error' : null"
+            />
+            @if (earlyPayInvalid('earlyPaymentDays')) {
+              <p id="early-pay-days-error" role="alert" data-testid="early-pay-form-days-error">
+                Enter a whole number of days from 0 to 3650.
+              </p>
+            }
+          </div>
+          <button type="submit" data-testid="early-pay-form-submit" [disabled]="earlyPaySaving()">Apply early-payment discount</button>
+          @if (earlyPayError()) {
+            <p role="alert" data-testid="early-pay-form-error">{{ earlyPayError() }}</p>
           }
         </form>
 
@@ -675,6 +736,52 @@ export class InvoiceDetailPage {
         this.levySaving.set(false);
       },
     });
+  }
+
+  protected readonly earlyPaySaving = signal(false);
+  protected readonly earlyPayError = signal<string | null>(null);
+
+  protected readonly earlyPayForm = this.fb.group({
+    earlyPaymentPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
+    earlyPaymentDays: ['', [Validators.required, Validators.min(0), Validators.max(3650), Validators.pattern(/^\d+$/)]],
+  });
+
+  // Starts the early-payment fields from the invoice's current offer whenever the invoice loads.
+  private readonly syncEarlyPay = effect(() => {
+    if (this.invoice.hasValue()) {
+      const inv = this.invoice.value();
+      this.earlyPayForm.setValue({
+        earlyPaymentPct: String(inv.earlyPaymentPct),
+        earlyPaymentDays: String(inv.earlyPaymentDays),
+      });
+    }
+  });
+
+  protected earlyPayInvalid(name: 'earlyPaymentPct' | 'earlyPaymentDays'): boolean {
+    const control = this.earlyPayForm.controls[name];
+    return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected applyEarlyPayment(): void {
+    if (this.earlyPayForm.invalid) {
+      this.earlyPayForm.markAllAsTouched();
+      return;
+    }
+    this.earlyPaySaving.set(true);
+    this.earlyPayError.set(null);
+    const { earlyPaymentPct, earlyPaymentDays } = this.earlyPayForm.getRawValue();
+    this.service
+      .applyEarlyPayment(this.projectIdNumber(), Number(this.invoiceId()), Number(earlyPaymentPct), Number(earlyPaymentDays))
+      .subscribe({
+        next: (updated) => {
+          this.invoice.set(updated);
+          this.earlyPaySaving.set(false);
+        },
+        error: () => {
+          this.earlyPayError.set('Could not apply the early-payment discount. Please try again.');
+          this.earlyPaySaving.set(false);
+        },
+      });
   }
 
   protected readonly saving = signal(false);

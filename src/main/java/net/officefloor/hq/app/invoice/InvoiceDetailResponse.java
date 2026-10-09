@@ -12,13 +12,16 @@ import net.officefloor.hq.app.client.Currency;
  * on the same base, the amount owed including both taxes, the total before tax, whether the prices already include the taxes
  * (so they are worked back out rather than added on), whether the client is tax exempt (so
  * there is no tax at all), the effective tax rate (the sales tax and levy together as a percentage of
- * the total before tax), and the
+ * the total before tax), any early-payment discount offered (its percentage, the days after issue it
+ * must be paid within, the last day to pay, and the reduced amount; null when none is offered), and the
  * client's tax number (null when the client is not tax registered).
  */
 public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal totalExTax,
         BigDecimal subtotal,
         BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
-        BigDecimal levyPct, BigDecimal levy, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct, InvoiceStatus status, LocalDate issuedDate,
+        BigDecimal levyPct, BigDecimal levy, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
+        BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
+        InvoiceStatus status, LocalDate issuedDate,
         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber) {
 
     static InvoiceDetailResponse from(Invoice invoice) {
@@ -28,6 +31,8 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, 
                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
                 invoice.getLevyPct(), invoice.getLevy(), invoice.isTaxInclusive(), invoice.isTaxExempt(),
                 invoice.getEffectiveTaxPct(),
+                invoice.getEarlyPaymentPct(), invoice.getEarlyPaymentDays(), invoice.getEarlyPaymentBy(),
+                invoice.getEarlyPaymentAmount(),
                 invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
                 invoice.getProject().getClient().getTaxNumber());

@@ -118,6 +118,14 @@ export interface InvoiceDetail extends Invoice {
   taxExempt: boolean;
   /** The overall tax rate that ended up on the invoice: the tax and levy as a percentage of the total before tax. */
   effectiveTaxPct: number;
+  /** The percentage taken off when paid early; zero when no early-payment discount is offered. */
+  earlyPaymentPct: number;
+  /** How many days after being issued it must be paid within to get the early-payment discount. */
+  earlyPaymentDays: number;
+  /** The last day to pay to get the early-payment discount; null when none is offered. */
+  earlyPaymentBy: string | null;
+  /** The reduced amount to pay when settling early; null when no early-payment discount is offered. */
+  earlyPaymentAmount: number | null;
   lineItems: LineItem[];
   /** The client's tax registration number; null when they are not tax registered. */
   clientTaxNumber: string | null;
@@ -200,6 +208,14 @@ export class InvoiceService {
   /** Sets the levy (second tax) percentage added to a draft invoice on top of its sales tax; zero removes the levy. */
   applyLevy(projectId: number, invoiceId: number, levyPct: number): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/levy`, { levyPct });
+  }
+
+  /** Sets the early-payment discount offered on a draft invoice; zero for either removes the offer. */
+  applyEarlyPayment(projectId: number, invoiceId: number, earlyPaymentPct: number, earlyPaymentDays: number): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/early-payment`, {
+      earlyPaymentPct,
+      earlyPaymentDays,
+    });
   }
 
   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {

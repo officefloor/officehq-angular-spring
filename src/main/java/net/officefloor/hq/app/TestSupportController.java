@@ -187,11 +187,15 @@ public class TestSupportController {
             BigDecimal discounted = subtotal.subtract(discount);
             // An invoice for a tax-inclusive client already has the taxes inside its prices, so its amount is
             // just the discounted subtotal.
+            // An early-payment discount offered is just recorded; it does not change the amount owed.
+            BigDecimal earlyPaymentPct = i.get("earlyPaymentPct") == null ? BigDecimal.ZERO
+                    : new BigDecimal(i.get("earlyPaymentPct").toString());
+            int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
             jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, discount_amount, tax_pct, levy_pct, tax_inclusive, tax_exempt,"
-                    + " status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + " early_payment_pct, early_payment_days, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
                     taxInclusive ? discounted : discounted.add(tax).add(levy), discountPct, discountAmount, taxPct, levyPct, taxInclusive, taxExempt,
-                    seedStatus(i.get("status")), issued, due);
+                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due);
             for (Map<String, Object> l : lineItems) {
                 if (l.get("id") != null) {
                     jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit, unit_price, tax_exempt, discount_pct)"

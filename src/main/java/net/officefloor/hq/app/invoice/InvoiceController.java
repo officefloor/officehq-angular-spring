@@ -76,6 +76,12 @@ public class InvoiceController {
         return service.applyLevy(projectId, invoiceId, request);
     }
 
+    @PutMapping("/{invoiceId}/early-payment")
+    public InvoiceDetailResponse applyEarlyPayment(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @Valid @RequestBody EarlyPaymentRequest request) {
+        return service.applyEarlyPayment(projectId, invoiceId, request);
+    }
+
     @PostMapping("/{invoiceId}/send")
     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.send(projectId, invoiceId);

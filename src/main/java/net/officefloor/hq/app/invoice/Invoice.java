@@ -77,6 +77,14 @@ public class Invoice {
     @Column(name = "tax_exempt", nullable = false)
     private boolean taxExempt;
 
+    /** The percentage taken off what is owed when paid early; zero when no early-payment discount is offered. */
+    @Column(name = "early_payment_pct", nullable = false, precision = 5, scale = 2)
+    private BigDecimal earlyPaymentPct = BigDecimal.ZERO.setScale(2);
+
+    /** How many days after being issued the invoice must be paid within to get the early-payment discount. */
+    @Column(name = "early_payment_days", nullable = false)
+    private int earlyPaymentDays;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private InvoiceStatus status = InvoiceStatus.DRAFT;
@@ -229,6 +237,34 @@ public class Invoice {
         return price.multiply(pct).divide(grossPct, 2, RoundingMode.HALF_UP);
     }
 
+    /** The percentage taken off what is owed when paid early; zero when none is offered. */
+    public BigDecimal getEarlyPaymentPct() {
+        return earlyPaymentPct;
+    }
+
+    /** How many days after being issued the invoice must be paid within to get the early-payment discount. */
+    public int getEarlyPaymentDays() {
+        return earlyPaymentDays;
+    }
+
+    /** Whether an early-payment discount is offered: a percentage off when paid within some days. */
+    public boolean offersEarlyPayment() {
+        return earlyPaymentPct.signum() > 0 && earlyPaymentDays > 0;
+    }
+
+    /** The last day the invoice can be paid to get the early-payment discount; null when none is offered. */
+    public LocalDate getEarlyPaymentBy() {
+        return offersEarlyPayment() ? issuedDate.plusDays(earlyPaymentDays) : null;
+    }
+
+    /**
+     * The reduced amount to pay when settling early: the amount less the early-payment percentage of it,
+     * to the cent; null when no early-payment discount is offered.
+     */
+    public BigDecimal getEarlyPaymentAmount() {
+        return offersEarlyPayment() ? amount.subtract(percentOf(amount, earlyPaymentPct)) : null;
+    }
+
     public InvoiceStatus getStatus() {
         return status;
     }
@@ -320,6 +356,15 @@ public class Invoice {
     public void applyLevy(BigDecimal levyPct) {
         this.levyPct = levyPct.setScale(2, RoundingMode.HALF_UP);
         recalculateAmount();
+    }
+
+    /**
+     * Sets the early-payment discount offered on this invoice: the percentage taken off if it is paid
+     * within the given number of days of being issued. It does not change the amount owed.
+     */
+    public void applyEarlyPayment(BigDecimal earlyPaymentPct, int earlyPaymentDays) {
+        this.earlyPaymentPct = earlyPaymentPct.setScale(2, RoundingMode.HALF_UP);
+        this.earlyPaymentDays = earlyPaymentDays;
     }
 
     /**

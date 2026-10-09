@@ -169,6 +169,15 @@ public class InvoiceService {
         return InvoiceDetailResponse.from(invoice);
     }
 
+    /** Sets the early-payment discount offered on a draft invoice. */
+    @Transactional
+    public InvoiceDetailResponse applyEarlyPayment(Long projectId, Long invoiceId, EarlyPaymentRequest request) {
+        Invoice invoice = findDraft(projectId, invoiceId);
+        invoice.applyEarlyPayment(request.earlyPaymentPct(), request.earlyPaymentDays());
+        invoices.flush();
+        return InvoiceDetailResponse.from(invoice);
+    }
+
     /** Sends a draft invoice and records the sending in the audit log. */
     @Transactional
     public InvoiceResponse send(Long projectId, Long invoiceId) {
