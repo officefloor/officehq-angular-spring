@@ -45,6 +45,11 @@ public class ProjectController {
         return service.changeStatus(id, request.status());
     }
 
+    @PutMapping("/{id}/billable")
+    public ProjectResponse setBillable(@PathVariable Long id, @Valid @RequestBody ProjectBillableRequest request) {
+        return service.setBillable(id, request.billable());
+    }
+
     @GetMapping("/{id}/budget")
     public ProjectBudgetResponse budget(@PathVariable Long id) {
         return service.budget(id);

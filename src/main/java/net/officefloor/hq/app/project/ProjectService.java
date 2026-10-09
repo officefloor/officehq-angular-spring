@@ -82,6 +82,9 @@ public class ProjectService {
         if (request.description() != null && !request.description().isBlank()) {
             project.setDescription(request.description().trim());
         }
+        if (request.billable() != null) {
+            project.setBillable(request.billable());
+        }
         try {
             return ProjectResponse.from(projects.saveAndFlush(project));
         } catch (DataIntegrityViolationException e) {
@@ -140,6 +143,19 @@ public class ProjectService {
             project.setStatus(status);
             projects.flush();
             audit.record("PROJECT_STATUS_CHANGED id=" + id + " status=" + status);
+        }
+        return ProjectResponse.from(project);
+    }
+
+    /** Marks a project billable or non-billable, recording the change in the audit log. */
+    @Transactional
+    public ProjectResponse setBillable(Long id, boolean billable) {
+        Project project = projects.findByIdWithClient(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+        if (project.isBillable() != billable) {
+            project.setBillable(billable);
+            projects.flush();
+            audit.record("PROJECT_BILLABLE_SET id=" + id + " billable=" + billable);
         }
         return ProjectResponse.from(project);
     }

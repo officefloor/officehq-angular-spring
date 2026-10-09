@@ -44,6 +44,8 @@ public class Project {
 
     private BigDecimal budget;
 
+    private boolean billable = true;
+
     @ManyToMany
     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
             inverseJoinColumns = @JoinColumn(name = "tag_id"))
@@ -107,6 +109,15 @@ public class Project {
 
     public void setBudget(BigDecimal budget) {
         this.budget = budget;
+    }
+
+    /** Whether the work on this project is charged to the client; internal work is non-billable. */
+    public boolean isBillable() {
+        return billable;
+    }
+
+    public void setBillable(boolean billable) {
+        this.billable = billable;
     }
 
     /** The tags labelling this project; add or remove to tag or untag it. */

@@ -25,6 +25,8 @@ export interface Project {
   currency: CurrencyCode;
   /** A short description of the work; null when none was given. */
   description: string | null;
+  /** Whether the work is charged to the client; internal work is non-billable. */
+  billable: boolean;
 }
 
 /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
@@ -77,6 +79,10 @@ export class ProjectService {
 
   changeStatus(id: number, status: ProjectStatus): Observable<Project> {
     return this.http.put<Project>(`/api/projects/${id}/status`, { status });
+  }
+
+  setBillable(id: number, billable: boolean): Observable<Project> {
+    return this.http.put<Project>(`/api/projects/${id}/billable`, { billable });
   }
 
   budget(id: number): Observable<ProjectBudget> {
