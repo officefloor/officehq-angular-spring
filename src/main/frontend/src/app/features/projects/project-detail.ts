@@ -7,7 +7,7 @@ import { ProjectTags } from '../tags/project-tags';
 import { ProjectTasks } from '../tasks/project-tasks';
 import { ProjectService } from './project.service';
 
-// A single project's page: its name and client, its tags, its tasks, its notes, and its invoices.
+// A single project's page: its name, client and status, its tags, its tasks, its notes, and its invoices.
 @Component({
   selector: 'app-project-detail',
   imports: [RouterLink, ProjectInvoices, ProjectNotes, ProjectTags, ProjectTasks],
@@ -18,6 +18,7 @@ import { ProjectService } from './project.service';
     } @else if (project.value(); as p) {
       <h1 data-testid="project-detail-name">{{ p.name }}</h1>
       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
+      <p>Status: <span data-testid="project-detail-status">{{ p.status }}</span></p>
       <app-project-tags [projectId]="projectId()" />
       <app-project-tasks [projectId]="projectId()" />
       <app-project-notes [projectId]="projectId()" />

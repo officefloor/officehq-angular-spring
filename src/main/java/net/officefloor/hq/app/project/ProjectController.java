@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -37,6 +38,11 @@ public class ProjectController {
     @ResponseStatus(HttpStatus.CREATED)
     public ProjectResponse create(@Valid @RequestBody ProjectRequest request) {
         return service.create(request);
+    }
+
+    @PutMapping("/{id}/status")
+    public ProjectResponse changeStatus(@PathVariable Long id, @Valid @RequestBody ProjectStatusRequest request) {
+        return service.changeStatus(id, request.status());
     }
 
     @PostMapping("/{id}/archive")

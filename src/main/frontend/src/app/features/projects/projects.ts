@@ -3,12 +3,13 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
 import { RouterLink } from '@angular/router';
 import { Client, ClientService } from '../clients/client.service';
 import { Tag, TagService } from '../tags/tag.service';
-import { Project, ProjectService } from './project.service';
+import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './project.service';
 
 // Projects page: add a project for a client and list all projects with their client's name; each
 // project opens its detail page and can be archived once it is no longer needed. Archived projects
 // are kept but left off the list unless the archived toggle is on, where they can be restored. The
-// list can be narrowed to the projects carrying a chosen tag.
+// list can be narrowed to the projects carrying a chosen tag. Each project is marked active, on hold
+// or finished, chosen when it is added and changeable from its row.
 @Component({
   selector: 'app-projects',
   imports: [ReactiveFormsModule, RouterLink],
@@ -51,6 +52,14 @@ import { Project, ProjectService } from './project.service';
             Choose a client.
           </p>
         }
+      </div>
+      <div>
+        <label for="project-status">Status</label>
+        <select id="project-status" formControlName="status" data-testid="project-form-status">
+          @for (s of statuses; track s.value) {
+            <option [value]="s.value">{{ s.label }}</option>
+          }
+        </select>
       </div>
       <button type="submit" data-testid="project-form-submit" [disabled]="saving()">
         Add project
@@ -102,6 +111,7 @@ import { Project, ProjectService } from './project.service';
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Client</th>
+            <th scope="col">Status</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -115,6 +125,24 @@ import { Project, ProjectService } from './project.service';
                 }
               </td>
               <td data-testid="project-client">{{ p.clientName }}</td>
+              <td>
+                <span data-testid="project-status">{{ p.status }}</span>
+                <label class="visually-hidden" [for]="'project-status-select-' + p.id"
+                  >Change status of {{ p.name }}</label
+                >
+                <select
+                  #statusSelect
+                  [id]="'project-status-select-' + p.id"
+                  [attr.data-testid]="'project-status-select-' + p.id"
+                  [value]="p.status"
+                  [disabled]="deleting() === p.id"
+                  (change)="changeStatus(p, statusSelect.value)"
+                >
+                  @for (s of statuses; track s.value) {
+                    <option [value]="s.value">{{ s.label }}</option>
+                  }
+                </select>
+              </td>
               <td>
                 <a
                   [routerLink]="['/projects', p.id]"
@@ -168,10 +196,12 @@ export class Projects {
   protected readonly showArchived = signal(false);
   protected readonly tags = signal<Tag[]>([]);
   protected readonly tagFilter = signal<number | null>(null);
+  protected readonly statuses = PROJECT_STATUSES;
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
     clientId: ['', Validators.required],
+    status: ['ACTIVE' as ProjectStatus, Validators.required],
   });
 
   constructor() {
@@ -190,10 +220,10 @@ export class Projects {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, clientId } = this.form.getRawValue();
+    const { name, clientId, status } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create({ name: name.trim(), clientId: Number(clientId) }).subscribe({
+    this.service.create({ name: name.trim(), clientId: Number(clientId), status }).subscribe({
       next: (created) => {
         // A new project carries no tags, so it only belongs on an unfiltered list.
         if (this.tagFilter() === null) {
@@ -217,6 +247,21 @@ export class Projects {
   protected filterByTag(value: string): void {
     this.tagFilter.set(value === '' ? null : Number(value));
     this.load();
+  }
+
+  protected changeStatus(project: Project, status: string): void {
+    this.deleting.set(project.id);
+    this.deleteError.set(null);
+    this.service.changeStatus(project.id, status as ProjectStatus).subscribe({
+      next: (changed) => {
+        this.projects.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
+        this.deleting.set(null);
+      },
+      error: () => {
+        this.deleteError.set(`Could not change the status of ${project.name}. Please try again.`);
+        this.deleting.set(null);
+      },
+    });
   }
 
   protected archive(project: Project): void {

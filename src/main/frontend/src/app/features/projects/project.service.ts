@@ -2,17 +2,28 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+export type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'FINISHED';
+
+/** The statuses a project can be marked with, in the order they are offered. */
+export const PROJECT_STATUSES: { value: ProjectStatus; label: string }[] = [
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'ON_HOLD', label: 'On hold' },
+  { value: 'FINISHED', label: 'Finished' },
+];
+
 export interface Project {
   id: number;
   name: string;
   clientId: number;
   clientName: string;
   archived: boolean;
+  status: ProjectStatus;
 }
 
 export interface NewProject {
   name: string;
   clientId: number;
+  status: ProjectStatus;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -37,6 +48,10 @@ export class ProjectService {
 
   create(project: NewProject): Observable<Project> {
     return this.http.post<Project>('/api/projects', project);
+  }
+
+  changeStatus(id: number, status: ProjectStatus): Observable<Project> {
+    return this.http.put<Project>(`/api/projects/${id}/status`, { status });
   }
 
   archive(id: number): Observable<Project> {

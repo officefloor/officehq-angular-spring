@@ -56,8 +56,25 @@ public class ProjectService {
     public ProjectResponse create(ProjectRequest request) {
         Client client = clients.findById(request.clientId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown client"));
-        Project saved = projects.save(new Project(request.name().trim(), client));
+        Project project = new Project(request.name().trim(), client);
+        if (request.status() != null) {
+            project.setStatus(request.status());
+        }
+        Project saved = projects.save(project);
         return ProjectResponse.from(saved);
+    }
+
+    /** Marks a project active, on hold or finished, recording the change in the audit log. */
+    @Transactional
+    public ProjectResponse changeStatus(Long id, ProjectStatus status) {
+        Project project = projects.findByIdWithClient(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+        if (project.getStatus() != status) {
+            project.setStatus(status);
+            projects.flush();
+            audit.record("PROJECT_STATUS_CHANGED id=" + id + " status=" + status);
+        }
+        return ProjectResponse.from(project);
     }
 
     /**

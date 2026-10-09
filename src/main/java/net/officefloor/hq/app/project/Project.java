@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.project;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -31,6 +33,9 @@ public class Project {
     private Client client;
 
     private boolean archived;
+
+    @Enumerated(EnumType.STRING)
+    private ProjectStatus status = ProjectStatus.ACTIVE;
 
     @ManyToMany
     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
@@ -63,6 +68,14 @@ public class Project {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public ProjectStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(ProjectStatus status) {
+        this.status = status;
     }
 
     /** The tags labelling this project; add or remove to tag or untag it. */

@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.invoice.InvoiceRequest;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
+import net.officefloor.hq.app.project.ProjectStatus;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,9 +74,10 @@ public class TestSupportController {
                     c.get("name"), c.get("email"), c.get("role"));
         }
         for (Map<String, Object> p : rows(fixture, "projects")) {
-            jdbc.update("INSERT INTO project (id, name, client_id) VALUES (?, ?, ?)",
+            jdbc.update("INSERT INTO project (id, name, client_id, status) VALUES (?, ?, ?, ?)",
                     ((Number) p.get("id")).longValue(), p.get("name"),
-                    ((Number) p.get("clientId")).longValue());
+                    ((Number) p.get("clientId")).longValue(),
+                    p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString());
         }
         for (Map<String, Object> t : rows(fixture, "tags")) {
             jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",
