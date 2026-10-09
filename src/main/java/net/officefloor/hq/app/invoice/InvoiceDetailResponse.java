@@ -17,7 +17,9 @@ import java.util.List;
  * before it, whether the minimum was billed because the net total came out under it, and the total
  * savings (the line discounts and the invoice's discounts added together). A foreign invoice also gives
  * the home currency and its amount converted into it at the exchange rate from the invoice's issue date
- * (null when the invoice is already in the home currency or there is no rate for that date).
+ * (null when the invoice is already in the home currency or there is no rate for that date). The late
+ * fee charged per day overdue, the days the invoice is overdue as of today (only while sent and still
+ * owed), and the late fee that has accrued over them.
  */
 public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
         BigDecimal subtotal,
@@ -27,13 +29,15 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
         InvoiceStatus status, LocalDate issuedDate,
         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts,
         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
-        String homeCurrency, BigDecimal homeAmount) {
+        String homeCurrency, BigDecimal homeAmount,
+        BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee) {
 
     /**
      * The invoice with the given status, as worked out from what has been paid and credited against it, and
-     * its amount in the home currency.
+     * its amount in the home currency, with any late fee accrued by today.
      */
-    static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status, String homeCurrency, BigDecimal homeAmount) {
+    static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status, String homeCurrency, BigDecimal homeAmount,
+            LocalDate today) {
         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
@@ -48,6 +52,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
                 invoice.getDiscounts().stream().map(d -> new InvoiceDiscountResponse(d.getId(), d.getDiscountPct(),
                         d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList(),
                 invoice.getMinimumCharge(), invoice.getNetTotal(), invoice.isMinimumApplied(),
-                invoice.getTotalSavings(), homeCurrency, homeAmount);
+                invoice.getTotalSavings(), homeCurrency, homeAmount,
+                invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today));
     }
 }

@@ -191,6 +191,12 @@ export interface InvoiceDetail extends Invoice {
    * null when it is already in the home currency or there is no rate for that date.
    */
   homeAmount: number | null;
+  /** The late fee charged for each day the invoice is overdue once sent; zero when none is charged. */
+  lateFeePerDay: number;
+  /** How many days past due the invoice is today; zero unless it is sent and still owed. */
+  daysLate: number;
+  /** The late fee accrued so far: the fee per day times the days overdue. */
+  lateFee: number;
 }
 
 export interface NewLineItem {
@@ -310,6 +316,11 @@ export class InvoiceService {
       earlyPaymentPct,
       earlyPaymentDays,
     });
+  }
+
+  /** Sets the late fee charged for each day a draft invoice is overdue once sent; zero charges none. */
+  applyLateFee(projectId: number, invoiceId: number, lateFeePerDay: number): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/late-fee`, { lateFeePerDay });
   }
 
   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {

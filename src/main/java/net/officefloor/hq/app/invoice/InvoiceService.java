@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.invoice;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -42,10 +43,11 @@ public class InvoiceService {
     private final SettingsService settings;
     private final FxRateService fxRates;
     private final Audit audit;
+    private final Clock clock;
 
     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
             CreditNoteRepository creditNotes, ClientRepository clients, DepositRepository deposits,
-            RefundRepository refunds, SettingsService settings, FxRateService fxRates, Audit audit) {
+            RefundRepository refunds, SettingsService settings, FxRateService fxRates, Audit audit, Clock clock) {
         this.invoices = invoices;
         this.projects = projects;
         this.clients = clients;
@@ -56,6 +58,7 @@ public class InvoiceService {
         this.settings = settings;
         this.fxRates = fxRates;
         this.audit = audit;
+        this.clock = clock;
     }
 
     @Transactional(readOnly = true)
@@ -317,6 +320,15 @@ public class InvoiceService {
         return detail(invoice);
     }
 
+    /** Sets the late fee charged for each day a draft invoice is overdue once it has been sent. */
+    @Transactional
+    public InvoiceDetailResponse applyLateFee(Long projectId, Long invoiceId, LateFeeRequest request) {
+        Invoice invoice = findDraft(projectId, invoiceId);
+        invoice.applyLateFee(request.lateFeePerDay());
+        invoices.flush();
+        return detail(invoice);
+    }
+
     /** Sends a draft invoice and records the sending in the audit log. */
     @Transactional
     public InvoiceResponse send(Long projectId, Long invoiceId) {
@@ -407,6 +419,6 @@ public class InvoiceService {
         String currency = invoice.getProject().getClient().getCurrency();
         BigDecimal homeAmount = currency.equals(home) ? null
                 : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount()).orElse(null);
-        return InvoiceDetailResponse.from(invoice, status, home, homeAmount);
+        return InvoiceDetailResponse.from(invoice, status, home, homeAmount, LocalDate.now(clock));
     }
 }

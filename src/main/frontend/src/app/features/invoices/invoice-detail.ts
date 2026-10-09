@@ -382,6 +382,18 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                 }
               </tr>
             }
+            @if (inv.lateFeePerDay > 0) {
+              <tr data-testid="invoice-late-fee-row">
+                <th scope="row" colspan="5">
+                  Late fee (<span data-testid="invoice-late-fee-per-day">{{ inv.lateFeePerDay | money: inv.currency }}</span> per day,
+                  <span data-testid="invoice-days-late">{{ inv.daysLate }}</span> days late)
+                </th>
+                <td data-testid="invoice-late-fee">{{ inv.lateFee | money: inv.currency }}</td>
+                @if (inv.status === 'DRAFT') {
+                  <td></td>
+                }
+              </tr>
+            }
           </tfoot>
         </table>
         @if (editError()) {
@@ -627,6 +639,33 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
           <button type="submit" data-testid="early-pay-form-submit" [disabled]="earlyPaySaving()">Apply early-payment discount</button>
           @if (earlyPayError()) {
             <p role="alert" data-testid="early-pay-form-error">{{ earlyPayError() }}</p>
+          }
+        </form>
+
+        <form [formGroup]="lateFeeForm" (ngSubmit)="applyLateFee()" data-testid="late-fee-form" novalidate>
+          <h2>Late fee</h2>
+          <div>
+            <label for="late-fee-per-day">Late fee per day overdue</label>
+            <input
+              id="late-fee-per-day"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              step="0.01"
+              formControlName="lateFeePerDay"
+              data-testid="late-fee-form-per-day"
+              [attr.aria-invalid]="lateFeeInvalid()"
+              [attr.aria-describedby]="lateFeeInvalid() ? 'late-fee-per-day-error' : null"
+            />
+            @if (lateFeeInvalid()) {
+              <p id="late-fee-per-day-error" role="alert" data-testid="late-fee-form-per-day-error">
+                Enter an amount of 0 or more with at most two decimal places.
+              </p>
+            }
+          </div>
+          <button type="submit" data-testid="late-fee-form-submit" [disabled]="lateFeeSaving()">Apply late fee</button>
+          @if (lateFeeError()) {
+            <p role="alert" data-testid="late-fee-form-error">{{ lateFeeError() }}</p>
           }
         </form>
 
@@ -1117,6 +1156,46 @@ export class InvoiceDetailPage {
         error: () => {
           this.earlyPayError.set('Could not apply the early-payment discount. Please try again.');
           this.earlyPaySaving.set(false);
+        },
+      });
+  }
+
+  protected readonly lateFeeSaving = signal(false);
+  protected readonly lateFeeError = signal<string | null>(null);
+
+  protected readonly lateFeeForm = this.fb.group({
+    lateFeePerDay: ['', [Validators.required, Validators.min(0), Validators.pattern(TWO_DECIMALS)]],
+  });
+
+  // Starts the late fee field from the invoice's current fee whenever the invoice loads.
+  private readonly syncLateFee = effect(() => {
+    if (this.invoice.hasValue()) {
+      this.lateFeeForm.setValue({ lateFeePerDay: String(this.invoice.value().lateFeePerDay) });
+    }
+  });
+
+  protected lateFeeInvalid(): boolean {
+    const control = this.lateFeeForm.controls.lateFeePerDay;
+    return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected applyLateFee(): void {
+    if (this.lateFeeForm.invalid) {
+      this.lateFeeForm.markAllAsTouched();
+      return;
+    }
+    this.lateFeeSaving.set(true);
+    this.lateFeeError.set(null);
+    this.service
+      .applyLateFee(this.projectIdNumber(), Number(this.invoiceId()), Number(this.lateFeeForm.getRawValue().lateFeePerDay))
+      .subscribe({
+        next: (updated) => {
+          this.invoice.set(updated);
+          this.lateFeeSaving.set(false);
+        },
+        error: () => {
+          this.lateFeeError.set('Could not apply the late fee. Please try again.');
+          this.lateFeeSaving.set(false);
         },
       });
   }

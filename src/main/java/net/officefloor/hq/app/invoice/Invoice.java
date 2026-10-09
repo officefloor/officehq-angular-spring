@@ -17,6 +17,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -90,6 +91,10 @@ public class Invoice {
     /** How many days after being issued the invoice must be paid within to get the early-payment discount. */
     @Column(name = "early_payment_days", nullable = false)
     private int earlyPaymentDays;
+
+    /** The late fee charged for each day the invoice is overdue once sent; zero when none is charged. */
+    @Column(name = "late_fee_per_day", nullable = false, precision = 12, scale = 2)
+    private BigDecimal lateFeePerDay = BigDecimal.ZERO.setScale(2);
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
@@ -501,6 +506,31 @@ public class Invoice {
     public void applyMinimumCharge(BigDecimal minimumCharge) {
         this.minimumCharge = minimumCharge.setScale(2, RoundingMode.HALF_UP);
         recalculateAmount();
+    }
+
+    /** Sets the late fee charged for each day this invoice is overdue. It does not change the amount invoiced. */
+    public void applyLateFee(BigDecimal lateFeePerDay) {
+        this.lateFeePerDay = lateFeePerDay.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public BigDecimal getLateFeePerDay() {
+        return lateFeePerDay;
+    }
+
+    /**
+     * How many days past its due date the invoice is on the given day; zero unless it has been sent and
+     * is still owed (sent or part paid).
+     */
+    public long daysLate(InvoiceStatus status, LocalDate today) {
+        if (status != InvoiceStatus.SENT && status != InvoiceStatus.PARTIAL) {
+            return 0;
+        }
+        return Math.max(0, ChronoUnit.DAYS.between(dueDate, today));
+    }
+
+    /** The late fee accrued by the given day: the fee per day times the days the invoice is overdue. */
+    public BigDecimal lateFee(InvoiceStatus status, LocalDate today) {
+        return lateFeePerDay.multiply(BigDecimal.valueOf(daysLate(status, today))).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**

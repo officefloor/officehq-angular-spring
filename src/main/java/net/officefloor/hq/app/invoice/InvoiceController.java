@@ -107,6 +107,12 @@ public class InvoiceController {
         return service.applyEarlyPayment(projectId, invoiceId, request);
     }
 
+    @PutMapping("/{invoiceId}/late-fee")
+    public InvoiceDetailResponse applyLateFee(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @Valid @RequestBody LateFeeRequest request) {
+        return service.applyLateFee(projectId, invoiceId, request);
+    }
+
     @PostMapping("/{invoiceId}/send")
     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.send(projectId, invoiceId);
