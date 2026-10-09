@@ -1,0 +1,373 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 9d15cc7..e83ecd2 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -17,7 +17,8 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // sales tax added on it after the discount, any levy (a second tax) added on the same base, the effective tax rate
+ // (the tax and levy as a percentage of the total before tax), the total before tax, and the final total including both taxes (also shown as the total after tax).
+ // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
+-// Lines, the discount, the tax rate and the levy rate can be changed while it is a draft.
++// When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the set number of days.
++// Lines, the discount, the tax rate, the levy rate and the early-payment discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, Notes],
+@@ -275,6 +276,19 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 <td></td>
+               }
+             </tr>
++            @if (inv.earlyPaymentAmount !== null) {
++              <tr data-testid="invoice-early-pay">
++                <th scope="row" colspan="5">
++                  Pay by <span data-testid="invoice-early-pay-by">{{ inv.earlyPaymentBy }}</span> (within
++                  <span data-testid="invoice-early-pay-days">{{ inv.earlyPaymentDays }}</span> days) for
++                  <span data-testid="invoice-early-pay-pct">{{ inv.earlyPaymentPct | number: '1.0-2' : 'en-US' }}</span>% off
++                </th>
++                <td data-testid="invoice-early-pay-amount">{{ inv.earlyPaymentAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                @if (inv.status === 'DRAFT') {
++                  <td></td>
++                }
++              </tr>
++            }
+           </tfoot>
+         </table>
+         @if (editError()) {
+@@ -400,6 +414,53 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+           }
+         </form>
+ 
++        <form [formGroup]="earlyPayForm" (ngSubmit)="applyEarlyPayment()" data-testid="early-pay-form" novalidate>
++          <h2>Early-payment discount</h2>
++          <div>
++            <label for="early-pay-pct">Percentage off when paid early</label>
++            <input
++              id="early-pay-pct"
++              type="number"
++              inputmode="decimal"
++              min="0"
++              max="100"
++              step="0.01"
++              formControlName="earlyPaymentPct"
++              data-testid="early-pay-form-pct"
++              [attr.aria-invalid]="earlyPayInvalid('earlyPaymentPct')"
++              [attr.aria-describedby]="earlyPayInvalid('earlyPaymentPct') ? 'early-pay-pct-error' : null"
++            />
++            @if (earlyPayInvalid('earlyPaymentPct')) {
++              <p id="early-pay-pct-error" role="alert" data-testid="early-pay-form-pct-error">
++                Enter a percentage from 0 to 100 with at most two decimal places.
++              </p>
++            }
++          </div>
++          <div>
++            <label for="early-pay-days">Paid within this many days of issue</label>
++            <input
++              id="early-pay-days"
++              type="number"
++              inputmode="numeric"
++              min="0"
++              step="1"
++              formControlName="earlyPaymentDays"
++              data-testid="early-pay-form-days"
++              [attr.aria-invalid]="earlyPayInvalid('earlyPaymentDays')"
++              [attr.aria-describedby]="earlyPayInvalid('earlyPaymentDays') ? 'early-pay-days-error' : null"
++            />
++            @if (earlyPayInvalid('earlyPaymentDays')) {
++              <p id="early-pay-days-error" role="alert" data-testid="early-pay-form-days-error">
++                Enter a whole number of days from 0 to 3650.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="early-pay-form-submit" [disabled]="earlyPaySaving()">Apply early-payment discount</button>
++          @if (earlyPayError()) {
++            <p role="alert" data-testid="early-pay-form-error">{{ earlyPayError() }}</p>
++          }
++        </form>
++
+         <form [formGroup]="form" (ngSubmit)="submit()" data-testid="lineitem-form" novalidate>
+           <h2>Add a line item</h2>
+           <div>
+@@ -677,6 +738,52 @@ export class InvoiceDetailPage {
+     });
+   }
+ 
++  protected readonly earlyPaySaving = signal(false);
++  protected readonly earlyPayError = signal<string | null>(null);
++
++  protected readonly earlyPayForm = this.fb.group({
++    earlyPaymentPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
++    earlyPaymentDays: ['', [Validators.required, Validators.min(0), Validators.max(3650), Validators.pattern(/^\d+$/)]],
++  });
++
++  // Starts the early-payment fields from the invoice's current offer whenever the invoice loads.
++  private readonly syncEarlyPay = effect(() => {
++    if (this.invoice.hasValue()) {
++      const inv = this.invoice.value();
++      this.earlyPayForm.setValue({
++        earlyPaymentPct: String(inv.earlyPaymentPct),
++        earlyPaymentDays: String(inv.earlyPaymentDays),
++      });
++    }
++  });
++
++  protected earlyPayInvalid(name: 'earlyPaymentPct' | 'earlyPaymentDays'): boolean {
++    const control = this.earlyPayForm.controls[name];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected applyEarlyPayment(): void {
++    if (this.earlyPayForm.invalid) {
++      this.earlyPayForm.markAllAsTouched();
++      return;
++    }
++    this.earlyPaySaving.set(true);
++    this.earlyPayError.set(null);
++    const { earlyPaymentPct, earlyPaymentDays } = this.earlyPayForm.getRawValue();
++    this.service
++      .applyEarlyPayment(this.projectIdNumber(), Number(this.invoiceId()), Number(earlyPaymentPct), Number(earlyPaymentDays))
++      .subscribe({
++        next: (updated) => {
++          this.invoice.set(updated);
++          this.earlyPaySaving.set(false);
++        },
++        error: () => {
++          this.earlyPayError.set('Could not apply the early-payment discount. Please try again.');
++          this.earlyPaySaving.set(false);
++        },
++      });
++  }
++
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 19ce3f9..fb3ad3e 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -118,6 +118,14 @@ export interface InvoiceDetail extends Invoice {
+   taxExempt: boolean;
+   /** The overall tax rate that ended up on the invoice: the tax and levy as a percentage of the total before tax. */
+   effectiveTaxPct: number;
++  /** The percentage taken off when paid early; zero when no early-payment discount is offered. */
++  earlyPaymentPct: number;
++  /** How many days after being issued it must be paid within to get the early-payment discount. */
++  earlyPaymentDays: number;
++  /** The last day to pay to get the early-payment discount; null when none is offered. */
++  earlyPaymentBy: string | null;
++  /** The reduced amount to pay when settling early; null when no early-payment discount is offered. */
++  earlyPaymentAmount: number | null;
+   lineItems: LineItem[];
+   /** The client's tax registration number; null when they are not tax registered. */
+   clientTaxNumber: string | null;
+@@ -202,6 +210,14 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/levy`, { levyPct });
+   }
+ 
++  /** Sets the early-payment discount offered on a draft invoice; zero for either removes the offer. */
++  applyEarlyPayment(projectId: number, invoiceId: number, earlyPaymentPct: number, earlyPaymentDays: number): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/early-payment`, {
++      earlyPaymentPct,
++      earlyPaymentDays,
++    });
++  }
++
+   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 1db2605..66e9f28 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -187,11 +187,15 @@ public class TestSupportController {
+             BigDecimal discounted = subtotal.subtract(discount);
+             // An invoice for a tax-inclusive client already has the taxes inside its prices, so its amount is
+             // just the discounted subtotal.
++            // An early-payment discount offered is just recorded; it does not change the amount owed.
++            BigDecimal earlyPaymentPct = i.get("earlyPaymentPct") == null ? BigDecimal.ZERO
++                    : new BigDecimal(i.get("earlyPaymentPct").toString());
++            int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, discount_amount, tax_pct, levy_pct, tax_inclusive, tax_exempt,"
+-                    + " status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " early_payment_pct, early_payment_days, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+                     taxInclusive ? discounted : discounted.add(tax).add(levy), discountPct, discountAmount, taxPct, levyPct, taxInclusive, taxExempt,
+-                    seedStatus(i.get("status")), issued, due);
++                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due);
+             for (Map<String, Object> l : lineItems) {
+                 if (l.get("id") != null) {
+                     jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit, unit_price, tax_exempt, discount_pct)"
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/EarlyPaymentRequest.java b/src/main/java/net/officefloor/hq/app/invoice/EarlyPaymentRequest.java
+new file mode 100644
+index 0000000..5ed01d2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/EarlyPaymentRequest.java
+@@ -0,0 +1,18 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.constraints.DecimalMax;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.Max;
++import jakarta.validation.constraints.Min;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/**
++ * Payload to set the early-payment discount offered on a draft invoice: the percentage taken off if it is
++ * paid within the given number of days of being issued; zero for either removes the offer.
++ */
++public record EarlyPaymentRequest(
++        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal earlyPaymentPct,
++        @NotNull @Min(0) @Max(3650) Integer earlyPaymentDays) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 16d5f38..c2e1f19 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -77,6 +77,14 @@ public class Invoice {
+     @Column(name = "tax_exempt", nullable = false)
+     private boolean taxExempt;
+ 
++    /** The percentage taken off what is owed when paid early; zero when no early-payment discount is offered. */
++    @Column(name = "early_payment_pct", nullable = false, precision = 5, scale = 2)
++    private BigDecimal earlyPaymentPct = BigDecimal.ZERO.setScale(2);
++
++    /** How many days after being issued the invoice must be paid within to get the early-payment discount. */
++    @Column(name = "early_payment_days", nullable = false)
++    private int earlyPaymentDays;
++
+     @Enumerated(EnumType.STRING)
+     @Column(nullable = false, length = 16)
+     private InvoiceStatus status = InvoiceStatus.DRAFT;
+@@ -229,6 +237,34 @@ public class Invoice {
+         return price.multiply(pct).divide(grossPct, 2, RoundingMode.HALF_UP);
+     }
+ 
++    /** The percentage taken off what is owed when paid early; zero when none is offered. */
++    public BigDecimal getEarlyPaymentPct() {
++        return earlyPaymentPct;
++    }
++
++    /** How many days after being issued the invoice must be paid within to get the early-payment discount. */
++    public int getEarlyPaymentDays() {
++        return earlyPaymentDays;
++    }
++
++    /** Whether an early-payment discount is offered: a percentage off when paid within some days. */
++    public boolean offersEarlyPayment() {
++        return earlyPaymentPct.signum() > 0 && earlyPaymentDays > 0;
++    }
++
++    /** The last day the invoice can be paid to get the early-payment discount; null when none is offered. */
++    public LocalDate getEarlyPaymentBy() {
++        return offersEarlyPayment() ? issuedDate.plusDays(earlyPaymentDays) : null;
++    }
++
++    /**
++     * The reduced amount to pay when settling early: the amount less the early-payment percentage of it,
++     * to the cent; null when no early-payment discount is offered.
++     */
++    public BigDecimal getEarlyPaymentAmount() {
++        return offersEarlyPayment() ? amount.subtract(percentOf(amount, earlyPaymentPct)) : null;
++    }
++
+     public InvoiceStatus getStatus() {
+         return status;
+     }
+@@ -322,6 +358,15 @@ public class Invoice {
+         recalculateAmount();
+     }
+ 
++    /**
++     * Sets the early-payment discount offered on this invoice: the percentage taken off if it is paid
++     * within the given number of days of being issued. It does not change the amount owed.
++     */
++    public void applyEarlyPayment(BigDecimal earlyPaymentPct, int earlyPaymentDays) {
++        this.earlyPaymentPct = earlyPaymentPct.setScale(2, RoundingMode.HALF_UP);
++        this.earlyPaymentDays = earlyPaymentDays;
++    }
++
+     /**
+      * The discount taken off one line, to the cent: its percentage, plus its share of the flat amount in
+      * proportion to what the line charges out of the subtotal.
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index 0bf0ddc..f81a85b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -76,6 +76,12 @@ public class InvoiceController {
+         return service.applyLevy(projectId, invoiceId, request);
+     }
+ 
++    @PutMapping("/{invoiceId}/early-payment")
++    public InvoiceDetailResponse applyEarlyPayment(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody EarlyPaymentRequest request) {
++        return service.applyEarlyPayment(projectId, invoiceId, request);
++    }
++
+     @PostMapping("/{invoiceId}/send")
+     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.send(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 90352ff..0602d0b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -12,13 +12,16 @@ import net.officefloor.hq.app.client.Currency;
+  * on the same base, the amount owed including both taxes, the total before tax, whether the prices already include the taxes
+  * (so they are worked back out rather than added on), whether the client is tax exempt (so
+  * there is no tax at all), the effective tax rate (the sales tax and levy together as a percentage of
+- * the total before tax), and the
++ * the total before tax), any early-payment discount offered (its percentage, the days after issue it
++ * must be paid within, the last day to pay, and the reduced amount; null when none is offered), and the
+  * client's tax number (null when the client is not tax registered).
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+         BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
+-        BigDecimal levyPct, BigDecimal levy, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct, InvoiceStatus status, LocalDate issuedDate,
++        BigDecimal levyPct, BigDecimal levy, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
++        BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
++        InvoiceStatus status, LocalDate issuedDate,
+         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber) {
+ 
+     static InvoiceDetailResponse from(Invoice invoice) {
+@@ -28,6 +31,8 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency,
+                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
+                 invoice.getLevyPct(), invoice.getLevy(), invoice.isTaxInclusive(), invoice.isTaxExempt(),
+                 invoice.getEffectiveTaxPct(),
++                invoice.getEarlyPaymentPct(), invoice.getEarlyPaymentDays(), invoice.getEarlyPaymentBy(),
++                invoice.getEarlyPaymentAmount(),
+                 invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
+                 invoice.getProject().getClient().getTaxNumber());
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index f299025..1044737 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -169,6 +169,15 @@ public class InvoiceService {
+         return InvoiceDetailResponse.from(invoice);
+     }
+ 
++    /** Sets the early-payment discount offered on a draft invoice. */
++    @Transactional
++    public InvoiceDetailResponse applyEarlyPayment(Long projectId, Long invoiceId, EarlyPaymentRequest request) {
++        Invoice invoice = findDraft(projectId, invoiceId);
++        invoice.applyEarlyPayment(request.earlyPaymentPct(), request.earlyPaymentDays());
++        invoices.flush();
++        return InvoiceDetailResponse.from(invoice);
++    }
++
+     /** Sends a draft invoice and records the sending in the audit log. */
+     @Transactional
+     public InvoiceResponse send(Long projectId, Long invoiceId) {
+diff --git a/src/main/resources/db/migration/V45__invoice_early_payment_discount.sql b/src/main/resources/db/migration/V45__invoice_early_payment_discount.sql
+new file mode 100644
+index 0000000..a0e5224
+--- /dev/null
++++ b/src/main/resources/db/migration/V45__invoice_early_payment_discount.sql
+@@ -0,0 +1,7 @@
++-- An invoice can offer an early-payment discount: a percentage off what is owed if it is paid within a
++-- set number of days of being issued. Existing invoices offer none.
++ALTER TABLE invoice ADD COLUMN early_payment_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
++ALTER TABLE invoice ADD COLUMN early_payment_days INT DEFAULT 0 NOT NULL;
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_early_payment_pct_range CHECK (early_payment_pct >= 0 AND early_payment_pct <= 100);
++ALTER TABLE invoice ADD CONSTRAINT invoice_early_payment_days_non_negative CHECK (early_payment_days >= 0);
