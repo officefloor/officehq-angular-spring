@@ -74,8 +74,9 @@ public class TestSupportController {
             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
         }
         for (Map<String, Object> c : rows(fixture, "clients")) {
-            jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
-                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"));
+            jdbc.update("INSERT INTO client (id, name, email, archived) VALUES (?, ?, ?, ?)",
+                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"),
+                    Boolean.TRUE.equals(c.get("archived")));
         }
         for (Map<String, Object> c : rows(fixture, "contacts")) {
             jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",

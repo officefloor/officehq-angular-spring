@@ -298,7 +298,10 @@ export class Clients {
     this.actionError.set(null);
     this.service.restore(client.id).subscribe({
       next: (restored) => {
-        this.clients.update((list) => list.map((c) => (c.id === restored.id ? restored : c)));
+        // Upsert: the list may have been reloaded without archived clients while the restore was in flight.
+        this.clients.update((list) =>
+          [...list.filter((c) => c.id !== restored.id), restored].sort((a, b) => a.id - b.id),
+        );
         this.busy.set(null);
       },
       error: () => {
