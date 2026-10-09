@@ -39,12 +39,20 @@ public class ProjectService {
                 .toList();
     }
 
+    /**
+     * A client's projects: only those under way (active status and not archived) unless all of them,
+     * including finished, on hold and archived ones, are asked for.
+     */
     @Transactional(readOnly = true)
-    public List<ProjectResponse> listForClient(Long clientId) {
+    public List<ProjectResponse> listForClient(Long clientId, boolean includeAll) {
         if (!clients.existsById(clientId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
         }
-        return projects.findActiveByClientIdWithClient(clientId).stream().map(ProjectResponse::from).toList();
+        if (includeAll) {
+            return projects.findAllByClientIdWithClient(clientId).stream().map(ProjectResponse::from).toList();
+        }
+        return projects.findActiveByClientIdWithClient(clientId).stream()
+                .filter(p -> p.getStatus() == ProjectStatus.ACTIVE).map(ProjectResponse::from).toList();
     }
 
     @Transactional(readOnly = true)

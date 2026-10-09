@@ -29,6 +29,10 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
             + " ORDER BY p.id")
     List<Project> findActiveByClientIdWithClient(Long clientId);
 
+    /** All of a client's projects, archived or not, with their client loaded in the same query. */
+    @Query("SELECT p FROM Project p JOIN FETCH p.client c WHERE c.id = :clientId ORDER BY p.id")
+    List<Project> findAllByClientIdWithClient(Long clientId);
+
     /** One project with its client loaded in the same query. */
     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
     Optional<Project> findByIdWithClient(Long id);

@@ -45,8 +45,10 @@ export class ProjectService {
     return this.http.get<Project[]>('/api/projects', { params });
   }
 
-  listForClient(clientId: number): Observable<Project[]> {
-    return this.http.get<Project[]>(`/api/clients/${clientId}/projects`);
+  listForClient(clientId: number, includeAll = false): Observable<Project[]> {
+    return this.http.get<Project[]>(`/api/clients/${clientId}/projects`, {
+      params: { includeAll },
+    });
   }
 
   get(id: number): Observable<Project> {

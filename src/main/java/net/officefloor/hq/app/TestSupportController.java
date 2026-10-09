@@ -74,10 +74,11 @@ public class TestSupportController {
                     c.get("name"), c.get("email"), c.get("role"));
         }
         for (Map<String, Object> p : rows(fixture, "projects")) {
-            jdbc.update("INSERT INTO project (id, name, client_id, status) VALUES (?, ?, ?, ?)",
+            jdbc.update("INSERT INTO project (id, name, client_id, status, archived) VALUES (?, ?, ?, ?, ?)",
                     ((Number) p.get("id")).longValue(), p.get("name"),
                     ((Number) p.get("clientId")).longValue(),
-                    p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString());
+                    p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString(),
+                    Boolean.TRUE.equals(p.get("archived")));
         }
         for (Map<String, Object> t : rows(fixture, "tags")) {
             jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",
