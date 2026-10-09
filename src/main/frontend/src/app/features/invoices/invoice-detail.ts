@@ -13,7 +13,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 
 // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
-// amount, their subtotal, each discount on it (a percentage or a flat amount) and what they take off combined before tax, the taxable amount (leaving out tax-free lines), any
+// amount, their subtotal, each discount on it (a percentage or a flat amount) as its own negative line and what they take off combined before tax, the taxable amount (leaving out tax-free lines), any
 // sales tax added on it after the discount, any levy (a second tax) added on the same base, the effective tax rate
 // (the tax and levy as a percentage of the total before tax), any flat surcharge (such as a handling fee, added after tax and
 // never taxed), the total before tax, and the final total including both taxes (also shown as the total after tax).
@@ -220,7 +220,9 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                     Discount {{ $index + 1 }} ({{ d.discountPct | number: '1.0-2' : 'en-US' }}%@if (d.discountCap !== null) {, up to <span data-testid="discount-row-cap">{{ d.discountCap | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span>})
                   }
                 </th>
-                <td data-testid="discount-row-amount">{{ d.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                <td>
+                  <span [attr.data-testid]="'breakdown-discount-row-' + d.id">-<span data-testid="discount-row-amount">{{ d.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span></span>
+                </td>
                 @if (inv.status === 'DRAFT') {
                   <td>
                     <button
