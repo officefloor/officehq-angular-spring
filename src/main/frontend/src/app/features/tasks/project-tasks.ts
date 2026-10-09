@@ -1,6 +1,7 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { TaskChecklist } from './task-checklist';
 import { Task, TaskService } from './task.service';
 
 export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
@@ -8,7 +9,7 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
 // A project's task list: add tasks and tick them off (OPEN <-> DONE) as they are finished.
 @Component({
   selector: 'app-project-tasks',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, TaskChecklist],
   template: `
     <section aria-labelledby="project-tasks-heading" data-testid="project-tasks">
       <h2 id="project-tasks-heading">Tasks</h2>
@@ -90,6 +91,7 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
                   <th scope="col">Task</th>
                   <th scope="col">Due date</th>
                   <th scope="col">Assignee</th>
+                  <th scope="col">Checklist</th>
                   <th scope="col">Status</th>
                   <th scope="col">Action</th>
                 </tr>
@@ -100,6 +102,14 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
                     <td data-testid="task-title">{{ t.title }}</td>
                     <td data-testid="task-due-date">{{ t.dueDate ?? '' }}</td>
                     <td data-testid="task-assignee">{{ t.assignee ?? '' }}</td>
+                    <td>
+                      <app-task-checklist
+                        [projectId]="projectId()"
+                        [taskId]="t.id"
+                        [taskTitle]="t.title"
+                        [items]="t.checklist"
+                      />
+                    </td>
                     <td data-testid="task-status">{{ t.done ? 'DONE' : 'OPEN' }}</td>
                     <td>
                       <button

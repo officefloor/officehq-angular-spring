@@ -37,4 +37,17 @@ public class TaskController {
     public TaskResponse toggle(@PathVariable Long projectId, @PathVariable Long taskId) {
         return service.toggle(projectId, taskId);
     }
+
+    @PostMapping("/{taskId}/checklist")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ChecklistItemResponse addChecklistItem(@PathVariable Long projectId, @PathVariable Long taskId,
+            @Valid @RequestBody ChecklistItemRequest request) {
+        return service.addChecklistItem(projectId, taskId, request);
+    }
+
+    @PostMapping("/{taskId}/checklist/{itemId}/toggle")
+    public ChecklistItemResponse toggleChecklistItem(@PathVariable Long projectId, @PathVariable Long taskId,
+            @PathVariable Long itemId) {
+        return service.toggleChecklistItem(projectId, taskId, itemId);
+    }
 }

@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.task;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.project.Project;
 import net.officefloor.hq.app.project.ProjectRepository;
@@ -13,11 +15,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class TaskService {
 
     private final TaskRepository tasks;
+    private final ChecklistItemRepository checklistItems;
     private final ProjectRepository projects;
     private final Audit audit;
 
-    public TaskService(TaskRepository tasks, ProjectRepository projects, Audit audit) {
+    public TaskService(TaskRepository tasks, ChecklistItemRepository checklistItems, ProjectRepository projects,
+            Audit audit) {
         this.tasks = tasks;
+        this.checklistItems = checklistItems;
         this.projects = projects;
         this.audit = audit;
     }
@@ -27,7 +32,11 @@ public class TaskService {
         if (!projects.existsById(projectId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job");
         }
-        return tasks.findByProjectIdOrderById(projectId).stream().map(TaskResponse::from).toList();
+        Map<Long, List<ChecklistItemResponse>> checklists = checklistItems.findByTaskProjectIdOrderById(projectId)
+                .stream().map(ChecklistItemResponse::from)
+                .collect(Collectors.groupingBy(ChecklistItemResponse::taskId));
+        return tasks.findByProjectIdOrderById(projectId).stream()
+                .map(t -> TaskResponse.from(t, checklists.getOrDefault(t.getId(), List.of()))).toList();
     }
 
     @Transactional
@@ -36,16 +45,40 @@ public class TaskService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
         Task saved = tasks.save(new Task(project, request.title().trim(), request.dueDate(),
                 request.assignee() == null || request.assignee().isBlank() ? null : request.assignee().trim()));
-        return TaskResponse.from(saved);
+        return TaskResponse.from(saved, List.of());
     }
 
     /** Ticks a task off (or reopens it) and records the change in the audit log. */
     @Transactional
     public TaskResponse toggle(Long projectId, Long taskId) {
-        Task task = tasks.findByIdAndProjectId(taskId, projectId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown task"));
+        Task task = findTask(projectId, taskId);
         task.toggle();
         audit.record("TASK_TOGGLED id=" + task.getId() + " done=" + task.isDone());
-        return TaskResponse.from(task);
+        return TaskResponse.from(task, checklistItems.findByTaskIdOrderById(taskId).stream()
+                .map(ChecklistItemResponse::from).toList());
+    }
+
+    /** Adds a sub-item to a task's checklist. */
+    @Transactional
+    public ChecklistItemResponse addChecklistItem(Long projectId, Long taskId, ChecklistItemRequest request) {
+        Task task = findTask(projectId, taskId);
+        ChecklistItem saved = checklistItems.save(new ChecklistItem(task, request.text().trim()));
+        audit.record("CHECKLIST_ITEM_ADDED id=" + saved.getId() + " taskId=" + taskId);
+        return ChecklistItemResponse.from(saved);
+    }
+
+    /** Ticks a checklist item off (or reopens it) and records the change in the audit log. */
+    @Transactional
+    public ChecklistItemResponse toggleChecklistItem(Long projectId, Long taskId, Long itemId) {
+        ChecklistItem item = checklistItems.findByIdAndTaskIdAndTaskProjectId(itemId, taskId, projectId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown checklist item"));
+        item.toggle();
+        audit.record("CHECKLIST_ITEM_TOGGLED id=" + item.getId() + " done=" + item.isDone());
+        return ChecklistItemResponse.from(item);
+    }
+
+    private Task findTask(Long projectId, Long taskId) {
+        return tasks.findByIdAndProjectId(taskId, projectId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown task"));
     }
 }

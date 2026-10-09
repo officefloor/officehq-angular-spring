@@ -55,6 +55,7 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE note RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project_tag");
             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE task_checklist_item RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
@@ -140,12 +141,14 @@ public class TestSupportController {
             jdbc.update("INSERT INTO project_tag (project_id, tag_id) VALUES (?, ?)",
                     ((Number) pt.get("projectId")).longValue(), ((Number) pt.get("tagId")).longValue());
         }
+        // Tasks are given at the top level (with a projectId) or nested inside their project.
         for (Map<String, Object> t : rows(fixture, "tasks")) {
-            jdbc.update("INSERT INTO task (id, project_id, title, done, due_date, assignee) VALUES (?, ?, ?, ?, ?, ?)",
-                    ((Number) t.get("id")).longValue(), ((Number) t.get("projectId")).longValue(),
-                    t.get("title"), Boolean.TRUE.equals(t.get("done")),
-                    t.get("dueDate") == null ? null : LocalDate.parse(t.get("dueDate").toString()),
-                    t.get("assignee"));
+            seedTask(t, ((Number) t.get("projectId")).longValue());
+        }
+        for (Map<String, Object> p : rows(fixture, "projects")) {
+            for (Map<String, Object> t : rows(p, "tasks")) {
+                seedTask(t, ((Number) p.get("id")).longValue());
+            }
         }
         for (Map<String, Object> n : rows(fixture, "notes")) {
             Instant at = n.get("at") == null ? clock.instant() : seedInstant(n.get("at").toString());
@@ -333,11 +336,25 @@ public class TestSupportController {
         restartIdentity("invoice_line_item");
         restartIdentity("invoice_discount");
         restartIdentity("task");
+        restartIdentity("task_checklist_item");
         restartIdentity("tag");
         restartIdentity("note");
         restartIdentity("payment");
         restartIdentity("credit_note");
         restartIdentity("deposit");
+    }
+
+    /** A task and the sub-items on its checklist. */
+    private void seedTask(Map<String, Object> t, long projectId) {
+        long taskId = ((Number) t.get("id")).longValue();
+        jdbc.update("INSERT INTO task (id, project_id, title, done, due_date, assignee) VALUES (?, ?, ?, ?, ?, ?)",
+                taskId, projectId, t.get("title"), Boolean.TRUE.equals(t.get("done")),
+                t.get("dueDate") == null ? null : LocalDate.parse(t.get("dueDate").toString()),
+                t.get("assignee"));
+        for (Map<String, Object> c : rows(t, "checklist")) {
+            jdbc.update("INSERT INTO task_checklist_item (id, task_id, text, done) VALUES (?, ?, ?, ?)",
+                    ((Number) c.get("id")).longValue(), taskId, c.get("text"), Boolean.TRUE.equals(c.get("done")));
+        }
     }
 
     /** A fixture timestamp, either a full instant or a bare date taken as the start of that day (UTC). */
