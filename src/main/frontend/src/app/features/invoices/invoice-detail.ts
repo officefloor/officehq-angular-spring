@@ -6,6 +6,7 @@ import { RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
 import { Notes } from '../notes/notes';
 import { InvoicePayments } from '../payments/invoice-payments';
+import { InvoiceCreditNotes } from '../credit-notes/invoice-credit-notes';
 import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
@@ -24,7 +25,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
-  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, Notes],
+  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, Notes],
   template: `
     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
     @if (invoice.error()) {
@@ -706,6 +707,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
         [currency]="inv.currency"
         [canRecord]="inv.status === 'SENT' || inv.status === 'PARTIAL'"
         (recorded)="invoice.reload()"
+      />
+
+      <app-invoice-credit-notes
+        [projectId]="projectIdNumber()"
+        [invoiceId]="inv.id"
+        [currency]="inv.currency"
+        [canIssue]="inv.status !== 'DRAFT' && inv.status !== 'VOID'"
       />
 
       <app-notes [projectId]="projectIdNumber()" [invoiceId]="inv.id" />
