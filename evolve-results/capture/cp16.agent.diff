@@ -1,0 +1,490 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 0697529..7dfcf0c 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -1,13 +1,14 @@
+ import { Component, computed, inject, input } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
++import { ClientContacts } from '../contacts/client-contacts';
+ import { ClientProjects } from '../projects/client-projects';
+ import { ClientService } from './client.service';
+ 
+-// A single client's page: their name and email, and the projects being done for them.
++// A single client's page: their name and email, their contacts, and the projects being done for them.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [RouterLink, ClientProjects],
++  imports: [RouterLink, ClientContacts, ClientProjects],
+   template: `
+     <a routerLink="/clients" data-testid="client-back">Back to clients</a>
+     @if (client.error()) {
+@@ -15,6 +16,7 @@ import { ClientService } from './client.service';
+     } @else if (client.value(); as c) {
+       <h1 data-testid="client-detail-name">{{ c.name }}</h1>
+       <p>Email: <span data-testid="client-detail-email">{{ c.email }}</span></p>
++      <app-client-contacts [clientId]="clientId()" />
+       <app-client-projects [clientId]="clientId()" />
+     }
+   `,
+diff --git a/src/main/frontend/src/app/features/contacts/client-contacts.ts b/src/main/frontend/src/app/features/contacts/client-contacts.ts
+new file mode 100644
+index 0000000..437719f
+--- /dev/null
++++ b/src/main/frontend/src/app/features/contacts/client-contacts.ts
+@@ -0,0 +1,160 @@
++import { Component, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { ContactService } from './contact.service';
++
++type ContactField = 'name' | 'email' | 'role';
++
++// A client's contacts: add a contact (name, email, role) and list the contacts kept for that client.
++@Component({
++  selector: 'app-client-contacts',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="client-contacts-heading" data-testid="client-contacts">
++      <h2 id="client-contacts-heading">Contacts</h2>
++
++      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="contact-form" novalidate>
++        <div>
++          <label for="contact-name">Name</label>
++          <input
++            id="contact-name"
++            type="text"
++            formControlName="name"
++            autocomplete="name"
++            data-testid="contact-form-name"
++            [attr.aria-invalid]="showError('name')"
++            [attr.aria-describedby]="showError('name') ? 'contact-name-error' : null"
++          />
++          @if (showError('name')) {
++            <p id="contact-name-error" role="alert" data-testid="contact-form-name-error">
++              Name is required.
++            </p>
++          }
++        </div>
++        <div>
++          <label for="contact-email">Email</label>
++          <input
++            id="contact-email"
++            type="email"
++            formControlName="email"
++            autocomplete="email"
++            data-testid="contact-form-email"
++            [attr.aria-invalid]="showError('email')"
++            [attr.aria-describedby]="showError('email') ? 'contact-email-error' : null"
++          />
++          @if (showError('email')) {
++            <p id="contact-email-error" role="alert" data-testid="contact-form-email-error">
++              Enter a valid email address.
++            </p>
++          }
++        </div>
++        <div>
++          <label for="contact-role">Role</label>
++          <input
++            id="contact-role"
++            type="text"
++            formControlName="role"
++            autocomplete="organization-title"
++            data-testid="contact-form-role"
++            [attr.aria-invalid]="showError('role')"
++            [attr.aria-describedby]="showError('role') ? 'contact-role-error' : null"
++          />
++          @if (showError('role')) {
++            <p id="contact-role-error" role="alert" data-testid="contact-form-role-error">
++              Role is required.
++            </p>
++          }
++        </div>
++        <button type="submit" data-testid="contact-form-submit" [disabled]="saving()">
++          Add contact
++        </button>
++        @if (saveError()) {
++          <p role="alert" data-testid="contact-form-error">{{ saveError() }}</p>
++        }
++      </form>
++
++      @if (contacts.error()) {
++        <p role="alert" data-testid="client-contacts-error">Could not load the contacts.</p>
++      } @else if (contacts.hasValue()) {
++        @if (contacts.value().length === 0) {
++          <p data-testid="client-contacts-empty">No contacts for this client yet.</p>
++        } @else {
++          <table data-testid="client-contacts-table">
++            <caption>Contacts for this client</caption>
++            <thead>
++              <tr>
++                <th scope="col">Name</th>
++                <th scope="col">Email</th>
++                <th scope="col">Role</th>
++              </tr>
++            </thead>
++            <tbody>
++              @for (c of contacts.value(); track c.id) {
++                <tr [attr.data-testid]="'contact-row-' + c.id">
++                  <td data-testid="contact-name">{{ c.name }}</td>
++                  <td data-testid="contact-email">{{ c.email }}</td>
++                  <td data-testid="contact-role">{{ c.role }}</td>
++                </tr>
++              }
++            </tbody>
++          </table>
++        }
++      }
++    </section>
++  `,
++})
++export class ClientContacts {
++  private readonly service = inject(ContactService);
++
++  readonly clientId = input.required<number>();
++
++  protected readonly contacts = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.service.listForClient(params),
++  });
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    name: ['', [Validators.required, Validators.maxLength(255)]],
++    email: [
++      '',
++      [
++        Validators.required,
++        Validators.email,
++        // Validators.email accepts "a@b"; also require a dotted domain (matches the server rule).
++        Validators.pattern(/^[^@\s]+@[^@\s]+\.[^@\s]+$/),
++        Validators.maxLength(255),
++      ],
++    ],
++    role: ['', [Validators.required, Validators.maxLength(255)]],
++  });
++
++  protected showError(field: ContactField): boolean {
++    const control = this.form.controls[field];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    const { name, email, role } = this.form.getRawValue();
++    this.saving.set(true);
++    this.saveError.set(null);
++    this.service
++      .create(this.clientId(), { name: name.trim(), email: email.trim(), role: role.trim() })
++      .subscribe({
++        next: (created) => {
++          this.contacts.update((list) => [...(list ?? []), created]);
++          this.form.reset();
++          this.saving.set(false);
++        },
++        error: () => {
++          this.saveError.set('Could not save the contact. Please try again.');
++          this.saving.set(false);
++        },
++      });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/contacts/contact.service.ts b/src/main/frontend/src/app/features/contacts/contact.service.ts
+new file mode 100644
+index 0000000..0d3cce9
+--- /dev/null
++++ b/src/main/frontend/src/app/features/contacts/contact.service.ts
+@@ -0,0 +1,26 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++export interface Contact {
++  id: number;
++  clientId: number;
++  name: string;
++  email: string;
++  role: string;
++}
++
++export type NewContact = Pick<Contact, 'name' | 'email' | 'role'>;
++
++@Injectable({ providedIn: 'root' })
++export class ContactService {
++  private readonly http = inject(HttpClient);
++
++  listForClient(clientId: number): Observable<Contact[]> {
++    return this.http.get<Contact[]>(`/api/clients/${clientId}/contacts`);
++  }
++
++  create(clientId: number, contact: NewContact): Observable<Contact> {
++    return this.http.post<Contact>(`/api/clients/${clientId}/contacts`, contact);
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index a08b641..af8c798 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -41,6 +41,7 @@ public class TestSupportController {
+         // referential checks for the duration of the truncates.
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+         try {
++            jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
+@@ -57,6 +58,11 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"));
+         }
++        for (Map<String, Object> c : rows(fixture, "contacts")) {
++            jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
++                    ((Number) c.get("id")).longValue(), ((Number) c.get("clientId")).longValue(),
++                    c.get("name"), c.get("email"), c.get("role"));
++        }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+             jdbc.update("INSERT INTO project (id, name, client_id) VALUES (?, ?, ?)",
+                     ((Number) p.get("id")).longValue(), p.get("name"),
+@@ -75,6 +81,7 @@ public class TestSupportController {
+         }
+         // Continue generated ids after the explicitly seeded ones.
+         restartIdentity("client");
++        restartIdentity("contact");
+         restartIdentity("project");
+         restartIdentity("invoice");
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+index c84f4e3..7a784a9 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+@@ -10,5 +10,5 @@ public record ClientRequest(
+         @NotBlank @Email(regexp = ClientRequest.EMAIL_PATTERN) @Size(max = 255) String email) {
+ 
+     /** Requires a dotted domain, which plain {@code @Email} does not (it accepts {@code a@b}). */
+-    static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
++    public static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ClientContactController.java b/src/main/java/net/officefloor/hq/app/contact/ClientContactController.java
+new file mode 100644
+index 0000000..dac084d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/contact/ClientContactController.java
+@@ -0,0 +1,35 @@
++package net.officefloor.hq.app.contact;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The contacts kept for a client. */
++@RestController
++@RequestMapping("/api/clients/{clientId}/contacts")
++public class ClientContactController {
++
++    private final ContactService service;
++
++    public ClientContactController(ContactService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<ContactResponse> list(@PathVariable Long clientId) {
++        return service.listForClient(clientId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public ContactResponse create(@PathVariable Long clientId, @Valid @RequestBody ContactRequest request) {
++        return service.create(clientId, request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/contact/Contact.java b/src/main/java/net/officefloor/hq/app/contact/Contact.java
+new file mode 100644
+index 0000000..0848b40
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/contact/Contact.java
+@@ -0,0 +1,61 @@
++package net.officefloor.hq.app.contact;
++
++import jakarta.persistence.Entity;
++import jakarta.persistence.FetchType;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.ManyToOne;
++import jakarta.persistence.Table;
++import net.officefloor.hq.app.client.Client;
++
++/** A person to contact at a client, with their role there. */
++@Entity
++@Table(name = "contact")
++public class Contact {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @ManyToOne(fetch = FetchType.LAZY, optional = false)
++    @JoinColumn(name = "client_id", nullable = false)
++    private Client client;
++
++    private String name;
++
++    private String email;
++
++    private String role;
++
++    protected Contact() {
++    }
++
++    public Contact(Client client, String name, String email, String role) {
++        this.client = client;
++        this.name = name;
++        this.email = email;
++        this.role = role;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Client getClient() {
++        return client;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++
++    public String getRole() {
++        return role;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java b/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java
+new file mode 100644
+index 0000000..30515a8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.contact;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface ContactRepository extends JpaRepository<Contact, Long> {
++
++    /** A client's contacts in the order they were added. */
++    List<Contact> findByClientIdOrderById(Long clientId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ContactRequest.java b/src/main/java/net/officefloor/hq/app/contact/ContactRequest.java
+new file mode 100644
+index 0000000..c0b2354
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/contact/ContactRequest.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.contact;
++
++import jakarta.validation.constraints.Email;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import net.officefloor.hq.app.client.ClientRequest;
++
++/** Payload to add a contact to a client. */
++public record ContactRequest(
++        @NotBlank @Size(max = 255) String name,
++        @NotBlank @Email(regexp = ClientRequest.EMAIL_PATTERN) @Size(max = 255) String email,
++        @NotBlank @Size(max = 255) String role) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ContactResponse.java b/src/main/java/net/officefloor/hq/app/contact/ContactResponse.java
+new file mode 100644
+index 0000000..d5ea6d5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/contact/ContactResponse.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.contact;
++
++public record ContactResponse(Long id, Long clientId, String name, String email, String role) {
++
++    static ContactResponse from(Contact contact) {
++        return new ContactResponse(contact.getId(), contact.getClient().getId(), contact.getName(),
++                contact.getEmail(), contact.getRole());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ContactService.java b/src/main/java/net/officefloor/hq/app/contact/ContactService.java
+new file mode 100644
+index 0000000..3409c3d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/contact/ContactService.java
+@@ -0,0 +1,38 @@
++package net.officefloor.hq.app.contact;
++
++import java.util.List;
++import net.officefloor.hq.app.client.Client;
++import net.officefloor.hq.app.client.ClientRepository;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class ContactService {
++
++    private final ContactRepository contacts;
++    private final ClientRepository clients;
++
++    public ContactService(ContactRepository contacts, ClientRepository clients) {
++        this.contacts = contacts;
++        this.clients = clients;
++    }
++
++    @Transactional(readOnly = true)
++    public List<ContactResponse> listForClient(Long clientId) {
++        if (!clients.existsById(clientId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
++        }
++        return contacts.findByClientIdOrderById(clientId).stream().map(ContactResponse::from).toList();
++    }
++
++    @Transactional
++    public ContactResponse create(Long clientId, ContactRequest request) {
++        Client client = clients.findById(clientId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
++        Contact saved = contacts.save(new Contact(client, request.name().trim(), request.email().trim(),
++                request.role().trim()));
++        return ContactResponse.from(saved);
++    }
++}
+diff --git a/src/main/resources/db/migration/V8__create_contact.sql b/src/main/resources/db/migration/V8__create_contact.sql
+new file mode 100644
+index 0000000..bd721c3
+--- /dev/null
++++ b/src/main/resources/db/migration/V8__create_contact.sql
+@@ -0,0 +1,12 @@
++CREATE TABLE contact (
++    id        BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    client_id BIGINT       NOT NULL,
++    name      VARCHAR(255) NOT NULL,
++    email     VARCHAR(255) NOT NULL,
++    role      VARCHAR(255) NOT NULL,
++    CONSTRAINT contact_client_fk FOREIGN KEY (client_id) REFERENCES client (id),
++    -- Backstop for the API validation, matching the client email rule.
++    CONSTRAINT contact_email_format CHECK (email LIKE '_%@_%._%' AND email NOT LIKE '% %')
++);
++
++CREATE INDEX contact_client_idx ON contact (client_id);
