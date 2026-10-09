@@ -1,0 +1,501 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index d82910c..dc97a45 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -43,6 +43,9 @@ import { Client, ClientService } from './client.service';
+           <span data-testid="client-tax-number-none">Not tax registered</span>
+         }
+       </p>
++      <p>
++        Prices: <span data-testid="client-tax-mode">{{ c.taxInclusive ? 'Include tax' : 'Tax added on' }}</span>
++      </p>
+       <p>
+         Main contact:
+         @if (c.primaryContact; as primary) {
+diff --git a/src/main/frontend/src/app/features/clients/client-edit-form.ts b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+index 270854c..23c3dab 100644
+--- a/src/main/frontend/src/app/features/clients/client-edit-form.ts
++++ b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+@@ -3,7 +3,7 @@ import { Component, ElementRef, OnInit, afterNextRender, inject, input, output,
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Client, ClientService } from './client.service';
+ 
+-// Form to correct one client's name, email, phone number or tax number. Emits the saved client, or cancelled when abandoned.
++// Form to correct one client's name, email, phone number, tax number or whether their prices include tax. Emits the saved client, or cancelled when abandoned.
+ @Component({
+   selector: 'app-client-edit-form',
+   imports: [ReactiveFormsModule],
+@@ -88,6 +88,12 @@ import { Client, ClientService } from './client.service';
+           </p>
+         }
+       </div>
++      <div>
++        <label>
++          <input type="checkbox" formControlName="taxInclusive" data-testid="client-edit-form-tax-inclusive" />
++          Prices include tax
++        </label>
++      </div>
+       <button type="submit" data-testid="client-edit-form-submit" [disabled]="saving()">Save</button>
+       <button type="button" data-testid="client-edit-form-cancel" (click)="cancelled.emit()">Cancel</button>
+       @if (saveError()) {
+@@ -121,6 +127,7 @@ export class ClientEditForm implements OnInit {
+     ],
+     phone: ['', Validators.maxLength(50)],
+     taxNumber: ['', Validators.maxLength(50)],
++    taxInclusive: false,
+   });
+ 
+   constructor() {
+@@ -128,8 +135,8 @@ export class ClientEditForm implements OnInit {
+   }
+ 
+   ngOnInit(): void {
+-    const { name, email, phone, taxNumber } = this.client();
+-    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '' });
++    const { name, email, phone, taxNumber, taxInclusive } = this.client();
++    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', taxInclusive });
+   }
+ 
+   protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber'): boolean {
+@@ -142,10 +149,10 @@ export class ClientEditForm implements OnInit {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email, phone, taxNumber } = this.form.getRawValue();
++    const { name, email, phone, taxNumber, taxInclusive } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null }).subscribe({
++    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, taxInclusive }).subscribe({
+       next: (updated) => {
+         this.saving.set(false);
+         this.saved.emit(updated);
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 5c1c025..8929070 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -15,6 +15,8 @@ export interface Client {
+   phone: string | null;
+   /** The client's tax registration number; null when they are not tax registered. */
+   taxNumber: string | null;
++  /** Whether the client's prices already include tax, so it is worked back out of them rather than added on. */
++  taxInclusive: boolean;
+   archived: boolean;
+   /** The client's main contact; null until one is chosen. */
+   primaryContact: { id: number; name: string } | null;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index ae14911..781ad42 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -89,6 +89,12 @@ import { Client, ClientService } from './client.service';
+           </p>
+         }
+       </div>
++      <div>
++        <label>
++          <input type="checkbox" formControlName="taxInclusive" data-testid="client-form-tax-inclusive" />
++          Prices include tax
++        </label>
++      </div>
+       <button type="submit" data-testid="client-form-submit" [disabled]="saving()">Add client</button>
+       @if (saveError()) {
+         <p role="alert" data-testid="client-form-error">{{ saveError() }}</p>
+@@ -243,6 +249,7 @@ export class Clients {
+     ],
+     phone: ['', Validators.maxLength(50)],
+     taxNumber: ['', Validators.maxLength(50)],
++    taxInclusive: false,
+   });
+ 
+   constructor() {
+@@ -267,10 +274,10 @@ export class Clients {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email, phone, taxNumber } = this.form.getRawValue();
++    const { name, email, phone, taxNumber, taxInclusive } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null }).subscribe({
++    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, taxInclusive }).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created]);
+         this.form.reset();
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 6714bd5..1a75677 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -13,6 +13,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
+ // amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
+ // sales tax added on it after the discount, any levy (a second tax) added on the same base, and the final total including both taxes.
++// For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
+ // Lines, the discount, the tax rate and the levy rate can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+@@ -28,6 +29,12 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+         <span data-testid="invoice-issued">{{ inv.issuedDate }}</span> · Due
+         <span data-testid="invoice-due">{{ inv.dueDate }}</span>
+       </p>
++      <p>
++        Tax: <span data-testid="invoice-tax-mode">{{ inv.taxInclusive ? 'Inclusive' : 'Exclusive' }}</span>
++        @if (inv.taxInclusive) {
++          (prices already include tax)
++        }
++      </p>
+       @if (inv.clientTaxNumber) {
+         <p>Client tax number: <span data-testid="invoice-client-tax-number">{{ inv.clientTaxNumber }}</span></p>
+       }
+@@ -193,7 +200,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+             </tr>
+             <tr>
+               <th scope="row" colspan="4" data-testid="invoice-tax-label">
+-                Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)
++                Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
+               </th>
+               <td data-testid="invoice-tax">{{ inv.tax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+               @if (inv.status === 'DRAFT') {
+@@ -202,7 +209,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+             </tr>
+             <tr>
+               <th scope="row" colspan="4" data-testid="invoice-tax-levy-label">
+-                Levy (<span data-testid="invoice-tax-levy-pct">{{ inv.levyPct | number: '1.0-2' : 'en-US' }}</span>%)
++                Levy (<span data-testid="invoice-tax-levy-pct">{{ inv.levyPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
+               </th>
+               <td data-testid="invoice-tax-levy">{{ inv.levy | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+               @if (inv.status === 'DRAFT') {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index ffe7b5a..63c091e 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -97,6 +97,8 @@ export interface InvoiceDetail extends Invoice {
+   tax: number;
+   levyPct: number;
+   levy: number;
++  /** Whether the prices already include the tax and levy, so they are worked back out rather than added on. */
++  taxInclusive: boolean;
+   lineItems: LineItem[];
+   /** The client's tax registration number; null when they are not tax registered. */
+   clientTaxNumber: string | null;
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index cc0ca15..47bb9e1 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -76,9 +76,10 @@ public class TestSupportController {
+             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, archived, currency) VALUES (?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, tax_inclusive, archived, currency)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"),
+-                    Boolean.TRUE.equals(c.get("archived")),
++                    Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("archived")),
+                     c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString());
+         }
+         for (Map<String, Object> c : rows(fixture, "contacts")) {
+@@ -161,10 +162,16 @@ public class TestSupportController {
+             BigDecimal levyPct = i.get("levyPct") == null ? BigDecimal.ZERO
+                     : new BigDecimal(i.get("levyPct").toString());
+             BigDecimal levy = taxableBase.multiply(levyPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+-            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, levy_pct, status, issued_date, due_date)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+-                    invoiceId, ((Number) i.get("projectId")).longValue(),
+-                    discounted.add(tax).add(levy), discountPct, taxPct, levyPct,
++            // An invoice for a tax-inclusive client already has the taxes inside its prices, so its amount is
++            // just the discounted subtotal.
++            long projectId = ((Number) i.get("projectId")).longValue();
++            boolean taxInclusive = Boolean.TRUE.equals(jdbc.queryForObject(
++                    "SELECT c.tax_inclusive FROM project p JOIN client c ON c.id = p.client_id WHERE p.id = ?",
++                    Boolean.class, projectId));
++            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, levy_pct, tax_inclusive, status,"
++                    + " issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    invoiceId, projectId,
++                    taxInclusive ? discounted : discounted.add(tax).add(levy), discountPct, taxPct, levyPct, taxInclusive,
+                     seedStatus(i.get("status")), issued, due);
+             for (Map<String, Object> l : lineItems) {
+                 if (l.get("id") != null) {
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index 7d23d74..3e292fb 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -33,6 +33,9 @@ public class Client {
+ 
+     private boolean archived;
+ 
++    /** Whether the client's prices already include tax, so tax is worked back out of them rather than added on. */
++    private boolean taxInclusive;
++
+     /** The currency the client is billed in; all of their money is in it. */
+     @Enumerated(EnumType.STRING)
+     private Currency currency = Currency.USD;
+@@ -80,6 +83,14 @@ public class Client {
+         this.taxNumber = taxNumber;
+     }
+ 
++    public boolean isTaxInclusive() {
++        return taxInclusive;
++    }
++
++    public void setTaxInclusive(boolean taxInclusive) {
++        this.taxInclusive = taxInclusive;
++    }
++
+     public boolean isArchived() {
+         return archived;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+index e8ba844..d736998 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+@@ -4,12 +4,16 @@ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
+ 
+-/** Payload to create a client, or to correct an existing client's name, email, phone number and tax number. */
++/**
++ * Payload to create a client, or to correct an existing client's name, email, phone number and tax number,
++ * and whether their prices already include tax (left as it is when not given).
++ */
+ public record ClientRequest(
+         @NotBlank @Size(max = 255) String name,
+         @NotBlank @Email(regexp = ClientRequest.EMAIL_PATTERN) @Size(max = 255) String email,
+         @Size(max = 50) String phone,
+-        @Size(max = 50) String taxNumber) {
++        @Size(max = 50) String taxNumber,
++        Boolean taxInclusive) {
+ 
+     /** Requires a dotted domain, which plain {@code @Email} does not (it accepts {@code a@b}). */
+     public static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index 2fff24e..d199417 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -3,7 +3,7 @@ package net.officefloor.hq.app.client;
+ import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+-public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, boolean archived, PrimaryContact primaryContact,
++public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, boolean taxInclusive, boolean archived, PrimaryContact primaryContact,
+         Currency currency, BigDecimal outstanding) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+@@ -13,7 +13,7 @@ public record ClientResponse(Long id, String name, String email, String phone, S
+     /** A client with what they still owe, in their currency: what is left to pay on their sent, not yet fully paid invoices. */
+     public static ClientResponse from(Client client, BigDecimal outstanding) {
+         Contact primary = client.getPrimaryContact();
+-        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.isArchived(),
++        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.isTaxInclusive(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
+                 client.getCurrency(), outstanding);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 3775bfb..5a1c46c 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -68,8 +68,9 @@ public class ClientService {
+             throw emailTaken();
+         }
+         try {
+-            return respond(clients.saveAndFlush(
+-                    new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber())));
++            Client client = new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber());
++            client.setTaxInclusive(Boolean.TRUE.equals(request.taxInclusive()));
++            return respond(clients.saveAndFlush(client));
+         } catch (DataIntegrityViolationException e) {
+             // Lost a race with a concurrent add of the same email; the unique constraint caught it.
+             if (String.valueOf(e.getMessage()).toUpperCase().contains("CLIENT_EMAIL_UQ")) {
+@@ -81,7 +82,8 @@ public class ClientService {
+ 
+     /**
+      * Corrects a client's name, email, phone number and tax number; the email, once trimmed, must not belong to another client.
+-     * The change is recorded in the audit log.
++     * When whether their prices include tax changes, their draft invoices are reworked to match; sent ones keep the
++     * figures they were issued with. The change is recorded in the audit log.
+      */
+     @Transactional
+     public ClientResponse update(Long id, ClientRequest request) {
+@@ -91,6 +93,11 @@ public class ClientService {
+             throw emailTaken();
+         }
+         client.rename(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber());
++        if (request.taxInclusive() != null && request.taxInclusive() != client.isTaxInclusive()) {
++            client.setTaxInclusive(request.taxInclusive());
++            invoices.findByClientIdAndStatus(id, InvoiceStatus.DRAFT)
++                    .forEach(i -> i.applyTaxInclusive(request.taxInclusive()));
++        }
+         try {
+             clients.flush();
+         } catch (DataIntegrityViolationException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 0ca039a..7e88c4a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -27,6 +27,10 @@ import net.officefloor.hq.app.project.Project;
+  * their sum as a discount, then add a percentage sales tax on what is left of the taxable lines only
+  * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
+  * its stored amount is always that subtotal less the discount plus the tax plus the levy.
++ * <p>
++ * A tax-inclusive invoice (for a client whose prices already include tax) instead works the tax and
++ * levy back out of the taxable lines after the discount: they are inside the price, so its amount is
++ * just the subtotal less the discount, and the taxable base is what is left once they are taken out.
+  */
+ @Entity
+ @Table(name = "invoice")
+@@ -52,6 +56,10 @@ public class Invoice {
+     @Column(name = "levy_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal levyPct = BigDecimal.ZERO.setScale(2);
+ 
++    /** Whether the prices already include the tax and levy, so they are backed out rather than added on. */
++    @Column(name = "tax_inclusive", nullable = false)
++    private boolean taxInclusive;
++
+     @Enumerated(EnumType.STRING)
+     @Column(nullable = false, length = 16)
+     private InvoiceStatus status = InvoiceStatus.DRAFT;
+@@ -73,6 +81,7 @@ public class Invoice {
+         this.project = project;
+         this.issuedDate = issuedDate;
+         this.dueDate = dueDate;
++        this.taxInclusive = project.getClient().isTaxInclusive();
+     }
+ 
+     public Long getId() {
+@@ -108,19 +117,24 @@ public class Invoice {
+         return taxPct;
+     }
+ 
++    /** Whether the prices already include the tax and levy, so they are worked back out rather than added on. */
++    public boolean isTaxInclusive() {
++        return taxInclusive;
++    }
++
+     /**
+      * What the sales tax is charged on: the taxable lines (leaving out tax-free ones) less the discount
+-     * taken off them, to the cent.
++     * taken off them, to the cent. On a tax-inclusive invoice that is what is left of them once the tax
++     * and levy inside them are taken out.
+      */
+     public BigDecimal getTaxableBase() {
+-        BigDecimal taxable = lineItems.stream().filter(l -> !l.isTaxExempt()).map(InvoiceLineItem::getAmount)
+-                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
+-        return taxable.subtract(discountOn(taxable));
++        BigDecimal gross = getDiscountedTaxable();
++        return taxInclusive ? gross.subtract(getTax()).subtract(getLevy()) : gross;
+     }
+ 
+-    /** How much sales tax is added on the taxable base, to the cent. */
++    /** How much sales tax is added on the taxable base (or is inside it, when tax-inclusive), to the cent. */
+     public BigDecimal getTax() {
+-        return taxOn(getTaxableBase());
++        return taxInclusive ? includedIn(getDiscountedTaxable(), taxPct) : taxOn(getTaxableBase());
+     }
+ 
+     /** The levy (second tax) percentage added on top of the sales tax; zero when there is no levy. */
+@@ -128,9 +142,25 @@ public class Invoice {
+         return levyPct;
+     }
+ 
+-    /** How much levy is added on the taxable base, to the cent. */
++    /** How much levy is added on the taxable base (or is inside it, when tax-inclusive), to the cent. */
+     public BigDecimal getLevy() {
+-        return percentOf(getTaxableBase(), levyPct);
++        return taxInclusive ? includedIn(getDiscountedTaxable(), levyPct) : percentOf(getTaxableBase(), levyPct);
++    }
++
++    /** The taxable lines (leaving out tax-free ones) less the discount taken off them, to the cent. */
++    private BigDecimal getDiscountedTaxable() {
++        BigDecimal taxable = lineItems.stream().filter(l -> !l.isTaxExempt()).map(InvoiceLineItem::getAmount)
++                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
++        return taxable.subtract(discountOn(taxable));
++    }
++
++    /**
++     * The part of a tax-inclusive price that is the given percentage, worked back out of it: the price
++     * divided in proportion to the sales tax and levy rates it includes (e.g. 20% tax in 120 is 20).
++     */
++    private BigDecimal includedIn(BigDecimal price, BigDecimal pct) {
++        BigDecimal grossPct = BigDecimal.valueOf(100).add(taxPct).add(levyPct);
++        return price.multiply(pct).divide(grossPct, 2, RoundingMode.HALF_UP);
+     }
+ 
+     public InvoiceStatus getStatus() {
+@@ -193,6 +223,12 @@ public class Invoice {
+         recalculateAmount();
+     }
+ 
++    /** Sets whether this invoice's prices already include tax and reworks its amount to match. */
++    public void applyTaxInclusive(boolean taxInclusive) {
++        this.taxInclusive = taxInclusive;
++        recalculateAmount();
++    }
++
+     /** Sets the levy (second tax) percentage added to this invoice and reworks its amount to match. */
+     public void applyLevy(BigDecimal levyPct) {
+         this.levyPct = levyPct.setScale(2, RoundingMode.HALF_UP);
+@@ -214,7 +250,7 @@ public class Invoice {
+     private void recalculateAmount() {
+         BigDecimal subtotal = getSubtotal();
+         BigDecimal discounted = subtotal.subtract(discountOn(subtotal));
+-        this.amount = discounted.add(getTax()).add(getLevy());
++        this.amount = taxInclusive ? discounted : discounted.add(getTax()).add(getLevy());
+     }
+ 
+     /** Marks this invoice as sent to the client. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 066b61d..26b33a9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -9,12 +9,13 @@ import net.officefloor.hq.app.client.Currency;
+  * A single invoice together with the line items it is built from: their subtotal, the percentage
+  * discount and what it takes off, the sales tax percentage, the taxable base it is charged on (the
+  * taxable lines after the discount) and what it adds, the levy (second tax) percentage and what it adds
+- * on the same base, the amount owed including both taxes, and the
++ * on the same base, the amount owed including both taxes, whether the prices already include the taxes
++ * (so they are worked back out rather than added on), and the
+  * client's tax number (null when the client is not tax registered).
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal subtotal,
+         BigDecimal discountPct, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
+-        BigDecimal levyPct, BigDecimal levy, InvoiceStatus status, LocalDate issuedDate,
++        BigDecimal levyPct, BigDecimal levy, boolean taxInclusive, InvoiceStatus status, LocalDate issuedDate,
+         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber) {
+ 
+     static InvoiceDetailResponse from(Invoice invoice) {
+@@ -22,7 +23,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency,
+                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(),
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscount(),
+                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
+-                invoice.getLevyPct(), invoice.getLevy(),
++                invoice.getLevyPct(), invoice.getLevy(), invoice.isTaxInclusive(),
+                 invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
+                 invoice.getProject().getClient().getTaxNumber());
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+index 6a1b62a..88b8605 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -35,6 +35,10 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+     @Query("SELECT i FROM Invoice i JOIN FETCH i.project p WHERE p.client.id = :clientId ORDER BY i.id")
+     List<Invoice> findByClientIdWithProject(Long clientId);
+ 
++    /** A client's invoices at the given status across all of their projects. */
++    @Query("SELECT i FROM Invoice i JOIN i.project p WHERE p.client.id = :clientId AND i.status = :status ORDER BY i.id")
++    List<Invoice> findByClientIdAndStatus(Long clientId, InvoiceStatus status);
++
+     /** Sum of the amounts of all invoices with any of the given statuses (zero when there are none). */
+     @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.status IN :statuses")
+     BigDecimal sumAmountByStatusIn(Collection<InvoiceStatus> statuses);
+diff --git a/src/main/resources/db/migration/V37__tax_inclusive_pricing.sql b/src/main/resources/db/migration/V37__tax_inclusive_pricing.sql
+new file mode 100644
+index 0000000..d879e9d
+--- /dev/null
++++ b/src/main/resources/db/migration/V37__tax_inclusive_pricing.sql
+@@ -0,0 +1,7 @@
++-- A client's prices can already include tax. For such a client the sales tax and levy are worked back
++-- out of the taxable lines instead of being added on top, so the invoice total is the discounted
++-- subtotal. Each invoice carries whether it is priced tax-inclusive (taken from its client), so a
++-- sent invoice keeps the figures it was issued with. Existing clients and invoices add tax on top,
++-- as before, so no amounts change.
++ALTER TABLE client ADD COLUMN tax_inclusive BOOLEAN DEFAULT FALSE NOT NULL;
++ALTER TABLE invoice ADD COLUMN tax_inclusive BOOLEAN DEFAULT FALSE NOT NULL;
