@@ -2,6 +2,8 @@ package net.officefloor.hq.app;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +44,7 @@ public class TestSupportController {
         // referential checks for the duration of the truncates.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
         try {
+            jdbc.execute("TRUNCATE TABLE note RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project_tag");
             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
@@ -85,6 +88,12 @@ public class TestSupportController {
             jdbc.update("INSERT INTO task (id, project_id, title, done) VALUES (?, ?, ?, ?)",
                     ((Number) t.get("id")).longValue(), ((Number) t.get("projectId")).longValue(),
                     t.get("title"), Boolean.TRUE.equals(t.get("done")));
+        }
+        for (Map<String, Object> n : rows(fixture, "notes")) {
+            Instant at = n.get("at") == null ? Instant.now() : Instant.parse(n.get("at").toString());
+            jdbc.update("INSERT INTO note (id, target_type, target_id, text, created_at) VALUES (?, ?, ?, ?, ?)",
+                    ((Number) n.get("id")).longValue(), n.get("targetType"),
+                    ((Number) n.get("targetId")).longValue(), n.get("text"), Timestamp.from(at));
         }
         for (Map<String, Object> i : rows(fixture, "invoices")) {
             LocalDate issued = i.get("issuedDate") == null ? LocalDate.now()
@@ -131,6 +140,7 @@ public class TestSupportController {
         restartIdentity("invoice_line_item");
         restartIdentity("task");
         restartIdentity("tag");
+        restartIdentity("note");
     }
 
     /**
