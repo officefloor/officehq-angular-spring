@@ -103,6 +103,8 @@ export interface InvoiceDetail extends Invoice {
   taxInclusive: boolean;
   /** Whether the client is tax exempt, so the invoice carries no tax or levy whatever its lines say. */
   taxExempt: boolean;
+  /** The overall tax rate that ended up on the invoice: the tax and levy as a percentage of the total before tax. */
+  effectiveTaxPct: number;
   lineItems: LineItem[];
   /** The client's tax registration number; null when they are not tax registered. */
   clientTaxNumber: string | null;

@@ -117,6 +117,19 @@ public class Invoice {
         return amount.subtract(getTax()).subtract(getLevy());
     }
 
+    /**
+     * The overall tax rate that actually ended up on the invoice: the sales tax and levy together as a
+     * percentage of the total before tax, to two decimal places. It is below the headline rates when some
+     * lines are tax-free, and zero when there is nothing before tax to charge it on.
+     */
+    public BigDecimal getEffectiveTaxPct() {
+        BigDecimal totalExTax = getTotalExTax();
+        if (totalExTax.signum() == 0) {
+            return BigDecimal.ZERO.setScale(2);
+        }
+        return getTax().add(getLevy()).multiply(BigDecimal.valueOf(100)).divide(totalExTax, 2, RoundingMode.HALF_UP);
+    }
+
     /** The percentage taken off the subtotal; zero when there is no discount. */
     public BigDecimal getDiscountPct() {
         return discountPct;

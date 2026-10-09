@@ -14,7 +14,8 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 
 // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
 // amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
-// sales tax added on it after the discount, any levy (a second tax) added on the same base, the total before tax, and the final total including both taxes (also shown as the total after tax).
+// sales tax added on it after the discount, any levy (a second tax) added on the same base, the effective tax rate
+// (the tax and levy as a percentage of the total before tax), the total before tax, and the final total including both taxes (also shown as the total after tax).
 // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
 // Lines, the discount, the tax rate and the levy rate can be changed while it is a draft.
 @Component({
@@ -217,6 +218,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                 Levy (<span data-testid="invoice-tax-levy-pct">{{ inv.levyPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
               </th>
               <td data-testid="invoice-tax-levy">{{ inv.levy | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              @if (inv.status === 'DRAFT') {
+                <td></td>
+              }
+            </tr>
+            <tr>
+              <th scope="row" colspan="4">Effective tax rate (tax and levy as a share of the total before tax)</th>
+              <td data-testid="invoice-effective-tax-rate">{{ inv.effectiveTaxPct | number: '1.2-2' : 'en-US' }}%</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
