@@ -1,0 +1,1275 @@
+{
+  "checkpoint": 103,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48"
+  },
+  "checkpoint_id": "cp103_refund",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "Let me refund a client's unused credit or deposit back to them. Note it, and reduce their\navailable credit.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nLet me refund a client's unused credit or deposit back to them. Note it, and reduce their\navailable credit.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "f7ec77402553bfb0fca0e77af1583ecf2c40c88f",
+  "reset_sha": "",
+  "preagent_sha": "1aec0cd7c46c81733c86126288e0d68d96c275ab",
+  "prev_sha": "1aec0cd7c46c81733c86126288e0d68d96c275ab",
+  "base_sha": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7041432,
+    "input_tokens": 28,
+    "output_tokens": 12300,
+    "cache_read_tokens": 479636,
+    "cache_creation_tokens": 45263,
+    "num_turns": 14,
+    "duration_ms": 124163,
+    "duration_api_ms": 98528,
+    "model": "claude-opus-5-5",
+    "session_id": "fcd44dc3-dfa2-4d12-a9c9-ba02ab45ec38",
+    "stop_reason": "success",
+    "result_text": "You can now refund a client's unused credit from their page, and `bin/e2e` passes. In the test, a client with a $200 deposit is refunded $50, the page then shows $150.00 available, and the audit log records `REFUND_ISSUED client=1 amount=50.00`.\n\nThe request said \"OfficeFloor server\", but the app is actually Spring Boot (only the Java package is named `net.officefloor`), so I followed the existing Spring code.\n\n**How it works**\n- **Form:** the refund form sits on the client's page, right under \"Available credit\". It has an amount and an optional note.\n- **Limits:** a refund can't be more than the client's available credit. If it is, the server refuses it and the form shows an error.\n- **Where the money comes from:** a refund comes out of the client's unused deposits first, then out of any unused credit notes. Each refund stores how much came from each, so both totals drop by exactly that amount.\n- **Other screens updated:**\n  - The Deposits section's \"Held\" figure goes down after a refund and shows a \"Refunded\" line.\n  - You can no longer put deposit money toward invoices once it has been refunded.\n\n**Changes**\n- New migration `V60__create_refund.sql` adds a `refund` table, and the test reset step now clears it.\n- New `refund` package on the server with `POST` and `GET` at `/api/clients/{id}/refunds`.\n- `ClientCreditService`, `DepositService` and `PaymentService` now subtract refunds.\n- On the front end, the form is in `client-credit.ts`, and the client page refreshes the Deposits section after a refund.\n\n**Not done yet:** there is no on-screen list of past refunds or their notes. The `GET` endpoint returns them, so adding a list later would be a small front-end change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.7041432,
+        "num_turns": 14,
+        "duration_ms": 124163,
+        "duration_api_ms": 98528,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp103.agent.jsonl",
+  "agent_diff_file": "cp103.agent.diff",
+  "build_log_file": "cp103.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 124,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients, excluding archived": true,
+      "cp01_clients.spec.ts::creates a client with a unique email": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name, excluding archived": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adding a line item to a new invoice sets its amount": true,
+      "cp05_invoice_pay_audit.spec.ts::recording a full payment marks the invoice paid": true,
+      "cp06_client_search.spec.ts::filters clients by name and skips archived matches": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's active projects by default": true,
+      "cp08_dashboard.spec.ts::shows counts and per-currency outstanding totals": true,
+      "cp09_currency_format.spec.ts::invoice amounts and totals show commas": true,
+      "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount": true,
+      "cp10_invoice_amount_positive.spec.ts::accepts a positive amount": true,
+      "cp100_deposit_allocation.spec.ts::allocates a deposit across invoices": true,
+      "cp101_available_credit.spec.ts::sums unused deposits and credit notes": true,
+      "cp102_job_close.spec.ts::a closed job cannot take a new invoice": true,
+      "cp103_refund.spec.ts::refunding reduces available credit": true,
+      "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates": true,
+      "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first": true,
+      "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it": true,
+      "cp13_invoice_lifecycle.spec.ts::a sent invoice becomes paid once a covering payment is recorded": true,
+      "cp14_all_invoices.spec.ts::lists invoices from every project with project and status": true,
+      "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage": true,
+      "cp16_client_contacts.spec.ts::lists a client's contacts": true,
+      "cp16_client_contacts.spec.ts::adds a contact to a client": true,
+      "cp17_outstanding_sent_only.spec.ts::outstanding is discounted, excludes drafts, and is per currency": true,
+      "cp18_contact_email_validation.spec.ts::rejects a bad contact email": true,
+      "cp19_client_badges.spec.ts::shows project and contact counts": true,
+      "cp20_project_tasks.spec.ts::lists tasks and lets me tick one off": true,
+      "cp21_invoice_line_items.spec.ts::invoice amount is the sum of its line items": true,
+      "cp21_invoice_line_items.spec.ts::adding a line item increases the invoice total": true,
+      "cp21_invoice_line_items.spec.ts::a line discount nets into the subtotal": true,
+      "cp22_line_items_edit.spec.ts::removing a line item lowers the total": true,
+      "cp23_task_filter.spec.ts::shows only open or only done tasks": true,
+      "cp24_project_delete_audit.spec.ts::removing archives the project and records it": true,
+      "cp25_project_archive.spec.ts::archiving hides the project but keeps it": true,
+      "cp26_project_tags.spec.ts::shows, adds and removes tags on a project": true,
+      "cp27_project_tag_filter.spec.ts::shows only projects with the chosen tag": true,
+      "cp28_project_notes.spec.ts::shows notes newest first and adds a new one on top": true,
+      "cp29_client_archive.spec.ts::archiving hides the client but keeps it": true,
+      "cp30_invoice_payments.spec.ts::shows and records payments on an invoice": true,
+      "cp31_invoice_amount_due.spec.ts::amount due uses the discounted total": true,
+      "cp32_invoice_status_derived.spec.ts::a part payment then full payment drive the status": true,
+      "cp32_invoice_status_derived.spec.ts::a credit that clears the remainder settles the invoice": true,
+      "cp33_client_statement.spec.ts::the total owed uses discounted amounts in the client currency": true,
+      "cp34_project_status.spec.ts::shows a project's status": true,
+      "cp34_project_status.spec.ts::sets the status when creating a project": true,
+      "cp35_project_status_filter.spec.ts::shows only projects at the chosen status": true,
+      "cp36_client_active_projects_default.spec.ts::shows active projects, with a toggle for the rest": true,
+      "cp37_project_budget.spec.ts::shows budget, invoiced and remaining": true,
+      "cp38_dashboard_overdue.spec.ts::counts sent invoices past their due date": true,
+      "cp39_invoice_pagination.spec.ts::pages through the invoice list ten at a time": true,
+      "cp40_thousands_separator.spec.ts::shows commas in large amounts in the client currency": true,
+      "cp41_invoice_cancel_audit.spec.ts::cancelling voids the invoice and records it": true,
+      "cp41_invoice_cancel_audit.spec.ts::a voided invoice is excluded from outstanding": true,
+      "cp42_client_primary_contact.spec.ts::shows and changes the main contact": true,
+      "cp43_global_search.spec.ts::finds matching clients and projects": true,
+      "cp44_client_unique_email.spec.ts::rejects a duplicate email": true,
+      "cp45_client_edit.spec.ts::updates a client name and email": true,
+      "cp46_line_item_qty_unit.spec.ts::shows quantity, unit and per-line amount": true,
+      "cp47_invoice_discount.spec.ts::a percentage discount": true,
+      "cp47_invoice_discount.spec.ts::a fixed-amount discount": true,
+      "cp47_invoice_discount.spec.ts::several discounts combine": true,
+      "cp48_discount_everywhere.spec.ts::a percentage discount flows to outstanding": true,
+      "cp48_discount_everywhere.spec.ts::a discount and a surcharge both flow to outstanding": true,
+      "cp49_sales_tax.spec.ts::adds tax after the discount (all lines taxable, no levy)": true,
+      "cp49_sales_tax.spec.ts::excludes tax-free lines from the tax base": true,
+      "cp49_sales_tax.spec.ts::adds a levy on top when one applies": true,
+      "cp50_combined_filter.spec.ts::shows active projects with the chosen label": true,
+      "cp51_client_sort.spec.ts::sorts clients by outstanding amount": true,
+      "cp52_project_to_job_rename.spec.ts::the section reads \"job\" while its testids stay unchanged": true,
+      "cp53_job_code.spec.ts::shows a job code": true,
+      "cp53_job_code.spec.ts::rejects a duplicate code": true,
+      "cp54_invoice_notes.spec.ts::shows and adds notes on an invoice": true,
+      "cp55_dashboard_top_clients.spec.ts::ranks clients by outstanding, shown in their currency": true,
+      "cp56_payment_allocation.spec.ts::splits one payment across two invoices": true,
+      "cp56_payment_allocation.spec.ts::allocates a deposit across invoices": true,
+      "cp57_statement_by_job.spec.ts::groups invoices by job with subtotals": true,
+      "cp58_client_restore.spec.ts::restores an archived client": true,
+      "cp59_statement_printable.spec.ts::shows a printable statement with a grand total": true,
+      "cp60_multi_currency.spec.ts::sets a client currency and shows their money in it": true,
+      "cp60_multi_currency.spec.ts::home screen keeps totals separate per currency": true,
+      "cp61_default_tax_rate.spec.ts::new invoices start with the default tax rate": true,
+      "cp62_client_phone.spec.ts::shows a client phone number": true,
+      "cp63_line_tax_exempt.spec.ts::shows the tax-free marker and lets a line be marked exempt": true,
+      "cp64_tax_per_taxable_line.spec.ts::excludes tax-free lines from the tax": true,
+      "cp65_tax_summary_line.spec.ts::shows the taxable base, the rate label and the tax": true,
+      "cp66_client_tax_number.spec.ts::shows the client tax number on the client and the invoice": true,
+      "cp67_job_description.spec.ts::shows a job description": true,
+      "cp68_second_tax.spec.ts::adds a levy on top of the sales tax": true,
+      "cp69_tax_inclusive_pricing.spec.ts::backs the tax out of a tax-inclusive price": true,
+      "cp70_total_ex_and_inc_tax.spec.ts::shows the ex-tax and inc-tax totals": true,
+      "cp71_tax_rounding_per_line.spec.ts::rounds a taxable line's tax to the cent": true,
+      "cp72_round_per_line_then_sum.spec.ts::totals the rounded line amounts": true,
+      "cp73_client_billing_address.spec.ts::shows a client billing address": true,
+      "cp74_tax_exempt_client.spec.ts::charges no tax for a tax-exempt client": true,
+      "cp75_effective_tax_rate.spec.ts::shows tax as a percentage of the whole invoice": true,
+      "cp76_statement_tax_totals.spec.ts::shows tax per job and overall on the statement": true,
+      "cp77_fixed_amount_discount.spec.ts::takes a flat amount off the invoice": true,
+      "cp78_client_key_account.spec.ts::marks key accounts": true,
+      "cp79_line_discount.spec.ts::shows a line amount after its own discount": true,
+      "cp80_discount_pct_or_fixed.spec.ts::a fixed-amount discount comes off before tax": true,
+      "cp81_early_payment_discount.spec.ts::shows the reduced early-payment amount": true,
+      "cp82_surcharge.spec.ts::a surcharge adds to the total": true,
+      "cp83_task_due_date.spec.ts::shows a task due date": true,
+      "cp84_stacked_discounts.spec.ts::shows each discount and the combined total": true,
+      "cp85_discount_cap.spec.ts::caps a percentage discount at the maximum": true,
+      "cp86_job_billable_flag.spec.ts::shows whether a job is billable": true,
+      "cp87_discount_as_breakdown_line.spec.ts::shows a discount as a negative breakdown line": true,
+      "cp88_line_level_discount_in_subtotal.spec.ts::subtotal already reflects line discounts": true,
+      "cp89_minimum_charge.spec.ts::bills the minimum when the net total is lower": true,
+      "cp90_total_savings.spec.ts::sums the discounts into a savings figure": true,
+      "cp91_client_default_discount.spec.ts::a new invoice starts with the client default discount": true,
+      "cp92_adjustments_everywhere.spec.ts::outstanding reflects discounts and surcharges": true,
+      "cp93_credit_note.spec.ts::raises a credit note against an invoice": true,
+      "cp94_credit_reduces_balance.spec.ts::the invoice due drops by the credit": true,
+      "cp95_task_assignee.spec.ts::shows who a task is for": true,
+      "cp96_status_with_credits.spec.ts::a credit that clears the balance settles the invoice": true,
+      "cp97_write_off.spec.ts::writing off an invoice removes it from what is owed": true,
+      "cp98_client_deposit.spec.ts::records a deposit held for the client": true,
+      "cp99_client_lifetime_billed.spec.ts::sums all invoices ever billed to the client": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients, excluding archived",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 697,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client with a unique email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 649,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 276,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 253,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 366,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name, excluding archived",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 293,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 390,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 433,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adding a line item to a new invoice sets its amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 719,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::recording a full payment marks the invoice paid",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 759,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name and skips archived matches",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 292,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's active projects by default",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 399,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and per-currency outstanding totals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 298,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_currency_format.spec.ts::invoice amounts and totals show commas",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 421,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 414,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::accepts a positive amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 510,
+        "failure": ""
+      },
+      {
+        "test_id": "cp100_deposit_allocation.spec.ts::allocates a deposit across invoices",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 765,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_available_credit.spec.ts::sums unused deposits and credit notes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 393,
+        "failure": ""
+      },
+      {
+        "test_id": "cp102_job_close.spec.ts::a closed job cannot take a new invoice",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 502,
+        "failure": ""
+      },
+      {
+        "test_id": "cp103_refund.spec.ts::refunding reduces available credit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 495,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 424,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 432,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 563,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::a sent invoice becomes paid once a covering payment is recorded",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 653,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_all_invoices.spec.ts::lists invoices from every project with project and status",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 295,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 417,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::lists a client's contacts",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 449,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::adds a contact to a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 500,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_outstanding_sent_only.spec.ts::outstanding is discounted, excludes drafts, and is per currency",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 279,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_contact_email_validation.spec.ts::rejects a bad contact email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 374,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_client_badges.spec.ts::shows project and contact counts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 404,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_project_tasks.spec.ts::lists tasks and lets me tick one off",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 579,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_invoice_line_items.spec.ts::invoice amount is the sum of its line items",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 567,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_invoice_line_items.spec.ts::adding a line item increases the invoice total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 690,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_invoice_line_items.spec.ts::a line discount nets into the subtotal",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 565,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_line_items_edit.spec.ts::removing a line item lowers the total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 833,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_task_filter.spec.ts::shows only open or only done tasks",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 446,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_project_delete_audit.spec.ts::removing archives the project and records it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 421,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_project_archive.spec.ts::archiving hides the project but keeps it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 546,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_project_tags.spec.ts::shows, adds and removes tags on a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 676,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_project_tag_filter.spec.ts::shows only projects with the chosen tag",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 425,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_project_notes.spec.ts::shows notes newest first and adds a new one on top",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 515,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_client_archive.spec.ts::archiving hides the client but keeps it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 397,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_invoice_payments.spec.ts::shows and records payments on an invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 720,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_invoice_amount_due.spec.ts::amount due uses the discounted total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 354,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_invoice_status_derived.spec.ts::a part payment then full payment drive the status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 742,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_invoice_status_derived.spec.ts::a credit that clears the remainder settles the invoice",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 368,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_client_statement.spec.ts::the total owed uses discounted amounts in the client currency",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 487,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_project_status.spec.ts::shows a project's status",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 281,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_project_status.spec.ts::sets the status when creating a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 376,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_project_status_filter.spec.ts::shows only projects at the chosen status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 308,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_client_active_projects_default.spec.ts::shows active projects, with a toggle for the rest",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 467,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_project_budget.spec.ts::shows budget, invoiced and remaining",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 397,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_dashboard_overdue.spec.ts::counts sent invoices past their due date",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 281,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_invoice_pagination.spec.ts::pages through the invoice list ten at a time",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 565,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_thousands_separator.spec.ts::shows commas in large amounts in the client currency",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 359,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_invoice_cancel_audit.spec.ts::cancelling voids the invoice and records it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 545,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_invoice_cancel_audit.spec.ts::a voided invoice is excluded from outstanding",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 272,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_client_primary_contact.spec.ts::shows and changes the main contact",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 532,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_global_search.spec.ts::finds matching clients and projects",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 512,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_client_unique_email.spec.ts::rejects a duplicate email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 578,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_client_edit.spec.ts::updates a client name and email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 480,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_line_item_qty_unit.spec.ts::shows quantity, unit and per-line amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 562,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_invoice_discount.spec.ts::a percentage discount",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 506,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_invoice_discount.spec.ts::a fixed-amount discount",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 561,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_invoice_discount.spec.ts::several discounts combine",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 510,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_discount_everywhere.spec.ts::a percentage discount flows to outstanding",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 264,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_discount_everywhere.spec.ts::a discount and a surcharge both flow to outstanding",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 287,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_sales_tax.spec.ts::adds tax after the discount (all lines taxable, no levy)",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 502,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_sales_tax.spec.ts::excludes tax-free lines from the tax base",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 489,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_sales_tax.spec.ts::adds a levy on top when one applies",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 486,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_combined_filter.spec.ts::shows active projects with the chosen label",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 225,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_client_sort.spec.ts::sorts clients by outstanding amount",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 273,
+        "failure": ""
+      },
+      {
+        "test_id": "cp52_project_to_job_rename.spec.ts::the section reads \"job\" while its testids stay unchanged",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 295,
+        "failure": ""
+      },
+      {
+        "test_id": "cp53_job_code.spec.ts::shows a job code",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 263,
+        "failure": ""
+      },
+      {
+        "test_id": "cp53_job_code.spec.ts::rejects a duplicate code",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 276,
+        "failure": ""
+      },
+      {
+        "test_id": "cp54_invoice_notes.spec.ts::shows and adds notes on an invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 710,
+        "failure": ""
+      },
+      {
+        "test_id": "cp55_dashboard_top_clients.spec.ts::ranks clients by outstanding, shown in their currency",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 285,
+        "failure": ""
+      },
+      {
+        "test_id": "cp56_payment_allocation.spec.ts::splits one payment across two invoices",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 686,
+        "failure": ""
+      },
+      {
+        "test_id": "cp56_payment_allocation.spec.ts::allocates a deposit across invoices",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 613,
+        "failure": ""
+      },
+      {
+        "test_id": "cp57_statement_by_job.spec.ts::groups invoices by job with subtotals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 423,
+        "failure": ""
+      },
+      {
+        "test_id": "cp58_client_restore.spec.ts::restores an archived client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 441,
+        "failure": ""
+      },
+      {
+        "test_id": "cp59_statement_printable.spec.ts::shows a printable statement with a grand total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 497,
+        "failure": ""
+      },
+      {
+        "test_id": "cp60_multi_currency.spec.ts::sets a client currency and shows their money in it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 747,
+        "failure": ""
+      },
+      {
+        "test_id": "cp60_multi_currency.spec.ts::home screen keeps totals separate per currency",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 289,
+        "failure": ""
+      },
+      {
+        "test_id": "cp61_default_tax_rate.spec.ts::new invoices start with the default tax rate",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 393,
+        "failure": ""
+      },
+      {
+        "test_id": "cp62_client_phone.spec.ts::shows a client phone number",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 380,
+        "failure": ""
+      },
+      {
+        "test_id": "cp63_line_tax_exempt.spec.ts::shows the tax-free marker and lets a line be marked exempt",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 640,
+        "failure": ""
+      },
+      {
+        "test_id": "cp64_tax_per_taxable_line.spec.ts::excludes tax-free lines from the tax",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 478,
+        "failure": ""
+      },
+      {
+        "test_id": "cp65_tax_summary_line.spec.ts::shows the taxable base, the rate label and the tax",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 474,
+        "failure": ""
+      },
+      {
+        "test_id": "cp66_client_tax_number.spec.ts::shows the client tax number on the client and the invoice",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 733,
+        "failure": ""
+      },
+      {
+        "test_id": "cp67_job_description.spec.ts::shows a job description",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 317,
+        "failure": ""
+      },
+      {
+        "test_id": "cp68_second_tax.spec.ts::adds a levy on top of the sales tax",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 501,
+        "failure": ""
+      },
+      {
+        "test_id": "cp69_tax_inclusive_pricing.spec.ts::backs the tax out of a tax-inclusive price",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 462,
+        "failure": ""
+      },
+      {
+        "test_id": "cp70_total_ex_and_inc_tax.spec.ts::shows the ex-tax and inc-tax totals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 536,
+        "failure": ""
+      },
+      {
+        "test_id": "cp71_tax_rounding_per_line.spec.ts::rounds a taxable line's tax to the cent",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 471,
+        "failure": ""
+      },
+      {
+        "test_id": "cp72_round_per_line_then_sum.spec.ts::totals the rounded line amounts",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 496,
+        "failure": ""
+      },
+      {
+        "test_id": "cp73_client_billing_address.spec.ts::shows a client billing address",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 379,
+        "failure": ""
+      },
+      {
+        "test_id": "cp74_tax_exempt_client.spec.ts::charges no tax for a tax-exempt client",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 568,
+        "failure": ""
+      },
+      {
+        "test_id": "cp75_effective_tax_rate.spec.ts::shows tax as a percentage of the whole invoice",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 499,
+        "failure": ""
+      },
+      {
+        "test_id": "cp76_statement_tax_totals.spec.ts::shows tax per job and overall on the statement",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 477,
+        "failure": ""
+      },
+      {
+        "test_id": "cp77_fixed_amount_discount.spec.ts::takes a flat amount off the invoice",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 501,
+        "failure": ""
+      },
+      {
+        "test_id": "cp78_client_key_account.spec.ts::marks key accounts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 275,
+        "failure": ""
+      },
+      {
+        "test_id": "cp79_line_discount.spec.ts::shows a line amount after its own discount",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 461,
+        "failure": ""
+      },
+      {
+        "test_id": "cp80_discount_pct_or_fixed.spec.ts::a fixed-amount discount comes off before tax",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 543,
+        "failure": ""
+      },
+      {
+        "test_id": "cp81_early_payment_discount.spec.ts::shows the reduced early-payment amount",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 497,
+        "failure": ""
+      },
+      {
+        "test_id": "cp82_surcharge.spec.ts::a surcharge adds to the total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 485,
+        "failure": ""
+      },
+      {
+        "test_id": "cp83_task_due_date.spec.ts::shows a task due date",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 340,
+        "failure": ""
+      },
+      {
+        "test_id": "cp84_stacked_discounts.spec.ts::shows each discount and the combined total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 500,
+        "failure": ""
+      },
+      {
+        "test_id": "cp85_discount_cap.spec.ts::caps a percentage discount at the maximum",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 473,
+        "failure": ""
+      },
+      {
+        "test_id": "cp86_job_billable_flag.spec.ts::shows whether a job is billable",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 340,
+        "failure": ""
+      },
+      {
+        "test_id": "cp87_discount_as_breakdown_line.spec.ts::shows a discount as a negative breakdown line",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 512,
+        "failure": ""
+      },
+      {
+        "test_id": "cp88_line_level_discount_in_subtotal.spec.ts::subtotal already reflects line discounts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 458,
+        "failure": ""
+      },
+      {
+        "test_id": "cp89_minimum_charge.spec.ts::bills the minimum when the net total is lower",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 560,
+        "failure": ""
+      },
+      {
+        "test_id": "cp90_total_savings.spec.ts::sums the discounts into a savings figure",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 514,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_client_default_discount.spec.ts::a new invoice starts with the client default discount",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 486,
+        "failure": ""
+      },
+      {
+        "test_id": "cp92_adjustments_everywhere.spec.ts::outstanding reflects discounts and surcharges",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 276,
+        "failure": ""
+      },
+      {
+        "test_id": "cp93_credit_note.spec.ts::raises a credit note against an invoice",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 569,
+        "failure": ""
+      },
+      {
+        "test_id": "cp94_credit_reduces_balance.spec.ts::the invoice due drops by the credit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 354,
+        "failure": ""
+      },
+      {
+        "test_id": "cp95_task_assignee.spec.ts::shows who a task is for",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 400,
+        "failure": ""
+      },
+      {
+        "test_id": "cp96_status_with_credits.spec.ts::a credit that clears the balance settles the invoice",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 333,
+        "failure": ""
+      },
+      {
+        "test_id": "cp97_write_off.spec.ts::writing off an invoice removes it from what is owed",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 736,
+        "failure": ""
+      },
+      {
+        "test_id": "cp98_client_deposit.spec.ts::records a deposit held for the client",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 434,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_client_lifetime_billed.spec.ts::sums all invoices ever billed to the client",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 379,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 2.67,
+            "impact": 245,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/src/app/features/credit/client-credit.ts",
+                "lang": "typescript",
+                "cost": 46,
+                "mutation": 0,
+                "godclass": 46,
+                "mut_fns": 0,
+                "new_fns": 2
+              },
+              {
+                "path": "src/main/frontend/src/app/features/credit/credit.service.ts",
+                "lang": "typescript",
+                "cost": 3,
+                "mutation": 0,
+                "godclass": 3,
+                "mut_fns": 0,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/src/app/features/credit/client-credit.ts",
+                "name": "error",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 2,
+                "cost": 32,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/credit/client-credit.ts",
+                "name": "next",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 2,
+                "cost": 14,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/credit/credit.service.ts",
+                "name": "refund",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 1,
+                "cost": 3,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 2,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 53.66,
+            "impact": 4466,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/payment/PaymentService.java",
+                "lang": "java",
+                "cost": 194,
+                "mutation": 194,
+                "godclass": 0,
+                "mut_fns": 2,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java",
+                "lang": "java",
+                "cost": 108,
+                "mutation": 108,
+                "godclass": 0,
+                "mut_fns": 2,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/refund/RefundService.java",
+                "lang": "java",
+                "cost": 80,
+                "mutation": 0,
+                "godclass": 80,
+                "mut_fns": 0,
+                "new_fns": 3
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/deposit/DepositService.java",
+                "lang": "java",
+                "cost": 24,
+                "mutation": 24,
+                "godclass": 0,
+                "mut_fns": 2,
+                "new_fns": 0
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/payment/PaymentService.java",
+                "name": "PaymentService::applyDeposits",
+                "container": "PaymentService",
+                "cc": 2,
+                "wmc_other": 19,
+                "cost": 114,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java",
+                "name": "ClientCreditService::available",
+                "container": "ClientCreditService",
+                "cc": 2,
+                "wmc_other": 7,
+                "cost": 84,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/payment/PaymentService.java",
+                "name": "PaymentService::PaymentService",
+                "container": "PaymentService",
+                "cc": 1,
+                "wmc_other": 20,
+                "cost": 80,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/refund/RefundService.java",
+                "name": "RefundService::refund",
+                "container": "RefundService",
+                "cc": 4,
+                "wmc_other": 0,
+                "cost": 60,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java",
+                "name": "ClientCreditService::ClientCreditService",
+                "container": "ClientCreditService",
+                "cc": 1,
+                "wmc_other": 8,
+                "cost": 24,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/deposit/DepositService.java",
+                "name": "DepositService::DepositService",
+                "container": "DepositService",
+                "cc": 1,
+                "wmc_other": 4,
+                "cost": 12,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/deposit/DepositService.java",
+                "name": "DepositService::list",
+                "container": "DepositService",
+                "cc": 1,
+                "wmc_other": 4,
+                "cost": 12,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/refund/RefundService.java",
+                "name": "RefundService::list",
+                "container": "RefundService",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 12,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/refund/RefundService.java",
+                "name": "RefundService::RefundService",
+                "container": "RefundService",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 8,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 3,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}

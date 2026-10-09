@@ -1,0 +1,684 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 503071e..7847dae 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -11,7 +11,7 @@ import { ClientProjects } from '../projects/client-projects';
+ import { ClientCurrency } from './client-currency';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes), the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
++// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
+ @Component({
+   selector: 'app-client-detail',
+   imports: [CurrencyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit],
+@@ -128,7 +128,7 @@ import { Client, ClientService } from './client.service';
+           <p role="status" data-testid="client-deposit-applied">Deposit applied.</p>
+         }
+       </div>
+-      <app-client-credit [clientId]="clientId()" [currency]="c.currency" />
++      <app-client-credit [clientId]="clientId()" [currency]="c.currency" (refunded)="creditRefunded()" />
+       <app-client-deposits [clientId]="clientId()" [currency]="c.currency" />
+       <app-client-contacts
+         [clientId]="clientId()"
+@@ -185,6 +185,10 @@ export class ClientDetail {
+     this.client.reload();
+   }
+ 
++  protected creditRefunded(): void {
++    this.depositsPanel()?.reload();
++  }
++
+   protected contactAdded(): void {
+     this.summary.reload();
+     // The first contact added becomes the main contact.
+diff --git a/src/main/frontend/src/app/features/credit/client-credit.ts b/src/main/frontend/src/app/features/credit/client-credit.ts
+index 5d55acd..847436c 100644
+--- a/src/main/frontend/src/app/features/credit/client-credit.ts
++++ b/src/main/frontend/src/app/features/credit/client-credit.ts
+@@ -1,13 +1,16 @@
+ import { CurrencyPipe } from '@angular/common';
+-import { Component, inject, input } from '@angular/core';
++import { Component, inject, input, output, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { CurrencyCode } from '../clients/client.service';
+ import { CreditService } from './credit.service';
+ 
+-// How much credit a client has to spend: their unused deposits and credit notes added up.
++const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
++
++// How much credit a client has to spend: their unused deposits and credit notes added up, and a form to refund some of it back to them.
+ @Component({
+   selector: 'app-client-credit',
+-  imports: [CurrencyPipe],
++  imports: [CurrencyPipe, ReactiveFormsModule],
+   template: `
+     @if (credit.error()) {
+       <p role="alert" data-testid="client-available-credit-error">Could not load the client's available credit.</p>
+@@ -17,6 +20,38 @@ import { CreditService } from './credit.service';
+         <span data-testid="client-available-credit">{{ credit.value().total | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
+       </p>
+     }
++    <form [formGroup]="form" (ngSubmit)="submit()" data-testid="refund-form" aria-label="Refund credit" novalidate>
++      <div>
++        <label for="refund-amount">Refund amount</label>
++        <input
++          id="refund-amount"
++          type="number"
++          inputmode="decimal"
++          min="0.01"
++          step="0.01"
++          formControlName="amount"
++          data-testid="refund-form-amount"
++          [attr.aria-invalid]="invalid('amount')"
++          [attr.aria-describedby]="invalid('amount') ? 'refund-amount-error' : null"
++        />
++        @if (invalid('amount')) {
++          <p id="refund-amount-error" role="alert" data-testid="refund-form-amount-error">
++            Enter an amount greater than zero with at most two decimal places.
++          </p>
++        }
++      </div>
++      <div>
++        <label for="refund-note">Note (optional)</label>
++        <input id="refund-note" type="text" maxlength="500" formControlName="note" data-testid="refund-form-note" />
++      </div>
++      <button type="submit" data-testid="refund-form-submit" [disabled]="saving()">Refund credit</button>
++      @if (saveError()) {
++        <p role="alert" data-testid="refund-form-error">{{ saveError() }}</p>
++      }
++      @if (saved()) {
++        <p role="status" data-testid="refund-form-recorded">Refund recorded.</p>
++      }
++    </form>
+   `,
+ })
+ export class ClientCredit {
+@@ -25,14 +60,58 @@ export class ClientCredit {
+   readonly clientId = input.required<number>();
+   /** The client's currency; their credit is held in it. */
+   readonly currency = input.required<CurrencyCode>();
++  /** Emits once credit has been refunded, so other panels showing it can refresh. */
++  readonly refunded = output<void>();
+ 
+   protected readonly credit = rxResource({
+     params: () => this.clientId(),
+     stream: ({ params }) => this.service.available(params),
+   });
+ 
++  protected readonly saving = signal(false);
++  protected readonly saved = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    note: ['', [Validators.maxLength(500)]],
++  });
++
++  protected invalid(name: 'amount'): boolean {
++    const control = this.form.controls[name];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
+   /** Loads the credit again, e.g. after deposits were put toward invoices elsewhere on the page. */
+   reload(): void {
+     this.credit.reload();
+   }
++
++  protected submit(): void {
++    this.saveError.set(null);
++    this.saved.set(false);
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    const { amount, note } = this.form.getRawValue();
++    this.saving.set(true);
++    this.service.refund(this.clientId(), { amount: Number(amount), note: note.trim() || null }).subscribe({
++      next: () => {
++        this.saving.set(false);
++        this.saved.set(true);
++        this.form.reset();
++        this.credit.reload();
++        this.refunded.emit();
++      },
++      error: (err: { status?: number }) => {
++        this.saving.set(false);
++        this.saveError.set(
++          err.status === 400
++            ? 'The refund is more than the credit the client has.'
++            : 'Could not record the refund. Please try again.',
++        );
++      },
++    });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/credit/credit.service.ts b/src/main/frontend/src/app/features/credit/credit.service.ts
+index 8bab992..e22f990 100644
+--- a/src/main/frontend/src/app/features/credit/credit.service.ts
++++ b/src/main/frontend/src/app/features/credit/credit.service.ts
+@@ -9,6 +9,24 @@ export interface ClientCredit {
+   total: number;
+ }
+ 
++/** Unused credit to pay back to a client, with an optional note of why. */
++export interface NewRefund {
++  amount: number;
++  note: string | null;
++}
++
++/** Unused credit paid back to a client, split between their held deposits and unused credit notes. */
++export interface Refund {
++  id: number;
++  clientId: number;
++  amount: number;
++  fromDeposits: number;
++  fromCreditNotes: number;
++  /** ISO date (yyyy-MM-dd) the refund was made. */
++  date: string;
++  note: string | null;
++}
++
+ @Injectable({ providedIn: 'root' })
+ export class CreditService {
+   private readonly http = inject(HttpClient);
+@@ -16,4 +34,9 @@ export class CreditService {
+   available(clientId: number): Observable<ClientCredit> {
+     return this.http.get<ClientCredit>(`/api/clients/${clientId}/credit`);
+   }
++
++  /** Pays part of the client's unused credit back to them. */
++  refund(clientId: number, refund: NewRefund): Observable<Refund> {
++    return this.http.post<Refund>(`/api/clients/${clientId}/refunds`, refund);
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/deposits/client-deposits.ts b/src/main/frontend/src/app/features/deposits/client-deposits.ts
+index 7c15dde..0229771 100644
+--- a/src/main/frontend/src/app/features/deposits/client-deposits.ts
++++ b/src/main/frontend/src/app/features/deposits/client-deposits.ts
+@@ -7,7 +7,7 @@ import { DepositService } from './deposit.service';
+ 
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ 
+-// The deposits a client has paid up front, before any invoice, with what is still held, how much has been put toward invoices, and a form to record another.
++// The deposits a client has paid up front, before any invoice, with what is still held, how much has been put toward invoices or refunded, and a form to record another.
+ @Component({
+   selector: 'app-client-deposits',
+   imports: [ReactiveFormsModule, CurrencyPipe],
+@@ -26,6 +26,12 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+             <span data-testid="client-deposit-applied">{{ deposits.value().applied | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
+           </p>
+         }
++        @if (deposits.value().refunded > 0) {
++          <p>
++            Refunded:
++            <span data-testid="client-deposit-refunded">{{ deposits.value().refunded | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
++          </p>
++        }
+         @if (deposits.value().deposits.length > 0) {
+           <ul data-testid="client-deposit-list">
+             @for (d of deposits.value().deposits; track d.id) {
+diff --git a/src/main/frontend/src/app/features/deposits/deposit.service.ts b/src/main/frontend/src/app/features/deposits/deposit.service.ts
+index c3b5b35..95934e4 100644
+--- a/src/main/frontend/src/app/features/deposits/deposit.service.ts
++++ b/src/main/frontend/src/app/features/deposits/deposit.service.ts
+@@ -21,10 +21,11 @@ export interface NewDepositApplication {
+   allocations: { invoiceId: number; amount: number }[];
+ }
+ 
+-/** The deposits a client has paid, oldest first; `total` is what is still held after `applied` was put toward invoices. */
++/** The deposits a client has paid, oldest first; `total` is what is still held after `applied` was put toward invoices and `refunded` paid back. */
+ export interface ClientDeposits {
+   total: number;
+   applied: number;
++  refunded: number;
+   deposits: Deposit[];
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index d0b6ae8..2f6da4b 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -60,6 +60,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE client_payment RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE refund RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE deposit_application RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE deposit RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
+diff --git a/src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java b/src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java
+index 2ef0c31..c6df1f7 100644
+--- a/src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java
++++ b/src/main/java/net/officefloor/hq/app/credit/ClientCreditService.java
+@@ -12,6 +12,7 @@ import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.payment.PaymentRepository;
++import net.officefloor.hq.app.refund.RefundRepository;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -28,22 +29,25 @@ public class ClientCreditService {
+     private final InvoiceRepository invoices;
+     private final PaymentRepository payments;
+     private final CreditNoteRepository creditNotes;
++    private final RefundRepository refunds;
+ 
+     public ClientCreditService(ClientRepository clients, DepositRepository deposits,
+             DepositApplicationRepository applications, InvoiceRepository invoices, PaymentRepository payments,
+-            CreditNoteRepository creditNotes) {
++            CreditNoteRepository creditNotes, RefundRepository refunds) {
+         this.clients = clients;
+         this.deposits = deposits;
+         this.applications = applications;
+         this.invoices = invoices;
+         this.payments = payments;
+         this.creditNotes = creditNotes;
++        this.refunds = refunds;
+     }
+ 
+     /**
+      * Works out how much credit a client has to spend. A deposit is unused until it is put toward invoices. A credit
+      * note is used only as far as it was needed to settle its invoice once payments are counted; anything beyond
+      * that (say, a credit on an invoice already paid in full, or on one since cancelled) is still the client's to spend.
++     * Whatever has been refunded to the client is no longer theirs to spend.
+      */
+     @Transactional(readOnly = true)
+     public ClientCreditResponse available(Long clientId) {
+@@ -51,8 +55,10 @@ public class ClientCreditService {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+         }
+         BigDecimal held = deposits.sumAmountByClientId(clientId)
+-                .subtract(applications.sumAmountByClientId(clientId)).setScale(2).max(ZERO);
+-        BigDecimal unusedCredit = unusedCreditNotes(clientId);
++                .subtract(applications.sumAmountByClientId(clientId))
++                .subtract(refunds.sumFromDepositsByClientId(clientId)).setScale(2).max(ZERO);
++        BigDecimal unusedCredit = unusedCreditNotes(clientId)
++                .subtract(refunds.sumFromCreditNotesByClientId(clientId)).setScale(2).max(ZERO);
+         return new ClientCreditResponse(held, unusedCredit, held.add(unusedCredit));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java b/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java
+index 04f7fea..65e8b44 100644
+--- a/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java
++++ b/src/main/java/net/officefloor/hq/app/deposit/ClientDepositsResponse.java
+@@ -5,7 +5,7 @@ import java.util.List;
+ 
+ /**
+  * The deposits a client has paid, oldest first; {@code total} is what is still held once any
+- * already put toward invoices ({@code applied}) is taken off.
++ * already put toward invoices ({@code applied}) or refunded to the client ({@code refunded}) is taken off.
+  */
+-public record ClientDepositsResponse(BigDecimal total, BigDecimal applied, List<DepositResponse> deposits) {
++public record ClientDepositsResponse(BigDecimal total, BigDecimal applied, BigDecimal refunded, List<DepositResponse> deposits) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/deposit/DepositService.java b/src/main/java/net/officefloor/hq/app/deposit/DepositService.java
+index a545493..afc534e 100644
+--- a/src/main/java/net/officefloor/hq/app/deposit/DepositService.java
++++ b/src/main/java/net/officefloor/hq/app/deposit/DepositService.java
+@@ -4,6 +4,7 @@ import java.math.BigDecimal;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.refund.RefundRepository;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -14,13 +15,15 @@ public class DepositService {
+ 
+     private final DepositRepository deposits;
+     private final DepositApplicationRepository applications;
++    private final RefundRepository refunds;
+     private final ClientRepository clients;
+     private final Audit audit;
+ 
+     public DepositService(DepositRepository deposits, DepositApplicationRepository applications,
+-            ClientRepository clients, Audit audit) {
++            RefundRepository refunds, ClientRepository clients, Audit audit) {
+         this.deposits = deposits;
+         this.applications = applications;
++        this.refunds = refunds;
+         this.clients = clients;
+         this.audit = audit;
+     }
+@@ -33,7 +36,8 @@ public class DepositService {
+         BigDecimal paid = held.stream().map(DepositResponse::amount)
+                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+         BigDecimal applied = applications.sumAmountByClientId(clientId).setScale(2);
+-        return new ClientDepositsResponse(paid.subtract(applied), applied, held);
++        BigDecimal refunded = refunds.sumFromDepositsByClientId(clientId).setScale(2);
++        return new ClientDepositsResponse(paid.subtract(applied).subtract(refunded), applied, refunded, held);
+     }
+ 
+     /** Records money a client paid up front, before any invoice; it is held against the client. */
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+index 5f8e590..c720e9c 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+@@ -19,6 +19,7 @@ import net.officefloor.hq.app.deposit.DepositRepository;
+ import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
++import net.officefloor.hq.app.refund.RefundRepository;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -33,19 +34,22 @@ public class PaymentService {
+     private final ClientPaymentRepository clientPayments;
+     private final DepositRepository deposits;
+     private final DepositApplicationRepository depositApplications;
++    private final RefundRepository refunds;
+     private final ClientRepository clients;
+     private final Clock clock;
+     private final Audit audit;
+ 
+     public PaymentService(PaymentRepository payments, CreditNoteRepository creditNotes, InvoiceRepository invoices,
+             ClientPaymentRepository clientPayments, DepositRepository deposits,
+-            DepositApplicationRepository depositApplications, ClientRepository clients, Clock clock, Audit audit) {
++            DepositApplicationRepository depositApplications, RefundRepository refunds, ClientRepository clients,
++            Clock clock, Audit audit) {
+         this.payments = payments;
+         this.creditNotes = creditNotes;
+         this.invoices = invoices;
+         this.clientPayments = clientPayments;
+         this.deposits = deposits;
+         this.depositApplications = depositApplications;
++        this.refunds = refunds;
+         this.clients = clients;
+         this.clock = clock;
+         this.audit = audit;
+@@ -100,7 +104,8 @@ public class PaymentService {
+         requireClient(clientId);
+         BigDecimal allocated = total(request.allocations(), DepositApplicationRequest.Allocation::amount);
+         BigDecimal held = deposits.sumAmountByClientId(clientId)
+-                .subtract(depositApplications.sumAmountByClientId(clientId));
++                .subtract(depositApplications.sumAmountByClientId(clientId))
++                .subtract(refunds.sumFromDepositsByClientId(clientId));
+         if (allocated.compareTo(held) > 0) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                     "The shares add up to more than the deposits held");
+diff --git a/src/main/java/net/officefloor/hq/app/refund/ClientRefundController.java b/src/main/java/net/officefloor/hq/app/refund/ClientRefundController.java
+new file mode 100644
+index 0000000..1e7efce
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/refund/ClientRefundController.java
+@@ -0,0 +1,35 @@
++package net.officefloor.hq.app.refund;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** Unused credit paid back to a client. */
++@RestController
++@RequestMapping("/api/clients/{clientId}/refunds")
++public class ClientRefundController {
++
++    private final RefundService service;
++
++    public ClientRefundController(RefundService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<RefundResponse> list(@PathVariable Long clientId) {
++        return service.list(clientId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public RefundResponse refund(@PathVariable Long clientId, @Valid @RequestBody RefundRequest request) {
++        return service.refund(clientId, request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/refund/Refund.java b/src/main/java/net/officefloor/hq/app/refund/Refund.java
+new file mode 100644
+index 0000000..884645b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/refund/Refund.java
+@@ -0,0 +1,81 @@
++package net.officefloor.hq.app.refund;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * Unused credit paid back to a client on a given day, split between what came out of their held
++ * deposits and what came out of their unused credit notes.
++ */
++@Entity
++@Table(name = "refund")
++public class Refund {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "client_id", nullable = false)
++    private Long clientId;
++
++    @Column(nullable = false, precision = 12, scale = 2)
++    private BigDecimal amount;
++
++    @Column(name = "from_deposits", nullable = false, precision = 12, scale = 2)
++    private BigDecimal fromDeposits;
++
++    @Column(name = "from_credit_notes", nullable = false, precision = 12, scale = 2)
++    private BigDecimal fromCreditNotes;
++
++    @Column(name = "refunded_on", nullable = false)
++    private LocalDate date;
++
++    @Column(length = 500)
++    private String note;
++
++    protected Refund() {
++    }
++
++    public Refund(Long clientId, BigDecimal fromDeposits, BigDecimal fromCreditNotes, LocalDate date, String note) {
++        this.clientId = clientId;
++        this.fromDeposits = fromDeposits.setScale(2);
++        this.fromCreditNotes = fromCreditNotes.setScale(2);
++        this.amount = this.fromDeposits.add(this.fromCreditNotes);
++        this.date = date;
++        this.note = note;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public BigDecimal getFromDeposits() {
++        return fromDeposits;
++    }
++
++    public BigDecimal getFromCreditNotes() {
++        return fromCreditNotes;
++    }
++
++    public LocalDate getDate() {
++        return date;
++    }
++
++    public String getNote() {
++        return note;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/refund/RefundRepository.java b/src/main/java/net/officefloor/hq/app/refund/RefundRepository.java
+new file mode 100644
+index 0000000..ab19555
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/refund/RefundRepository.java
+@@ -0,0 +1,20 @@
++package net.officefloor.hq.app.refund;
++
++import java.math.BigDecimal;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
++
++public interface RefundRepository extends JpaRepository<Refund, Long> {
++
++    /** A client's refunds, newest first. */
++    List<Refund> findByClientIdOrderByDateDescIdDesc(Long clientId);
++
++    /** Total refunded to a client out of their held deposits (zero when none). */
++    @Query("SELECT COALESCE(SUM(r.fromDeposits), 0) FROM Refund r WHERE r.clientId = :clientId")
++    BigDecimal sumFromDepositsByClientId(Long clientId);
++
++    /** Total refunded to a client out of their unused credit notes (zero when none). */
++    @Query("SELECT COALESCE(SUM(r.fromCreditNotes), 0) FROM Refund r WHERE r.clientId = :clientId")
++    BigDecimal sumFromCreditNotesByClientId(Long clientId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/refund/RefundRequest.java b/src/main/java/net/officefloor/hq/app/refund/RefundRequest.java
+new file mode 100644
+index 0000000..60a9a3c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/refund/RefundRequest.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.refund;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++
++/** Payload to pay part of a client's unused credit back to them, with an optional note of why. */
++public record RefundRequest(
++        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
++        @Size(max = 500) String note) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/refund/RefundResponse.java b/src/main/java/net/officefloor/hq/app/refund/RefundResponse.java
+new file mode 100644
+index 0000000..51f6453
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/refund/RefundResponse.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.refund;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++public record RefundResponse(Long id, Long clientId, BigDecimal amount, BigDecimal fromDeposits,
++        BigDecimal fromCreditNotes, LocalDate date, String note) {
++
++    static RefundResponse from(Refund refund) {
++        return new RefundResponse(refund.getId(), refund.getClientId(), refund.getAmount(),
++                refund.getFromDeposits(), refund.getFromCreditNotes(), refund.getDate(), refund.getNote());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/refund/RefundService.java b/src/main/java/net/officefloor/hq/app/refund/RefundService.java
+new file mode 100644
+index 0000000..faf57ef
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/refund/RefundService.java
+@@ -0,0 +1,62 @@
++package net.officefloor.hq.app.refund;
++
++import java.math.BigDecimal;
++import java.time.Clock;
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.credit.ClientCreditResponse;
++import net.officefloor.hq.app.credit.ClientCreditService;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class RefundService {
++
++    private final RefundRepository refunds;
++    private final ClientCreditService credit;
++    private final ClientRepository clients;
++    private final Clock clock;
++    private final Audit audit;
++
++    public RefundService(RefundRepository refunds, ClientCreditService credit, ClientRepository clients, Clock clock,
++            Audit audit) {
++        this.refunds = refunds;
++        this.credit = credit;
++        this.clients = clients;
++        this.clock = clock;
++        this.audit = audit;
++    }
++
++    @Transactional(readOnly = true)
++    public List<RefundResponse> list(Long clientId) {
++        if (!clients.existsById(clientId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
++        }
++        return refunds.findByClientIdOrderByDateDescIdDesc(clientId).stream().map(RefundResponse::from).toList();
++    }
++
++    /**
++     * Pays part of a client's unused credit back to them, today. It may not be more than the credit
++     * they have; it comes out of their held deposits first, then their unused credit notes.
++     */
++    @Transactional
++    public RefundResponse refund(Long clientId, RefundRequest request) {
++        ClientCreditResponse available = credit.available(clientId);
++        BigDecimal amount = request.amount().setScale(2);
++        if (amount.compareTo(available.total()) > 0) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "The refund is more than the client's available credit");
++        }
++        BigDecimal fromDeposits = amount.min(available.deposits());
++        BigDecimal fromCreditNotes = amount.subtract(fromDeposits);
++        String note = request.note() == null || request.note().isBlank() ? null : request.note().strip();
++        Refund saved = refunds.saveAndFlush(
++                new Refund(clientId, fromDeposits, fromCreditNotes, LocalDate.now(clock), note));
++        audit.record("REFUND_ISSUED client=" + clientId + " amount=" + saved.getAmount().toPlainString());
++        return RefundResponse.from(saved);
++    }
++}
+diff --git a/src/main/resources/db/migration/V60__create_refund.sql b/src/main/resources/db/migration/V60__create_refund.sql
+new file mode 100644
+index 0000000..996d8d9
+--- /dev/null
++++ b/src/main/resources/db/migration/V60__create_refund.sql
+@@ -0,0 +1,18 @@
++-- Unused credit (held deposits and unused credit notes) paid back to a client. A refund draws on
++-- the held deposits first and then on unused credit notes; the split is kept so each part of the
++-- client's credit drops by exactly what was refunded from it.
++CREATE TABLE refund (
++    id                BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    client_id         BIGINT         NOT NULL,
++    amount            DECIMAL(12, 2) NOT NULL,
++    from_deposits     DECIMAL(12, 2) NOT NULL,
++    from_credit_notes DECIMAL(12, 2) NOT NULL,
++    refunded_on       DATE           NOT NULL,
++    note              VARCHAR(500),
++    CONSTRAINT refund_client_fk FOREIGN KEY (client_id) REFERENCES client (id),
++    CONSTRAINT refund_amount_positive CHECK (amount > 0),
++    CONSTRAINT refund_split_matches CHECK (from_deposits >= 0 AND from_credit_notes >= 0
++        AND from_deposits + from_credit_notes = amount)
++);
++
++CREATE INDEX refund_client_idx ON refund (client_id, refunded_on);
