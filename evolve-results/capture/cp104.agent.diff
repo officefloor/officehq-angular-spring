@@ -1,0 +1,343 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index b071920..54e4861 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -6,6 +6,8 @@ import { InvoiceService } from './invoice.service';
+ 
+ // A client's statement: every invoice across the client's projects grouped by job, how much is left to
+ // pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
++// It opens with the running account: invoices, payments, credit notes, deposits and refunds in date order with the
++// balance owed after each.
+ // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
+ // with the app's navigation and the page's controls left off the printed copy.
+ @Component({
+@@ -34,6 +36,9 @@ import { InvoiceService } from './invoice.service';
+     table {
+       border-collapse: collapse;
+     }
++    .statement-money {
++      text-align: right;
++    }
+     th,
+     td {
+       padding: 0.25rem 0.5rem;
+@@ -76,6 +81,44 @@ import { InvoiceService } from './invoice.service';
+             <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+           </dl>
+         </section>
++        <section aria-labelledby="statement-account-heading" data-testid="statement-account">
++          <h2 id="statement-account-heading">Account</h2>
++          @if (s.entries.length === 0) {
++            <p data-testid="statement-account-empty">Nothing on the account yet.</p>
++          } @else {
++            <table data-testid="statement-account-table">
++              <caption>Running account for {{ s.clientName }}</caption>
++              <thead>
++                <tr>
++                  <th scope="col">Date</th>
++                  <th scope="col">Entry</th>
++                  <th scope="col" class="statement-money">Charges</th>
++                  <th scope="col" class="statement-money">Credits</th>
++                  <th scope="col" class="statement-money">Balance</th>
++                </tr>
++              </thead>
++              <tbody>
++                @for (e of s.entries; track e.kind + e.sourceId; let n = $index) {
++                  <tr [attr.data-testid]="'statement-entry-row-' + (n + 1)" [attr.data-kind]="e.kind">
++                    <td data-testid="statement-entry-date">{{ e.date }}</td>
++                    <td data-testid="statement-entry-description">{{ e.description }}</td>
++                    <td class="statement-money" data-testid="statement-entry-charge">
++                      @if (e.charge !== null) {
++                        {{ e.charge | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}
++                      }
++                    </td>
++                    <td class="statement-money" data-testid="statement-entry-credit">
++                      @if (e.credit !== null) {
++                        {{ e.credit | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}
++                      }
++                    </td>
++                    <td class="statement-money" data-testid="statement-running-balance">{{ e.balance | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  </tr>
++                }
++              </tbody>
++            </table>
++          }
++        </section>
+         @if (s.invoices.length === 0) {
+           <p data-testid="client-statement-empty">No invoices yet.</p>
+         } @else {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 0ad6d45..8bd5820 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -56,6 +56,25 @@ export interface StatementJob {
+   tax: number;
+ }
+ 
++/** What an entry on a client's running account records. */
++export type StatementEntryKind = 'INVOICE' | 'PAYMENT' | 'CREDIT_NOTE' | 'DEPOSIT' | 'REFUND';
++
++/**
++ * One dated entry on a client's running account: an invoice or refund is a charge, a payment, credit note or deposit
++ * is a credit. The balance is what the client owes once this entry and those before it are counted.
++ */
++export interface StatementEntry {
++  kind: StatementEntryKind;
++  sourceId: number;
++  /** The invoice the entry is for; null for deposits and refunds. */
++  invoiceId: number | null;
++  date: string;
++  description: string;
++  charge: number | null;
++  credit: number | null;
++  balance: number;
++}
++
+ /** A client's invoices across all their projects, also grouped by job, with the total they still owe. */
+ export interface ClientStatement {
+   clientId: number;
+@@ -72,6 +91,8 @@ export interface ClientStatement {
+   outstanding: number;
+   /** The tax across the client's sent invoices (drafts and void ones are left out). */
+   tax: number;
++  /** Invoices, payments, credit notes, deposits and refunds in date order, each with the running balance. */
++  entries: StatementEntry[];
+ }
+ 
+ /** One thing an invoice charges for; its amount is quantity times unit price, less the line's own discount. */
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 2f6da4b..1426e3e 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -135,7 +135,9 @@ public class TestSupportController {
+         for (Map<String, Object> i : rows(fixture, "invoices")) {
+             // A missing date is filled in from the other one using the standard payment term; with
+             // neither given the invoice is issued today.
+-            LocalDate issued = i.get("issuedDate") != null ? LocalDate.parse(i.get("issuedDate").toString())
++            // The issue date may be given as "issuedDate" or "issueDate".
++            Object issuedValue = i.get("issuedDate") != null ? i.get("issuedDate") : i.get("issueDate");
++            LocalDate issued = issuedValue != null ? LocalDate.parse(issuedValue.toString())
+                     : i.get("dueDate") != null
+                             ? LocalDate.parse(i.get("dueDate").toString()).minusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
+                             : LocalDate.now(clock);
+diff --git a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java
+index 2e71abb..12bfda6 100644
+--- a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java
++++ b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java
+@@ -13,6 +13,9 @@ public interface CreditNoteRepository extends JpaRepository<CreditNote, Long> {
+     /** An invoice's credit notes, oldest first. */
+     List<CreditNote> findByInvoiceIdOrderByIdAsc(Long invoiceId);
+ 
++    /** Every credit note against any of the given invoices. */
++    List<CreditNote> findByInvoiceIdIn(Collection<Long> invoiceIds);
++
+     /** Total credited against an invoice (zero when nothing has been credited). */
+     @Query("SELECT COALESCE(SUM(c.amount), 0) FROM CreditNote c WHERE c.invoiceId = :invoiceId")
+     BigDecimal sumAmountByInvoiceId(Long invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+index 1de5650..a94805d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -17,12 +17,14 @@ import net.officefloor.hq.app.client.Currency;
+  * summary it also gives the total invoiced on those owed invoices and how much of that has been paid,
+  * so the total still owed is what was invoiced less what was paid. It also shows the tax (sales tax and
+  * levy) on each job and across the whole statement, again leaving out drafts and void invoices. All of it
+- * is in the client's currency.
++ * is in the client's currency. Finally it gives the running account: every invoice, payment, credit note, deposit and
++ * refund in date order, each with the balance owed once it is counted.
+  */
+ public record ClientStatementResponse(Long clientId, String clientName, Currency currency, List<Line> invoices, List<Job> jobs,
+-        BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax) {
++        BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax, List<StatementEntry> entries) {
+ 
+-    static ClientStatementResponse from(Long clientId, String clientName, Currency currency, List<Line> invoices) {
++    static ClientStatementResponse from(Long clientId, String clientName, Currency currency, List<Line> invoices,
++            List<StatementEntry> entries) {
+         Map<Long, List<Line>> byProject = new LinkedHashMap<>();
+         invoices.forEach(l -> byProject.computeIfAbsent(l.projectId(), id -> new ArrayList<>()).add(l));
+         List<Job> jobs = byProject.values().stream()
+@@ -31,7 +33,18 @@ public record ClientStatementResponse(Long clientId, String clientName, Currency
+         BigDecimal outstanding = owed(invoices);
+         BigDecimal invoiced = sum(invoices, Line::amount);
+         return new ClientStatementResponse(clientId, clientName, currency, invoices, jobs, invoiced,
+-                invoiced.subtract(outstanding), outstanding, sum(invoices, Line::tax));
++                invoiced.subtract(outstanding), outstanding, sum(invoices, Line::tax), runningBalance(entries));
++    }
++
++    /** Puts the entries in date order, each carrying the balance owed once it and those before it are counted. */
++    private static List<StatementEntry> runningBalance(List<StatementEntry> entries) {
++        List<StatementEntry> ordered = new ArrayList<>();
++        BigDecimal balance = BigDecimal.ZERO.setScale(2);
++        for (StatementEntry entry : entries.stream().sorted(StatementEntry.DATE_ORDER).toList()) {
++            balance = balance.add(entry.change());
++            ordered.add(entry.withBalance(balance));
++        }
++        return ordered;
+     }
+ 
+     /** What is left to pay across the given invoices, leaving out drafts and void ones. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 007114e..e868cf4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -2,16 +2,24 @@ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.time.ZoneOffset;
++import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.Client;
+ import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.creditnote.CreditNote;
+ import net.officefloor.hq.app.creditnote.CreditNoteRepository;
++import net.officefloor.hq.app.deposit.Deposit;
++import net.officefloor.hq.app.deposit.DepositRepository;
++import net.officefloor.hq.app.payment.Payment;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.project.Project;
+ import net.officefloor.hq.app.project.ProjectRepository;
++import net.officefloor.hq.app.refund.Refund;
++import net.officefloor.hq.app.refund.RefundRepository;
+ import net.officefloor.hq.app.settings.SettingsService;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.PageRequest;
+@@ -28,14 +36,19 @@ public class InvoiceService {
+     private final PaymentRepository payments;
+     private final CreditNoteRepository creditNotes;
+     private final ClientRepository clients;
++    private final DepositRepository deposits;
++    private final RefundRepository refunds;
+     private final SettingsService settings;
+     private final Audit audit;
+ 
+     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
+-            CreditNoteRepository creditNotes, ClientRepository clients, SettingsService settings, Audit audit) {
++            CreditNoteRepository creditNotes, ClientRepository clients, DepositRepository deposits,
++            RefundRepository refunds, SettingsService settings, Audit audit) {
+         this.invoices = invoices;
+         this.projects = projects;
+         this.clients = clients;
++        this.deposits = deposits;
++        this.refunds = refunds;
+         this.payments = payments;
+         this.creditNotes = creditNotes;
+         this.settings = settings;
+@@ -72,7 +85,50 @@ public class InvoiceService {
+                 .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO),
+                         credited.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                 .toList();
+-        return ClientStatementResponse.from(client.getId(), client.getName(), client.getCurrency(), lines);
++        return ClientStatementResponse.from(client.getId(), client.getName(), client.getCurrency(), lines,
++                accountEntries(clientId, found));
++    }
++
++    /**
++     * The entries on a client's running account. Drafts have not been sent and void invoices were cancelled, so
++     * neither is charged. A payment made out of held deposits is left out, as the deposit was already credited
++     * when it was paid in.
++     */
++    private List<StatementEntry> accountEntries(Long clientId, List<Invoice> found) {
++        List<StatementEntry> entries = new ArrayList<>();
++        List<Long> sent = new ArrayList<>();
++        for (Invoice invoice : found) {
++            if (invoice.getStatus() == InvoiceStatus.DRAFT) {
++                continue;
++            }
++            sent.add(invoice.getId());
++            if (invoice.getStatus() != InvoiceStatus.VOID) {
++                entries.add(StatementEntry.charge(StatementEntry.Kind.INVOICE, invoice.getId(), invoice.getId(),
++                        invoice.getIssuedDate(), "Invoice #" + invoice.getId(), invoice.getAmount()));
++            }
++        }
++        if (!sent.isEmpty()) {
++            for (Payment payment : payments.findByInvoiceIdIn(sent)) {
++                if (payment.getDepositApplicationId() == null) {
++                    entries.add(StatementEntry.credit(StatementEntry.Kind.PAYMENT, payment.getId(), payment.getInvoiceId(),
++                            payment.getDate(), "Payment on invoice #" + payment.getInvoiceId(), payment.getAmount()));
++                }
++            }
++            for (CreditNote note : creditNotes.findByInvoiceIdIn(sent)) {
++                entries.add(StatementEntry.credit(StatementEntry.Kind.CREDIT_NOTE, note.getId(), note.getInvoiceId(),
++                        LocalDate.ofInstant(note.getIssuedAt(), ZoneOffset.UTC),
++                        "Credit note on invoice #" + note.getInvoiceId(), note.getAmount()));
++            }
++        }
++        for (Deposit deposit : deposits.findByClientIdOrderByDateAscIdAsc(clientId)) {
++            entries.add(StatementEntry.credit(StatementEntry.Kind.DEPOSIT, deposit.getId(), null, deposit.getDate(),
++                    "Deposit", deposit.getAmount()));
++        }
++        for (Refund refund : refunds.findByClientIdOrderByDateDescIdDesc(clientId)) {
++            entries.add(StatementEntry.charge(StatementEntry.Kind.REFUND, refund.getId(), null, refund.getDate(),
++                    "Refund", refund.getAmount()));
++        }
++        return entries;
+     }
+ 
+     private Map<Long, BigDecimal> paidByInvoice(List<Invoice> found) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/StatementEntry.java b/src/main/java/net/officefloor/hq/app/invoice/StatementEntry.java
+new file mode 100644
+index 0000000..c110c4b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/StatementEntry.java
+@@ -0,0 +1,43 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.Comparator;
++
++/**
++ * One dated entry on a client's running account. An invoice is a charge; a payment, credit note or deposit is a
++ * credit; a refund of unused credit is a charge again. The balance is what the client owes once this entry and every
++ * one before it is counted (negative when the client is in credit). The invoice is the one the entry is for, if any.
++ */
++public record StatementEntry(Kind kind, Long sourceId, Long invoiceId, LocalDate date, String description,
++        BigDecimal charge, BigDecimal credit, BigDecimal balance) {
++
++    /** What an entry records, in the order entries on the same day are listed. */
++    public enum Kind {
++        INVOICE, PAYMENT, CREDIT_NOTE, DEPOSIT, REFUND
++    }
++
++    /** Date order; on the same day charges come before what was paid against them, then by record id. */
++    static final Comparator<StatementEntry> DATE_ORDER = Comparator.comparing(StatementEntry::date)
++            .thenComparing(StatementEntry::kind)
++            .thenComparing(StatementEntry::sourceId);
++
++    static StatementEntry charge(Kind kind, Long sourceId, Long invoiceId, LocalDate date, String description,
++            BigDecimal amount) {
++        return new StatementEntry(kind, sourceId, invoiceId, date, description, amount.setScale(2), null, null);
++    }
++
++    static StatementEntry credit(Kind kind, Long sourceId, Long invoiceId, LocalDate date, String description,
++            BigDecimal amount) {
++        return new StatementEntry(kind, sourceId, invoiceId, date, description, null, amount.setScale(2), null);
++    }
++
++    /** What this entry adds to what the client owes. */
++    BigDecimal change() {
++        return charge != null ? charge : credit.negate();
++    }
++
++    StatementEntry withBalance(BigDecimal balance) {
++        return new StatementEntry(kind, sourceId, invoiceId, date, description, charge, credit, balance);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+index abc9999..175e386 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+@@ -13,6 +13,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
+     /** An invoice's payments, oldest first. */
+     List<Payment> findByInvoiceIdOrderByDateAscIdAsc(Long invoiceId);
+ 
++    /** Every payment against any of the given invoices. */
++    List<Payment> findByInvoiceIdIn(Collection<Long> invoiceIds);
++
+     /** Total paid against an invoice (zero when nothing has been paid). */
+     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.invoiceId = :invoiceId")
+     BigDecimal sumAmountByInvoiceId(Long invoiceId);
