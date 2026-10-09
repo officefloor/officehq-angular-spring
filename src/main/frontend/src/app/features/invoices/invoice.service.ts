@@ -15,6 +15,11 @@ export interface Invoice {
   dueDate: string;
 }
 
+/** An invoice as listed across all projects, with the name of the project it is for. */
+export interface InvoiceSummary extends Invoice {
+  projectName: string;
+}
+
 export interface NewInvoice {
   amount: number;
   /** Defaults to today on the server when omitted. */
@@ -26,6 +31,10 @@ export interface NewInvoice {
 @Injectable({ providedIn: 'root' })
 export class InvoiceService {
   private readonly http = inject(HttpClient);
+
+  listAll(): Observable<InvoiceSummary[]> {
+    return this.http.get<InvoiceSummary[]>('/api/invoices');
+  }
 
   listForProject(projectId: number): Observable<Invoice[]> {
     return this.http.get<Invoice[]>(`/api/projects/${projectId}/invoices`);

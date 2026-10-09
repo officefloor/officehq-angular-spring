@@ -31,6 +31,12 @@ public class InvoiceService {
         return invoices.findByProjectIdOrderById(projectId).stream().map(InvoiceResponse::from).toList();
     }
 
+    /** Every invoice across all projects, with the name of the project each one is for. */
+    @Transactional(readOnly = true)
+    public List<InvoiceSummaryResponse> listAll() {
+        return invoices.findAllWithProject().stream().map(InvoiceSummaryResponse::from).toList();
+    }
+
     @Transactional
     public InvoiceResponse create(Long projectId, InvoiceRequest request) {
         Project project = projects.findById(projectId)
