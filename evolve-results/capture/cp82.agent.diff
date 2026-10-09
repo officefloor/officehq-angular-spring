@@ -1,0 +1,339 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index e83ecd2..a1bba9e 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -15,10 +15,11 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
+ // amount, their subtotal, any percentage or flat amount discount (one or the other, taken off before tax), the taxable amount (leaving out tax-free lines), any
+ // sales tax added on it after the discount, any levy (a second tax) added on the same base, the effective tax rate
+-// (the tax and levy as a percentage of the total before tax), the total before tax, and the final total including both taxes (also shown as the total after tax).
++// (the tax and levy as a percentage of the total before tax), any flat surcharge (such as a handling fee, added after tax and
++// never taxed), the total before tax, and the final total including both taxes (also shown as the total after tax).
+ // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
+ // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the set number of days.
+-// Lines, the discount, the tax rate, the levy rate and the early-payment discount can be changed while it is a draft.
++// Lines, the discount, the tax rate, the levy rate, the surcharge and the early-payment discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, Notes],
+@@ -248,6 +249,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 <td></td>
+               }
+             </tr>
++            <tr>
++              <th scope="row" colspan="5">Surcharge</th>
++              <td data-testid="invoice-surcharge">{{ inv.surcharge | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              @if (inv.status === 'DRAFT') {
++                <td></td>
++              }
++            </tr>
+             <tr>
+               <th scope="row" colspan="5">Effective tax rate (tax and levy as a share of the total before tax)</th>
+               <td data-testid="invoice-effective-tax-rate">{{ inv.effectiveTaxPct | number: '1.2-2' : 'en-US' }}%</td>
+@@ -414,6 +422,33 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+           }
+         </form>
+ 
++        <form [formGroup]="surchargeForm" (ngSubmit)="applySurcharge()" data-testid="surcharge-form" novalidate>
++          <h2>Surcharge</h2>
++          <div>
++            <label for="surcharge-amount">Flat amount added to the total, such as a handling fee</label>
++            <input
++              id="surcharge-amount"
++              type="number"
++              inputmode="decimal"
++              min="0"
++              step="0.01"
++              formControlName="surcharge"
++              data-testid="surcharge-form-amount"
++              [attr.aria-invalid]="surchargeInvalid()"
++              [attr.aria-describedby]="surchargeInvalid() ? 'surcharge-amount-error' : null"
++            />
++            @if (surchargeInvalid()) {
++              <p id="surcharge-amount-error" role="alert" data-testid="surcharge-form-amount-error">
++                Enter an amount of 0 or more with at most two decimal places.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="surcharge-form-submit" [disabled]="surchargeSaving()">Apply surcharge</button>
++          @if (surchargeError()) {
++            <p role="alert" data-testid="surcharge-form-error">{{ surchargeError() }}</p>
++          }
++        </form>
++
+         <form [formGroup]="earlyPayForm" (ngSubmit)="applyEarlyPayment()" data-testid="early-pay-form" novalidate>
+           <h2>Early-payment discount</h2>
+           <div>
+@@ -738,6 +773,45 @@ export class InvoiceDetailPage {
+     });
+   }
+ 
++  protected readonly surchargeSaving = signal(false);
++  protected readonly surchargeError = signal<string | null>(null);
++
++  protected readonly surchargeForm = this.fb.group({
++    surcharge: ['', [Validators.required, Validators.min(0), Validators.pattern(TWO_DECIMALS)]],
++  });
++
++  // Starts the surcharge field from the invoice's current surcharge whenever the invoice loads.
++  private readonly syncSurcharge = effect(() => {
++    if (this.invoice.hasValue()) {
++      this.surchargeForm.setValue({ surcharge: String(this.invoice.value().surcharge) });
++    }
++  });
++
++  protected surchargeInvalid(): boolean {
++    const control = this.surchargeForm.controls.surcharge;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected applySurcharge(): void {
++    if (this.surchargeForm.invalid) {
++      this.surchargeForm.markAllAsTouched();
++      return;
++    }
++    this.surchargeSaving.set(true);
++    this.surchargeError.set(null);
++    const surcharge = Number(this.surchargeForm.getRawValue().surcharge);
++    this.service.applySurcharge(this.projectIdNumber(), Number(this.invoiceId()), surcharge).subscribe({
++      next: (updated) => {
++        this.invoice.set(updated);
++        this.surchargeSaving.set(false);
++      },
++      error: () => {
++        this.surchargeError.set('Could not apply the surcharge. Please try again.');
++        this.surchargeSaving.set(false);
++      },
++    });
++  }
++
+   protected readonly earlyPaySaving = signal(false);
+   protected readonly earlyPayError = signal<string | null>(null);
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index fb3ad3e..ddef558 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -95,8 +95,8 @@ export interface LineItem {
+  * A single invoice with the line items it is built from: their subtotal, the percentage and flat
+  * amount discount and what they take off, and the sales tax percentage, the taxable base it is charged on (the taxable
+  * lines after the discount, leaving out tax-free ones) and what it adds, and the levy (a second tax)
+- * percentage and what it adds on that same base; its amount is the subtotal less the discount plus
+- * the tax plus the levy.
++ * percentage and what it adds on that same base, and any flat surcharge (such as a handling fee) added
++ * after tax; its amount is the subtotal less the discount plus the tax plus the levy plus the surcharge.
+  */
+ export interface InvoiceDetail extends Invoice {
+   /** The total before tax: the amount less the sales tax and levy. */
+@@ -112,6 +112,8 @@ export interface InvoiceDetail extends Invoice {
+   tax: number;
+   levyPct: number;
+   levy: number;
++  /** A flat amount (such as a handling fee) added to the total after tax; zero when there is none. */
++  surcharge: number;
+   /** Whether the prices already include the tax and levy, so they are worked back out rather than added on. */
+   taxInclusive: boolean;
+   /** Whether the client is tax exempt, so the invoice carries no tax or levy whatever its lines say. */
+@@ -210,6 +212,11 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/levy`, { levyPct });
+   }
+ 
++  /** Sets the flat surcharge (such as a handling fee) added to a draft invoice; zero removes it. */
++  applySurcharge(projectId: number, invoiceId: number, surcharge: number): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/surcharge`, { surcharge });
++  }
++
+   /** Sets the early-payment discount offered on a draft invoice; zero for either removes the offer. */
+   applyEarlyPayment(projectId: number, invoiceId: number, earlyPaymentPct: number, earlyPaymentDays: number): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/early-payment`, {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 66e9f28..006900f 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -190,11 +190,15 @@ public class TestSupportController {
+             // An early-payment discount offered is just recorded; it does not change the amount owed.
+             BigDecimal earlyPaymentPct = i.get("earlyPaymentPct") == null ? BigDecimal.ZERO
+                     : new BigDecimal(i.get("earlyPaymentPct").toString());
++            // A flat surcharge (such as a handling fee) is added on last, after any tax.
++            BigDecimal surcharge = i.get("surcharge") == null ? BigDecimal.ZERO
++                    : new BigDecimal(i.get("surcharge").toString());
+             int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
+-            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, discount_amount, tax_pct, levy_pct, tax_inclusive, tax_exempt,"
+-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, discount_amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
++                    + " early_payment_pct, early_payment_days, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+-                    taxInclusive ? discounted : discounted.add(tax).add(levy), discountPct, discountAmount, taxPct, levyPct, taxInclusive, taxExempt,
++                    (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge), discountPct, discountAmount, taxPct, levyPct,
++                    surcharge, taxInclusive, taxExempt,
+                     earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due);
+             for (Map<String, Object> l : lineItems) {
+                 if (l.get("id") != null) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index c2e1f19..68be9ad 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -28,7 +28,8 @@ import net.officefloor.hq.app.project.Project;
+  * a flat amount off their sum as a discount, before tax (the flat amount shared across the lines in
+  * proportion to what each charges, and never more than the subtotal), then add a percentage sales tax on what is left of the taxable lines only
+  * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
+- * its stored amount is always that subtotal less the discount plus the tax plus the levy.
++ * its stored amount is always that subtotal less the discount plus the tax plus the levy, plus any flat
++ * surcharge (such as a handling fee), which is added on last and is never taxed.
+  * <p>
+  * Every figure is worked out line by line: each line is rounded to the cent first and the rounded lines
+  * are then added up, and the tax and levy are likewise worked out and rounded on each taxable line before
+@@ -36,10 +37,10 @@ import net.officefloor.hq.app.project.Project;
+  * <p>
+  * A tax-inclusive invoice (for a client whose prices already include tax) instead works the tax and
+  * levy back out of the taxable lines after the discount: they are inside the price, so its amount is
+- * just the subtotal less the discount, and the taxable base is what is left once they are taken out.
++ * just the subtotal less the discount (plus any surcharge), and the taxable base is what is left once they are taken out.
+  * <p>
+  * A tax-exempt invoice (for a tax-exempt client) has no taxable lines at all: it carries no tax or levy
+- * whatever its lines or rates say, so its amount is the subtotal less the discount.
++ * whatever its lines or rates say, so its amount is the subtotal less the discount (plus any surcharge).
+  */
+ @Entity
+ @Table(name = "invoice")
+@@ -69,6 +70,10 @@ public class Invoice {
+     @Column(name = "levy_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal levyPct = BigDecimal.ZERO.setScale(2);
+ 
++    /** A flat amount (such as a handling fee) added to the total after tax; zero when there is none. */
++    @Column(nullable = false, precision = 12, scale = 2)
++    private BigDecimal surcharge = BigDecimal.ZERO.setScale(2);
++
+     /** Whether the prices already include the tax and levy, so they are backed out rather than added on. */
+     @Column(name = "tax_inclusive", nullable = false)
+     private boolean taxInclusive;
+@@ -213,6 +218,11 @@ public class Invoice {
+         return sumOverTaxableLines(this::levyOn);
+     }
+ 
++    /** The flat amount (such as a handling fee) added to the total after tax; zero when there is none. */
++    public BigDecimal getSurcharge() {
++        return surcharge;
++    }
++
+     /** The taxable lines (leaving out tax-free ones), each less the discount taken off it, added up. */
+     private BigDecimal getDiscountedTaxable() {
+         return sumOverTaxableLines(line -> line);
+@@ -358,6 +368,12 @@ public class Invoice {
+         recalculateAmount();
+     }
+ 
++    /** Sets the flat surcharge (such as a handling fee) added to this invoice and reworks its amount to match. */
++    public void applySurcharge(BigDecimal surcharge) {
++        this.surcharge = surcharge.setScale(2, RoundingMode.HALF_UP);
++        recalculateAmount();
++    }
++
+     /**
+      * Sets the early-payment discount offered on this invoice: the percentage taken off if it is paid
+      * within the given number of days of being issued. It does not change the amount owed.
+@@ -404,7 +420,7 @@ public class Invoice {
+     private void recalculateAmount() {
+         BigDecimal subtotal = getSubtotal();
+         BigDecimal discounted = subtotal.subtract(getDiscount());
+-        this.amount = taxInclusive ? discounted : discounted.add(getTax()).add(getLevy());
++        this.amount = (taxInclusive ? discounted : discounted.add(getTax()).add(getLevy())).add(surcharge);
+     }
+ 
+     /** Marks this invoice as sent to the client. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index f81a85b..b906ed2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -76,6 +76,12 @@ public class InvoiceController {
+         return service.applyLevy(projectId, invoiceId, request);
+     }
+ 
++    @PutMapping("/{invoiceId}/surcharge")
++    public InvoiceDetailResponse applySurcharge(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody SurchargeRequest request) {
++        return service.applySurcharge(projectId, invoiceId, request);
++    }
++
+     @PutMapping("/{invoiceId}/early-payment")
+     public InvoiceDetailResponse applyEarlyPayment(@PathVariable Long projectId, @PathVariable Long invoiceId,
+             @Valid @RequestBody EarlyPaymentRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 0602d0b..cbed8a8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -9,7 +9,7 @@ import net.officefloor.hq.app.client.Currency;
+  * A single invoice together with the line items it is built from: their subtotal, the percentage
+  * discount, the flat amount discount, and what they take off together, the sales tax percentage, the taxable base it is charged on (the
+  * taxable lines after the discount) and what it adds, the levy (second tax) percentage and what it adds
+- * on the same base, the amount owed including both taxes, the total before tax, whether the prices already include the taxes
++ * on the same base, any flat surcharge (such as a handling fee) added after tax, the amount owed including both taxes and the surcharge, the total before tax, whether the prices already include the taxes
+  * (so they are worked back out rather than added on), whether the client is tax exempt (so
+  * there is no tax at all), the effective tax rate (the sales tax and levy together as a percentage of
+  * the total before tax), any early-payment discount offered (its percentage, the days after issue it
+@@ -19,7 +19,7 @@ import net.officefloor.hq.app.client.Currency;
+ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+         BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
+-        BigDecimal levyPct, BigDecimal levy, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
++        BigDecimal levyPct, BigDecimal levy, BigDecimal surcharge, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
+         BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
+         InvoiceStatus status, LocalDate issuedDate,
+         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber) {
+@@ -29,7 +29,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency,
+                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
+                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
+-                invoice.getLevyPct(), invoice.getLevy(), invoice.isTaxInclusive(), invoice.isTaxExempt(),
++                invoice.getLevyPct(), invoice.getLevy(), invoice.getSurcharge(), invoice.isTaxInclusive(), invoice.isTaxExempt(),
+                 invoice.getEffectiveTaxPct(),
+                 invoice.getEarlyPaymentPct(), invoice.getEarlyPaymentDays(), invoice.getEarlyPaymentBy(),
+                 invoice.getEarlyPaymentAmount(),
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 1044737..efd98ea 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -169,6 +169,15 @@ public class InvoiceService {
+         return InvoiceDetailResponse.from(invoice);
+     }
+ 
++    /** Sets the flat surcharge on a draft invoice and reworks the invoice amount to match. */
++    @Transactional
++    public InvoiceDetailResponse applySurcharge(Long projectId, Long invoiceId, SurchargeRequest request) {
++        Invoice invoice = findDraft(projectId, invoiceId);
++        invoice.applySurcharge(request.surcharge());
++        invoices.flush();
++        return InvoiceDetailResponse.from(invoice);
++    }
++
+     /** Sets the early-payment discount offered on a draft invoice. */
+     @Transactional
+     public InvoiceDetailResponse applyEarlyPayment(Long projectId, Long invoiceId, EarlyPaymentRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/SurchargeRequest.java b/src/main/java/net/officefloor/hq/app/invoice/SurchargeRequest.java
+new file mode 100644
+index 0000000..996a4e7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/SurchargeRequest.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/** Payload to set the flat surcharge (such as a handling fee) added to a draft invoice; zero removes it. */
++public record SurchargeRequest(
++        @NotNull @DecimalMin("0") @Digits(integer = 10, fraction = 2) BigDecimal surcharge) {
++}
+diff --git a/src/main/resources/db/migration/V46__invoice_surcharge.sql b/src/main/resources/db/migration/V46__invoice_surcharge.sql
+new file mode 100644
+index 0000000..3105d6d
+--- /dev/null
++++ b/src/main/resources/db/migration/V46__invoice_surcharge.sql
+@@ -0,0 +1,5 @@
++-- An invoice can carry a surcharge: a flat amount, such as a handling fee, added to the total after the
++-- discount and taxes (it is not itself taxed). Existing invoices have none, so their amounts are unchanged.
++ALTER TABLE invoice ADD COLUMN surcharge DECIMAL(12, 2) DEFAULT 0 NOT NULL;
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_surcharge_non_negative CHECK (surcharge >= 0);
