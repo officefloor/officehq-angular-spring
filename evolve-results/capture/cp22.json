@@ -1,0 +1,494 @@
+{
+  "checkpoint": 22,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48"
+  },
+  "checkpoint_id": "cp22_line_items_edit",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "Let me change or remove those charge lines on an invoice. Update the total when I do.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nLet me change or remove those charge lines on an invoice. Update the total when I do.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "66152ec9b1518b7379a20c9047d23028d95d36b9",
+  "reset_sha": "",
+  "preagent_sha": "acb433de7ef6dfa9e60490fce3b70807d5e5cf38",
+  "prev_sha": "acb433de7ef6dfa9e60490fce3b70807d5e5cf38",
+  "base_sha": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6147741999999998,
+    "input_tokens": 20,
+    "output_tokens": 9683,
+    "cache_read_tokens": 368011,
+    "cache_creation_tokens": 43429,
+    "num_turns": 10,
+    "duration_ms": 137376,
+    "duration_api_ms": 76828,
+    "model": "claude-opus-5-5",
+    "session_id": "d3aa7ec7-8fb7-4374-a0c6-15584c041825",
+    "stop_reason": "success",
+    "result_text": "You can now change or remove charge lines on a draft invoice, and the stored invoice total is recalculated on the server each time. The acceptance test passes under `bin/e2e`. That test only covers removing a line, so I also tried an edit and a bad removal by calling the API directly against the running app. Changing a line to 2.5 \u00d7 $40 stored the right total ($150.00), and removing a line that doesn't exist returned 404. I haven't clicked through the Edit/Save/Cancel buttons in the browser.\n\n**Server** (Spring Boot \u2014 the app is Spring, not OfficeFloor, even though the package is named `net.officefloor`):\n- **New endpoints:** `PUT /api/projects/{projectId}/invoices/{invoiceId}/line-items/{lineItemId}` changes a line, and `DELETE` on the same path removes it. Both return the updated invoice with its lines. A change uses the same checks as adding a line.\n- **Rules:** both work only on draft invoices, the same as adding a line. On a sent or paid invoice they return 409, and an unknown line returns 404.\n- **Total:** `Invoice` now recalculates its stored amount whenever a line is added, changed or removed. That stored amount is what the project's invoice list and the dashboard show. The changes are in `Invoice.java`, `InvoiceLineItem.java`, `InvoiceService.java` and `InvoiceController.java`.\n\n**Front end** (`invoice-detail.ts`, `invoice.service.ts`):\n- On a draft invoice, each line has **Edit** and **Remove** buttons (`lineitem-edit-{id}`, `lineitem-remove-{id}`).\n- Edit switches the row into inline inputs with **Save** and **Cancel** (`lineitem-save-{id}`, `lineitem-cancel-{id}`). Enter saves and Escape cancels.\n- After each action, keyboard focus moves to a sensible place, and errors appear in a `role=\"alert\"` message (`lineitem-edit-error`). No existing `data-testid` was renamed or removed.\n\n**Database:** I didn't add a migration because the existing tables already support this. Invoices can already be worth $0, so removing every line works.\n\nNeither change nor removal writes an audit record; the spec doesn't ask for one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.6147741999999998,
+        "num_turns": 10,
+        "duration_ms": 137376,
+        "duration_api_ms": 76828,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp22.agent.jsonl",
+  "agent_diff_file": "cp22.agent.diff",
+  "build_log_file": "cp22.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 32,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adding a line item to a new invoice sets its amount": true,
+      "cp05_invoice_pay_audit.spec.ts::paying a sent invoice updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying a sent invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's projects": true,
+      "cp08_dashboard.spec.ts::shows counts and the outstanding total": true,
+      "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol": true,
+      "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount": true,
+      "cp10_invoice_amount_positive.spec.ts::accepts a positive amount": true,
+      "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates": true,
+      "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first": true,
+      "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it": true,
+      "cp13_invoice_lifecycle.spec.ts::a draft invoice cannot be paid until it is sent": true,
+      "cp14_all_invoices.spec.ts::lists invoices from every project with project and status": true,
+      "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage": true,
+      "cp16_client_contacts.spec.ts::lists a client's contacts": true,
+      "cp16_client_contacts.spec.ts::adds a contact to a client": true,
+      "cp17_outstanding_sent_only.spec.ts::the outstanding total excludes drafts": true,
+      "cp18_contact_email_validation.spec.ts::rejects a bad contact email": true,
+      "cp19_client_badges.spec.ts::shows project and contact counts": true,
+      "cp20_project_tasks.spec.ts::lists tasks and lets me tick one off": true,
+      "cp21_invoice_line_items.spec.ts::invoice amount is the sum of its line items": true,
+      "cp21_invoice_line_items.spec.ts::adding a line item increases the invoice total": true,
+      "cp22_line_items_edit.spec.ts::removing a line item lowers the total": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 457,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 517,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 280,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 245,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 261,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 288,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 368,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 384,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adding a line item to a new invoice sets its amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 563,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying a sent invoice updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 546,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying a sent invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 528,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 304,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's projects",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 360,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and the outstanding total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 283,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 335,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 309,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::accepts a positive amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 404,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 336,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 422,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 545,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::a draft invoice cannot be paid until it is sent",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 561,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_all_invoices.spec.ts::lists invoices from every project with project and status",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 293,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 421,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::lists a client's contacts",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 351,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::adds a contact to a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 436,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_outstanding_sent_only.spec.ts::the outstanding total excludes drafts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 292,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_contact_email_validation.spec.ts::rejects a bad contact email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 327,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_client_badges.spec.ts::shows project and contact counts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 326,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_project_tasks.spec.ts::lists tasks and lets me tick one off",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 541,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_invoice_line_items.spec.ts::invoice amount is the sum of its line items",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 540,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_invoice_line_items.spec.ts::adding a line item increases the invoice total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 765,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_line_items_edit.spec.ts::removing a line item lowers the total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 863,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 2.24,
+            "impact": 206,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice-detail.ts",
+                "lang": "typescript",
+                "cost": 103,
+                "mutation": 89,
+                "godclass": 14,
+                "mut_fns": 5,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice-detail.ts",
+                "name": "next",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 6,
+                "cost": 30,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice-detail.ts",
+                "name": "error",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 6,
+                "cost": 24,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice-detail.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 5,
+                "cost": 20,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice-detail.ts",
+                "name": "afterNextRender",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 7,
+                "cost": 14,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice-detail.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 5,
+                "cost": 10,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice-detail.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 5,
+                "cost": 5,
+                "kind": "mutation"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 0,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 52.41,
+            "impact": 3465,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java",
+                "lang": "java",
+                "cost": 693,
+                "mutation": 85,
+                "godclass": 608,
+                "mut_fns": 1,
+                "new_fns": 4
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java",
+                "name": "InvoiceService::findDraft",
+                "container": "InvoiceService",
+                "cc": 2,
+                "wmc_other": 19,
+                "cost": 266,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java",
+                "name": "InvoiceService::updateLineItem",
+                "container": "InvoiceService",
+                "cc": 1,
+                "wmc_other": 19,
+                "cost": 152,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java",
+                "name": "InvoiceService::removeLineItem",
+                "container": "InvoiceService",
+                "cc": 1,
+                "wmc_other": 19,
+                "cost": 114,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java",
+                "name": "InvoiceService::addLineItem",
+                "container": "InvoiceService",
+                "cc": 1,
+                "wmc_other": 17,
+                "cost": 85,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java",
+                "name": "InvoiceService::findLineItem",
+                "container": "InvoiceService",
+                "cc": 1,
+                "wmc_other": 19,
+                "cost": 76,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 1,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}

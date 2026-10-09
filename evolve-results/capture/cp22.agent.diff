@@ -1,0 +1,434 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 32a87a5..7fbb292 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -1,9 +1,10 @@
+ import { CurrencyPipe, DecimalPipe } from '@angular/common';
+-import { Component, computed, inject, input, signal } from '@angular/core';
++import { Component, Injector, afterNextRender, computed, inject, input, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+-import { InvoiceService } from './invoice.service';
++import { Observable } from 'rxjs';
++import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+ 
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ 
+@@ -25,7 +26,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+       </p>
+ 
+       <section aria-labelledby="invoice-lineitems-heading">
+-        <h2 id="invoice-lineitems-heading">Line items</h2>
++        <h2 id="invoice-lineitems-heading" tabindex="-1">Line items</h2>
+         @if (inv.lineItems.length === 0) {
+           <p data-testid="invoice-lineitems-empty">No line items yet.</p>
+         }
+@@ -37,15 +38,98 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+               <th scope="col">Quantity</th>
+               <th scope="col">Unit price</th>
+               <th scope="col">Amount</th>
++              @if (inv.status === 'DRAFT') {
++                <th scope="col"><span class="visually-hidden">Actions</span></th>
++              }
+             </tr>
+           </thead>
+           <tbody>
+             @for (l of inv.lineItems; track l.id) {
+               <tr [attr.data-testid]="'lineitem-row-' + l.id">
+-                <td data-testid="lineitem-description">{{ l.description }}</td>
+-                <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
+-                <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+-                <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                @if (editingId() === l.id) {
++                  <td>
++                    <input
++                      [id]="'lineitem-edit-description-' + l.id"
++                      type="text"
++                      [formControl]="editForm.controls.description"
++                      data-testid="lineitem-edit-description"
++                      aria-label="Description"
++                      [attr.aria-invalid]="editForm.controls.description.invalid"
++                      (keydown.enter)="saveEdit(l.id)"
++                      (keydown.escape)="cancelEdit(l.id)"
++                    />
++                  </td>
++                  <td>
++                    <input
++                      type="number"
++                      inputmode="decimal"
++                      min="0.01"
++                      step="0.01"
++                      [formControl]="editForm.controls.qty"
++                      data-testid="lineitem-edit-qty"
++                      aria-label="Quantity"
++                      [attr.aria-invalid]="editForm.controls.qty.invalid"
++                      (keydown.enter)="saveEdit(l.id)"
++                      (keydown.escape)="cancelEdit(l.id)"
++                    />
++                  </td>
++                  <td>
++                    <input
++                      type="number"
++                      inputmode="decimal"
++                      min="0.01"
++                      step="0.01"
++                      [formControl]="editForm.controls.unitPrice"
++                      data-testid="lineitem-edit-unitprice"
++                      aria-label="Unit price"
++                      [attr.aria-invalid]="editForm.controls.unitPrice.invalid"
++                      (keydown.enter)="saveEdit(l.id)"
++                      (keydown.escape)="cancelEdit(l.id)"
++                    />
++                  </td>
++                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  <td>
++                    <button
++                      type="button"
++                      [attr.data-testid]="'lineitem-save-' + l.id"
++                      [disabled]="busy() || editForm.invalid"
++                      (click)="saveEdit(l.id)"
++                    >
++                      Save
++                    </button>
++                    <button type="button" [attr.data-testid]="'lineitem-cancel-' + l.id" (click)="cancelEdit(l.id)">
++                      Cancel
++                    </button>
++                  </td>
++                } @else {
++                  <td data-testid="lineitem-description">{{ l.description }}</td>
++                  <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
++                  <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  @if (inv.status === 'DRAFT') {
++                    <td>
++                      <button
++                        type="button"
++                        [id]="'lineitem-edit-' + l.id"
++                        [attr.data-testid]="'lineitem-edit-' + l.id"
++                        [attr.aria-label]="'Edit line item ' + l.description"
++                        [disabled]="busy()"
++                        (click)="startEdit(l)"
++                      >
++                        Edit
++                      </button>
++                      <button
++                        type="button"
++                        [attr.data-testid]="'lineitem-remove-' + l.id"
++                        [attr.aria-label]="'Remove line item ' + l.description"
++                        [disabled]="busy()"
++                        (click)="remove(l.id)"
++                      >
++                        Remove
++                      </button>
++                    </td>
++                  }
++                }
+               </tr>
+             }
+           </tbody>
+@@ -53,9 +137,15 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+             <tr>
+               <th scope="row" colspan="3">Total</th>
+               <td data-testid="invoice-amount">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              @if (inv.status === 'DRAFT') {
++                <td></td>
++              }
+             </tr>
+           </tfoot>
+         </table>
++        @if (editError()) {
++          <p role="alert" data-testid="lineitem-edit-error">{{ editError() }}</p>
++        }
+       </section>
+ 
+       @if (inv.status === 'DRAFT') {
+@@ -126,6 +216,8 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ })
+ export class InvoiceDetailPage {
+   private readonly service = inject(InvoiceService);
++  private readonly injector = inject(Injector);
++  private readonly fb = inject(NonNullableFormBuilder);
+ 
+   /** Bound from the `:projectId` route parameter. */
+   readonly projectId = input.required<string>();
+@@ -152,7 +244,7 @@ export class InvoiceDetailPage {
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+ 
+-  protected readonly form = inject(NonNullableFormBuilder).group({
++  protected readonly form = this.fb.group({
+     description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
+     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+@@ -184,4 +276,78 @@ export class InvoiceDetailPage {
+       },
+     });
+   }
++
++  // The line item being changed in place, and whether a change or removal is in flight.
++  protected readonly editingId = signal<number | null>(null);
++  protected readonly busy = signal(false);
++  protected readonly editError = signal<string | null>(null);
++
++  protected readonly editForm = this.fb.group({
++    description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
++    qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++  });
++
++  protected startEdit(line: LineItem): void {
++    this.editError.set(null);
++    this.editForm.setValue({
++      description: line.description,
++      qty: String(line.qty),
++      unitPrice: String(line.unitPrice),
++    });
++    this.editingId.set(line.id);
++    this.focus(`lineitem-edit-description-${line.id}`);
++  }
++
++  protected cancelEdit(lineItemId: number): void {
++    this.editingId.set(null);
++    this.editError.set(null);
++    this.focus(`lineitem-edit-${lineItemId}`);
++  }
++
++  protected saveEdit(lineItemId: number): void {
++    if (this.editForm.invalid || this.busy()) {
++      this.editForm.markAllAsTouched();
++      return;
++    }
++    const { description, qty, unitPrice } = this.editForm.getRawValue();
++    const item = { description: description.trim(), qty: Number(qty), unitPrice: Number(unitPrice) };
++    this.run(
++      this.service.updateLineItem(this.projectIdNumber(), Number(this.invoiceId()), lineItemId, item),
++      'Could not save the line item. Please try again.',
++      () => {
++        this.editingId.set(null);
++        this.focus(`lineitem-edit-${lineItemId}`);
++      },
++    );
++  }
++
++  protected remove(lineItemId: number): void {
++    this.run(
++      this.service.removeLineItem(this.projectIdNumber(), Number(this.invoiceId()), lineItemId),
++      'Could not remove the line item. Please try again.',
++      () => this.focus('invoice-lineitems-heading'),
++    );
++  }
++
++  private run(request: Observable<InvoiceDetail>, failure: string, done: () => void): void {
++    this.busy.set(true);
++    this.editError.set(null);
++    request.subscribe({
++      next: (updated) => {
++        this.invoice.set(updated);
++        this.busy.set(false);
++        done();
++      },
++      error: () => {
++        this.editError.set(failure);
++        this.busy.set(false);
++      },
++    });
++  }
++
++  // Moves focus once the view has re-rendered, so keyboard users are not left on a removed element.
++  private focus(id: string): void {
++    afterNextRender(() => document.getElementById(id)?.focus(), { injector: this.injector });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 90b269e..667e07f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -77,6 +77,17 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items`, item);
+   }
+ 
++  updateLineItem(projectId: number, invoiceId: number, lineItemId: number, item: NewLineItem): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(
++      `/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`,
++      item,
++    );
++  }
++
++  removeLineItem(projectId: number, invoiceId: number, lineItemId: number): Observable<InvoiceDetail> {
++    return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`);
++  }
++
+   send(projectId: number, invoiceId: number): Observable<Invoice> {
+     return this.http.post<Invoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index c38586f..f105768 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -18,6 +18,7 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
++import java.util.Optional;
+ import net.officefloor.hq.app.project.Project;
+ 
+ /**
+@@ -94,10 +95,32 @@ public class Invoice {
+     public InvoiceLineItem addLineItem(String description, BigDecimal qty, BigDecimal unitPrice) {
+         InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unitPrice);
+         lineItems.add(item);
+-        this.amount = lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
++        recalculateAmount();
+         return item;
+     }
+ 
++    /** Changes one of this invoice's lines and reworks its amount to match. */
++    public void updateLineItem(InvoiceLineItem item, String description, BigDecimal qty, BigDecimal unitPrice) {
++        item.update(description, qty, unitPrice);
++        recalculateAmount();
++    }
++
++    /** Removes a line from this invoice and reworks its amount to no longer include what the line charged. */
++    public void removeLineItem(InvoiceLineItem item) {
++        lineItems.remove(item);
++        recalculateAmount();
++    }
++
++    /** The line on this invoice with the given id, if there is one. */
++    public Optional<InvoiceLineItem> findLineItem(Long lineItemId) {
++        return lineItems.stream().filter(l -> l.getId().equals(lineItemId)).findFirst();
++    }
++
++    private void recalculateAmount() {
++        this.amount = lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add)
++                .setScale(2);
++    }
++
+     /** Marks this invoice as sent to the client. */
+     public void markSent() {
+         this.status = InvoiceStatus.SENT;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index 94d2673..a8d9b38 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -3,9 +3,11 @@ package net.officefloor.hq.app.invoice;
+ import jakarta.validation.Valid;
+ import java.util.List;
+ import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+@@ -44,6 +46,18 @@ public class InvoiceController {
+         return service.addLineItem(projectId, invoiceId, request);
+     }
+ 
++    @PutMapping("/{invoiceId}/line-items/{lineItemId}")
++    public InvoiceDetailResponse updateLineItem(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @PathVariable Long lineItemId, @Valid @RequestBody LineItemRequest request) {
++        return service.updateLineItem(projectId, invoiceId, lineItemId, request);
++    }
++
++    @DeleteMapping("/{invoiceId}/line-items/{lineItemId}")
++    public InvoiceDetailResponse removeLineItem(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @PathVariable Long lineItemId) {
++        return service.removeLineItem(projectId, invoiceId, lineItemId);
++    }
++
+     @PostMapping("/{invoiceId}/send")
+     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.send(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
+index db5dfef..d3f20d4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceLineItem.java
+@@ -44,6 +44,12 @@ public class InvoiceLineItem {
+         this.unitPrice = unitPrice;
+     }
+ 
++    void update(String description, BigDecimal qty, BigDecimal unitPrice) {
++        this.description = description;
++        this.qty = qty;
++        this.unitPrice = unitPrice;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 20f99ec..adf4438 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -69,15 +69,32 @@ public class InvoiceService {
+     /** Adds a line item to a draft invoice and reworks the invoice amount to match. */
+     @Transactional
+     public InvoiceDetailResponse addLineItem(Long projectId, Long invoiceId, LineItemRequest request) {
+-        Invoice invoice = find(projectId, invoiceId);
+-        if (invoice.getStatus() != InvoiceStatus.DRAFT) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft invoice can be changed");
+-        }
++        Invoice invoice = findDraft(projectId, invoiceId);
+         invoice.addLineItem(request.description().strip(), request.qty(), request.unitPrice());
+         invoices.flush();
+         return InvoiceDetailResponse.from(invoice);
+     }
+ 
++    /** Changes a line item on a draft invoice and reworks the invoice amount to match. */
++    @Transactional
++    public InvoiceDetailResponse updateLineItem(Long projectId, Long invoiceId, Long lineItemId,
++            LineItemRequest request) {
++        Invoice invoice = findDraft(projectId, invoiceId);
++        InvoiceLineItem item = findLineItem(invoice, lineItemId);
++        invoice.updateLineItem(item, request.description().strip(), request.qty(), request.unitPrice());
++        invoices.flush();
++        return InvoiceDetailResponse.from(invoice);
++    }
++
++    /** Removes a line item from a draft invoice and reworks the invoice amount to match. */
++    @Transactional
++    public InvoiceDetailResponse removeLineItem(Long projectId, Long invoiceId, Long lineItemId) {
++        Invoice invoice = findDraft(projectId, invoiceId);
++        invoice.removeLineItem(findLineItem(invoice, lineItemId));
++        invoices.flush();
++        return InvoiceDetailResponse.from(invoice);
++    }
++
+     /** Sends a draft invoice and records the sending in the audit log. */
+     @Transactional
+     public InvoiceResponse send(Long projectId, Long invoiceId) {
+@@ -112,4 +129,17 @@ public class InvoiceService {
+                 .filter(i -> i.getProject().getId().equals(projectId))
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown invoice"));
+     }
++
++    private Invoice findDraft(Long projectId, Long invoiceId) {
++        Invoice invoice = find(projectId, invoiceId);
++        if (invoice.getStatus() != InvoiceStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft invoice can be changed");
++        }
++        return invoice;
++    }
++
++    private static InvoiceLineItem findLineItem(Invoice invoice, Long lineItemId) {
++        return invoice.findLineItem(lineItemId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown line item"));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java b/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
+index 8e68385..c4ab5f8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItemRequest.java
+@@ -7,7 +7,7 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ 
+-/** Payload to add a line item to a draft invoice. */
++/** Payload to add, or change, a line item on a draft invoice. */
+ public record LineItemRequest(
+         @NotBlank @Size(max = 255) String description,
+         @NotNull @DecimalMin("0.01") @Digits(integer = 8, fraction = 2) BigDecimal qty,
