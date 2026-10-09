@@ -21,4 +21,8 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     /** How many projects a client has. */
     long countByClientId(Long clientId);
+
+    /** Whether any invoice has been raised against the project. */
+    @Query("SELECT COUNT(i) > 0 FROM Invoice i WHERE i.project.id = :id")
+    boolean hasInvoices(Long id);
 }

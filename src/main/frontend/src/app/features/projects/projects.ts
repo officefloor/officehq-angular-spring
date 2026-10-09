@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -5,7 +6,7 @@ import { Client, ClientService } from '../clients/client.service';
 import { Project, ProjectService } from './project.service';
 
 // Projects page: add a project for a client and list all projects with their client's name; each
-// project opens its detail page.
+// project opens its detail page and can be deleted once it is no longer needed.
 @Component({
   selector: 'app-projects',
   imports: [ReactiveFormsModule, RouterLink],
@@ -57,6 +58,10 @@ import { Project, ProjectService } from './project.service';
       }
     </form>
 
+    @if (deleteError()) {
+      <p role="alert" data-testid="project-delete-error">{{ deleteError() }}</p>
+    }
+
     @if (projects().length === 0) {
       <p data-testid="projects-empty">No projects yet.</p>
     } @else {
@@ -81,6 +86,15 @@ import { Project, ProjectService } from './project.service';
                   [attr.aria-label]="'Open ' + p.name"
                   >Open</a
                 >
+                <button
+                  type="button"
+                  [attr.data-testid]="'project-delete-' + p.id"
+                  [attr.aria-label]="'Delete ' + p.name"
+                  [disabled]="deleting() === p.id"
+                  (click)="remove(p)"
+                >
+                  Delete
+                </button>
               </td>
             </tr>
           }
@@ -97,6 +111,8 @@ export class Projects {
   protected readonly clients = signal<Client[]>([]);
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
+  protected readonly deleting = signal<number | null>(null);
+  protected readonly deleteError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -130,6 +146,25 @@ export class Projects {
       error: () => {
         this.saveError.set('Could not save the project. Please try again.');
         this.saving.set(false);
+      },
+    });
+  }
+
+  protected remove(project: Project): void {
+    this.deleting.set(project.id);
+    this.deleteError.set(null);
+    this.service.delete(project.id).subscribe({
+      next: () => {
+        this.projects.update((list) => list.filter((p) => p.id !== project.id));
+        this.deleting.set(null);
+      },
+      error: (err: unknown) => {
+        this.deleteError.set(
+          err instanceof HttpErrorResponse && err.status === 409
+            ? `Could not delete ${project.name}: it has invoices.`
+            : `Could not delete ${project.name}. Please try again.`,
+        );
+        this.deleting.set(null);
       },
     });
   }

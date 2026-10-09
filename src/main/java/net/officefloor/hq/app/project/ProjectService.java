@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.project;
 
 import java.util.List;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.Client;
 import net.officefloor.hq.app.client.ClientRepository;
 import org.springframework.http.HttpStatus;
@@ -13,10 +14,12 @@ public class ProjectService {
 
     private final ProjectRepository projects;
     private final ClientRepository clients;
+    private final Audit audit;
 
-    public ProjectService(ProjectRepository projects, ClientRepository clients) {
+    public ProjectService(ProjectRepository projects, ClientRepository clients, Audit audit) {
         this.projects = projects;
         this.clients = clients;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -44,5 +47,21 @@ public class ProjectService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown client"));
         Project saved = projects.save(new Project(request.name().trim(), client));
         return ProjectResponse.from(saved);
+    }
+
+    /**
+     * Deletes a project (and its tasks) and records the deletion in the audit log. A project that
+     * has been invoiced is kept, so its invoices are never lost.
+     */
+    @Transactional
+    public void delete(Long id) {
+        Project project = projects.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+        if (projects.hasInvoices(id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project has invoices");
+        }
+        projects.delete(project);
+        projects.flush();
+        audit.record("PROJECT_DELETED id=" + id);
     }
 }

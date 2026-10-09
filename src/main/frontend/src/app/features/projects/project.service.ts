@@ -33,4 +33,8 @@ export class ProjectService {
   create(project: NewProject): Observable<Project> {
     return this.http.post<Project>('/api/projects', project);
   }
+
+  delete(id: number): Observable<void> {
+    return this.http.delete<void>(`/api/projects/${id}`);
+  }
 }
