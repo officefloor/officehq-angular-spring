@@ -1,8 +1,8 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Client, ClientService } from './client.service';
 
-// Clients page: add a client (name + email) and list all clients.
+// Clients page: add a client (name + email) and list all clients, filterable by name.
 @Component({
   selector: 'app-clients',
   imports: [ReactiveFormsModule],
@@ -53,23 +53,38 @@ import { Client, ClientService } from './client.service';
     @if (clients().length === 0) {
       <p data-testid="clients-empty">No clients yet.</p>
     } @else {
-      <table data-testid="clients-table">
-        <caption>All clients</caption>
-        <thead>
-          <tr>
-            <th scope="col">Name</th>
-            <th scope="col">Email</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (c of clients(); track c.id) {
-            <tr [attr.data-testid]="'client-row-' + c.id">
-              <td data-testid="client-name">{{ c.name }}</td>
-              <td data-testid="client-email">{{ c.email }}</td>
+      <div role="search">
+        <label for="client-search">Search clients by name</label>
+        <input
+          id="client-search"
+          type="search"
+          autocomplete="off"
+          data-testid="client-search"
+          [value]="query()"
+          (input)="onSearch($event)"
+        />
+      </div>
+      @if (filteredClients().length === 0) {
+        <p role="status" data-testid="clients-no-match">No clients match your search.</p>
+      } @else {
+        <table data-testid="clients-table">
+          <caption>All clients</caption>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Email</th>
             </tr>
-          }
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            @for (c of filteredClients(); track c.id) {
+              <tr [attr.data-testid]="'client-row-' + c.id">
+                <td data-testid="client-name">{{ c.name }}</td>
+                <td data-testid="client-email">{{ c.email }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
     }
   `,
 })
@@ -77,6 +92,13 @@ export class Clients {
   private readonly service = inject(ClientService);
 
   protected readonly clients = signal<Client[]>([]);
+  protected readonly query = signal('');
+  // Case-insensitive name filter; an empty query shows every client.
+  protected readonly filteredClients = computed(() => {
+    const q = this.query().trim().toLowerCase();
+    const list = this.clients();
+    return q ? list.filter((c) => c.name.toLowerCase().includes(q)) : list;
+  });
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
 
@@ -96,6 +118,10 @@ export class Clients {
 
   constructor() {
     this.load();
+  }
+
+  protected onSearch(event: Event): void {
+    this.query.set((event.target as HTMLInputElement).value);
   }
 
   protected showError(field: 'name' | 'email'): boolean {
