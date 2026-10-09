@@ -48,6 +48,9 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
     Optional<Project> findByIdWithClient(Long id);
 
+    /** Whether any project, archived or not, already has the code. */
+    boolean existsByCode(String code);
+
     /** How many projects a client has. */
     long countByClientId(Long clientId);
 

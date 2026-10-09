@@ -14,6 +14,8 @@ export const PROJECT_STATUSES: { value: ProjectStatus; label: string }[] = [
 export interface Project {
   id: number;
   name: string;
+  /** Short reference code, unique across jobs; null for jobs added before codes existed. */
+  code: string | null;
   clientId: number;
   clientName: string;
   archived: boolean;
@@ -29,6 +31,7 @@ export interface ProjectBudget {
 
 export interface NewProject {
   name: string;
+  code: string;
   clientId: number;
   status: ProjectStatus;
 }

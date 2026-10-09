@@ -7,6 +7,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.Client;
 import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
+import java.util.Locale;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,16 +66,32 @@ public class ProjectService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
     }
 
+    /** Adds a project; its code, trimmed and upper-cased, must not already belong to another project. */
     @Transactional
     public ProjectResponse create(ProjectRequest request) {
         Client client = clients.findById(request.clientId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown client"));
-        Project project = new Project(request.name().trim(), client);
+        String code = request.code().trim().toUpperCase(Locale.ROOT);
+        if (projects.existsByCode(code)) {
+            throw codeTaken();
+        }
+        Project project = new Project(request.name().trim(), code, client);
         if (request.status() != null) {
             project.setStatus(request.status());
         }
-        Project saved = projects.save(project);
-        return ProjectResponse.from(saved);
+        try {
+            return ProjectResponse.from(projects.saveAndFlush(project));
+        } catch (DataIntegrityViolationException e) {
+            // Lost a race with a concurrent add of the same code; the unique constraint caught it.
+            if (String.valueOf(e.getMessage()).toUpperCase().contains("PROJECT_CODE_UQ")) {
+                throw codeTaken();
+            }
+            throw e;
+        }
+    }
+
+    private static ResponseStatusException codeTaken() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "A job with this code already exists");
     }
 
     /** Invoices count as invoiced once sent; drafts have not been invoiced yet. */

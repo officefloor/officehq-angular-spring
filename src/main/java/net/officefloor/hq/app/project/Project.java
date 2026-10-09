@@ -29,6 +29,8 @@ public class Project {
 
     private String name;
 
+    private String code;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "client_id", nullable = false)
     private Client client;
@@ -48,8 +50,9 @@ public class Project {
     protected Project() {
     }
 
-    public Project(String name, Client client) {
+    public Project(String name, String code, Client client) {
         this.name = name;
+        this.code = code;
         this.client = client;
     }
 
@@ -59,6 +62,11 @@ public class Project {
 
     public String getName() {
         return name;
+    }
+
+    /** The job's short reference code, unique across jobs; null for jobs added before codes existed. */
+    public String getCode() {
+        return code;
     }
 
     public Client getClient() {

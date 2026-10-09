@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Client, ClientService } from '../clients/client.service';
@@ -11,7 +12,8 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
 // list can be narrowed to the projects carrying a chosen tag. Each project is marked active, on hold
 // or finished, chosen when it is added and changeable from its row, and the list can be narrowed to
 // the projects at a chosen status. The tag and status filters combine, e.g. active projects with a
-// given tag.
+// given tag. Each project carries a short reference code, given when it is added, that no other
+// project may share.
 @Component({
   selector: 'app-projects',
   imports: [ReactiveFormsModule, RouterLink],
@@ -32,6 +34,28 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
         @if (showError('name')) {
           <p id="project-name-error" role="alert" data-testid="project-form-name-error">
             Name is required.
+          </p>
+        }
+      </div>
+      <div>
+        <label for="project-code">Code</label>
+        <input
+          id="project-code"
+          type="text"
+          formControlName="code"
+          maxlength="20"
+          autocomplete="off"
+          data-testid="project-form-code"
+          [attr.aria-invalid]="showError('code')"
+          [attr.aria-describedby]="showError('code') ? 'project-code-error' : null"
+        />
+        @if (showError('code')) {
+          <p id="project-code-error" role="alert" data-testid="project-form-code-error">
+            @if (form.controls.code.hasError('taken')) {
+              A job with this code already exists.
+            } @else {
+              Enter a code of up to 20 letters, digits or dashes.
+            }
           </p>
         }
       </div>
@@ -133,6 +157,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
         <caption>All jobs</caption>
         <thead>
           <tr>
+            <th scope="col">Code</th>
             <th scope="col">Name</th>
             <th scope="col">Client</th>
             <th scope="col">Status</th>
@@ -142,6 +167,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
         <tbody>
           @for (p of projects(); track p.id) {
             <tr [attr.data-testid]="'project-row-' + p.id">
+              <td data-testid="project-code">{{ p.code }}</td>
               <td data-testid="project-name">
                 {{ p.name }}
                 @if (p.archived) {
@@ -225,6 +251,7 @@ export class Projects {
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
+    code: ['', [Validators.required, Validators.pattern(/^\s*[A-Za-z0-9-]{1,20}\s*$/)]],
     clientId: ['', Validators.required],
     status: ['ACTIVE' as ProjectStatus, Validators.required],
   });
@@ -235,7 +262,7 @@ export class Projects {
     this.tagService.list().subscribe((list) => this.tags.set(list));
   }
 
-  protected showError(field: 'name' | 'clientId'): boolean {
+  protected showError(field: 'name' | 'code' | 'clientId'): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -245,10 +272,11 @@ export class Projects {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, clientId, status } = this.form.getRawValue();
+    const { name, code, clientId, status } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create({ name: name.trim(), clientId: Number(clientId), status }).subscribe({
+    const project = { name: name.trim(), code: code.trim().toUpperCase(), clientId: Number(clientId), status };
+    this.service.create(project).subscribe({
       next: (created) => {
         // A new project carries no tags, so it only belongs on a list not filtered by tag, and only
         // when its status matches any status filter.
@@ -258,8 +286,15 @@ export class Projects {
         this.form.reset();
         this.saving.set(false);
       },
-      error: () => {
-        this.saveError.set('Could not save the job. Please try again.');
+      error: (err: HttpErrorResponse) => {
+        if (err.status === 409) {
+          // The server owns uniqueness; flag the code field until it is changed.
+          const codeControl = this.form.controls.code;
+          codeControl.setErrors({ taken: true });
+          codeControl.markAsTouched();
+        } else {
+          this.saveError.set('Could not save the job. Please try again.');
+        }
         this.saving.set(false);
       },
     });
