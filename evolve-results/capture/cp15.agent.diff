@@ -1,0 +1,154 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 5f987b8..c440393 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -2,7 +2,9 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ 
+-export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID';
++export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PAID'] as const;
++
++export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+ 
+ export interface Invoice {
+   id: number;
+@@ -32,8 +34,10 @@ export interface NewInvoice {
+ export class InvoiceService {
+   private readonly http = inject(HttpClient);
+ 
+-  listAll(): Observable<InvoiceSummary[]> {
+-    return this.http.get<InvoiceSummary[]>('/api/invoices');
++  /** Every invoice across all projects, optionally narrowed to one status. */
++  listAll(status?: InvoiceStatus): Observable<InvoiceSummary[]> {
++    const params: Record<string, string> = status ? { status } : {};
++    return this.http.get<InvoiceSummary[]>('/api/invoices', { params });
+   }
+ 
+   listForProject(projectId: number): Observable<Invoice[]> {
+diff --git a/src/main/frontend/src/app/features/invoices/invoices.ts b/src/main/frontend/src/app/features/invoices/invoices.ts
+index dd14fe4..3f0b19b 100644
+--- a/src/main/frontend/src/app/features/invoices/invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/invoices.ts
+@@ -1,23 +1,38 @@
+ import { CurrencyPipe } from '@angular/common';
+-import { Component, computed, inject } from '@angular/core';
++import { Component, computed, inject, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+-import { InvoiceService } from './invoice.service';
++import { INVOICE_STATUSES, InvoiceService, InvoiceStatus } from './invoice.service';
+ 
+ // Invoices page: every invoice from every project in one list, showing the project each is for and
+-// the stage it is at.
++// the stage it is at. The list can be narrowed to a single stage.
+ @Component({
+   selector: 'app-invoices',
+   imports: [CurrencyPipe, RouterLink],
+   template: `
+     <h1>Invoices</h1>
+ 
++    <label for="invoice-status-filter">Stage</label>
++    <select
++      id="invoice-status-filter"
++      data-testid="invoice-status-filter"
++      [value]="status()"
++      (change)="onStatusChange($event)"
++    >
++      <option value="">All stages</option>
++      @for (s of statuses; track s) {
++        <option [value]="s">{{ s }}</option>
++      }
++    </select>
++
+     @if (invoices.error()) {
+       <p role="alert" data-testid="all-invoices-error">Could not load the invoices.</p>
+     } @else if (invoices.isLoading()) {
+       <p data-testid="all-invoices-loading">Loading invoices…</p>
+     } @else if (list().length === 0) {
+-      <p data-testid="all-invoices-empty">No invoices yet.</p>
++      <p data-testid="all-invoices-empty">
++        {{ status() ? 'No invoices at the ' + status() + ' stage.' : 'No invoices yet.' }}
++      </p>
+     } @else {
+       <table data-testid="all-invoices-table">
+         <caption>All invoices across every project</caption>
+@@ -52,6 +67,17 @@ import { InvoiceService } from './invoice.service';
+ export class Invoices {
+   private readonly service = inject(InvoiceService);
+ 
+-  protected readonly invoices = rxResource({ stream: () => this.service.listAll() });
++  protected readonly statuses = INVOICE_STATUSES;
++  /** The stage the list is narrowed to; empty for every stage. */
++  protected readonly status = signal<InvoiceStatus | ''>('');
++
++  protected readonly invoices = rxResource({
++    params: () => this.status(),
++    stream: ({ params }) => this.service.listAll(params || undefined),
++  });
+   protected readonly list = computed(() => (this.invoices.hasValue() ? this.invoices.value() : []));
++
++  protected onStatusChange(event: Event): void {
++    this.status.set((event.target as HTMLSelectElement).value as InvoiceStatus | '');
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/AllInvoicesController.java b/src/main/java/net/officefloor/hq/app/invoice/AllInvoicesController.java
+index af71cf9..4888ec1 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/AllInvoicesController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/AllInvoicesController.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.invoice;
+ import java.util.List;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /** Invoices across every project. */
+@@ -17,7 +18,7 @@ public class AllInvoicesController {
+     }
+ 
+     @GetMapping
+-    public List<InvoiceSummaryResponse> list() {
+-        return service.listAll();
++    public List<InvoiceSummaryResponse> list(@RequestParam(required = false) InvoiceStatus status) {
++        return service.listAll(status);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+index 37f9d22..49bdc68 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -13,6 +13,10 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+     @Query("SELECT i FROM Invoice i JOIN FETCH i.project ORDER BY i.id")
+     List<Invoice> findAllWithProject();
+ 
++    /** Invoices across every project at the given status, with their project loaded in the same query. */
++    @Query("SELECT i FROM Invoice i JOIN FETCH i.project WHERE i.status = :status ORDER BY i.id")
++    List<Invoice> findAllWithProjectByStatus(InvoiceStatus status);
++
+     /** Sum of the amounts of all invoices with the given status (zero when there are none). */
+     @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.status = :status")
+     BigDecimal sumAmountByStatus(InvoiceStatus status);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index c623f3e..cf033c6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -31,10 +31,15 @@ public class InvoiceService {
+         return invoices.findByProjectIdOrderById(projectId).stream().map(InvoiceResponse::from).toList();
+     }
+ 
+-    /** Every invoice across all projects, with the name of the project each one is for. */
++    /**
++     * Every invoice across all projects, with the name of the project each one is for, narrowed to
++     * the given status when one is supplied.
++     */
+     @Transactional(readOnly = true)
+-    public List<InvoiceSummaryResponse> listAll() {
+-        return invoices.findAllWithProject().stream().map(InvoiceSummaryResponse::from).toList();
++    public List<InvoiceSummaryResponse> listAll(InvoiceStatus status) {
++        List<Invoice> found =
++                status == null ? invoices.findAllWithProject() : invoices.findAllWithProjectByStatus(status);
++        return found.stream().map(InvoiceSummaryResponse::from).toList();
+     }
+ 
+     @Transactional
