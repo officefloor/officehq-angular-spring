@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { DashboardService, DashboardSummary } from './dashboard.service';
 
 // Dashboard page: how many clients and projects there are, and the total still owed (the sum of
-// all unpaid invoices).
+// invoices that have been sent but not yet paid; drafts are not counted).
 @Component({
   selector: 'app-dashboard',
   imports: [CurrencyPipe],
