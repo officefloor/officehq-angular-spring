@@ -23,6 +23,8 @@ export interface Invoice {
 /** An invoice as listed for its project, with how much is still left to pay after any payments. */
 export interface ProjectInvoice extends Invoice {
   amountDue: number;
+  /** Whether a credit note has been put against the invoice. */
+  creditApplied: boolean;
 }
 
 /** An invoice as listed across all projects, with the name of the project it is for. */
