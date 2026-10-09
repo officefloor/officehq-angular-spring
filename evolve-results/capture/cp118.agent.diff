@@ -1,0 +1,54 @@
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 18cdecd..66f55f1 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -9,7 +9,7 @@ import { Client, ClientService } from './client.service';
+ // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
+ // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
+ // list and search unless the archived toggle is on, where it can be restored. A client's name or email
+-// can be corrected in place from its row. Key accounts carry a marker beside their name. The list can be sorted by name or by how much each client owes.
++// can be corrected in place from its row. Key accounts carry a marker beside their name. The list can be sorted by name, by how much each client owes, or with key accounts first.
+ @Component({
+   selector: 'app-clients',
+   imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm],
+@@ -195,6 +195,7 @@ import { Client, ClientService } from './client.service';
+           <option value="added">Date added</option>
+           <option value="name">Name</option>
+           <option value="outstanding">Amount owed</option>
++          <option value="key-account">Key accounts first</option>
+         </select>
+       </div>
+       @if (filteredClients().length === 0) {
+@@ -213,8 +214,8 @@ import { Client, ClientService } from './client.service';
+           <tbody>
+             @for (c of filteredClients(); track c.id) {
+               <tr [attr.data-testid]="'client-row-' + c.id">
+-                <td data-testid="client-name">
+-                  {{ c.name }}
++                <td>
++                  <span data-testid="client-name">{{ c.name }}</span>
+                   @if (c.keyAccount) {
+                     <span class="key-account" data-testid="client-key-account">Key account</span>
+                   }
+@@ -425,17 +426,19 @@ export class Clients {
+   }
+ }
+ 
+-type ClientSort = 'added' | 'name' | 'outstanding';
++type ClientSort = 'added' | 'name' | 'outstanding' | 'key-account';
+ 
+ const byName = (a: Client, b: Client) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+ 
+-/** Clients in the given order: as added, by name A-Z, or those owing the most first (then by name). */
++/** Clients in the given order: as added, by name A-Z, those owing the most first (then by name), or key accounts first (then by name). */
+ function sortClients(list: Client[], sort: ClientSort): Client[] {
+   switch (sort) {
+     case 'name':
+       return [...list].sort(byName);
+     case 'outstanding':
+       return [...list].sort((a, b) => b.outstanding - a.outstanding || byName(a, b));
++    case 'key-account':
++      return [...list].sort((a, b) => Number(b.keyAccount) - Number(a.keyAccount) || byName(a, b));
+     default:
+       return list;
+   }
