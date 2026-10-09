@@ -1,0 +1,312 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 93518e6..3c38821 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -14,7 +14,7 @@ import { ClientExport } from './client-export';
+ import { ClientMerge } from './client-merge';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
++// A single client's page: their name, email, phone number, preferred language, tax number, billing address, main contact and currency, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+   imports: [MoneyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+@@ -44,6 +44,14 @@ import { Client, ClientService } from './client.service';
+           <span data-testid="client-phone-none">Not given</span>
+         }
+       </p>
++      <p>
++        Preferred language:
++        @if (c.language) {
++          <span data-testid="client-language">{{ c.language }}</span>
++        } @else {
++          <span data-testid="client-language-none">Not given</span>
++        }
++      </p>
+       <p>
+         Tax number:
+         @if (c.taxNumber) {
+diff --git a/src/main/frontend/src/app/features/clients/client-edit-form.ts b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+index bba1d25..1068323 100644
+--- a/src/main/frontend/src/app/features/clients/client-edit-form.ts
++++ b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+@@ -3,7 +3,7 @@ import { Component, ElementRef, OnInit, afterNextRender, inject, input, output,
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Client, ClientService } from './client.service';
+ 
+-// Form to correct one client's name, email, phone number, tax number, whether their prices include tax or whether they are tax exempt, whether they are a key account and their standard discount. Emits the saved client, or cancelled when abandoned.
++// Form to correct one client's name, email, phone number, preferred language, tax number, whether their prices include tax or whether they are tax exempt, whether they are a key account and their standard discount. Emits the saved client, or cancelled when abandoned.
+ @Component({
+   selector: 'app-client-edit-form',
+   imports: [ReactiveFormsModule],
+@@ -71,6 +71,23 @@ import { Client, ClientService } from './client.service';
+           </p>
+         }
+       </div>
++      <div>
++        <label for="client-edit-language">Preferred language (optional)</label>
++        <input
++          id="client-edit-language"
++          type="text"
++          formControlName="language"
++          autocomplete="language"
++          data-testid="client-edit-form-language"
++          [attr.aria-invalid]="showError('language')"
++          [attr.aria-describedby]="showError('language') ? 'client-edit-language-error' : null"
++        />
++        @if (showError('language')) {
++          <p id="client-edit-language-error" role="alert" data-testid="client-edit-form-language-error">
++            Preferred language must be 50 characters or fewer.
++          </p>
++        }
++      </div>
+       <div>
+         <label for="client-edit-tax-number">Tax number (optional)</label>
+         <input
+@@ -174,6 +191,7 @@ export class ClientEditForm implements OnInit {
+       ],
+     ],
+     phone: ['', Validators.maxLength(50)],
++    language: ['', Validators.maxLength(50)],
+     taxNumber: ['', Validators.maxLength(50)],
+     billingAddress: ['', Validators.maxLength(500)],
+     taxInclusive: false,
+@@ -187,11 +205,11 @@ export class ClientEditForm implements OnInit {
+   }
+ 
+   ngOnInit(): void {
+-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.client();
+-    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt, keyAccount, defaultDiscountPct });
++    const { name, email, phone, language, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.client();
++    this.form.setValue({ name, email, phone: phone ?? '', language: language ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt, keyAccount, defaultDiscountPct });
+   }
+ 
+-  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
++  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -201,10 +219,10 @@ export class ClientEditForm implements OnInit {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
++    const { name, email, phone, language, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
++    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
+       next: (updated) => {
+         this.saving.set(false);
+         this.saved.emit(updated);
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 44074cd..4e24d6b 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -15,6 +15,8 @@ export interface Client {
+   taxNumber: string | null;
+   /** Where the client's bills are sent; null when not known. */
+   billingAddress: string | null;
++  /** The language the client prefers to be dealt with in; null when not known. */
++  language: string | null;
+   /** Whether the client's prices already include tax, so it is worked back out of them rather than added on. */
+   taxInclusive: boolean;
+   /** Whether the client is tax exempt, so none of their invoices carry any tax whatever the lines say. */
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 66f55f1..411674e 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -83,6 +83,23 @@ import { Client, ClientService } from './client.service';
+           </p>
+         }
+       </div>
++      <div>
++        <label for="client-language">Preferred language (optional)</label>
++        <input
++          id="client-language"
++          type="text"
++          formControlName="language"
++          autocomplete="language"
++          data-testid="client-form-language"
++          [attr.aria-invalid]="showError('language')"
++          [attr.aria-describedby]="showError('language') ? 'client-language-error' : null"
++        />
++        @if (showError('language')) {
++          <p id="client-language-error" role="alert" data-testid="client-form-language-error">
++            Preferred language must be 50 characters or fewer.
++          </p>
++        }
++      </div>
+       <div>
+         <label for="client-tax-number">Tax number (optional)</label>
+         <input
+@@ -311,6 +328,7 @@ export class Clients {
+       ],
+     ],
+     phone: ['', Validators.maxLength(50)],
++    language: ['', Validators.maxLength(50)],
+     taxNumber: ['', Validators.maxLength(50)],
+     billingAddress: ['', Validators.maxLength(500)],
+     taxInclusive: false,
+@@ -331,7 +349,7 @@ export class Clients {
+     this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
+   }
+ 
+-  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
++  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -341,10 +359,10 @@ export class Clients {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
++    const { name, email, phone, language, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
++    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created]);
+         this.form.reset();
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 8e4584d..31b6bc9 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -104,9 +104,9 @@ public class TestSupportController {
+                     r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+-                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"),
++            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"), c.get("language"),
+                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
+                     Boolean.TRUE.equals(c.get("keyAccount")),
+                     Boolean.TRUE.equals(c.get("archived")),
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index 747186f..1caba86 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -36,6 +36,9 @@ public class Client {
+     /** Where the client's bills are sent; none when not known. */
+     private String billingAddress;
+ 
++    /** The language the client prefers to be dealt with in; none when not known. */
++    private String language;
++
+     private boolean archived;
+ 
+     /** Whether the client's prices already include tax, so tax is worked back out of them rather than added on. */
+@@ -87,6 +90,14 @@ public class Client {
+         return phone;
+     }
+ 
++    public String getLanguage() {
++        return language;
++    }
++
++    public void setLanguage(String language) {
++        this.language = language;
++    }
++
+     public String getTaxNumber() {
+         return taxNumber;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+index 1a6a8f4..886aeab 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+@@ -9,7 +9,7 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ 
+ /**
+- * Payload to create a client, or to correct an existing client's name, email, phone number, tax number and billing address,
++ * Payload to create a client, or to correct an existing client's name, email, phone number, tax number, billing address and preferred language,
+  * whether their prices already include tax and whether they are tax exempt and whether they are a key account and their standard discount percentage (each left as it is when not given).
+  */
+ public record ClientRequest(
+@@ -18,6 +18,7 @@ public record ClientRequest(
+         @Size(max = 50) String phone,
+         @Size(max = 50) String taxNumber,
+         @Size(max = 500) String billingAddress,
++        @Size(max = 50) String language,
+         Boolean taxInclusive,
+         Boolean taxExempt,
+         Boolean keyAccount,
+@@ -36,6 +37,11 @@ public record ClientRequest(
+         return taxNumber == null || taxNumber.isBlank() ? null : taxNumber.trim();
+     }
+ 
++    /** The preferred language trimmed, or null when none was given. */
++    public String trimmedLanguage() {
++        return language == null || language.isBlank() ? null : language.trim();
++    }
++
+     /** The billing address trimmed, or null when none was given. */
+     public String trimmedBillingAddress() {
+         return billingAddress == null || billingAddress.isBlank() ? null : billingAddress.trim();
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index 0869359..9bc5a68 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -3,7 +3,7 @@ package net.officefloor.hq.app.client;
+ import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+-public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, boolean taxInclusive, boolean taxExempt, boolean keyAccount, BigDecimal defaultDiscountPct, boolean archived, PrimaryContact primaryContact,
++public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, String language, boolean taxInclusive, boolean taxExempt, boolean keyAccount, BigDecimal defaultDiscountPct, boolean archived, PrimaryContact primaryContact,
+         String currency, BigDecimal outstanding) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+@@ -13,7 +13,7 @@ public record ClientResponse(Long id, String name, String email, String phone, S
+     /** A client with what they still owe, in their currency: what is left to pay on their sent, not yet fully paid invoices. */
+     public static ClientResponse from(Client client, BigDecimal outstanding) {
+         Contact primary = client.getPrimaryContact();
+-        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.isTaxInclusive(), client.isTaxExempt(), client.isKeyAccount(), client.getDefaultDiscountPct(), client.isArchived(),
++        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.getLanguage(), client.isTaxInclusive(), client.isTaxExempt(), client.isKeyAccount(), client.getDefaultDiscountPct(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
+                 client.getCurrency(), outstanding);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 5a6d496..6158794 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -81,6 +81,7 @@ public class ClientService {
+         }
+         try {
+             Client client = new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber(), request.trimmedBillingAddress());
++            client.setLanguage(request.trimmedLanguage());
+             client.setTaxInclusive(Boolean.TRUE.equals(request.taxInclusive()));
+             client.setTaxExempt(Boolean.TRUE.equals(request.taxExempt()));
+             client.setKeyAccount(Boolean.TRUE.equals(request.keyAccount()));
+@@ -98,7 +99,7 @@ public class ClientService {
+     }
+ 
+     /**
+-     * Corrects a client's name, email, phone number, tax number and billing address; the email, once trimmed, must not belong to another client.
++     * Corrects a client's name, email, phone number, tax number, billing address and preferred language (left as it is when not given, cleared when blank); the email, once trimmed, must not belong to another client.
+      * When whether their prices include tax, or whether they are tax exempt, changes, their draft invoices are reworked to match; sent ones keep the
+      * figures they were issued with. The change is recorded in the audit log.
+      */
+@@ -110,6 +111,9 @@ public class ClientService {
+             throw emailTaken();
+         }
+         client.rename(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber(), request.trimmedBillingAddress());
++        if (request.language() != null) {
++            client.setLanguage(request.trimmedLanguage());
++        }
+         if (request.taxInclusive() != null && request.taxInclusive() != client.isTaxInclusive()) {
+             client.setTaxInclusive(request.taxInclusive());
+             invoices.findByClientIdAndStatus(id, InvoiceStatus.DRAFT)
+diff --git a/src/main/resources/db/migration/V66__client_language.sql b/src/main/resources/db/migration/V66__client_language.sql
+new file mode 100644
+index 0000000..a5940e9
+--- /dev/null
++++ b/src/main/resources/db/migration/V66__client_language.sql
+@@ -0,0 +1,2 @@
++-- A client may have a language they prefer to be dealt with in; existing clients have none recorded.
++ALTER TABLE client ADD COLUMN language VARCHAR(50);
