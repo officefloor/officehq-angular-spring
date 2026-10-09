@@ -25,6 +25,9 @@ public class Client {
 
     private String email;
 
+    /** A number to reach the client on; none when not known. */
+    private String phone;
+
     private boolean archived;
 
     /** The currency the client is billed in; all of their money is in it. */
@@ -39,9 +42,10 @@ public class Client {
     protected Client() {
     }
 
-    public Client(String name, String email) {
+    public Client(String name, String email, String phone) {
         this.name = name;
         this.email = email;
+        this.phone = phone;
     }
 
     public Long getId() {
@@ -56,10 +60,15 @@ public class Client {
         return email;
     }
 
-    /** Corrects the client's name and email. */
-    public void rename(String name, String email) {
+    public String getPhone() {
+        return phone;
+    }
+
+    /** Corrects the client's name, email and phone number. */
+    public void rename(String name, String email, String phone) {
         this.name = name;
         this.email = email;
+        this.phone = phone;
     }
 
     public boolean isArchived() {

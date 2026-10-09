@@ -6,7 +6,7 @@ import { RouterLink } from '@angular/router';
 import { ClientEditForm } from './client-edit-form';
 import { Client, ClientService } from './client.service';
 
-// Clients page: add a client (name + email) and list all clients, filterable by name; each client
+// Clients page: add a client (name + email, optionally a phone number) and list all clients, filterable by name; each client
 // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
 // list and search unless the archived toggle is on, where it can be restored. A client's name or email
 // can be corrected in place from its row. The list can be sorted by name or by how much each client owes.
@@ -52,6 +52,23 @@ import { Client, ClientService } from './client.service';
             } @else {
               Enter a valid email address.
             }
+          </p>
+        }
+      </div>
+      <div>
+        <label for="client-phone">Phone (optional)</label>
+        <input
+          id="client-phone"
+          type="tel"
+          formControlName="phone"
+          autocomplete="tel"
+          data-testid="client-form-phone"
+          [attr.aria-invalid]="showError('phone')"
+          [attr.aria-describedby]="showError('phone') ? 'client-phone-error' : null"
+        />
+        @if (showError('phone')) {
+          <p id="client-phone-error" role="alert" data-testid="client-form-phone-error">
+            Phone number must be 50 characters or fewer.
           </p>
         }
       </div>
@@ -207,6 +224,7 @@ export class Clients {
         Validators.maxLength(255),
       ],
     ],
+    phone: ['', Validators.maxLength(50)],
   });
 
   constructor() {
@@ -221,7 +239,7 @@ export class Clients {
     this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
   }
 
-  protected showError(field: 'name' | 'email'): boolean {
+  protected showError(field: 'name' | 'email' | 'phone'): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -231,10 +249,10 @@ export class Clients {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email } = this.form.getRawValue();
+    const { name, email, phone } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create({ name: name.trim(), email: email.trim() }).subscribe({
+    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created]);
         this.form.reset();
