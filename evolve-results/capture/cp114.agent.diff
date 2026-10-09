@@ -1,0 +1,354 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 88dc1da..da138f5 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -382,6 +382,18 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 }
+               </tr>
+             }
++            @if (inv.lateFeePerDay > 0) {
++              <tr data-testid="invoice-late-fee-row">
++                <th scope="row" colspan="5">
++                  Late fee (<span data-testid="invoice-late-fee-per-day">{{ inv.lateFeePerDay | money: inv.currency }}</span> per day,
++                  <span data-testid="invoice-days-late">{{ inv.daysLate }}</span> days late)
++                </th>
++                <td data-testid="invoice-late-fee">{{ inv.lateFee | money: inv.currency }}</td>
++                @if (inv.status === 'DRAFT') {
++                  <td></td>
++                }
++              </tr>
++            }
+           </tfoot>
+         </table>
+         @if (editError()) {
+@@ -630,6 +642,33 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+           }
+         </form>
+ 
++        <form [formGroup]="lateFeeForm" (ngSubmit)="applyLateFee()" data-testid="late-fee-form" novalidate>
++          <h2>Late fee</h2>
++          <div>
++            <label for="late-fee-per-day">Late fee per day overdue</label>
++            <input
++              id="late-fee-per-day"
++              type="number"
++              inputmode="decimal"
++              min="0"
++              step="0.01"
++              formControlName="lateFeePerDay"
++              data-testid="late-fee-form-per-day"
++              [attr.aria-invalid]="lateFeeInvalid()"
++              [attr.aria-describedby]="lateFeeInvalid() ? 'late-fee-per-day-error' : null"
++            />
++            @if (lateFeeInvalid()) {
++              <p id="late-fee-per-day-error" role="alert" data-testid="late-fee-form-per-day-error">
++                Enter an amount of 0 or more with at most two decimal places.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="late-fee-form-submit" [disabled]="lateFeeSaving()">Apply late fee</button>
++          @if (lateFeeError()) {
++            <p role="alert" data-testid="late-fee-form-error">{{ lateFeeError() }}</p>
++          }
++        </form>
++
+         <form [formGroup]="form" (ngSubmit)="submit()" data-testid="lineitem-form" novalidate>
+           <h2>Add a line item</h2>
+           <div>
+@@ -1121,6 +1160,46 @@ export class InvoiceDetailPage {
+       });
+   }
+ 
++  protected readonly lateFeeSaving = signal(false);
++  protected readonly lateFeeError = signal<string | null>(null);
++
++  protected readonly lateFeeForm = this.fb.group({
++    lateFeePerDay: ['', [Validators.required, Validators.min(0), Validators.pattern(TWO_DECIMALS)]],
++  });
++
++  // Starts the late fee field from the invoice's current fee whenever the invoice loads.
++  private readonly syncLateFee = effect(() => {
++    if (this.invoice.hasValue()) {
++      this.lateFeeForm.setValue({ lateFeePerDay: String(this.invoice.value().lateFeePerDay) });
++    }
++  });
++
++  protected lateFeeInvalid(): boolean {
++    const control = this.lateFeeForm.controls.lateFeePerDay;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected applyLateFee(): void {
++    if (this.lateFeeForm.invalid) {
++      this.lateFeeForm.markAllAsTouched();
++      return;
++    }
++    this.lateFeeSaving.set(true);
++    this.lateFeeError.set(null);
++    this.service
++      .applyLateFee(this.projectIdNumber(), Number(this.invoiceId()), Number(this.lateFeeForm.getRawValue().lateFeePerDay))
++      .subscribe({
++        next: (updated) => {
++          this.invoice.set(updated);
++          this.lateFeeSaving.set(false);
++        },
++        error: () => {
++          this.lateFeeError.set('Could not apply the late fee. Please try again.');
++          this.lateFeeSaving.set(false);
++        },
++      });
++  }
++
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 3b6ca71..c7d13e2 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -191,6 +191,12 @@ export interface InvoiceDetail extends Invoice {
+    * null when it is already in the home currency or there is no rate for that date.
+    */
+   homeAmount: number | null;
++  /** The late fee charged for each day the invoice is overdue once sent; zero when none is charged. */
++  lateFeePerDay: number;
++  /** How many days past due the invoice is today; zero unless it is sent and still owed. */
++  daysLate: number;
++  /** The late fee accrued so far: the fee per day times the days overdue. */
++  lateFee: number;
+ }
+ 
+ export interface NewLineItem {
+@@ -312,6 +318,11 @@ export class InvoiceService {
+     });
+   }
+ 
++  /** Sets the late fee charged for each day a draft invoice is overdue once sent; zero charges none. */
++  applyLateFee(projectId: number, invoiceId: number, lateFeePerDay: number): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/late-fee`, { lateFeePerDay });
++  }
++
+   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 63f0071..8e4584d 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -274,12 +274,15 @@ public class TestSupportController {
+             // A minimum charge is billed instead when the net total comes out under it.
+             BigDecimal minimumCharge = decimal(i.get("minimumCharge"));
+             int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
++            // A late fee per day accrues once the invoice is overdue; it does not change the amount invoiced.
++            BigDecimal lateFeePerDay = decimal(i.get("lateFeePerDay"));
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
+                     surcharge, taxInclusive, taxExempt,
+-                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge);
++                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay);
+             for (Map<String, Object> d : discounts) {
+                 if (d.get("id") != null) {
+                     jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount, discount_cap) VALUES (?, ?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index f3abff0..23d245d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -17,6 +17,7 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Optional;
+@@ -91,6 +92,10 @@ public class Invoice {
+     @Column(name = "early_payment_days", nullable = false)
+     private int earlyPaymentDays;
+ 
++    /** The late fee charged for each day the invoice is overdue once sent; zero when none is charged. */
++    @Column(name = "late_fee_per_day", nullable = false, precision = 12, scale = 2)
++    private BigDecimal lateFeePerDay = BigDecimal.ZERO.setScale(2);
++
+     @Enumerated(EnumType.STRING)
+     @Column(nullable = false, length = 16)
+     private InvoiceStatus status = InvoiceStatus.DRAFT;
+@@ -503,6 +508,31 @@ public class Invoice {
+         recalculateAmount();
+     }
+ 
++    /** Sets the late fee charged for each day this invoice is overdue. It does not change the amount invoiced. */
++    public void applyLateFee(BigDecimal lateFeePerDay) {
++        this.lateFeePerDay = lateFeePerDay.setScale(2, RoundingMode.HALF_UP);
++    }
++
++    public BigDecimal getLateFeePerDay() {
++        return lateFeePerDay;
++    }
++
++    /**
++     * How many days past its due date the invoice is on the given day; zero unless it has been sent and
++     * is still owed (sent or part paid).
++     */
++    public long daysLate(InvoiceStatus status, LocalDate today) {
++        if (status != InvoiceStatus.SENT && status != InvoiceStatus.PARTIAL) {
++            return 0;
++        }
++        return Math.max(0, ChronoUnit.DAYS.between(dueDate, today));
++    }
++
++    /** The late fee accrued by the given day: the fee per day times the days the invoice is overdue. */
++    public BigDecimal lateFee(InvoiceStatus status, LocalDate today) {
++        return lateFeePerDay.multiply(BigDecimal.valueOf(daysLate(status, today))).setScale(2, RoundingMode.HALF_UP);
++    }
++
+     /**
+      * Sets the early-payment discount offered on this invoice: the percentage taken off if it is paid
+      * within the given number of days of being issued. It does not change the amount owed.
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index d86692b..9038b17 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -107,6 +107,12 @@ public class InvoiceController {
+         return service.applyEarlyPayment(projectId, invoiceId, request);
+     }
+ 
++    @PutMapping("/{invoiceId}/late-fee")
++    public InvoiceDetailResponse applyLateFee(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody LateFeeRequest request) {
++        return service.applyLateFee(projectId, invoiceId, request);
++    }
++
+     @PostMapping("/{invoiceId}/send")
+     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.send(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index e51521f..b1e2ad3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -17,7 +17,9 @@ import java.util.List;
+  * before it, whether the minimum was billed because the net total came out under it, and the total
+  * savings (the line discounts and the invoice's discounts added together). A foreign invoice also gives
+  * the home currency and its amount converted into it at the exchange rate from the invoice's issue date
+- * (null when the invoice is already in the home currency or there is no rate for that date).
++ * (null when the invoice is already in the home currency or there is no rate for that date). The late
++ * fee charged per day overdue, the days the invoice is overdue as of today (only while sent and still
++ * owed), and the late fee that has accrued over them.
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+@@ -27,13 +29,15 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+         InvoiceStatus status, LocalDate issuedDate,
+         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts,
+         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
+-        String homeCurrency, BigDecimal homeAmount) {
++        String homeCurrency, BigDecimal homeAmount,
++        BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee) {
+ 
+     /**
+      * The invoice with the given status, as worked out from what has been paid and credited against it, and
+-     * its amount in the home currency.
++     * its amount in the home currency, with any late fee accrued by today.
+      */
+-    static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status, String homeCurrency, BigDecimal homeAmount) {
++    static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status, String homeCurrency, BigDecimal homeAmount,
++            LocalDate today) {
+         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
+                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
+@@ -48,6 +52,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+                 invoice.getDiscounts().stream().map(d -> new InvoiceDiscountResponse(d.getId(), d.getDiscountPct(),
+                         d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList(),
+                 invoice.getMinimumCharge(), invoice.getNetTotal(), invoice.isMinimumApplied(),
+-                invoice.getTotalSavings(), homeCurrency, homeAmount);
++                invoice.getTotalSavings(), homeCurrency, homeAmount,
++                invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index c0550de..a44f9ab 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
++import java.time.Clock;
+ import java.time.LocalDate;
+ import java.time.ZoneOffset;
+ import java.util.ArrayList;
+@@ -42,10 +43,11 @@ public class InvoiceService {
+     private final SettingsService settings;
+     private final FxRateService fxRates;
+     private final Audit audit;
++    private final Clock clock;
+ 
+     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
+             CreditNoteRepository creditNotes, ClientRepository clients, DepositRepository deposits,
+-            RefundRepository refunds, SettingsService settings, FxRateService fxRates, Audit audit) {
++            RefundRepository refunds, SettingsService settings, FxRateService fxRates, Audit audit, Clock clock) {
+         this.invoices = invoices;
+         this.projects = projects;
+         this.clients = clients;
+@@ -56,6 +58,7 @@ public class InvoiceService {
+         this.settings = settings;
+         this.fxRates = fxRates;
+         this.audit = audit;
++        this.clock = clock;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -317,6 +320,15 @@ public class InvoiceService {
+         return detail(invoice);
+     }
+ 
++    /** Sets the late fee charged for each day a draft invoice is overdue once it has been sent. */
++    @Transactional
++    public InvoiceDetailResponse applyLateFee(Long projectId, Long invoiceId, LateFeeRequest request) {
++        Invoice invoice = findDraft(projectId, invoiceId);
++        invoice.applyLateFee(request.lateFeePerDay());
++        invoices.flush();
++        return detail(invoice);
++    }
++
+     /** Sends a draft invoice and records the sending in the audit log. */
+     @Transactional
+     public InvoiceResponse send(Long projectId, Long invoiceId) {
+@@ -407,6 +419,6 @@ public class InvoiceService {
+         String currency = invoice.getProject().getClient().getCurrency();
+         BigDecimal homeAmount = currency.equals(home) ? null
+                 : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount()).orElse(null);
+-        return InvoiceDetailResponse.from(invoice, status, home, homeAmount);
++        return InvoiceDetailResponse.from(invoice, status, home, homeAmount, LocalDate.now(clock));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LateFeeRequest.java b/src/main/java/net/officefloor/hq/app/invoice/LateFeeRequest.java
+new file mode 100644
+index 0000000..2a4db53
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/LateFeeRequest.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/** Payload to set the late fee charged for each day a sent invoice is overdue; zero charges none. */
++public record LateFeeRequest(@NotNull @DecimalMin("0") @Digits(integer = 10, fraction = 2) BigDecimal lateFeePerDay) {
++}
+diff --git a/src/main/resources/db/migration/V65__invoice_late_fee.sql b/src/main/resources/db/migration/V65__invoice_late_fee.sql
+new file mode 100644
+index 0000000..f49c225
+--- /dev/null
++++ b/src/main/resources/db/migration/V65__invoice_late_fee.sql
+@@ -0,0 +1,5 @@
++-- A sent invoice that is overdue accrues a late fee: a flat amount for each day past its due date.
++-- Existing invoices charge none.
++ALTER TABLE invoice ADD COLUMN late_fee_per_day DECIMAL(12, 2) DEFAULT 0 NOT NULL;
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_late_fee_per_day_non_negative CHECK (late_fee_per_day >= 0);
