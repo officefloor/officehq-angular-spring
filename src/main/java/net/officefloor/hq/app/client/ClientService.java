@@ -4,6 +4,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.contact.ContactRepository;
 import net.officefloor.hq.app.project.ProjectRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -48,10 +49,26 @@ public class ClientService {
         return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientId(id));
     }
 
+    /** Adds a client; its email, once trimmed, must not already belong to another client. */
     @Transactional
     public ClientResponse create(ClientRequest request) {
-        Client saved = clients.save(new Client(request.name().trim(), request.email().trim()));
-        return ClientResponse.from(saved);
+        String email = request.email().trim();
+        if (clients.existsByEmailIgnoreCase(email)) {
+            throw emailTaken();
+        }
+        try {
+            return ClientResponse.from(clients.saveAndFlush(new Client(request.name().trim(), email)));
+        } catch (DataIntegrityViolationException e) {
+            // Lost a race with a concurrent add of the same email; the unique constraint caught it.
+            if (String.valueOf(e.getMessage()).toUpperCase().contains("CLIENT_EMAIL_UQ")) {
+                throw emailTaken();
+            }
+            throw e;
+        }
+    }
+
+    private static ResponseStatusException emailTaken() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "A client with this email already exists");
     }
 
     /**

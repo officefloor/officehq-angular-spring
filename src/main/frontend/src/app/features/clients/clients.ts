@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -43,7 +44,11 @@ import { Client, ClientService } from './client.service';
         />
         @if (showError('email')) {
           <p id="client-email-error" role="alert" data-testid="client-form-email-error">
-            Enter a valid email address.
+            @if (form.controls.email.hasError('taken')) {
+              A client with this email already exists.
+            } @else {
+              Enter a valid email address.
+            }
           </p>
         }
       </div>
@@ -199,8 +204,15 @@ export class Clients {
         this.form.reset();
         this.saving.set(false);
       },
-      error: () => {
-        this.saveError.set('Could not save the client. Please try again.');
+      error: (err: HttpErrorResponse) => {
+        if (err.status === 409) {
+          // The server owns uniqueness; flag the email field until it is changed.
+          const email = this.form.controls.email;
+          email.setErrors({ taken: true });
+          email.markAsTouched();
+        } else {
+          this.saveError.set('Could not save the client. Please try again.');
+        }
         this.saving.set(false);
       },
     });
