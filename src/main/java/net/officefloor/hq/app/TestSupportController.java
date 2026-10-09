@@ -146,7 +146,8 @@ public class TestSupportController {
                 }
             }
             // A discount takes a percentage off the line items' subtotal, then sales tax adds a percentage
-            // of what is left of the taxable lines only; the amount is the discounted subtotal plus the tax.
+            // of what is left of the taxable lines only, and a levy adds its own percentage of that same taxable
+            // base; the amount is the discounted subtotal plus the tax plus the levy.
             BigDecimal subtotal = amount.setScale(2, RoundingMode.HALF_UP);
             BigDecimal discountPct = i.get("discountPct") == null ? BigDecimal.ZERO
                     : new BigDecimal(i.get("discountPct").toString());
@@ -157,10 +158,13 @@ public class TestSupportController {
             BigDecimal taxableBase = taxable.subtract(
                     taxable.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
             BigDecimal tax = taxableBase.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, status, issued_date, due_date)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            BigDecimal levyPct = i.get("levyPct") == null ? BigDecimal.ZERO
+                    : new BigDecimal(i.get("levyPct").toString());
+            BigDecimal levy = taxableBase.multiply(levyPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, levy_pct, status, issued_date, due_date)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, ((Number) i.get("projectId")).longValue(),
-                    discounted.add(tax), discountPct, taxPct,
+                    discounted.add(tax).add(levy), discountPct, taxPct, levyPct,
                     seedStatus(i.get("status")), issued, due);
             for (Map<String, Object> l : lineItems) {
                 if (l.get("id") != null) {

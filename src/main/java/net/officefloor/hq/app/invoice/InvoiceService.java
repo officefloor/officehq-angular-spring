@@ -160,6 +160,15 @@ public class InvoiceService {
         return InvoiceDetailResponse.from(invoice);
     }
 
+    /** Sets the levy (second tax) percentage on a draft invoice and reworks the invoice amount to match. */
+    @Transactional
+    public InvoiceDetailResponse applyLevy(Long projectId, Long invoiceId, LevyRequest request) {
+        Invoice invoice = findDraft(projectId, invoiceId);
+        invoice.applyLevy(request.levyPct());
+        invoices.flush();
+        return InvoiceDetailResponse.from(invoice);
+    }
+
     /** Sends a draft invoice and records the sending in the audit log. */
     @Transactional
     public InvoiceResponse send(Long projectId, Long invoiceId) {

@@ -84,8 +84,9 @@ export interface LineItem {
 /**
  * A single invoice with the line items it is built from: their subtotal, the percentage discount and
  * what it takes off, and the sales tax percentage, the taxable base it is charged on (the taxable
- * lines after the discount, leaving out tax-free ones) and what it adds; its amount is the subtotal
- * less the discount plus the tax.
+ * lines after the discount, leaving out tax-free ones) and what it adds, and the levy (a second tax)
+ * percentage and what it adds on that same base; its amount is the subtotal less the discount plus
+ * the tax plus the levy.
  */
 export interface InvoiceDetail extends Invoice {
   subtotal: number;
@@ -94,6 +95,8 @@ export interface InvoiceDetail extends Invoice {
   taxPct: number;
   taxableBase: number;
   tax: number;
+  levyPct: number;
+  levy: number;
   lineItems: LineItem[];
   /** The client's tax registration number; null when they are not tax registered. */
   clientTaxNumber: string | null;
@@ -167,6 +170,11 @@ export class InvoiceService {
   /** Sets the sales tax percentage added to a draft invoice after its discount; zero removes the tax. */
   applyTax(projectId: number, invoiceId: number, taxPct: number): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/tax`, { taxPct });
+  }
+
+  /** Sets the levy (second tax) percentage added to a draft invoice on top of its sales tax; zero removes the levy. */
+  applyLevy(projectId: number, invoiceId: number, levyPct: number): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/levy`, { levyPct });
   }
 
   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {

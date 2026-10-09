@@ -25,7 +25,8 @@ import net.officefloor.hq.app.project.Project;
 /**
  * An invoice raised against a project. It is built from line items, and can take a percentage off
  * their sum as a discount, then add a percentage sales tax on what is left of the taxable lines only
- * (tax-free lines are never taxed); its stored amount is always that subtotal less the discount plus the tax.
+ * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
+ * its stored amount is always that subtotal less the discount plus the tax plus the levy.
  */
 @Entity
 @Table(name = "invoice")
@@ -47,6 +48,9 @@ public class Invoice {
 
     @Column(name = "tax_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal taxPct = BigDecimal.ZERO.setScale(2);
+
+    @Column(name = "levy_pct", nullable = false, precision = 5, scale = 2)
+    private BigDecimal levyPct = BigDecimal.ZERO.setScale(2);
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
@@ -119,6 +123,16 @@ public class Invoice {
         return taxOn(getTaxableBase());
     }
 
+    /** The levy (second tax) percentage added on top of the sales tax; zero when there is no levy. */
+    public BigDecimal getLevyPct() {
+        return levyPct;
+    }
+
+    /** How much levy is added on the taxable base, to the cent. */
+    public BigDecimal getLevy() {
+        return percentOf(getTaxableBase(), levyPct);
+    }
+
     public InvoiceStatus getStatus() {
         return status;
     }
@@ -179,18 +193,28 @@ public class Invoice {
         recalculateAmount();
     }
 
+    /** Sets the levy (second tax) percentage added to this invoice and reworks its amount to match. */
+    public void applyLevy(BigDecimal levyPct) {
+        this.levyPct = levyPct.setScale(2, RoundingMode.HALF_UP);
+        recalculateAmount();
+    }
+
     private BigDecimal discountOn(BigDecimal subtotal) {
         return subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal taxOn(BigDecimal taxableBase) {
-        return taxableBase.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        return percentOf(taxableBase, taxPct);
+    }
+
+    private static BigDecimal percentOf(BigDecimal base, BigDecimal pct) {
+        return base.multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
     private void recalculateAmount() {
         BigDecimal subtotal = getSubtotal();
         BigDecimal discounted = subtotal.subtract(discountOn(subtotal));
-        this.amount = discounted.add(getTax());
+        this.amount = discounted.add(getTax()).add(getLevy());
     }
 
     /** Marks this invoice as sent to the client. */

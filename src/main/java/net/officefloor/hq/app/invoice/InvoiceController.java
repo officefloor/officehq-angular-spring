@@ -70,6 +70,12 @@ public class InvoiceController {
         return service.applyTax(projectId, invoiceId, request);
     }
 
+    @PutMapping("/{invoiceId}/levy")
+    public InvoiceDetailResponse applyLevy(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @Valid @RequestBody LevyRequest request) {
+        return service.applyLevy(projectId, invoiceId, request);
+    }
+
     @PostMapping("/{invoiceId}/send")
     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.send(projectId, invoiceId);

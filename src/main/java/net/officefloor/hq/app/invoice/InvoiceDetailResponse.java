@@ -8,11 +8,13 @@ import net.officefloor.hq.app.client.Currency;
 /**
  * A single invoice together with the line items it is built from: their subtotal, the percentage
  * discount and what it takes off, the sales tax percentage, the taxable base it is charged on (the
- * taxable lines after the discount) and what it adds, the amount owed including that tax, and the
+ * taxable lines after the discount) and what it adds, the levy (second tax) percentage and what it adds
+ * on the same base, the amount owed including both taxes, and the
  * client's tax number (null when the client is not tax registered).
  */
 public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal subtotal,
-        BigDecimal discountPct, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax, InvoiceStatus status, LocalDate issuedDate,
+        BigDecimal discountPct, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
+        BigDecimal levyPct, BigDecimal levy, InvoiceStatus status, LocalDate issuedDate,
         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber) {
 
     static InvoiceDetailResponse from(Invoice invoice) {
@@ -20,6 +22,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, 
                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(),
                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscount(),
                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
+                invoice.getLevyPct(), invoice.getLevy(),
                 invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
                 invoice.getProject().getClient().getTaxNumber());
