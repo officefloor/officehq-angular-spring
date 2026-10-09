@@ -29,7 +29,7 @@ export const routes: Routes = [
   },
   {
     path: 'projects',
-    data: { section: 'projects', label: 'Projects', order: 2 },
+    data: { section: 'projects', label: 'Jobs', order: 2 },
     loadComponent: () => import('./features/projects/projects').then((m) => m.Projects),
   },
   {

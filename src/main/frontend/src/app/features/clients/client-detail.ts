@@ -36,7 +36,7 @@ import { ClientService } from './client.service';
       @if (summary.hasValue()) {
         <ul class="client-badges" aria-label="At a glance" data-testid="client-badges">
           <li>
-            Projects: <span data-testid="client-projects-count">{{ summary.value().projectCount }}</span>
+            Jobs: <span data-testid="client-projects-count">{{ summary.value().projectCount }}</span>
           </li>
           <li>
             Contacts: <span data-testid="client-contacts-count">{{ summary.value().contactCount }}</span>

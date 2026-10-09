@@ -61,7 +61,7 @@ public class ProjectService {
     @Transactional(readOnly = true)
     public ProjectResponse get(Long id) {
         return projects.findByIdWithClient(id).map(ProjectResponse::from)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
     }
 
     @Transactional
@@ -84,7 +84,7 @@ public class ProjectService {
     @Transactional(readOnly = true)
     public ProjectBudgetResponse budget(Long id) {
         Project project = projects.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
         return budgetOf(project);
     }
 
@@ -92,7 +92,7 @@ public class ProjectService {
     @Transactional
     public ProjectBudgetResponse setBudget(Long id, BigDecimal budget) {
         Project project = projects.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
         BigDecimal scaled = budget == null ? null : budget.setScale(2, RoundingMode.HALF_UP);
         BigDecimal current = project.getBudget();
         boolean changed = scaled == null ? current != null : current == null || current.compareTo(scaled) != 0;
@@ -114,7 +114,7 @@ public class ProjectService {
     @Transactional
     public ProjectResponse changeStatus(Long id, ProjectStatus status) {
         Project project = projects.findByIdWithClient(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
         if (project.getStatus() != status) {
             project.setStatus(status);
             projects.flush();
@@ -130,7 +130,7 @@ public class ProjectService {
     @Transactional
     public ProjectResponse archive(Long id) {
         Project project = projects.findByIdWithClient(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
         if (!project.isArchived()) {
             project.setArchived(true);
             projects.flush();
@@ -143,7 +143,7 @@ public class ProjectService {
     @Transactional
     public ProjectResponse restore(Long id) {
         Project project = projects.findByIdWithClient(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
         if (project.isArchived()) {
             project.setArchived(false);
             projects.flush();

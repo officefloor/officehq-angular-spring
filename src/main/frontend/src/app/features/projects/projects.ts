@@ -16,7 +16,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
   selector: 'app-projects',
   imports: [ReactiveFormsModule, RouterLink],
   template: `
-    <h1>Projects</h1>
+    <h1>Jobs</h1>
 
     <form [formGroup]="form" (ngSubmit)="submit()" data-testid="project-form" novalidate>
       <div>
@@ -64,7 +64,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
         </select>
       </div>
       <button type="submit" data-testid="project-form-submit" [disabled]="saving()">
-        Add project
+        Add job
       </button>
       @if (saveError()) {
         <p role="alert" data-testid="project-form-error">{{ saveError() }}</p>
@@ -83,7 +83,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
         [checked]="showArchived()"
         (change)="toggleArchived()"
       />
-      <label for="projects-show-archived">Show archived projects</label>
+      <label for="projects-show-archived">Show archived jobs</label>
     </div>
 
     <div>
@@ -121,16 +121,16 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
     @if (projects().length === 0) {
       <p data-testid="projects-empty">
         @if (statusFilter() !== null && tagFilter() !== null) {
-          No projects at this status with this tag.
+          No jobs at this status with this tag.
         } @else if (statusFilter() !== null) {
-          No projects at this status.
+          No jobs at this status.
         } @else {
-          {{ tagFilter() === null ? 'No projects yet.' : 'No projects with this tag.' }}
+          {{ tagFilter() === null ? 'No jobs yet.' : 'No jobs with this tag.' }}
         }
       </p>
     } @else {
       <table data-testid="projects-table">
-        <caption>All projects</caption>
+        <caption>All jobs</caption>
         <thead>
           <tr>
             <th scope="col">Name</th>
@@ -259,7 +259,7 @@ export class Projects {
         this.saving.set(false);
       },
       error: () => {
-        this.saveError.set('Could not save the project. Please try again.');
+        this.saveError.set('Could not save the job. Please try again.');
         this.saving.set(false);
       },
     });

@@ -35,7 +35,7 @@ public class NoteService {
 
     private void requireProject(Long projectId) {
         if (!projects.existsById(projectId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job");
         }
     }
 }

@@ -35,11 +35,11 @@ import { INVOICE_STATUSES, InvoicePage, InvoiceService, InvoiceStatus } from './
       </p>
     } @else {
       <table data-testid="all-invoices-table">
-        <caption>All invoices across every project</caption>
+        <caption>All invoices across every job</caption>
         <thead>
           <tr>
             <th scope="col">Invoice</th>
-            <th scope="col">Project</th>
+            <th scope="col">Job</th>
             <th scope="col">Amount</th>
             <th scope="col">Status</th>
             <th scope="col">Issued</th>

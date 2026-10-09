@@ -81,7 +81,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
         <p data-testid="project-invoices-empty">No invoices yet.</p>
       } @else {
         <table data-testid="project-invoices-table">
-          <caption>Invoices for this project</caption>
+          <caption>Invoices for this job</caption>
           <thead>
             <tr>
               <th scope="col">Invoice</th>

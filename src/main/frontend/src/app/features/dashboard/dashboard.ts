@@ -20,7 +20,7 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
           <dd data-testid="dashboard-clients-count">{{ s.clients }}</dd>
         </div>
         <div>
-          <dt>Projects</dt>
+          <dt>Jobs</dt>
           <dd data-testid="dashboard-projects-count">{{ s.projects }}</dd>
         </div>
         <div>

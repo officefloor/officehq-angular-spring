@@ -68,7 +68,7 @@ public class TagService {
 
     private Project findProject(Long projectId) {
         return projects.findById(projectId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
     }
 
     private static List<TagResponse> responses(Project project) {

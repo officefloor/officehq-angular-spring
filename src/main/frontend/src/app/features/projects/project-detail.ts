@@ -13,9 +13,9 @@ import { ProjectService } from './project.service';
   selector: 'app-project-detail',
   imports: [RouterLink, ProjectBudgetPanel, ProjectInvoices, ProjectNotes, ProjectTags, ProjectTasks],
   template: `
-    <a routerLink="/projects" data-testid="project-back">Back to projects</a>
+    <a routerLink="/projects" data-testid="project-back">Back to jobs</a>
     @if (project.error()) {
-      <p role="alert" data-testid="project-error">Could not load the project.</p>
+      <p role="alert" data-testid="project-error">Could not load the job.</p>
     } @else if (project.value(); as p) {
       <h1 data-testid="project-detail-name">{{ p.name }}</h1>
       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>

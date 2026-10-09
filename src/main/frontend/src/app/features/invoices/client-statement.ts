@@ -23,7 +23,7 @@ import { InvoiceService } from './invoice.service';
           <thead>
             <tr>
               <th scope="col">Invoice</th>
-              <th scope="col">Project</th>
+              <th scope="col">Job</th>
               <th scope="col">Status</th>
               <th scope="col">Issued</th>
               <th scope="col">Due</th>

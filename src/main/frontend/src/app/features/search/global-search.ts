@@ -11,7 +11,7 @@ import { SearchResults, SearchService } from './search.service';
   imports: [RouterLink],
   template: `
     <div role="search">
-      <label for="global-search">Search clients and projects</label>
+      <label for="global-search">Search clients and jobs</label>
       <input
         id="global-search"
         type="search"
@@ -38,9 +38,9 @@ import { SearchResults, SearchService } from './search.service';
           }
         </section>
         <section data-testid="search-projects" aria-labelledby="search-projects-heading">
-          <h2 id="search-projects-heading">Projects</h2>
+          <h2 id="search-projects-heading">Jobs</h2>
           @if (r.projects.length === 0) {
-            <p data-testid="search-projects-empty">No projects match.</p>
+            <p data-testid="search-projects-empty">No jobs match.</p>
           } @else {
             <ul>
               @for (p of r.projects; track p.id) {

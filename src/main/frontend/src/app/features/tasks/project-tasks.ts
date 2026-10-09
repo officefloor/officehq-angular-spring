@@ -65,7 +65,7 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
             </p>
           } @else {
             <table data-testid="project-tasks-table">
-              <caption>Tasks for this project</caption>
+              <caption>Tasks for this job</caption>
               <thead>
                 <tr>
                   <th scope="col">Task</th>

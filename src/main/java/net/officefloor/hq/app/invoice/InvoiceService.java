@@ -40,7 +40,7 @@ public class InvoiceService {
     @Transactional(readOnly = true)
     public List<InvoiceResponse> listForProject(Long projectId) {
         if (!projects.existsById(projectId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job");
         }
         List<Invoice> found = invoices.findByProjectIdOrderById(projectId);
         Map<Long, BigDecimal> paid = paidByInvoice(found);
@@ -93,7 +93,7 @@ public class InvoiceService {
     @Transactional
     public InvoiceResponse create(Long projectId, InvoiceRequest request) {
         Project project = projects.findById(projectId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
         LocalDate issued = request.issuedDate() != null ? request.issuedDate() : LocalDate.now();
         LocalDate due = request.dueDate() != null ? request.dueDate() : issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS);
         if (due.isBefore(issued)) {

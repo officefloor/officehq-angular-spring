@@ -10,7 +10,7 @@ import { PROJECT_STATUSES, ProjectService, ProjectStatus } from './project.servi
   imports: [RouterLink],
   template: `
     <section aria-labelledby="client-projects-heading" data-testid="client-projects">
-      <h2 id="client-projects-heading">Projects</h2>
+      <h2 id="client-projects-heading">Jobs</h2>
       <div>
         <input
           id="client-projects-show-all"
@@ -19,18 +19,18 @@ import { PROJECT_STATUSES, ProjectService, ProjectStatus } from './project.servi
           [checked]="showAll()"
           (change)="toggleShowAll()"
         />
-        <label for="client-projects-show-all">Show finished and archived projects</label>
+        <label for="client-projects-show-all">Show finished and archived jobs</label>
       </div>
       @if (projects.error()) {
-        <p role="alert" data-testid="client-projects-error">Could not load the projects.</p>
+        <p role="alert" data-testid="client-projects-error">Could not load the jobs.</p>
       } @else if (list().length === 0) {
         <p data-testid="client-projects-empty">
-          {{ showAll() ? 'No projects for this client yet.' : 'No active projects for this client.' }}
+          {{ showAll() ? 'No jobs for this client yet.' : 'No active jobs for this client.' }}
         </p>
       } @else {
         <table data-testid="client-projects-table">
           <caption>
-            {{ showAll() ? 'All projects for this client' : 'Active projects for this client' }}
+            {{ showAll() ? 'All jobs for this client' : 'Active jobs for this client' }}
           </caption>
           <thead>
             <tr>

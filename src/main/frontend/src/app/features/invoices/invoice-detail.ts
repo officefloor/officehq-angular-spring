@@ -16,7 +16,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
   selector: 'app-invoice-detail',
   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments],
   template: `
-    <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to project</a>
+    <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
     @if (invoice.error()) {
       <p role="alert" data-testid="invoice-error">Could not load the invoice.</p>
     } @else if (invoice.value(); as inv) {

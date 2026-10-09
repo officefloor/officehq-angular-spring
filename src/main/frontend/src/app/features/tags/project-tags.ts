@@ -19,7 +19,7 @@ import { Tag, TagService } from './tag.service';
         @if (projectTags.value().length === 0) {
           <p data-testid="project-tags-empty">No tags on this project yet.</p>
         } @else {
-          <ul class="chips" aria-label="Project tags" data-testid="project-tag-list">
+          <ul class="chips" aria-label="Job tags" data-testid="project-tag-list">
             @for (t of projectTags.value(); track t.id) {
               <li class="chip">
                 <span [attr.data-testid]="'project-tag-' + t.id">{{ t.name }}</span>

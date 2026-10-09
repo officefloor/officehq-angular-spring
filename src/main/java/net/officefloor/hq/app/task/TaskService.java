@@ -25,7 +25,7 @@ public class TaskService {
     @Transactional(readOnly = true)
     public List<TaskResponse> listForProject(Long projectId) {
         if (!projects.existsById(projectId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job");
         }
         return tasks.findByProjectIdOrderById(projectId).stream().map(TaskResponse::from).toList();
     }
@@ -33,7 +33,7 @@ public class TaskService {
     @Transactional
     public TaskResponse create(Long projectId, TaskRequest request) {
         Project project = projects.findById(projectId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
         Task saved = tasks.save(new Task(project, request.title().trim()));
         return TaskResponse.from(saved);
     }

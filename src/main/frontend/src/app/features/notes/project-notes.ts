@@ -40,9 +40,9 @@ import { NoteService } from './note.service';
         <p role="alert" data-testid="project-notes-error">Could not load the notes.</p>
       } @else if (notes.hasValue()) {
         @if (notes.value().length === 0) {
-          <p data-testid="project-notes-empty">No notes on this project yet.</p>
+          <p data-testid="project-notes-empty">No notes on this job yet.</p>
         } @else {
-          <ol class="notes" aria-label="Project notes, newest first" data-testid="project-note-list">
+          <ol class="notes" aria-label="Job notes, newest first" data-testid="project-note-list">
             @for (n of notes.value(); track n.id) {
               <li [attr.data-testid]="'note-row-' + n.id">
                 <time [attr.datetime]="n.at" data-testid="note-at">{{ n.at | date: 'medium' }}</time>
