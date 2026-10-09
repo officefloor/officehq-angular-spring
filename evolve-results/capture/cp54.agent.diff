@@ -1,0 +1,332 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 13a5ae0..4c986ed 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -4,6 +4,7 @@ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+ import { Observable } from 'rxjs';
++import { Notes } from '../notes/notes';
+ import { InvoicePayments } from '../payments/invoice-payments';
+ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+ 
+@@ -14,7 +15,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ // including the tax. Lines, the discount and the tax rate can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+-  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments],
++  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, Notes],
+   template: `
+     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
+     @if (invoice.error()) {
+@@ -331,6 +332,8 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+         [canRecord]="inv.status === 'SENT' || inv.status === 'PARTIAL'"
+         (recorded)="invoice.reload()"
+       />
++
++      <app-notes [projectId]="projectIdNumber()" [invoiceId]="inv.id" />
+     }
+   `,
+ })
+diff --git a/src/main/frontend/src/app/features/notes/note.service.ts b/src/main/frontend/src/app/features/notes/note.service.ts
+index 32dd729..32e5878 100644
+--- a/src/main/frontend/src/app/features/notes/note.service.ts
++++ b/src/main/frontend/src/app/features/notes/note.service.ts
+@@ -23,4 +23,13 @@ export class NoteService {
+   createForProject(projectId: number, text: string): Observable<Note> {
+     return this.http.post<Note>(`/api/projects/${projectId}/notes`, { text });
+   }
++
++  /** An invoice's notes, newest first. */
++  listForInvoice(projectId: number, invoiceId: number): Observable<Note[]> {
++    return this.http.get<Note[]>(`/api/projects/${projectId}/invoices/${invoiceId}/notes`);
++  }
++
++  createForInvoice(projectId: number, invoiceId: number, text: string): Observable<Note> {
++    return this.http.post<Note>(`/api/projects/${projectId}/invoices/${invoiceId}/notes`, { text });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/notes/project-notes.ts b/src/main/frontend/src/app/features/notes/notes.ts
+similarity index 64%
+rename from src/main/frontend/src/app/features/notes/project-notes.ts
+rename to src/main/frontend/src/app/features/notes/notes.ts
+index f3a8d81..3bc3bde 100644
+--- a/src/main/frontend/src/app/features/notes/project-notes.ts
++++ b/src/main/frontend/src/app/features/notes/notes.ts
+@@ -1,16 +1,17 @@
+ import { DatePipe } from '@angular/common';
+-import { Component, inject, input, signal } from '@angular/core';
++import { Component, computed, inject, input, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { NoteService } from './note.service';
+ 
+-// A project's notes: write a note and read them back, newest first.
++// The notes kept on a job, or on one of its invoices when an invoice is given: write a note and read
++// them back, newest first.
+ @Component({
+-  selector: 'app-project-notes',
++  selector: 'app-notes',
+   imports: [ReactiveFormsModule, DatePipe],
+   template: `
+-    <section aria-labelledby="project-notes-heading" data-testid="project-notes">
+-      <h2 id="project-notes-heading">Notes</h2>
++    <section [attr.aria-labelledby]="kind() + '-notes-heading'" [attr.data-testid]="kind() + '-notes'">
++      <h2 [id]="kind() + '-notes-heading'">Notes</h2>
+ 
+       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="note-form" novalidate>
+         <div>
+@@ -37,12 +38,16 @@ import { NoteService } from './note.service';
+       </form>
+ 
+       @if (notes.error()) {
+-        <p role="alert" data-testid="project-notes-error">Could not load the notes.</p>
++        <p role="alert" [attr.data-testid]="kind() + '-notes-error'">Could not load the notes.</p>
+       } @else if (notes.hasValue()) {
+         @if (notes.value().length === 0) {
+-          <p data-testid="project-notes-empty">No notes on this job yet.</p>
++          <p [attr.data-testid]="kind() + '-notes-empty'">No notes on this {{ label() }} yet.</p>
+         } @else {
+-          <ol class="notes" aria-label="Job notes, newest first" data-testid="project-note-list">
++          <ol
++            class="notes"
++            [attr.aria-label]="(kind() === 'invoice' ? 'Invoice' : 'Job') + ' notes, newest first'"
++            [attr.data-testid]="kind() + '-note-list'"
++          >
+             @for (n of notes.value(); track n.id) {
+               <li [attr.data-testid]="'note-row-' + n.id">
+                 <time [attr.datetime]="n.at" data-testid="note-at">{{ n.at | date: 'medium' }}</time>
+@@ -65,14 +70,22 @@ import { NoteService } from './note.service';
+     }
+   `,
+ })
+-export class ProjectNotes {
++export class Notes {
+   private readonly service = inject(NoteService);
+ 
+   readonly projectId = input.required<number>();
++  /** When given, the notes are the invoice's rather than the job's. */
++  readonly invoiceId = input<number>();
++
++  protected readonly kind = computed(() => (this.invoiceId() === undefined ? 'project' : 'invoice'));
++  protected readonly label = computed(() => (this.kind() === 'invoice' ? 'invoice' : 'job'));
+ 
+   protected readonly notes = rxResource({
+-    params: () => this.projectId(),
+-    stream: ({ params }) => this.service.listForProject(params),
++    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
++    stream: ({ params }) =>
++      params.invoiceId === undefined
++        ? this.service.listForProject(params.projectId)
++        : this.service.listForInvoice(params.projectId, params.invoiceId),
+   });
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+@@ -95,7 +108,12 @@ export class ProjectNotes {
+     }
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.createForProject(this.projectId(), text).subscribe({
++    const invoiceId = this.invoiceId();
++    const request =
++      invoiceId === undefined
++        ? this.service.createForProject(this.projectId(), text)
++        : this.service.createForInvoice(this.projectId(), invoiceId, text);
++    request.subscribe({
+       next: (created) => {
+         this.notes.update((list) => [created, ...(list ?? [])]);
+         this.form.reset();
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index 3a7ac76..8da9db1 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -2,7 +2,7 @@ import { Component, computed, inject, input, viewChild } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { ProjectInvoices } from '../invoices/project-invoices';
+-import { ProjectNotes } from '../notes/project-notes';
++import { Notes } from '../notes/notes';
+ import { ProjectTags } from '../tags/project-tags';
+ import { ProjectTasks } from '../tasks/project-tasks';
+ import { ProjectBudgetPanel } from './project-budget';
+@@ -11,7 +11,7 @@ import { ProjectService } from './project.service';
+ // A single project's page: its name, client and status, its budget, its tags, its tasks, its notes, and its invoices.
+ @Component({
+   selector: 'app-project-detail',
+-  imports: [RouterLink, ProjectBudgetPanel, ProjectInvoices, ProjectNotes, ProjectTags, ProjectTasks],
++  imports: [RouterLink, ProjectBudgetPanel, ProjectInvoices, Notes, ProjectTags, ProjectTasks],
+   template: `
+     <a routerLink="/projects" data-testid="project-back">Back to jobs</a>
+     @if (project.error()) {
+@@ -23,7 +23,7 @@ import { ProjectService } from './project.service';
+       <app-project-budget [projectId]="projectId()" />
+       <app-project-tags [projectId]="projectId()" />
+       <app-project-tasks [projectId]="projectId()" />
+-      <app-project-notes [projectId]="projectId()" />
++      <app-notes [projectId]="projectId()" />
+       <app-project-invoices [projectId]="projectId()" (invoiced)="budget()?.reload()" />
+     }
+   `,
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index dba9365..c581c59 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -5,6 +5,7 @@ import java.math.RoundingMode;
+ import java.sql.Timestamp;
+ import java.time.Instant;
+ import java.time.LocalDate;
++import java.time.ZoneOffset;
+ import java.util.List;
+ import java.util.Map;
+ import net.officefloor.hq.app.invoice.InvoiceRequest;
+@@ -106,7 +107,7 @@ public class TestSupportController {
+                     t.get("title"), Boolean.TRUE.equals(t.get("done")));
+         }
+         for (Map<String, Object> n : rows(fixture, "notes")) {
+-            Instant at = n.get("at") == null ? clock.instant() : Instant.parse(n.get("at").toString());
++            Instant at = n.get("at") == null ? clock.instant() : seedInstant(n.get("at").toString());
+             jdbc.update("INSERT INTO note (id, target_type, target_id, text, created_at) VALUES (?, ?, ?, ?, ?)",
+                     ((Number) n.get("id")).longValue(), n.get("targetType"),
+                     ((Number) n.get("targetId")).longValue(), n.get("text"), Timestamp.from(at));
+@@ -179,6 +180,11 @@ public class TestSupportController {
+         restartIdentity("payment");
+     }
+ 
++    /** A fixture timestamp, either a full instant or a bare date taken as the start of that day (UTC). */
++    private static Instant seedInstant(String value) {
++        return value.contains("T") ? Instant.parse(value) : LocalDate.parse(value).atStartOfDay(ZoneOffset.UTC).toInstant();
++    }
++
+     /**
+      * Invoices without a status are seeded as new drafts. Older fixtures may describe an
+      * issued-but-unpaid invoice as "UNPAID"; this domain models that state as SENT.
+diff --git a/src/main/java/net/officefloor/hq/app/note/InvoiceNoteController.java b/src/main/java/net/officefloor/hq/app/note/InvoiceNoteController.java
+new file mode 100644
+index 0000000..f41f1ce
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/InvoiceNoteController.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app.note;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The notes written on an invoice, newest first. */
++@RestController
++@RequestMapping("/api/projects/{projectId}/invoices/{invoiceId}/notes")
++public class InvoiceNoteController {
++
++    private final NoteService service;
++
++    public InvoiceNoteController(NoteService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<NoteResponse> list(@PathVariable Long projectId, @PathVariable Long invoiceId) {
++        return service.listForInvoice(projectId, invoiceId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public NoteResponse create(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody NoteRequest request) {
++        return service.createForInvoice(projectId, invoiceId, request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/Note.java b/src/main/java/net/officefloor/hq/app/note/Note.java
+index 08c559e..a31697c 100644
+--- a/src/main/java/net/officefloor/hq/app/note/Note.java
++++ b/src/main/java/net/officefloor/hq/app/note/Note.java
+@@ -8,7 +8,7 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.time.Instant;
+ 
+-/** A free-text note written against a record, such as a project. */
++/** A free-text note written against a record, such as a project or an invoice. */
+ @Entity
+ @Table(name = "note")
+ public class Note {
+@@ -16,6 +16,9 @@ public class Note {
+     /** Target type for notes kept on a project. */
+     public static final String PROJECT = "project";
+ 
++    /** Target type for notes kept on an invoice. */
++    public static final String INVOICE = "invoice";
++
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+     private Long id;
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteService.java b/src/main/java/net/officefloor/hq/app/note/NoteService.java
+index 0f76867..eadcab2 100644
+--- a/src/main/java/net/officefloor/hq/app/note/NoteService.java
++++ b/src/main/java/net/officefloor/hq/app/note/NoteService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.note;
+ 
+ import java.time.Instant;
+ import java.util.List;
++import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.project.ProjectRepository;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -13,10 +14,12 @@ public class NoteService {
+ 
+     private final NoteRepository notes;
+     private final ProjectRepository projects;
++    private final InvoiceRepository invoices;
+ 
+-    public NoteService(NoteRepository notes, ProjectRepository projects) {
++    public NoteService(NoteRepository notes, ProjectRepository projects, InvoiceRepository invoices) {
+         this.notes = notes;
+         this.projects = projects;
++        this.invoices = invoices;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -33,6 +36,29 @@ public class NoteService {
+         return NoteResponse.from(saved);
+     }
+ 
++    @Transactional(readOnly = true)
++    public List<NoteResponse> listForInvoice(Long projectId, Long invoiceId) {
++        requireInvoice(projectId, invoiceId);
++        return notes.findByTargetTypeAndTargetIdOrderByCreatedAtDescIdDesc(Note.INVOICE, invoiceId).stream()
++                .map(NoteResponse::from).toList();
++    }
++
++    @Transactional
++    public NoteResponse createForInvoice(Long projectId, Long invoiceId, NoteRequest request) {
++        requireInvoice(projectId, invoiceId);
++        Note saved = notes.save(new Note(Note.INVOICE, invoiceId, request.text().trim(), Instant.now()));
++        return NoteResponse.from(saved);
++    }
++
++    private void requireInvoice(Long projectId, Long invoiceId) {
++        boolean onProject = invoices.findById(invoiceId)
++                .filter(i -> i.getProject().getId().equals(projectId))
++                .isPresent();
++        if (!onProject) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown invoice");
++        }
++    }
++
+     private void requireProject(Long projectId) {
+         if (!projects.existsById(projectId)) {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job");
+diff --git a/src/main/resources/db/migration/V27__invoice_notes.sql b/src/main/resources/db/migration/V27__invoice_notes.sql
+new file mode 100644
+index 0000000..6515203
+--- /dev/null
++++ b/src/main/resources/db/migration/V27__invoice_notes.sql
+@@ -0,0 +1,3 @@
++-- Invoices take notes as well as jobs (projects).
++ALTER TABLE note DROP CONSTRAINT note_target_type_ck;
++ALTER TABLE note ADD CONSTRAINT note_target_type_ck CHECK (target_type IN ('project', 'invoice'));
