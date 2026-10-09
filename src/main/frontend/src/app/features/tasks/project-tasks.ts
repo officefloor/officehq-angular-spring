@@ -39,6 +39,16 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
             data-testid="task-form-due-date"
           />
         </div>
+        <div>
+          <label for="task-assignee">Assignee (optional)</label>
+          <input
+            id="task-assignee"
+            type="text"
+            formControlName="assignee"
+            maxlength="255"
+            data-testid="task-form-assignee"
+          />
+        </div>
         <button type="submit" data-testid="task-form-submit" [disabled]="saving()">Add task</button>
         @if (saveError()) {
           <p role="alert" data-testid="task-form-error">{{ saveError() }}</p>
@@ -79,6 +89,7 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
                 <tr>
                   <th scope="col">Task</th>
                   <th scope="col">Due date</th>
+                  <th scope="col">Assignee</th>
                   <th scope="col">Status</th>
                   <th scope="col">Action</th>
                 </tr>
@@ -88,6 +99,7 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
                   <tr [attr.data-testid]="'task-row-' + t.id">
                     <td data-testid="task-title">{{ t.title }}</td>
                     <td data-testid="task-due-date">{{ t.dueDate ?? '' }}</td>
+                    <td data-testid="task-assignee">{{ t.assignee ?? '' }}</td>
                     <td data-testid="task-status">{{ t.done ? 'DONE' : 'OPEN' }}</td>
                     <td>
                       <button
@@ -140,6 +152,7 @@ export class ProjectTasks {
   protected readonly form = inject(NonNullableFormBuilder).group({
     title: ['', [Validators.required, Validators.maxLength(255)]],
     dueDate: [''],
+    assignee: ['', Validators.maxLength(255)],
   });
 
   protected setFilter(event: Event): void {
@@ -152,7 +165,7 @@ export class ProjectTasks {
   }
 
   protected submit(): void {
-    const { title: rawTitle, dueDate } = this.form.getRawValue();
+    const { title: rawTitle, dueDate, assignee } = this.form.getRawValue();
     const title = rawTitle.trim();
     if (this.form.invalid || !title) {
       this.form.controls.title.setValue('');
@@ -161,7 +174,7 @@ export class ProjectTasks {
     }
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create(this.projectId(), title, dueDate || null).subscribe({
+    this.service.create(this.projectId(), title, dueDate || null, assignee.trim() || null).subscribe({
       next: (created) => {
         this.tasks.update((list) => [...(list ?? []), created]);
         this.form.reset();

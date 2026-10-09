@@ -31,13 +31,17 @@ public class Task {
     /** When the task should be finished by; optional. */
     private LocalDate dueDate;
 
+    /** The name of the person the task is for; optional. */
+    private String assignee;
+
     protected Task() {
     }
 
-    public Task(Project project, String title, LocalDate dueDate) {
+    public Task(Project project, String title, LocalDate dueDate, String assignee) {
         this.project = project;
         this.title = title;
         this.dueDate = dueDate;
+        this.assignee = assignee;
     }
 
     public Long getId() {
@@ -58,6 +62,10 @@ public class Task {
 
     public LocalDate getDueDate() {
         return dueDate;
+    }
+
+    public String getAssignee() {
+        return assignee;
     }
 
     /** Flips the task between open and done. */

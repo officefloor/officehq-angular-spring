@@ -34,7 +34,8 @@ public class TaskService {
     public TaskResponse create(Long projectId, TaskRequest request) {
         Project project = projects.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
-        Task saved = tasks.save(new Task(project, request.title().trim(), request.dueDate()));
+        Task saved = tasks.save(new Task(project, request.title().trim(), request.dueDate(),
+                request.assignee() == null || request.assignee().isBlank() ? null : request.assignee().trim()));
         return TaskResponse.from(saved);
     }
 
