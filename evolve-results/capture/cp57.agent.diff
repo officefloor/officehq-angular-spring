@@ -1,0 +1,181 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index 64dd7d9..4f0eff4 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -4,8 +4,8 @@ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { InvoiceService } from './invoice.service';
+ 
+-// A client's statement: every invoice across the client's projects, how much is left to pay on each,
+-// and the total the client still owes. Drafts are listed but do not count towards what is owed.
++// A client's statement: every invoice across the client's projects grouped by job, how much is left to
++// pay on each, a subtotal still owed per job, and the total the client still owes. Drafts are listed but do not count towards what is owed.
+ @Component({
+   selector: 'app-client-statement',
+   imports: [CurrencyPipe, RouterLink],
+@@ -31,26 +31,35 @@ import { InvoiceService } from './invoice.service';
+               <th scope="col">Left to pay</th>
+             </tr>
+           </thead>
+-          <tbody>
+-            @for (i of s.invoices; track i.id) {
+-              <tr [attr.data-testid]="'statement-invoice-row-' + i.id">
+-                <td data-testid="statement-invoice-id">
+-                  <a
+-                    [routerLink]="['/projects', i.projectId, 'invoices', i.id]"
+-                    [attr.data-testid]="'statement-invoice-open-' + i.id"
+-                    [attr.aria-label]="'Open invoice #' + i.id"
+-                    >#{{ i.id }}</a
+-                  >
+-                </td>
+-                <td data-testid="statement-invoice-project">{{ i.projectName }}</td>
+-                <td data-testid="statement-invoice-status">{{ i.status }}</td>
+-                <td data-testid="statement-invoice-issued">{{ i.issuedDate }}</td>
+-                <td data-testid="statement-invoice-due">{{ i.dueDate }}</td>
+-                <td data-testid="statement-invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+-                <td data-testid="statement-invoice-due-amount">{{ i.amountDue | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++          @for (job of s.jobs; track job.projectId) {
++            <tbody [attr.data-testid]="'statement-project-' + job.projectId">
++              <tr>
++                <th scope="colgroup" colspan="7" data-testid="statement-project-name">{{ job.projectName }}</th>
+               </tr>
+-            }
+-          </tbody>
++              @for (i of job.invoices; track i.id) {
++                <tr [attr.data-testid]="'statement-invoice-row-' + i.id">
++                  <td data-testid="statement-invoice-id">
++                    <a
++                      [routerLink]="['/projects', i.projectId, 'invoices', i.id]"
++                      [attr.data-testid]="'statement-invoice-open-' + i.id"
++                      [attr.aria-label]="'Open invoice #' + i.id"
++                      >#{{ i.id }}</a
++                    >
++                  </td>
++                  <td data-testid="statement-invoice-project">{{ i.projectName }}</td>
++                  <td data-testid="statement-invoice-status">{{ i.status }}</td>
++                  <td data-testid="statement-invoice-issued">{{ i.issuedDate }}</td>
++                  <td data-testid="statement-invoice-due">{{ i.dueDate }}</td>
++                  <td data-testid="statement-invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                  <td data-testid="statement-invoice-due-amount">{{ i.amountDue | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                </tr>
++              }
++              <tr>
++                <th scope="row" colspan="6">Subtotal owed on {{ job.projectName }}</th>
++                <td data-testid="statement-project-subtotal">{{ job.subtotal | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              </tr>
++            </tbody>
++          }
+         </table>
+       }
+       <p>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 5126d2f..0b799af 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -41,11 +41,20 @@ export interface StatementInvoice extends ProjectInvoice {
+   projectName: string;
+ }
+ 
+-/** A client's invoices across all their projects, with the total they still owe. */
++/** One job on a client's statement: its invoices and what is still owed on them. */
++export interface StatementJob {
++  projectId: number;
++  projectName: string;
++  invoices: StatementInvoice[];
++  subtotal: number;
++}
++
++/** A client's invoices across all their projects, also grouped by job, with the total they still owe. */
+ export interface ClientStatement {
+   clientId: number;
+   clientName: string;
+   invoices: StatementInvoice[];
++  jobs: StatementJob[];
+   outstanding: number;
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+index bb0f7cd..84790ba 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -1,16 +1,43 @@
+ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
+ import java.util.List;
++import java.util.Map;
+ 
+ /**
+  * A client's statement: all of their invoices, each with the project it is for and how much is left
+- * to pay, and the total still owed (what is left to pay across their sent invoices; void ones are not owed).
++ * to pay, the same invoices grouped by job with what is owed on each job, and the total still owed
++ * (what is left to pay across their sent invoices; drafts and void ones are not owed).
+  */
+-public record ClientStatementResponse(Long clientId, String clientName, List<Line> invoices,
++public record ClientStatementResponse(Long clientId, String clientName, List<Line> invoices, List<Job> jobs,
+         BigDecimal outstanding) {
+ 
++    static ClientStatementResponse from(Long clientId, String clientName, List<Line> invoices) {
++        Map<Long, List<Line>> byProject = new LinkedHashMap<>();
++        invoices.forEach(l -> byProject.computeIfAbsent(l.projectId(), id -> new ArrayList<>()).add(l));
++        List<Job> jobs = byProject.values().stream()
++                .map(lines -> new Job(lines.get(0).projectId(), lines.get(0).projectName(), lines, owed(lines)))
++                .toList();
++        return new ClientStatementResponse(clientId, clientName, invoices, jobs, owed(invoices));
++    }
++
++    /** What is left to pay across the given invoices, leaving out drafts and void ones. */
++    private static BigDecimal owed(List<Line> lines) {
++        return lines.stream()
++                .filter(l -> l.status() != InvoiceStatus.DRAFT && l.status() != InvoiceStatus.VOID)
++                .map(Line::amountDue)
++                .reduce(BigDecimal.ZERO, BigDecimal::add)
++                .setScale(2, RoundingMode.HALF_UP);
++    }
++
++    /** One job on a statement: its invoices and the subtotal still owed on them. */
++    public record Job(Long projectId, String projectName, List<Line> invoices, BigDecimal subtotal) {
++    }
++
+     /** One invoice on a statement. */
+     public record Line(Long id, Long projectId, String projectName, BigDecimal amount, InvoiceStatus status,
+             LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 91e2397..2b8e4b1 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -1,7 +1,6 @@
+ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
+-import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
+@@ -51,7 +50,7 @@ public class InvoiceService {
+ 
+     /**
+      * A client's statement: every invoice across their projects with what is left to pay on each, and
+-     * the total they still owe. Drafts are listed but not owed, as they have not been sent, nor are
++     * the total they still owe, also grouped by job with a subtotal per job. Drafts are listed but not owed, as they have not been sent, nor are
+      * void invoices, as they have been cancelled.
+      */
+     @Transactional(readOnly = true)
+@@ -63,12 +62,7 @@ public class InvoiceService {
+         List<ClientStatementResponse.Line> lines = found.stream()
+                 .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                 .toList();
+-        BigDecimal outstanding = lines.stream()
+-                .filter(l -> l.status() != InvoiceStatus.DRAFT && l.status() != InvoiceStatus.VOID)
+-                .map(ClientStatementResponse.Line::amountDue)
+-                .reduce(BigDecimal.ZERO, BigDecimal::add)
+-                .setScale(2, RoundingMode.HALF_UP);
+-        return new ClientStatementResponse(client.getId(), client.getName(), lines, outstanding);
++        return ClientStatementResponse.from(client.getId(), client.getName(), lines);
+     }
+ 
+     private Map<Long, BigDecimal> paidByInvoice(List<Invoice> found) {
