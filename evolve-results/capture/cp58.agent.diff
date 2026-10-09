@@ -1,0 +1,32 @@
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index b6ae92e..dc058fa 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -298,7 +298,10 @@ export class Clients {
+     this.actionError.set(null);
+     this.service.restore(client.id).subscribe({
+       next: (restored) => {
+-        this.clients.update((list) => list.map((c) => (c.id === restored.id ? restored : c)));
++        // Upsert: the list may have been reloaded without archived clients while the restore was in flight.
++        this.clients.update((list) =>
++          [...list.filter((c) => c.id !== restored.id), restored].sort((a, b) => a.id - b.id),
++        );
+         this.busy.set(null);
+       },
+       error: () => {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index feba8f7..3801901 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -74,8 +74,9 @@ public class TestSupportController {
+             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
+-                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"));
++            jdbc.update("INSERT INTO client (id, name, email, archived) VALUES (?, ?, ?, ?)",
++                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"),
++                    Boolean.TRUE.equals(c.get("archived")));
+         }
+         for (Map<String, Object> c : rows(fixture, "contacts")) {
+             jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
