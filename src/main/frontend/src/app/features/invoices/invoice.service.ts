@@ -27,6 +27,19 @@ export interface InvoiceSummary extends Invoice {
   projectName: string;
 }
 
+/** An invoice as listed on a client's statement: its project's name and how much is left to pay. */
+export interface StatementInvoice extends ProjectInvoice {
+  projectName: string;
+}
+
+/** A client's invoices across all their projects, with the total they still owe. */
+export interface ClientStatement {
+  clientId: number;
+  clientName: string;
+  invoices: StatementInvoice[];
+  outstanding: number;
+}
+
 /** One thing an invoice charges for; its amount is quantity times unit price. */
 export interface LineItem {
   id: number;
@@ -68,6 +81,10 @@ export class InvoiceService {
 
   listForProject(projectId: number): Observable<ProjectInvoice[]> {
     return this.http.get<ProjectInvoice[]>(`/api/projects/${projectId}/invoices`);
+  }
+
+  statementForClient(clientId: number): Observable<ClientStatement> {
+    return this.http.get<ClientStatement>(`/api/clients/${clientId}/statement`);
   }
 
   create(projectId: number, invoice: NewInvoice): Observable<ProjectInvoice> {

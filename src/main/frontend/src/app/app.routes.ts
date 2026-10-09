@@ -24,6 +24,10 @@ export const routes: Routes = [
     loadComponent: () => import('./features/clients/client-detail').then((m) => m.ClientDetail),
   },
   {
+    path: 'clients/:id/statement',
+    loadComponent: () => import('./features/invoices/client-statement').then((m) => m.ClientStatement),
+  },
+  {
     path: 'projects',
     data: { section: 'projects', label: 'Projects', order: 2 },
     loadComponent: () => import('./features/projects/projects').then((m) => m.Projects),

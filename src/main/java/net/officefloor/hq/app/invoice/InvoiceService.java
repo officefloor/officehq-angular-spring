@@ -1,11 +1,14 @@
 package net.officefloor.hq.app.invoice;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.client.Client;
+import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.Project;
 import net.officefloor.hq.app.project.ProjectRepository;
@@ -20,12 +23,14 @@ public class InvoiceService {
     private final InvoiceRepository invoices;
     private final ProjectRepository projects;
     private final PaymentRepository payments;
+    private final ClientRepository clients;
     private final Audit audit;
 
     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
-            Audit audit) {
+            ClientRepository clients, Audit audit) {
         this.invoices = invoices;
         this.projects = projects;
+        this.clients = clients;
         this.payments = payments;
         this.audit = audit;
     }
@@ -36,13 +41,38 @@ public class InvoiceService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
         }
         List<Invoice> found = invoices.findByProjectIdOrderById(projectId);
-        Map<Long, BigDecimal> paid = found.isEmpty() ? Map.of()
-                : payments.sumAmountByInvoiceIds(found.stream().map(Invoice::getId).toList()).stream()
-                        .collect(Collectors.toMap(PaymentRepository.InvoicePaidTotal::getInvoiceId,
-                                PaymentRepository.InvoicePaidTotal::getPaid));
+        Map<Long, BigDecimal> paid = paidByInvoice(found);
         return found.stream()
                 .map(i -> InvoiceResponse.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
                 .toList();
+    }
+
+    /**
+     * A client's statement: every invoice across their projects with what is left to pay on each, and
+     * the total they still owe. Drafts are listed but not owed, as they have not been sent.
+     */
+    @Transactional(readOnly = true)
+    public ClientStatementResponse statementForClient(Long clientId) {
+        Client client = clients.findById(clientId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+        List<Invoice> found = invoices.findByClientIdWithProject(clientId);
+        Map<Long, BigDecimal> paid = paidByInvoice(found);
+        List<ClientStatementResponse.Line> lines = found.stream()
+                .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                .toList();
+        BigDecimal outstanding = lines.stream()
+                .filter(l -> l.status() != InvoiceStatus.DRAFT)
+                .map(ClientStatementResponse.Line::amountDue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        return new ClientStatementResponse(client.getId(), client.getName(), lines, outstanding);
+    }
+
+    private Map<Long, BigDecimal> paidByInvoice(List<Invoice> found) {
+        return found.isEmpty() ? Map.of()
+                : payments.sumAmountByInvoiceIds(found.stream().map(Invoice::getId).toList()).stream()
+                        .collect(Collectors.toMap(PaymentRepository.InvoicePaidTotal::getInvoiceId,
+                                PaymentRepository.InvoicePaidTotal::getPaid));
     }
 
     /**

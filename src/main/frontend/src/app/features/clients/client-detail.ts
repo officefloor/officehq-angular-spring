@@ -5,7 +5,7 @@ import { ClientContacts } from '../contacts/client-contacts';
 import { ClientProjects } from '../projects/client-projects';
 import { ClientService } from './client.service';
 
-// A single client's page: their name and email, counts of their projects and contacts, their contacts, and the projects being done for them.
+// A single client's page: their name and email, a link to their statement, counts of their projects and contacts, their contacts, and the projects being done for them.
 @Component({
   selector: 'app-client-detail',
   imports: [RouterLink, ClientContacts, ClientProjects],
@@ -34,6 +34,9 @@ import { ClientService } from './client.service';
           </li>
         </ul>
       }
+      <p>
+        <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="client-statement-open">View statement</a>
+      </p>
       <app-client-contacts [clientId]="clientId()" (contactAdded)="summary.reload()" />
       <app-client-projects [clientId]="clientId()" />
     }
