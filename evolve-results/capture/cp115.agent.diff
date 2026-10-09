@@ -1,0 +1,193 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 46c34de..d373378 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -9,13 +9,14 @@ import { ClientDeposits } from '../deposits/client-deposits';
+ import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
+ import { ClientProjects } from '../projects/client-projects';
+ import { ClientCurrency } from './client-currency';
++import { ClientExport } from './client-export';
+ import { ClientMerge } from './client-merge';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
++// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, an export of their contact details to a file, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge],
++  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -78,6 +79,7 @@ import { Client, ClientService } from './client.service';
+           <span data-testid="client-primary-contact-none">None chosen</span>
+         }
+       </p>
++      <app-client-export [clientId]="clientId()" />
+       <app-client-currency [client]="c" (changed)="currencyChanged($event)" />
+       @if (summary.hasValue()) {
+         <ul class="client-badges" aria-label="At a glance" data-testid="client-badges">
+diff --git a/src/main/frontend/src/app/features/clients/client-export.ts b/src/main/frontend/src/app/features/clients/client-export.ts
+new file mode 100644
+index 0000000..b2a594c
+--- /dev/null
++++ b/src/main/frontend/src/app/features/clients/client-export.ts
+@@ -0,0 +1,57 @@
++import { Component, inject, input, linkedSignal, signal } from '@angular/core';
++import { ClientService, exportUrl } from './client.service';
++
++// Exports a client's contact details to a simple CSV file, showing what the file holds so it can be checked before downloading.
++@Component({
++  selector: 'app-client-export',
++  styles: `
++    .client-export-output {
++      white-space: pre-wrap;
++    }
++  `,
++  template: `
++    <p>
++      <button type="button" data-testid="client-export" [disabled]="loading()" (click)="export()">
++        Export contact details
++      </button>
++    </p>
++    @if (error()) {
++      <p role="alert" data-testid="client-export-error">Could not export the contact details.</p>
++    } @else if (content(); as text) {
++      <section aria-labelledby="client-export-heading">
++        <h2 id="client-export-heading">Exported contact details</h2>
++        <pre class="client-export-output" data-testid="client-export-output">{{ text }}</pre>
++        <a [href]="url()" [attr.download]="'client-' + clientId() + '.csv'" data-testid="client-export-download">Download file</a>
++      </section>
++    }
++  `,
++})
++export class ClientExport {
++  private readonly service = inject(ClientService);
++
++  readonly clientId = input.required<number>();
++
++  /** The exported file's text; cleared whenever the page moves to another client. */
++  protected readonly content = linkedSignal<number, string | null>({ source: this.clientId, computation: () => null });
++  protected readonly loading = signal(false);
++  protected readonly error = signal(false);
++
++  protected url(): string {
++    return exportUrl(this.clientId());
++  }
++
++  protected export(): void {
++    this.loading.set(true);
++    this.error.set(false);
++    this.service.exportContactDetails(this.clientId()).subscribe({
++      next: (text) => {
++        this.content.set(text);
++        this.loading.set(false);
++      },
++      error: () => {
++        this.error.set(true);
++        this.loading.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 9df58c8..44074cd 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -41,6 +41,11 @@ export interface ClientSummary {
+ 
+ export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'outstanding'>;
+ 
++/** Where a client's contact details file is downloaded from. */
++export function exportUrl(id: number): string {
++  return `/api/clients/${id}/export`;
++}
++
+ @Injectable({ providedIn: 'root' })
+ export class ClientService {
+   private readonly http = inject(HttpClient);
+@@ -57,6 +62,11 @@ export class ClientService {
+     return this.http.get<ClientSummary>(`/api/clients/${id}/summary`);
+   }
+ 
++  /** The client's contact details as the CSV file the export downloads. */
++  exportContactDetails(id: number): Observable<string> {
++    return this.http.get(exportUrl(id), { responseType: 'text' });
++  }
++
+   create(client: NewClient): Observable<Client> {
+     return this.http.post<Client>('/api/clients', client);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index 31b87a5..3d8b985 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -1,8 +1,13 @@
+ package net.officefloor.hq.app.client;
+ 
+ import jakarta.validation.Valid;
++import java.nio.charset.StandardCharsets;
+ import java.util.List;
++import org.springframework.http.ContentDisposition;
++import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
++import org.springframework.http.MediaType;
++import org.springframework.http.ResponseEntity;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -38,6 +43,15 @@ public class ClientController {
+         return service.summary(id);
+     }
+ 
++    /** Downloads the client's contact details as a CSV file. */
++    @GetMapping(value = "/{id}/export", produces = "text/csv")
++    public ResponseEntity<String> export(@PathVariable Long id) {
++        return ResponseEntity.ok()
++                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename("client-" + id + ".csv").build().toString())
++                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
++                .body(service.exportContactDetails(id));
++    }
++
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClientResponse create(@Valid @RequestBody ClientRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 9e4bebe..5a6d496 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -291,4 +291,34 @@ public class ClientService {
+         return clients.findById(id)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+     }
++
++    /** The client's contact details as a small CSV file: a header row, then one row of name, email and phone. */
++    @Transactional(readOnly = true)
++    public String exportContactDetails(Long id) {
++        Client client = find(id);
++        String phone = client.getPhone();
++        // A phone number made only of the usual characters may start with '+' and is safe as it is.
++        String phoneField = phone != null && phone.matches("[0-9 +()\\-.]*") ? csv(phone) : csv(neutralise(phone));
++        return "name,email,phone\r\n"
++                + csv(neutralise(client.getName())) + "," + csv(neutralise(client.getEmail())) + "," + phoneField + "\r\n";
++    }
++
++    /** Stops a value a spreadsheet would read as a formula from being run when the file is opened. */
++    private static String neutralise(String value) {
++        if (value != null && !value.isEmpty() && "=+-@\t\r".indexOf(value.charAt(0)) >= 0) {
++            return "'" + value;
++        }
++        return value;
++    }
++
++    /** One CSV field, quoted when it holds a comma, quote or line break; a missing value is left empty. */
++    private static String csv(String value) {
++        if (value == null) {
++            return "";
++        }
++        if (value.matches("(?s).*[\",\r\n].*")) {
++            return "\"" + value.replace("\"", "\"\"") + "\"";
++        }
++        return value;
++    }
+ }
