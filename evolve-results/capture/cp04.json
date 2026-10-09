@@ -1,0 +1,373 @@
+{
+  "checkpoint": 4,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48"
+  },
+  "checkpoint_id": "cp04_project_invoices",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "When I open a project I want to see its invoices. Show me what they add up to. Let me add a\nnew invoice for an amount.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nWhen I open a project I want to see its invoices. Show me what they add up to. Let me add a\nnew invoice for an amount.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "70361c96133a9ca43c7553097551b184bd2c3ba5",
+  "reset_sha": "",
+  "preagent_sha": "cb8f531101ca7b46370e3a9ed969a4129cfcd0e5",
+  "prev_sha": "cb8f531101ca7b46370e3a9ed969a4129cfcd0e5",
+  "base_sha": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5165124,
+    "input_tokens": 14,
+    "output_tokens": 10175,
+    "cache_read_tokens": 201622,
+    "cache_creation_tokens": 34079,
+    "num_turns": 8,
+    "duration_ms": 106479,
+    "duration_api_ms": 79950,
+    "model": "claude-opus-5-5",
+    "session_id": "21827f61-46d9-43b5-80fc-a07f95e1f4fc",
+    "stop_reason": "success",
+    "result_text": "Opening a project now shows its invoices, their total, and a form to add a new invoice by amount. `bin/e2e` builds and runs, and both Playwright tests pass.\n\nYour request said \"OfficeFloor server\", but this codebase and `CLAUDE.md` are Spring Boot. I followed the code, so the server side is ordinary Spring.\n\n**What's new**\n- **Projects list:** each row has an \"Open\" link (`project-open-<id>`) that goes to the project's own page at `/projects/<id>`. That page doesn't appear in the nav bar.\n- **Project page:** shows the project's name and client, the invoices table (`invoice-row-<id>` / `invoice-amount`), and the total in the table footer (`project-invoices-total`). Amounts show two decimals, and the total is added up in whole cents so rounding can't creep in.\n- **Add invoice:** the form (`invoice-form-amount`, `invoice-form-submit`) accepts only amounts above zero with at most two decimal places. The server and database enforce the same rule.\n\n**Server and database**\n- `V4__create_invoice.sql` adds an `invoice` table: an id, the project it belongs to, and an amount stored as an exact decimal.\n- New endpoints:\n  - `GET /api/projects/{id}` returns one project.\n  - `GET /api/projects/{id}/invoices` lists that project's invoices.\n  - `POST /api/projects/{id}/invoices` adds an invoice.\n  - An unknown project id returns 404.\n- The test reset and seed endpoints now handle invoices.\n\n**Worth knowing**\n- When a project has no invoices, the page shows \"No invoices yet.\" and no total, rather than a total of 0.00.\n- Creating an invoice doesn't write an audit record. The test doesn't expect one, and creating clients or projects doesn't write one either.\n- I changed the app-wide router setup so route parameters are passed straight into page components (`app.config.ts`).\n\nThe invoice files are in `src/main/java/net/officefloor/hq/app/invoice/` and `src/main/frontend/src/app/features/invoices/`. The project page is `features/projects/project-detail.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.5165124,
+        "num_turns": 8,
+        "duration_ms": 106479,
+        "duration_api_ms": 79950,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp04.agent.jsonl",
+  "agent_diff_file": "cp04.agent.diff",
+  "build_log_file": "cp04.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 9,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 425,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 496,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 260,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 231,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 240,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 281,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 358,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 394,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 412,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 3.5,
+            "impact": 322,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/src/app/features/invoices/project-invoices.ts",
+                "lang": "typescript",
+                "cost": 21,
+                "mutation": 0,
+                "godclass": 21,
+                "mut_fns": 0,
+                "new_fns": 8
+              },
+              {
+                "path": "src/main/frontend/src/app/app.routes.ts",
+                "lang": "typescript",
+                "cost": 15,
+                "mutation": 15,
+                "godclass": 0,
+                "mut_fns": 2,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice.service.ts",
+                "lang": "typescript",
+                "cost": 6,
+                "mutation": 0,
+                "godclass": 6,
+                "mut_fns": 0,
+                "new_fns": 2
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/project-detail.ts",
+                "lang": "typescript",
+                "cost": 4,
+                "mutation": 0,
+                "godclass": 4,
+                "mut_fns": 0,
+                "new_fns": 2
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/src/app/app.routes.ts",
+                "name": "loadComponent",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 5,
+                "cost": 10,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/app.routes.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 5,
+                "cost": 5,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/project-invoices.ts",
+                "name": "next",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 5,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/project-invoices.ts",
+                "name": "error",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice.service.ts",
+                "name": "listForProject",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/invoice.service.ts",
+                "name": "create",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/project-invoices.ts",
+                "name": "rxResource",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/project-invoices.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 3,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/project-invoices.ts",
+                "name": "stream",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 2,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/invoices/project-invoices.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 2,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 1,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 11.07,
+            "impact": 340,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java",
+                "lang": "java",
+                "cost": 22,
+                "mutation": 0,
+                "godclass": 22,
+                "mut_fns": 0,
+                "new_fns": 3
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/project/ProjectService.java",
+                "lang": "java",
+                "cost": 12,
+                "mutation": 0,
+                "godclass": 12,
+                "mut_fns": 0,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java",
+                "name": "InvoiceService::listForProject",
+                "container": "InvoiceService",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 12,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/project/ProjectService.java",
+                "name": "ProjectService::get",
+                "container": "ProjectService",
+                "cc": 1,
+                "wmc_other": 3,
+                "cost": 12,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java",
+                "name": "InvoiceService::create",
+                "container": "InvoiceService",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 6,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java",
+                "name": "InvoiceService::InvoiceService",
+                "container": "InvoiceService",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 1,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}

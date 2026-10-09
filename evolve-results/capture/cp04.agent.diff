@@ -1,0 +1,606 @@
+diff --git a/src/main/frontend/src/app/app.config.ts b/src/main/frontend/src/app/app.config.ts
+index f904378..d50b66d 100644
+--- a/src/main/frontend/src/app/app.config.ts
++++ b/src/main/frontend/src/app/app.config.ts
+@@ -1,9 +1,9 @@
+ import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
+ import { provideHttpClient } from '@angular/common/http';
+-import { provideRouter } from '@angular/router';
++import { provideRouter, withComponentInputBinding } from '@angular/router';
+ import { routes } from './app.routes';
+ 
+-// The app's wiring: the router and the HTTP client.
++// The app's wiring: the router (route params bound to component inputs) and the HTTP client.
+ export const appConfig: ApplicationConfig = {
+-  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient()],
++  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes, withComponentInputBinding()), provideHttpClient()],
+ };
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index 2e5cfb5..0c2c923 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -19,4 +19,8 @@ export const routes: Routes = [
+     data: { section: 'projects', label: 'Projects', order: 2 },
+     loadComponent: () => import('./features/projects/projects').then((m) => m.Projects),
+   },
++  {
++    path: 'projects/:id',
++    loadComponent: () => import('./features/projects/project-detail').then((m) => m.ProjectDetail),
++  },
+ ];
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+new file mode 100644
+index 0000000..7f258a4
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -0,0 +1,26 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++export interface Invoice {
++  id: number;
++  projectId: number;
++  amount: number;
++}
++
++export interface NewInvoice {
++  amount: number;
++}
++
++@Injectable({ providedIn: 'root' })
++export class InvoiceService {
++  private readonly http = inject(HttpClient);
++
++  listForProject(projectId: number): Observable<Invoice[]> {
++    return this.http.get<Invoice[]>(`/api/projects/${projectId}/invoices`);
++  }
++
++  create(projectId: number, invoice: NewInvoice): Observable<Invoice> {
++    return this.http.post<Invoice>(`/api/projects/${projectId}/invoices`, invoice);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+new file mode 100644
+index 0000000..02c4725
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -0,0 +1,125 @@
++import { DecimalPipe } from '@angular/common';
++import { Component, computed, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { InvoiceService } from './invoice.service';
++
++// A project's invoices: lists them, shows what they add up to, and adds a new one by amount.
++@Component({
++  selector: 'app-project-invoices',
++  imports: [ReactiveFormsModule, DecimalPipe],
++  template: `
++    <section aria-labelledby="project-invoices-heading" data-testid="project-invoices">
++      <h2 id="project-invoices-heading">Invoices</h2>
++
++      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="invoice-form" novalidate>
++        <div>
++          <label for="invoice-amount">Amount</label>
++          <input
++            id="invoice-amount"
++            type="number"
++            inputmode="decimal"
++            min="0.01"
++            step="0.01"
++            formControlName="amount"
++            data-testid="invoice-form-amount"
++            [attr.aria-invalid]="showError()"
++            [attr.aria-describedby]="showError() ? 'invoice-amount-error' : null"
++          />
++          @if (showError()) {
++            <p id="invoice-amount-error" role="alert" data-testid="invoice-form-amount-error">
++              Enter an amount greater than zero with at most two decimal places.
++            </p>
++          }
++        </div>
++        <button type="submit" data-testid="invoice-form-submit" [disabled]="saving()">
++          Add invoice
++        </button>
++        @if (saveError()) {
++          <p role="alert" data-testid="invoice-form-error">{{ saveError() }}</p>
++        }
++      </form>
++
++      @if (invoices.error()) {
++        <p role="alert" data-testid="project-invoices-error">Could not load the invoices.</p>
++      } @else if (list().length === 0) {
++        <p data-testid="project-invoices-empty">No invoices yet.</p>
++      } @else {
++        <table data-testid="project-invoices-table">
++          <caption>Invoices for this project</caption>
++          <thead>
++            <tr>
++              <th scope="col">Invoice</th>
++              <th scope="col">Amount</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (i of list(); track i.id) {
++              <tr [attr.data-testid]="'invoice-row-' + i.id">
++                <td data-testid="invoice-id">#{{ i.id }}</td>
++                <td data-testid="invoice-amount">{{ i.amount | number: '1.2-2' : 'en-US' }}</td>
++              </tr>
++            }
++          </tbody>
++          <tfoot>
++            <tr>
++              <th scope="row">Total</th>
++              <td data-testid="project-invoices-total">{{ totalCents() / 100 | number: '1.2-2' : 'en-US' }}</td>
++            </tr>
++          </tfoot>
++        </table>
++      }
++    </section>
++  `,
++})
++export class ProjectInvoices {
++  private readonly service = inject(InvoiceService);
++
++  readonly projectId = input.required<number>();
++
++  protected readonly invoices = rxResource({
++    params: () => this.projectId(),
++    stream: ({ params }) => this.service.listForProject(params),
++  });
++  protected readonly list = computed(() => (this.invoices.hasValue() ? this.invoices.value() : []));
++  // Sum in whole cents so the total is exact rather than accumulating floating-point error.
++  protected readonly totalCents = computed(() =>
++    this.list().reduce((sum, i) => sum + Math.round(i.amount * 100), 0),
++  );
++
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    amount: [
++      '',
++      [Validators.required, Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)],
++    ],
++  });
++
++  protected showError(): boolean {
++    const control = this.form.controls.amount;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.saveError.set(null);
++    const amount = Number(this.form.getRawValue().amount);
++    this.service.create(this.projectId(), { amount }).subscribe({
++      next: (created) => {
++        this.invoices.update((list) => [...(list ?? []), created]);
++        this.form.reset();
++        this.saving.set(false);
++      },
++      error: () => {
++        this.saveError.set('Could not save the invoice. Please try again.');
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+new file mode 100644
+index 0000000..9e26eb6
+--- /dev/null
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -0,0 +1,33 @@
++import { Component, computed, inject, input } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { RouterLink } from '@angular/router';
++import { ProjectInvoices } from '../invoices/project-invoices';
++import { ProjectService } from './project.service';
++
++// A single project's page: its name and client, and its invoices.
++@Component({
++  selector: 'app-project-detail',
++  imports: [RouterLink, ProjectInvoices],
++  template: `
++    <a routerLink="/projects" data-testid="project-back">Back to projects</a>
++    @if (project.error()) {
++      <p role="alert" data-testid="project-error">Could not load the project.</p>
++    } @else if (project.value(); as p) {
++      <h1 data-testid="project-detail-name">{{ p.name }}</h1>
++      <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
++      <app-project-invoices [projectId]="projectId()" />
++    }
++  `,
++})
++export class ProjectDetail {
++  private readonly service = inject(ProjectService);
++
++  /** Bound from the `:id` route parameter. */
++  readonly id = input.required<string>();
++  protected readonly projectId = computed(() => Number(this.id()));
++
++  protected readonly project = rxResource({
++    params: () => this.projectId(),
++    stream: ({ params }) => this.service.get(params),
++  });
++}
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index 2e68735..538182f 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -22,6 +22,10 @@ export class ProjectService {
+     return this.http.get<Project[]>('/api/projects');
+   }
+ 
++  get(id: number): Observable<Project> {
++    return this.http.get<Project>(`/api/projects/${id}`);
++  }
++
+   create(project: NewProject): Observable<Project> {
+     return this.http.post<Project>('/api/projects', project);
+   }
+diff --git a/src/main/frontend/src/app/features/projects/projects.ts b/src/main/frontend/src/app/features/projects/projects.ts
+index 26b67d0..365b960 100644
+--- a/src/main/frontend/src/app/features/projects/projects.ts
++++ b/src/main/frontend/src/app/features/projects/projects.ts
+@@ -1,12 +1,14 @@
+ import { Component, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { RouterLink } from '@angular/router';
+ import { Client, ClientService } from '../clients/client.service';
+ import { Project, ProjectService } from './project.service';
+ 
+-// Projects page: add a project for a client and list all projects with their client's name.
++// Projects page: add a project for a client and list all projects with their client's name; each
++// project opens its detail page.
+ @Component({
+   selector: 'app-projects',
+-  imports: [ReactiveFormsModule],
++  imports: [ReactiveFormsModule, RouterLink],
+   template: `
+     <h1>Projects</h1>
+ 
+@@ -64,6 +66,7 @@ import { Project, ProjectService } from './project.service';
+           <tr>
+             <th scope="col">Name</th>
+             <th scope="col">Client</th>
++            <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+         </thead>
+         <tbody>
+@@ -71,6 +74,14 @@ import { Project, ProjectService } from './project.service';
+             <tr [attr.data-testid]="'project-row-' + p.id">
+               <td data-testid="project-name">{{ p.name }}</td>
+               <td data-testid="project-client">{{ p.clientName }}</td>
++              <td>
++                <a
++                  [routerLink]="['/projects', p.id]"
++                  [attr.data-testid]="'project-open-' + p.id"
++                  [attr.aria-label]="'Open ' + p.name"
++                  >Open</a
++                >
++              </td>
+             </tr>
+           }
+         </tbody>
+diff --git a/src/main/frontend/src/styles.css b/src/main/frontend/src/styles.css
+index e69de29..cff1c38 100644
+--- a/src/main/frontend/src/styles.css
++++ b/src/main/frontend/src/styles.css
+@@ -0,0 +1,11 @@
++.visually-hidden {
++  position: absolute;
++  width: 1px;
++  height: 1px;
++  padding: 0;
++  margin: -1px;
++  overflow: hidden;
++  clip: rect(0, 0, 0, 0);
++  white-space: nowrap;
++  border: 0;
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index cdaedd2..985a4ba 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app;
+ 
++import java.math.BigDecimal;
+ import java.util.List;
+ import java.util.Map;
+ import org.springframework.context.annotation.Profile;
+@@ -37,6 +38,7 @@ public class TestSupportController {
+         // referential checks for the duration of the truncates.
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+         try {
++            jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
+         } finally {
+@@ -57,9 +59,15 @@ public class TestSupportController {
+                     ((Number) p.get("id")).longValue(), p.get("name"),
+                     ((Number) p.get("clientId")).longValue());
+         }
++        for (Map<String, Object> i : rows(fixture, "invoices")) {
++            jdbc.update("INSERT INTO invoice (id, project_id, amount) VALUES (?, ?, ?)",
++                    ((Number) i.get("id")).longValue(), ((Number) i.get("projectId")).longValue(),
++                    new BigDecimal(i.get("amount").toString()));
++        }
+         // Continue generated ids after the explicitly seeded ones.
+         restartIdentity("client");
+         restartIdentity("project");
++        restartIdentity("invoice");
+     }
+ 
+     private void restartIdentity(String table) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+new file mode 100644
+index 0000000..d3815e6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -0,0 +1,50 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.FetchType;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.ManyToOne;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import net.officefloor.hq.app.project.Project;
++
++/** An invoice raised against a project. */
++@Entity
++@Table(name = "invoice")
++public class Invoice {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @ManyToOne(fetch = FetchType.LAZY, optional = false)
++    @JoinColumn(name = "project_id", nullable = false)
++    private Project project;
++
++    @Column(nullable = false, precision = 12, scale = 2)
++    private BigDecimal amount;
++
++    protected Invoice() {
++    }
++
++    public Invoice(Project project, BigDecimal amount) {
++        this.project = project;
++        this.amount = amount;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Project getProject() {
++        return project;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+new file mode 100644
+index 0000000..e8e3eaf
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/projects/{projectId}/invoices")
++public class InvoiceController {
++
++    private final InvoiceService service;
++
++    public InvoiceController(InvoiceService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<InvoiceResponse> list(@PathVariable Long projectId) {
++        return service.listForProject(projectId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public InvoiceResponse create(@PathVariable Long projectId, @Valid @RequestBody InvoiceRequest request) {
++        return service.create(projectId, request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+new file mode 100644
+index 0000000..158a4d6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.invoice;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
++
++    List<Invoice> findByProjectIdOrderById(Long projectId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
+new file mode 100644
+index 0000000..3d9efb5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/** Payload to add an invoice to a project. */
++public record InvoiceRequest(
++        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+new file mode 100644
+index 0000000..f333955
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++
++public record InvoiceResponse(Long id, Long projectId, BigDecimal amount) {
++
++    static InvoiceResponse from(Invoice invoice) {
++        return new InvoiceResponse(invoice.getId(), invoice.getProject().getId(), invoice.getAmount());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+new file mode 100644
+index 0000000..85fe652
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -0,0 +1,37 @@
++package net.officefloor.hq.app.invoice;
++
++import java.util.List;
++import net.officefloor.hq.app.project.Project;
++import net.officefloor.hq.app.project.ProjectRepository;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class InvoiceService {
++
++    private final InvoiceRepository invoices;
++    private final ProjectRepository projects;
++
++    public InvoiceService(InvoiceRepository invoices, ProjectRepository projects) {
++        this.invoices = invoices;
++        this.projects = projects;
++    }
++
++    @Transactional(readOnly = true)
++    public List<InvoiceResponse> listForProject(Long projectId) {
++        if (!projects.existsById(projectId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
++        }
++        return invoices.findByProjectIdOrderById(projectId).stream().map(InvoiceResponse::from).toList();
++    }
++
++    @Transactional
++    public InvoiceResponse create(Long projectId, InvoiceRequest request) {
++        Project project = projects.findById(projectId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++        Invoice saved = invoices.save(new Invoice(project, request.amount()));
++        return InvoiceResponse.from(saved);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectController.java b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+index 456b548..54db8fd 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
+ import java.util.List;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -25,6 +26,11 @@ public class ProjectController {
+         return service.list();
+     }
+ 
++    @GetMapping("/{id}")
++    public ProjectResponse get(@PathVariable Long id) {
++        return service.get(id);
++    }
++
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public ProjectResponse create(@Valid @RequestBody ProjectRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index 7caa6f0..3648c76 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.project;
+ 
+ import java.util.List;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Query;
+ 
+@@ -9,4 +10,8 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+     /** All projects with their client loaded in the same query. */
+     @Query("SELECT p FROM Project p JOIN FETCH p.client ORDER BY p.id")
+     List<Project> findAllWithClient();
++
++    /** One project with its client loaded in the same query. */
++    @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
++    Optional<Project> findByIdWithClient(Long id);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index afa1b15..3d6ac49 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -24,6 +24,12 @@ public class ProjectService {
+         return projects.findAllWithClient().stream().map(ProjectResponse::from).toList();
+     }
+ 
++    @Transactional(readOnly = true)
++    public ProjectResponse get(Long id) {
++        return projects.findByIdWithClient(id).map(ProjectResponse::from)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++    }
++
+     @Transactional
+     public ProjectResponse create(ProjectRequest request) {
+         Client client = clients.findById(request.clientId())
+diff --git a/src/main/resources/db/migration/V4__create_invoice.sql b/src/main/resources/db/migration/V4__create_invoice.sql
+new file mode 100644
+index 0000000..aa58c54
+--- /dev/null
++++ b/src/main/resources/db/migration/V4__create_invoice.sql
+@@ -0,0 +1,9 @@
++CREATE TABLE invoice (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    project_id BIGINT         NOT NULL,
++    amount     DECIMAL(12, 2) NOT NULL,
++    CONSTRAINT invoice_project_fk FOREIGN KEY (project_id) REFERENCES project (id),
++    CONSTRAINT invoice_amount_positive CHECK (amount > 0)
++);
++
++CREATE INDEX invoice_project_idx ON invoice (project_id);
