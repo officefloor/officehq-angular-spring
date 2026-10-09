@@ -69,11 +69,28 @@ public class InvoiceService {
     /** Adds a line item to a draft invoice and reworks the invoice amount to match. */
     @Transactional
     public InvoiceDetailResponse addLineItem(Long projectId, Long invoiceId, LineItemRequest request) {
-        Invoice invoice = find(projectId, invoiceId);
-        if (invoice.getStatus() != InvoiceStatus.DRAFT) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft invoice can be changed");
-        }
+        Invoice invoice = findDraft(projectId, invoiceId);
         invoice.addLineItem(request.description().strip(), request.qty(), request.unitPrice());
+        invoices.flush();
+        return InvoiceDetailResponse.from(invoice);
+    }
+
+    /** Changes a line item on a draft invoice and reworks the invoice amount to match. */
+    @Transactional
+    public InvoiceDetailResponse updateLineItem(Long projectId, Long invoiceId, Long lineItemId,
+            LineItemRequest request) {
+        Invoice invoice = findDraft(projectId, invoiceId);
+        InvoiceLineItem item = findLineItem(invoice, lineItemId);
+        invoice.updateLineItem(item, request.description().strip(), request.qty(), request.unitPrice());
+        invoices.flush();
+        return InvoiceDetailResponse.from(invoice);
+    }
+
+    /** Removes a line item from a draft invoice and reworks the invoice amount to match. */
+    @Transactional
+    public InvoiceDetailResponse removeLineItem(Long projectId, Long invoiceId, Long lineItemId) {
+        Invoice invoice = findDraft(projectId, invoiceId);
+        invoice.removeLineItem(findLineItem(invoice, lineItemId));
         invoices.flush();
         return InvoiceDetailResponse.from(invoice);
     }
@@ -111,5 +128,18 @@ public class InvoiceService {
         return invoices.findById(invoiceId)
                 .filter(i -> i.getProject().getId().equals(projectId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown invoice"));
+    }
+
+    private Invoice findDraft(Long projectId, Long invoiceId) {
+        Invoice invoice = find(projectId, invoiceId);
+        if (invoice.getStatus() != InvoiceStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft invoice can be changed");
+        }
+        return invoice;
+    }
+
+    private static InvoiceLineItem findLineItem(Invoice invoice, Long lineItemId) {
+        return invoice.findLineItem(lineItemId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown line item"));
     }
 }

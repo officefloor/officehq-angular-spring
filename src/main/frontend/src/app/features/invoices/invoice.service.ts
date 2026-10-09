@@ -77,6 +77,17 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items`, item);
   }
 
+  updateLineItem(projectId: number, invoiceId: number, lineItemId: number, item: NewLineItem): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(
+      `/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`,
+      item,
+    );
+  }
+
+  removeLineItem(projectId: number, invoiceId: number, lineItemId: number): Observable<InvoiceDetail> {
+    return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`);
+  }
+
   send(projectId: number, invoiceId: number): Observable<Invoice> {
     return this.http.post<Invoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
   }

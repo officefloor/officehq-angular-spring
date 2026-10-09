@@ -1,9 +1,10 @@
 import { CurrencyPipe, DecimalPipe } from '@angular/common';
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, Injector, afterNextRender, computed, inject, input, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { InvoiceService } from './invoice.service';
+import { Observable } from 'rxjs';
+import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
@@ -25,7 +26,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
       </p>
 
       <section aria-labelledby="invoice-lineitems-heading">
-        <h2 id="invoice-lineitems-heading">Line items</h2>
+        <h2 id="invoice-lineitems-heading" tabindex="-1">Line items</h2>
         @if (inv.lineItems.length === 0) {
           <p data-testid="invoice-lineitems-empty">No line items yet.</p>
         }
@@ -37,15 +38,98 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
               <th scope="col">Quantity</th>
               <th scope="col">Unit price</th>
               <th scope="col">Amount</th>
+              @if (inv.status === 'DRAFT') {
+                <th scope="col"><span class="visually-hidden">Actions</span></th>
+              }
             </tr>
           </thead>
           <tbody>
             @for (l of inv.lineItems; track l.id) {
               <tr [attr.data-testid]="'lineitem-row-' + l.id">
-                <td data-testid="lineitem-description">{{ l.description }}</td>
-                <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
-                <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
-                <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                @if (editingId() === l.id) {
+                  <td>
+                    <input
+                      [id]="'lineitem-edit-description-' + l.id"
+                      type="text"
+                      [formControl]="editForm.controls.description"
+                      data-testid="lineitem-edit-description"
+                      aria-label="Description"
+                      [attr.aria-invalid]="editForm.controls.description.invalid"
+                      (keydown.enter)="saveEdit(l.id)"
+                      (keydown.escape)="cancelEdit(l.id)"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      inputmode="decimal"
+                      min="0.01"
+                      step="0.01"
+                      [formControl]="editForm.controls.qty"
+                      data-testid="lineitem-edit-qty"
+                      aria-label="Quantity"
+                      [attr.aria-invalid]="editForm.controls.qty.invalid"
+                      (keydown.enter)="saveEdit(l.id)"
+                      (keydown.escape)="cancelEdit(l.id)"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      inputmode="decimal"
+                      min="0.01"
+                      step="0.01"
+                      [formControl]="editForm.controls.unitPrice"
+                      data-testid="lineitem-edit-unitprice"
+                      aria-label="Unit price"
+                      [attr.aria-invalid]="editForm.controls.unitPrice.invalid"
+                      (keydown.enter)="saveEdit(l.id)"
+                      (keydown.escape)="cancelEdit(l.id)"
+                    />
+                  </td>
+                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td>
+                    <button
+                      type="button"
+                      [attr.data-testid]="'lineitem-save-' + l.id"
+                      [disabled]="busy() || editForm.invalid"
+                      (click)="saveEdit(l.id)"
+                    >
+                      Save
+                    </button>
+                    <button type="button" [attr.data-testid]="'lineitem-cancel-' + l.id" (click)="cancelEdit(l.id)">
+                      Cancel
+                    </button>
+                  </td>
+                } @else {
+                  <td data-testid="lineitem-description">{{ l.description }}</td>
+                  <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
+                  <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  @if (inv.status === 'DRAFT') {
+                    <td>
+                      <button
+                        type="button"
+                        [id]="'lineitem-edit-' + l.id"
+                        [attr.data-testid]="'lineitem-edit-' + l.id"
+                        [attr.aria-label]="'Edit line item ' + l.description"
+                        [disabled]="busy()"
+                        (click)="startEdit(l)"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        [attr.data-testid]="'lineitem-remove-' + l.id"
+                        [attr.aria-label]="'Remove line item ' + l.description"
+                        [disabled]="busy()"
+                        (click)="remove(l.id)"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  }
+                }
               </tr>
             }
           </tbody>
@@ -53,9 +137,15 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             <tr>
               <th scope="row" colspan="3">Total</th>
               <td data-testid="invoice-amount">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              @if (inv.status === 'DRAFT') {
+                <td></td>
+              }
             </tr>
           </tfoot>
         </table>
+        @if (editError()) {
+          <p role="alert" data-testid="lineitem-edit-error">{{ editError() }}</p>
+        }
       </section>
 
       @if (inv.status === 'DRAFT') {
@@ -126,6 +216,8 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 })
 export class InvoiceDetailPage {
   private readonly service = inject(InvoiceService);
+  private readonly injector = inject(Injector);
+  private readonly fb = inject(NonNullableFormBuilder);
 
   /** Bound from the `:projectId` route parameter. */
   readonly projectId = input.required<string>();
@@ -152,7 +244,7 @@ export class InvoiceDetailPage {
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
 
-  protected readonly form = inject(NonNullableFormBuilder).group({
+  protected readonly form = this.fb.group({
     description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
@@ -183,5 +275,79 @@ export class InvoiceDetailPage {
         this.saving.set(false);
       },
     });
+  }
+
+  // The line item being changed in place, and whether a change or removal is in flight.
+  protected readonly editingId = signal<number | null>(null);
+  protected readonly busy = signal(false);
+  protected readonly editError = signal<string | null>(null);
+
+  protected readonly editForm = this.fb.group({
+    description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
+    qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+    unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+  });
+
+  protected startEdit(line: LineItem): void {
+    this.editError.set(null);
+    this.editForm.setValue({
+      description: line.description,
+      qty: String(line.qty),
+      unitPrice: String(line.unitPrice),
+    });
+    this.editingId.set(line.id);
+    this.focus(`lineitem-edit-description-${line.id}`);
+  }
+
+  protected cancelEdit(lineItemId: number): void {
+    this.editingId.set(null);
+    this.editError.set(null);
+    this.focus(`lineitem-edit-${lineItemId}`);
+  }
+
+  protected saveEdit(lineItemId: number): void {
+    if (this.editForm.invalid || this.busy()) {
+      this.editForm.markAllAsTouched();
+      return;
+    }
+    const { description, qty, unitPrice } = this.editForm.getRawValue();
+    const item = { description: description.trim(), qty: Number(qty), unitPrice: Number(unitPrice) };
+    this.run(
+      this.service.updateLineItem(this.projectIdNumber(), Number(this.invoiceId()), lineItemId, item),
+      'Could not save the line item. Please try again.',
+      () => {
+        this.editingId.set(null);
+        this.focus(`lineitem-edit-${lineItemId}`);
+      },
+    );
+  }
+
+  protected remove(lineItemId: number): void {
+    this.run(
+      this.service.removeLineItem(this.projectIdNumber(), Number(this.invoiceId()), lineItemId),
+      'Could not remove the line item. Please try again.',
+      () => this.focus('invoice-lineitems-heading'),
+    );
+  }
+
+  private run(request: Observable<InvoiceDetail>, failure: string, done: () => void): void {
+    this.busy.set(true);
+    this.editError.set(null);
+    request.subscribe({
+      next: (updated) => {
+        this.invoice.set(updated);
+        this.busy.set(false);
+        done();
+      },
+      error: () => {
+        this.editError.set(failure);
+        this.busy.set(false);
+      },
+    });
+  }
+
+  // Moves focus once the view has re-rendered, so keyboard users are not left on a removed element.
+  private focus(id: string): void {
+    afterNextRender(() => document.getElementById(id)?.focus(), { injector: this.injector });
   }
 }

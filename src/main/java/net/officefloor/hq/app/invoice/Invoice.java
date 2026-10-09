@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import net.officefloor.hq.app.project.Project;
 
 /**
@@ -94,8 +95,30 @@ public class Invoice {
     public InvoiceLineItem addLineItem(String description, BigDecimal qty, BigDecimal unitPrice) {
         InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unitPrice);
         lineItems.add(item);
-        this.amount = lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        recalculateAmount();
         return item;
+    }
+
+    /** Changes one of this invoice's lines and reworks its amount to match. */
+    public void updateLineItem(InvoiceLineItem item, String description, BigDecimal qty, BigDecimal unitPrice) {
+        item.update(description, qty, unitPrice);
+        recalculateAmount();
+    }
+
+    /** Removes a line from this invoice and reworks its amount to no longer include what the line charged. */
+    public void removeLineItem(InvoiceLineItem item) {
+        lineItems.remove(item);
+        recalculateAmount();
+    }
+
+    /** The line on this invoice with the given id, if there is one. */
+    public Optional<InvoiceLineItem> findLineItem(Long lineItemId) {
+        return lineItems.stream().filter(l -> l.getId().equals(lineItemId)).findFirst();
+    }
+
+    private void recalculateAmount() {
+        this.amount = lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2);
     }
 
     /** Marks this invoice as sent to the client. */

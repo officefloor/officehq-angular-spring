@@ -44,6 +44,12 @@ public class InvoiceLineItem {
         this.unitPrice = unitPrice;
     }
 
+    void update(String description, BigDecimal qty, BigDecimal unitPrice) {
+        this.description = description;
+        this.qty = qty;
+        this.unitPrice = unitPrice;
+    }
+
     public Long getId() {
         return id;
     }

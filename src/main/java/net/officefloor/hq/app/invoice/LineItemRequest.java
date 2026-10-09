@@ -7,7 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 
-/** Payload to add a line item to a draft invoice. */
+/** Payload to add, or change, a line item on a draft invoice. */
 public record LineItemRequest(
         @NotBlank @Size(max = 255) String description,
         @NotNull @DecimalMin("0.01") @Digits(integer = 8, fraction = 2) BigDecimal qty,

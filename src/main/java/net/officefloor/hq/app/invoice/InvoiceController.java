@@ -3,9 +3,11 @@ package net.officefloor.hq.app.invoice;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -42,6 +44,18 @@ public class InvoiceController {
     public InvoiceDetailResponse addLineItem(@PathVariable Long projectId, @PathVariable Long invoiceId,
             @Valid @RequestBody LineItemRequest request) {
         return service.addLineItem(projectId, invoiceId, request);
+    }
+
+    @PutMapping("/{invoiceId}/line-items/{lineItemId}")
+    public InvoiceDetailResponse updateLineItem(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @PathVariable Long lineItemId, @Valid @RequestBody LineItemRequest request) {
+        return service.updateLineItem(projectId, invoiceId, lineItemId, request);
+    }
+
+    @DeleteMapping("/{invoiceId}/line-items/{lineItemId}")
+    public InvoiceDetailResponse removeLineItem(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @PathVariable Long lineItemId) {
+        return service.removeLineItem(projectId, invoiceId, lineItemId);
     }
 
     @PostMapping("/{invoiceId}/send")
