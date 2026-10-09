@@ -30,4 +30,10 @@ public class ClientStatementController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         return service.balanceAsOf(clientId, asOf);
     }
+
+    /** How old the client's debt is: what is current, 31 to 60 days overdue, and more than 60 days overdue. */
+    @GetMapping("/aging")
+    public ClientAgingResponse aging(@PathVariable Long clientId) {
+        return service.agingForClient(clientId);
+    }
 }

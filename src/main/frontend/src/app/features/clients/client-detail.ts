@@ -5,6 +5,7 @@ import { Router, RouterLink } from '@angular/router';
 import { ClientContacts } from '../contacts/client-contacts';
 import { Contact } from '../contacts/contact.service';
 import { ClientCredit } from '../credit/client-credit';
+import { ClientAging } from '../invoices/client-aging';
 import { ClientDeposits } from '../deposits/client-deposits';
 import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
 import { ClientProjects } from '../projects/client-projects';
@@ -13,10 +14,10 @@ import { ClientExport } from './client-export';
 import { ClientMerge } from './client-merge';
 import { Client, ClientService } from './client.service';
 
-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, an export of their contact details to a file, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
+// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
 @Component({
   selector: 'app-client-detail',
-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport],
+  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
   styles: `
     .client-badges {
       display: flex;
@@ -100,6 +101,7 @@ import { Client, ClientService } from './client.service';
       <p>
         <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="client-statement-open">View statement</a>
       </p>
+      <app-client-aging [clientId]="clientId()" />
       <p>
         <button
           type="button"
@@ -168,6 +170,7 @@ export class ClientDetail {
   private readonly paymentForm = viewChild(ClientPaymentForm);
   private readonly depositsPanel = viewChild(ClientDeposits);
   private readonly creditPanel = viewChild(ClientCredit);
+  private readonly agingPanel = viewChild(ClientAging);
   private readonly mergePanel = viewChild(ClientMerge);
   /** Set once the page is being left, so a merge finishing meanwhile does not pull the user back. */
   private leaving = false;
@@ -191,6 +194,7 @@ export class ClientDetail {
     // A payment may use up the client's credit or leave some over as credit, so both panels can change.
     this.depositsPanel()?.reload();
     this.creditPanel()?.reload();
+    this.agingPanel()?.reload();
     this.client.reload();
   }
 

@@ -1,9 +1,11 @@
 package net.officefloor.hq.app.invoice;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -109,6 +111,47 @@ public class InvoiceService {
                 .map(StatementEntry::change)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         return new ClientBalanceAsOfResponse(client.getId(), client.getCurrency(), asOf, balance);
+    }
+
+    /**
+     * How old a client's debt is as at today: what is left to pay on each owed invoice (not a draft, void or written
+     * off) counted against how many days past its due date it is.
+     */
+    @Transactional(readOnly = true)
+    public ClientAgingResponse agingForClient(Long clientId) {
+        Client client = clients.findById(clientId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+        LocalDate today = LocalDate.now(clock);
+        List<Invoice> found = invoices.findByClientIdWithProject(clientId);
+        Map<Long, BigDecimal> paid = paidByInvoice(found);
+        Map<Long, BigDecimal> credited = creditedByInvoice(found);
+        BigDecimal current = BigDecimal.ZERO.setScale(2);
+        BigDecimal days30To60 = BigDecimal.ZERO.setScale(2);
+        BigDecimal days60Plus = BigDecimal.ZERO.setScale(2);
+        for (Invoice invoice : found) {
+            BigDecimal invoicePaid = paid.getOrDefault(invoice.getId(), BigDecimal.ZERO);
+            BigDecimal invoiceCredited = credited.getOrDefault(invoice.getId(), BigDecimal.ZERO);
+            InvoiceStatus status = invoice.statusFor(invoicePaid, invoiceCredited);
+            if (status == InvoiceStatus.DRAFT || status.isClosedUnpaid()) {
+                continue;
+            }
+            BigDecimal due = invoice.amountDue(invoicePaid, invoiceCredited);
+            if (due.signum() <= 0) {
+                continue;
+            }
+            long overdue = invoice.getDueDate() == null ? 0
+                    : ChronoUnit.DAYS.between(invoice.getDueDate(), today);
+            if (overdue > 60) {
+                days60Plus = days60Plus.add(due);
+            } else if (overdue > 30) {
+                days30To60 = days30To60.add(due);
+            } else {
+                current = current.add(due);
+            }
+        }
+        return new ClientAgingResponse(client.getId(), client.getCurrency(), today,
+                current.setScale(2, RoundingMode.HALF_UP), days30To60.setScale(2, RoundingMode.HALF_UP),
+                days60Plus.setScale(2, RoundingMode.HALF_UP));
     }
 
     /**

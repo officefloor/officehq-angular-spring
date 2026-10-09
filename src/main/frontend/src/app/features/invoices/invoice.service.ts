@@ -105,6 +105,16 @@ export interface ClientBalanceAsOf {
   balance: number;
 }
 
+/** How old a client's debt is as at today: what is current (up to 30 days overdue), 31 to 60 days, and more than 60 days overdue. */
+export interface ClientAging {
+  clientId: number;
+  currency: CurrencyCode;
+  asOf: string;
+  current: number;
+  days30To60: number;
+  days60Plus: number;
+}
+
 /** One thing an invoice charges for; its amount is quantity times unit price, less the line's own discount. */
 export interface LineItem {
   id: number;
@@ -239,6 +249,10 @@ export class InvoiceService {
 
   balanceAsOf(clientId: number, asOf: string): Observable<ClientBalanceAsOf> {
     return this.http.get<ClientBalanceAsOf>(`/api/clients/${clientId}/statement/balance`, { params: { asOf } });
+  }
+
+  agingForClient(clientId: number): Observable<ClientAging> {
+    return this.http.get<ClientAging>(`/api/clients/${clientId}/statement/aging`);
   }
 
   create(projectId: number, invoice: NewInvoice): Observable<ProjectInvoice> {
