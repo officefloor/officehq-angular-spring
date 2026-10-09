@@ -3,7 +3,8 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { DashboardService, DashboardSummary } from './dashboard.service';
 
 // Dashboard page: how many clients and projects there are, and the total still owed (what is left
-// to pay on invoices that have been sent but not yet fully paid; drafts are not counted).
+// to pay on invoices that have been sent but not yet fully paid; drafts are not counted), and how
+// many of those sent invoices are past their due date.
 @Component({
   selector: 'app-dashboard',
   imports: [CurrencyPipe],
@@ -25,6 +26,10 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
         <div>
           <dt>Outstanding</dt>
           <dd data-testid="dashboard-outstanding-total">{{ outstanding() | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+        </div>
+        <div>
+          <dt>Overdue invoices</dt>
+          <dd data-testid="dashboard-overdue-count">{{ s.overdue }}</dd>
         </div>
       </dl>
     } @else {

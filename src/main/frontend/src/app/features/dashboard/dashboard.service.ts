@@ -6,6 +6,7 @@ export interface DashboardSummary {
   clients: number;
   projects: number;
   outstanding: number;
+  overdue: number;
 }
 
 @Injectable({ providedIn: 'root' })

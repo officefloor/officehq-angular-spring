@@ -30,10 +30,12 @@ public class TestSupportController {
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
+    private final TestClock clock;
 
-    public TestSupportController(Audit audit, JdbcTemplate jdbc) {
+    public TestSupportController(Audit audit, JdbcTemplate jdbc, TestClock clock) {
         this.audit = audit;
         this.jdbc = jdbc;
+        this.clock = clock;
     }
 
     /** Truncate all domain tables and clear the audit file so each spec starts clean. */
@@ -41,6 +43,7 @@ public class TestSupportController {
     @Transactional
     public void reset() {
         audit.clear();
+        clock.reset();
         // Children first; H2 refuses to TRUNCATE a table referenced by a foreign key, so disable
         // referential checks for the duration of the truncates.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
@@ -64,6 +67,10 @@ public class TestSupportController {
     @PostMapping("/seed")
     @Transactional
     public void seed(@RequestBody Map<String, Object> fixture) {
+        // "asOf" pins the app's notion of today so date-based figures (e.g. overdue) are deterministic.
+        if (fixture.get("asOf") != null) {
+            clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
+        }
         for (Map<String, Object> c : rows(fixture, "clients")) {
             jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"));
@@ -95,14 +102,18 @@ public class TestSupportController {
                     t.get("title"), Boolean.TRUE.equals(t.get("done")));
         }
         for (Map<String, Object> n : rows(fixture, "notes")) {
-            Instant at = n.get("at") == null ? Instant.now() : Instant.parse(n.get("at").toString());
+            Instant at = n.get("at") == null ? clock.instant() : Instant.parse(n.get("at").toString());
             jdbc.update("INSERT INTO note (id, target_type, target_id, text, created_at) VALUES (?, ?, ?, ?, ?)",
                     ((Number) n.get("id")).longValue(), n.get("targetType"),
                     ((Number) n.get("targetId")).longValue(), n.get("text"), Timestamp.from(at));
         }
         for (Map<String, Object> i : rows(fixture, "invoices")) {
-            LocalDate issued = i.get("issuedDate") == null ? LocalDate.now()
-                    : LocalDate.parse(i.get("issuedDate").toString());
+            // A missing date is filled in from the other one using the standard payment term; with
+            // neither given the invoice is issued today.
+            LocalDate issued = i.get("issuedDate") != null ? LocalDate.parse(i.get("issuedDate").toString())
+                    : i.get("dueDate") != null
+                            ? LocalDate.parse(i.get("dueDate").toString()).minusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
+                            : LocalDate.now(clock);
             LocalDate due = i.get("dueDate") == null ? issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
                     : LocalDate.parse(i.get("dueDate").toString());
             long invoiceId = ((Number) i.get("id")).longValue();

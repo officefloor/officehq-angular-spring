@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.invoice;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -25,4 +26,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     /** Sum of the amounts of all invoices with any of the given statuses (zero when there are none). */
     @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.status IN :statuses")
     BigDecimal sumAmountByStatusIn(Collection<InvoiceStatus> statuses);
+
+    /** Number of invoices with any of the given statuses whose due date is before the given date. */
+    @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status IN :statuses AND i.dueDate < :date")
+    long countByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);
 }

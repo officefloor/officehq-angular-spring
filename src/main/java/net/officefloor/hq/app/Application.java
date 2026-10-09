@@ -1,7 +1,9 @@
 package net.officefloor.hq.app;
 
+import java.time.Clock;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
 
 /**
  * Spring Boot host: serves the SPA from static/, with H2 + Flyway (schema migrated on boot) and
@@ -12,5 +14,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class Application {
     public static void main(String[] args) {
         SpringApplication.run(Application.class, args);
+    }
+
+    /** The source of "today" for date-based rules (e.g. which invoices are overdue). */
+    @Bean
+    public Clock clock() {
+        return Clock.systemDefaultZone();
     }
 }
