@@ -1,0 +1,307 @@
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index e3c443e..53b094f 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -23,6 +23,10 @@ export const routes: Routes = [
+     path: 'clients/:id',
+     loadComponent: () => import('./features/clients/client-detail').then((m) => m.ClientDetail),
+   },
++  {
++    path: 'clients/:id/statement',
++    loadComponent: () => import('./features/invoices/client-statement').then((m) => m.ClientStatement),
++  },
+   {
+     path: 'projects',
+     data: { section: 'projects', label: 'Projects', order: 2 },
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 816a963..810c504 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -5,7 +5,7 @@ import { ClientContacts } from '../contacts/client-contacts';
+ import { ClientProjects } from '../projects/client-projects';
+ import { ClientService } from './client.service';
+ 
+-// A single client's page: their name and email, counts of their projects and contacts, their contacts, and the projects being done for them.
++// A single client's page: their name and email, a link to their statement, counts of their projects and contacts, their contacts, and the projects being done for them.
+ @Component({
+   selector: 'app-client-detail',
+   imports: [RouterLink, ClientContacts, ClientProjects],
+@@ -34,6 +34,9 @@ import { ClientService } from './client.service';
+           </li>
+         </ul>
+       }
++      <p>
++        <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="client-statement-open">View statement</a>
++      </p>
+       <app-client-contacts [clientId]="clientId()" (contactAdded)="summary.reload()" />
+       <app-client-projects [clientId]="clientId()" />
+     }
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+new file mode 100644
+index 0000000..f434ab5
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -0,0 +1,74 @@
++import { CurrencyPipe } from '@angular/common';
++import { Component, computed, inject, input } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { RouterLink } from '@angular/router';
++import { InvoiceService } from './invoice.service';
++
++// A client's statement: every invoice across the client's projects, how much is left to pay on each,
++// and the total the client still owes. Drafts are listed but do not count towards what is owed.
++@Component({
++  selector: 'app-client-statement',
++  imports: [CurrencyPipe, RouterLink],
++  template: `
++    <a [routerLink]="['/clients', clientId()]" data-testid="client-statement-back">Back to client</a>
++    @if (statement.error()) {
++      <p role="alert" data-testid="client-statement-error">Could not load the statement.</p>
++    } @else if (statement.value(); as s) {
++      <h1 data-testid="client-statement-name">Statement for {{ s.clientName }}</h1>
++      @if (s.invoices.length === 0) {
++        <p data-testid="client-statement-empty">No invoices yet.</p>
++      } @else {
++        <table data-testid="client-statement-table">
++          <caption>Invoices for {{ s.clientName }}</caption>
++          <thead>
++            <tr>
++              <th scope="col">Invoice</th>
++              <th scope="col">Project</th>
++              <th scope="col">Status</th>
++              <th scope="col">Issued</th>
++              <th scope="col">Due</th>
++              <th scope="col">Amount</th>
++              <th scope="col">Left to pay</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (i of s.invoices; track i.id) {
++              <tr [attr.data-testid]="'statement-invoice-row-' + i.id">
++                <td data-testid="statement-invoice-id">
++                  <a
++                    [routerLink]="['/projects', i.projectId, 'invoices', i.id]"
++                    [attr.data-testid]="'statement-invoice-open-' + i.id"
++                    [attr.aria-label]="'Open invoice #' + i.id"
++                    >#{{ i.id }}</a
++                  >
++                </td>
++                <td data-testid="statement-invoice-project">{{ i.projectName }}</td>
++                <td data-testid="statement-invoice-status">{{ i.status }}</td>
++                <td data-testid="statement-invoice-issued">{{ i.issuedDate }}</td>
++                <td data-testid="statement-invoice-due">{{ i.dueDate }}</td>
++                <td data-testid="statement-invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                <td data-testid="statement-invoice-due-amount">{{ i.amountDue | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
++      <p>
++        Total owed:
++        <strong data-testid="client-outstanding-total">{{ s.outstanding | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</strong>
++      </p>
++    }
++  `,
++})
++export class ClientStatement {
++  private readonly service = inject(InvoiceService);
++
++  /** Bound from the `:id` route parameter. */
++  readonly id = input.required<string>();
++  protected readonly clientId = computed(() => Number(this.id()));
++
++  protected readonly statement = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.service.statementForClient(params),
++  });
++}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index c508552..dca3159 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -27,6 +27,19 @@ export interface InvoiceSummary extends Invoice {
+   projectName: string;
+ }
+ 
++/** An invoice as listed on a client's statement: its project's name and how much is left to pay. */
++export interface StatementInvoice extends ProjectInvoice {
++  projectName: string;
++}
++
++/** A client's invoices across all their projects, with the total they still owe. */
++export interface ClientStatement {
++  clientId: number;
++  clientName: string;
++  invoices: StatementInvoice[];
++  outstanding: number;
++}
++
+ /** One thing an invoice charges for; its amount is quantity times unit price. */
+ export interface LineItem {
+   id: number;
+@@ -70,6 +83,10 @@ export class InvoiceService {
+     return this.http.get<ProjectInvoice[]>(`/api/projects/${projectId}/invoices`);
+   }
+ 
++  statementForClient(clientId: number): Observable<ClientStatement> {
++    return this.http.get<ClientStatement>(`/api/clients/${clientId}/statement`);
++  }
++
+   create(projectId: number, invoice: NewInvoice): Observable<ProjectInvoice> {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices`, invoice);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java
+new file mode 100644
+index 0000000..b279590
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java
+@@ -0,0 +1,23 @@
++package net.officefloor.hq.app.invoice;
++
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** A client's statement: every invoice raised across their projects and the total they still owe. */
++@RestController
++@RequestMapping("/api/clients/{clientId}/statement")
++public class ClientStatementController {
++
++    private final InvoiceService service;
++
++    public ClientStatementController(InvoiceService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public ClientStatementResponse get(@PathVariable Long clientId) {
++        return service.statementForClient(clientId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+new file mode 100644
+index 0000000..ce1c503
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -0,0 +1,24 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++
++/**
++ * A client's statement: all of their invoices, each with the project it is for and how much is left
++ * to pay, and the total still owed (what is left to pay across their sent invoices).
++ */
++public record ClientStatementResponse(Long clientId, String clientName, List<Line> invoices,
++        BigDecimal outstanding) {
++
++    /** One invoice on a statement. */
++    public record Line(Long id, Long projectId, String projectName, BigDecimal amount, InvoiceStatus status,
++            LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue) {
++
++        static Line from(Invoice invoice, BigDecimal paid) {
++            return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
++                    invoice.getAmount(), invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
++                    invoice.getAmount().subtract(paid));
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+index 56a3a25..182ab37 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -18,6 +18,10 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+     @Query("SELECT i FROM Invoice i JOIN FETCH i.project WHERE i.status = :status ORDER BY i.id")
+     List<Invoice> findAllWithProjectByStatus(InvoiceStatus status);
+ 
++    /** A client's invoices across all of their projects, with their project loaded in the same query. */
++    @Query("SELECT i FROM Invoice i JOIN FETCH i.project p WHERE p.client.id = :clientId ORDER BY i.id")
++    List<Invoice> findByClientIdWithProject(Long clientId);
++
+     /** Sum of the amounts of all invoices with any of the given statuses (zero when there are none). */
+     @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.status IN :statuses")
+     BigDecimal sumAmountByStatusIn(Collection<InvoiceStatus> statuses);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 76e292a..7347475 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -1,11 +1,14 @@
+ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.client.Client;
++import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.project.Project;
+ import net.officefloor.hq.app.project.ProjectRepository;
+@@ -20,12 +23,14 @@ public class InvoiceService {
+     private final InvoiceRepository invoices;
+     private final ProjectRepository projects;
+     private final PaymentRepository payments;
++    private final ClientRepository clients;
+     private final Audit audit;
+ 
+     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
+-            Audit audit) {
++            ClientRepository clients, Audit audit) {
+         this.invoices = invoices;
+         this.projects = projects;
++        this.clients = clients;
+         this.payments = payments;
+         this.audit = audit;
+     }
+@@ -36,15 +41,40 @@ public class InvoiceService {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
+         }
+         List<Invoice> found = invoices.findByProjectIdOrderById(projectId);
+-        Map<Long, BigDecimal> paid = found.isEmpty() ? Map.of()
+-                : payments.sumAmountByInvoiceIds(found.stream().map(Invoice::getId).toList()).stream()
+-                        .collect(Collectors.toMap(PaymentRepository.InvoicePaidTotal::getInvoiceId,
+-                                PaymentRepository.InvoicePaidTotal::getPaid));
++        Map<Long, BigDecimal> paid = paidByInvoice(found);
+         return found.stream()
+                 .map(i -> InvoiceResponse.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                 .toList();
+     }
+ 
++    /**
++     * A client's statement: every invoice across their projects with what is left to pay on each, and
++     * the total they still owe. Drafts are listed but not owed, as they have not been sent.
++     */
++    @Transactional(readOnly = true)
++    public ClientStatementResponse statementForClient(Long clientId) {
++        Client client = clients.findById(clientId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
++        List<Invoice> found = invoices.findByClientIdWithProject(clientId);
++        Map<Long, BigDecimal> paid = paidByInvoice(found);
++        List<ClientStatementResponse.Line> lines = found.stream()
++                .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
++                .toList();
++        BigDecimal outstanding = lines.stream()
++                .filter(l -> l.status() != InvoiceStatus.DRAFT)
++                .map(ClientStatementResponse.Line::amountDue)
++                .reduce(BigDecimal.ZERO, BigDecimal::add)
++                .setScale(2, RoundingMode.HALF_UP);
++        return new ClientStatementResponse(client.getId(), client.getName(), lines, outstanding);
++    }
++
++    private Map<Long, BigDecimal> paidByInvoice(List<Invoice> found) {
++        return found.isEmpty() ? Map.of()
++                : payments.sumAmountByInvoiceIds(found.stream().map(Invoice::getId).toList()).stream()
++                        .collect(Collectors.toMap(PaymentRepository.InvoicePaidTotal::getInvoiceId,
++                                PaymentRepository.InvoicePaidTotal::getPaid));
++    }
++
+     /**
+      * Every invoice across all projects, with the name of the project each one is for, narrowed to
+      * the given status when one is supplied.
