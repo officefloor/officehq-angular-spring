@@ -4,7 +4,8 @@ import { RouterLink } from '@angular/router';
 import { Client, ClientService } from './client.service';
 
 // Clients page: add a client (name + email) and list all clients, filterable by name; each client
-// opens its detail page.
+// opens its detail page. A client no longer worked with can be archived: it is kept but left off the
+// list and search unless the archived toggle is on, where it can be restored.
 @Component({
   selector: 'app-clients',
   imports: [ReactiveFormsModule, RouterLink],
@@ -52,6 +53,21 @@ import { Client, ClientService } from './client.service';
       }
     </form>
 
+    @if (actionError()) {
+      <p role="alert" data-testid="client-archive-error">{{ actionError() }}</p>
+    }
+
+    <div>
+      <input
+        id="clients-show-archived"
+        type="checkbox"
+        data-testid="clients-show-archived"
+        [checked]="showArchived()"
+        (change)="toggleArchived()"
+      />
+      <label for="clients-show-archived">Show archived clients</label>
+    </div>
+
     @if (clients().length === 0) {
       <p data-testid="clients-empty">No clients yet.</p>
     } @else {
@@ -81,7 +97,12 @@ import { Client, ClientService } from './client.service';
           <tbody>
             @for (c of filteredClients(); track c.id) {
               <tr [attr.data-testid]="'client-row-' + c.id">
-                <td data-testid="client-name">{{ c.name }}</td>
+                <td data-testid="client-name">
+                  {{ c.name }}
+                  @if (c.archived) {
+                    <span [attr.data-testid]="'client-archived-' + c.id">(archived)</span>
+                  }
+                </td>
                 <td data-testid="client-email">{{ c.email }}</td>
                 <td>
                   <a
@@ -90,6 +111,27 @@ import { Client, ClientService } from './client.service';
                     [attr.aria-label]="'Open ' + c.name"
                     >Open</a
                   >
+                  @if (c.archived) {
+                    <button
+                      type="button"
+                      [attr.data-testid]="'client-restore-' + c.id"
+                      [attr.aria-label]="'Restore ' + c.name"
+                      [disabled]="busy() === c.id"
+                      (click)="restore(c)"
+                    >
+                      Restore
+                    </button>
+                  } @else {
+                    <button
+                      type="button"
+                      [attr.data-testid]="'client-archive-' + c.id"
+                      [attr.aria-label]="'Archive ' + c.name"
+                      [disabled]="busy() === c.id"
+                      (click)="archive(c)"
+                    >
+                      Archive
+                    </button>
+                  }
                 </td>
               </tr>
             }
@@ -112,6 +154,9 @@ export class Clients {
   });
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
+  protected readonly showArchived = signal(false);
+  protected readonly busy = signal<number | null>(null);
+  protected readonly actionError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -161,7 +206,46 @@ export class Clients {
     });
   }
 
+  protected toggleArchived(): void {
+    this.showArchived.update((show) => !show);
+    this.load();
+  }
+
+  protected archive(client: Client): void {
+    this.busy.set(client.id);
+    this.actionError.set(null);
+    this.service.archive(client.id).subscribe({
+      next: (archived) => {
+        this.clients.update((list) =>
+          this.showArchived()
+            ? list.map((c) => (c.id === archived.id ? archived : c))
+            : list.filter((c) => c.id !== archived.id),
+        );
+        this.busy.set(null);
+      },
+      error: () => {
+        this.actionError.set(`Could not archive ${client.name}. Please try again.`);
+        this.busy.set(null);
+      },
+    });
+  }
+
+  protected restore(client: Client): void {
+    this.busy.set(client.id);
+    this.actionError.set(null);
+    this.service.restore(client.id).subscribe({
+      next: (restored) => {
+        this.clients.update((list) => list.map((c) => (c.id === restored.id ? restored : c)));
+        this.busy.set(null);
+      },
+      error: () => {
+        this.actionError.set(`Could not restore ${client.name}. Please try again.`);
+        this.busy.set(null);
+      },
+    });
+  }
+
   private load(): void {
-    this.service.list().subscribe((list) => this.clients.set(list));
+    this.service.list(this.showArchived()).subscribe((list) => this.clients.set(list));
   }
 }

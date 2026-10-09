@@ -6,6 +6,7 @@ export interface Client {
   id: number;
   name: string;
   email: string;
+  archived: boolean;
 }
 
 /** At-a-glance counts of what one client has. */
@@ -14,14 +15,14 @@ export interface ClientSummary {
   contactCount: number;
 }
 
-export type NewClient = Omit<Client, 'id'>;
+export type NewClient = Omit<Client, 'id' | 'archived'>;
 
 @Injectable({ providedIn: 'root' })
 export class ClientService {
   private readonly http = inject(HttpClient);
 
-  list(): Observable<Client[]> {
-    return this.http.get<Client[]>('/api/clients');
+  list(includeArchived = false): Observable<Client[]> {
+    return this.http.get<Client[]>('/api/clients', { params: { includeArchived } });
   }
 
   get(id: number): Observable<Client> {
@@ -34,5 +35,13 @@ export class ClientService {
 
   create(client: NewClient): Observable<Client> {
     return this.http.post<Client>('/api/clients', client);
+  }
+
+  archive(id: number): Observable<Client> {
+    return this.http.post<Client>(`/api/clients/${id}/archive`, null);
+  }
+
+  restore(id: number): Observable<Client> {
+    return this.http.post<Client>(`/api/clients/${id}/restore`, null);
   }
 }

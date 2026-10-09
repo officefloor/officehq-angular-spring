@@ -1,8 +1,8 @@
 package net.officefloor.hq.app.client;
 
-public record ClientResponse(Long id, String name, String email) {
+public record ClientResponse(Long id, String name, String email, boolean archived) {
 
     static ClientResponse from(Client client) {
-        return new ClientResponse(client.getId(), client.getName(), client.getEmail());
+        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.isArchived());
     }
 }
