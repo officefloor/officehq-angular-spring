@@ -1,0 +1,397 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 52df050..d82910c 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -8,7 +8,7 @@ import { ClientProjects } from '../projects/client-projects';
+ import { ClientCurrency } from './client-currency';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, counts of their projects and contacts, their contacts, and the projects being done for them.
++// A single client's page: their name, email, phone number, tax number, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, counts of their projects and contacts, their contacts, and the projects being done for them.
+ @Component({
+   selector: 'app-client-detail',
+   imports: [RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm],
+@@ -35,6 +35,14 @@ import { Client, ClientService } from './client.service';
+           <span data-testid="client-phone-none">Not given</span>
+         }
+       </p>
++      <p>
++        Tax number:
++        @if (c.taxNumber) {
++          <span data-testid="client-tax-number">{{ c.taxNumber }}</span>
++        } @else {
++          <span data-testid="client-tax-number-none">Not tax registered</span>
++        }
++      </p>
+       <p>
+         Main contact:
+         @if (c.primaryContact; as primary) {
+diff --git a/src/main/frontend/src/app/features/clients/client-edit-form.ts b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+index 3523dc2..270854c 100644
+--- a/src/main/frontend/src/app/features/clients/client-edit-form.ts
++++ b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+@@ -3,7 +3,7 @@ import { Component, ElementRef, OnInit, afterNextRender, inject, input, output,
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Client, ClientService } from './client.service';
+ 
+-// Form to correct one client's name, email or phone number. Emits the saved client, or cancelled when abandoned.
++// Form to correct one client's name, email, phone number or tax number. Emits the saved client, or cancelled when abandoned.
+ @Component({
+   selector: 'app-client-edit-form',
+   imports: [ReactiveFormsModule],
+@@ -71,6 +71,23 @@ import { Client, ClientService } from './client.service';
+           </p>
+         }
+       </div>
++      <div>
++        <label for="client-edit-tax-number">Tax number (optional)</label>
++        <input
++          id="client-edit-tax-number"
++          type="text"
++          formControlName="taxNumber"
++          autocomplete="off"
++          data-testid="client-edit-form-tax-number"
++          [attr.aria-invalid]="showError('taxNumber')"
++          [attr.aria-describedby]="showError('taxNumber') ? 'client-edit-tax-number-error' : null"
++        />
++        @if (showError('taxNumber')) {
++          <p id="client-edit-tax-number-error" role="alert" data-testid="client-edit-form-tax-number-error">
++            Tax number must be 50 characters or fewer.
++          </p>
++        }
++      </div>
+       <button type="submit" data-testid="client-edit-form-submit" [disabled]="saving()">Save</button>
+       <button type="button" data-testid="client-edit-form-cancel" (click)="cancelled.emit()">Cancel</button>
+       @if (saveError()) {
+@@ -103,6 +120,7 @@ export class ClientEditForm implements OnInit {
+       ],
+     ],
+     phone: ['', Validators.maxLength(50)],
++    taxNumber: ['', Validators.maxLength(50)],
+   });
+ 
+   constructor() {
+@@ -110,11 +128,11 @@ export class ClientEditForm implements OnInit {
+   }
+ 
+   ngOnInit(): void {
+-    const { name, email, phone } = this.client();
+-    this.form.setValue({ name, email, phone: phone ?? '' });
++    const { name, email, phone, taxNumber } = this.client();
++    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '' });
+   }
+ 
+-  protected showError(field: 'name' | 'email' | 'phone'): boolean {
++  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -124,10 +142,10 @@ export class ClientEditForm implements OnInit {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email, phone } = this.form.getRawValue();
++    const { name, email, phone, taxNumber } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null }).subscribe({
++    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null }).subscribe({
+       next: (updated) => {
+         this.saving.set(false);
+         this.saved.emit(updated);
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 98074e4..5c1c025 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -13,6 +13,8 @@ export interface Client {
+   email: string;
+   /** A number to reach the client on; null when not known. */
+   phone: string | null;
++  /** The client's tax registration number; null when they are not tax registered. */
++  taxNumber: string | null;
+   archived: boolean;
+   /** The client's main contact; null until one is chosen. */
+   primaryContact: { id: number; name: string } | null;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 2705ece..ae14911 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -6,7 +6,7 @@ import { RouterLink } from '@angular/router';
+ import { ClientEditForm } from './client-edit-form';
+ import { Client, ClientService } from './client.service';
+ 
+-// Clients page: add a client (name + email, optionally a phone number) and list all clients, filterable by name; each client
++// Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
+ // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
+ // list and search unless the archived toggle is on, where it can be restored. A client's name or email
+ // can be corrected in place from its row. The list can be sorted by name or by how much each client owes.
+@@ -72,6 +72,23 @@ import { Client, ClientService } from './client.service';
+           </p>
+         }
+       </div>
++      <div>
++        <label for="client-tax-number">Tax number (optional)</label>
++        <input
++          id="client-tax-number"
++          type="text"
++          formControlName="taxNumber"
++          autocomplete="off"
++          data-testid="client-form-tax-number"
++          [attr.aria-invalid]="showError('taxNumber')"
++          [attr.aria-describedby]="showError('taxNumber') ? 'client-tax-number-error' : null"
++        />
++        @if (showError('taxNumber')) {
++          <p id="client-tax-number-error" role="alert" data-testid="client-form-tax-number-error">
++            Tax number must be 50 characters or fewer.
++          </p>
++        }
++      </div>
+       <button type="submit" data-testid="client-form-submit" [disabled]="saving()">Add client</button>
+       @if (saveError()) {
+         <p role="alert" data-testid="client-form-error">{{ saveError() }}</p>
+@@ -225,6 +242,7 @@ export class Clients {
+       ],
+     ],
+     phone: ['', Validators.maxLength(50)],
++    taxNumber: ['', Validators.maxLength(50)],
+   });
+ 
+   constructor() {
+@@ -239,7 +257,7 @@ export class Clients {
+     this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
+   }
+ 
+-  protected showError(field: 'name' | 'email' | 'phone'): boolean {
++  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -249,10 +267,10 @@ export class Clients {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email, phone } = this.form.getRawValue();
++    const { name, email, phone, taxNumber } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null }).subscribe({
++    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null }).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created]);
+         this.form.reset();
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 268c4d8..3463fbe 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -10,7 +10,7 @@ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+ 
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ 
+-// A single invoice: the things it charges for (description, how many and of what, price each), each line's
++// A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
+ // amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
+ // sales tax added on it after the discount, and the final total including the tax. Lines, the discount and the tax rate can be changed while it is a draft.
+ @Component({
+@@ -27,6 +27,9 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+         <span data-testid="invoice-issued">{{ inv.issuedDate }}</span> · Due
+         <span data-testid="invoice-due">{{ inv.dueDate }}</span>
+       </p>
++      @if (inv.clientTaxNumber) {
++        <p>Client tax number: <span data-testid="invoice-client-tax-number">{{ inv.clientTaxNumber }}</span></p>
++      }
+ 
+       <section aria-labelledby="invoice-lineitems-heading">
+         <h2 id="invoice-lineitems-heading" tabindex="-1">Line items</h2>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index b874c13..7b583c9 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -95,6 +95,8 @@ export interface InvoiceDetail extends Invoice {
+   taxableBase: number;
+   tax: number;
+   lineItems: LineItem[];
++  /** The client's tax registration number; null when they are not tax registered. */
++  clientTaxNumber: string | null;
+ }
+ 
+ export interface NewLineItem {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 97c3612..e54d2e5 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -76,8 +76,8 @@ public class TestSupportController {
+             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email, phone, archived, currency) VALUES (?, ?, ?, ?, ?, ?)",
+-                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"),
++            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, archived, currency) VALUES (?, ?, ?, ?, ?, ?, ?)",
++                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"),
+                     Boolean.TRUE.equals(c.get("archived")),
+                     c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString());
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index 72274db..7d23d74 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -28,6 +28,9 @@ public class Client {
+     /** A number to reach the client on; none when not known. */
+     private String phone;
+ 
++    /** The client's tax registration number; none when they are not tax registered. */
++    private String taxNumber;
++
+     private boolean archived;
+ 
+     /** The currency the client is billed in; all of their money is in it. */
+@@ -42,10 +45,11 @@ public class Client {
+     protected Client() {
+     }
+ 
+-    public Client(String name, String email, String phone) {
++    public Client(String name, String email, String phone, String taxNumber) {
+         this.name = name;
+         this.email = email;
+         this.phone = phone;
++        this.taxNumber = taxNumber;
+     }
+ 
+     public Long getId() {
+@@ -64,11 +68,16 @@ public class Client {
+         return phone;
+     }
+ 
+-    /** Corrects the client's name, email and phone number. */
+-    public void rename(String name, String email, String phone) {
++    public String getTaxNumber() {
++        return taxNumber;
++    }
++
++    /** Corrects the client's name, email, phone number and tax number. */
++    public void rename(String name, String email, String phone, String taxNumber) {
+         this.name = name;
+         this.email = email;
+         this.phone = phone;
++        this.taxNumber = taxNumber;
+     }
+ 
+     public boolean isArchived() {
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+index 78cf2c0..e8ba844 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+@@ -4,11 +4,12 @@ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
+ 
+-/** Payload to create a client, or to correct an existing client's name, email and phone number. */
++/** Payload to create a client, or to correct an existing client's name, email, phone number and tax number. */
+ public record ClientRequest(
+         @NotBlank @Size(max = 255) String name,
+         @NotBlank @Email(regexp = ClientRequest.EMAIL_PATTERN) @Size(max = 255) String email,
+-        @Size(max = 50) String phone) {
++        @Size(max = 50) String phone,
++        @Size(max = 50) String taxNumber) {
+ 
+     /** Requires a dotted domain, which plain {@code @Email} does not (it accepts {@code a@b}). */
+     public static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
+@@ -17,4 +18,9 @@ public record ClientRequest(
+     public String trimmedPhone() {
+         return phone == null || phone.isBlank() ? null : phone.trim();
+     }
++
++    /** The tax number trimmed, or null when the client is not tax registered. */
++    public String trimmedTaxNumber() {
++        return taxNumber == null || taxNumber.isBlank() ? null : taxNumber.trim();
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index 985c8db..2fff24e 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -3,7 +3,7 @@ package net.officefloor.hq.app.client;
+ import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+-public record ClientResponse(Long id, String name, String email, String phone, boolean archived, PrimaryContact primaryContact,
++public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, boolean archived, PrimaryContact primaryContact,
+         Currency currency, BigDecimal outstanding) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+@@ -13,7 +13,7 @@ public record ClientResponse(Long id, String name, String email, String phone, b
+     /** A client with what they still owe, in their currency: what is left to pay on their sent, not yet fully paid invoices. */
+     public static ClientResponse from(Client client, BigDecimal outstanding) {
+         Contact primary = client.getPrimaryContact();
+-        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.isArchived(),
++        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
+                 client.getCurrency(), outstanding);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index c6d7066..3775bfb 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -68,7 +68,8 @@ public class ClientService {
+             throw emailTaken();
+         }
+         try {
+-            return respond(clients.saveAndFlush(new Client(request.name().trim(), email, request.trimmedPhone())));
++            return respond(clients.saveAndFlush(
++                    new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber())));
+         } catch (DataIntegrityViolationException e) {
+             // Lost a race with a concurrent add of the same email; the unique constraint caught it.
+             if (String.valueOf(e.getMessage()).toUpperCase().contains("CLIENT_EMAIL_UQ")) {
+@@ -79,7 +80,7 @@ public class ClientService {
+     }
+ 
+     /**
+-     * Corrects a client's name, email and phone number; the email, once trimmed, must not belong to another client.
++     * Corrects a client's name, email, phone number and tax number; the email, once trimmed, must not belong to another client.
+      * The change is recorded in the audit log.
+      */
+     @Transactional
+@@ -89,7 +90,7 @@ public class ClientService {
+         if (clients.existsByEmailIgnoreCaseAndIdNot(email, id)) {
+             throw emailTaken();
+         }
+-        client.rename(request.name().trim(), email, request.trimmedPhone());
++        client.rename(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber());
+         try {
+             clients.flush();
+         } catch (DataIntegrityViolationException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 0ba043c..a485eb4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -8,11 +8,12 @@ import net.officefloor.hq.app.client.Currency;
+ /**
+  * A single invoice together with the line items it is built from: their subtotal, the percentage
+  * discount and what it takes off, the sales tax percentage, the taxable base it is charged on (the
+- * taxable lines after the discount) and what it adds, and the amount owed including that tax.
++ * taxable lines after the discount) and what it adds, the amount owed including that tax, and the
++ * client's tax number (null when the client is not tax registered).
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal subtotal,
+         BigDecimal discountPct, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax, InvoiceStatus status, LocalDate issuedDate,
+-        LocalDate dueDate, List<LineItemResponse> lineItems) {
++        LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber) {
+ 
+     static InvoiceDetailResponse from(Invoice invoice) {
+         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
+@@ -20,6 +21,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency,
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscount(),
+                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
+                 invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+-                invoice.getLineItems().stream().map(LineItemResponse::from).toList());
++                invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
++                invoice.getProject().getClient().getTaxNumber());
+     }
+ }
+diff --git a/src/main/resources/db/migration/V34__client_tax_number.sql b/src/main/resources/db/migration/V34__client_tax_number.sql
+new file mode 100644
+index 0000000..9d177f8
+--- /dev/null
++++ b/src/main/resources/db/migration/V34__client_tax_number.sql
+@@ -0,0 +1,2 @@
++-- A tax-registered client has a tax number, shown on their invoices; existing clients have none.
++ALTER TABLE client ADD COLUMN tax_number VARCHAR(50);

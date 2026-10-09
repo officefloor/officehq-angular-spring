@@ -1,0 +1,218 @@
+{
+  "checkpoint": 66,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48"
+  },
+  "checkpoint_id": "cp66_client_tax_number",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "Some clients are tax registered. Let me record their tax number and show it on their invoices.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nSome clients are tax registered. Let me record their tax number and show it on their invoices.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "91945d58302dd8777d1bddbb22ac3915d2fa7254",
+  "reset_sha": "",
+  "preagent_sha": "ad831e8fdbc0f0afd3e41170346df0d3396c9eb5",
+  "prev_sha": "ad831e8fdbc0f0afd3e41170346df0d3396c9eb5",
+  "base_sha": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5345110000000001,
+    "input_tokens": 22,
+    "output_tokens": 5857,
+    "cache_read_tokens": 393815,
+    "cache_creation_tokens": 42315,
+    "num_turns": 12,
+    "duration_ms": 73981,
+    "duration_api_ms": 51347,
+    "model": "claude-opus-5-5",
+    "session_id": "515e6206-8cc5-4f91-bb49-8a104d9c1679",
+    "stop_reason": "success",
+    "result_text": "You can now record a tax number on a client, and it shows on the client's page and on their invoices. `bin/e2e` passes (1/1).\n\nOne note: the task said \"OfficeFloor server\", but this app is a plain Spring Boot app (only the Java package is named `net.officefloor`). I built the server side with ordinary Spring, as `CLAUDE.md` says.\n\n**Database:** a new migration, `V34__client_tax_number.sql`, adds an optional `tax_number` column (up to 50 characters) to `client`. Existing clients have none.\n\n**Server:**\n- Clients have a new `taxNumber` field. It is accepted when adding or editing a client and returned with the client. Blank values are saved as \"none\", and there's a 50-character limit, the same rules as phone number.\n- The invoice detail response now includes `clientTaxNumber`.\n- The test seed endpoint accepts `taxNumber` for clients.\n\n**Front end:**\n- **Client page:** shows the number as `client-tax-number`, or \"Not tax registered\" (`client-tax-number-none`) when there isn't one.\n- **Invoice page:** shows \"Client tax number\" (`invoice-client-tax-number`) only when the client has one.\n- **Add-client and edit-client forms:** an optional \"Tax number\" field (`client-form-tax-number` and `client-edit-form-tax-number`), with error messages under matching `-error` IDs.\n\nI didn't rename or remove any existing `data-testid`. The test only covers displaying the number. Adding or editing it through the forms hasn't been tested by me or by the spec.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.5345110000000001,
+        "num_turns": 12,
+        "duration_ms": 73981,
+        "duration_api_ms": 51347,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp66.agent.jsonl",
+  "agent_diff_file": "cp66.agent.diff",
+  "build_log_file": "cp66.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 0,
+    "results": {},
+    "detail": [],
+    "error": "serve failed: app did not become ready at http://localhost:3000/actuator/health",
+    "gate_invalid": true,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 30.17,
+            "impact": 2772,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/src/app/features/clients/client-edit-form.ts",
+                "lang": "typescript",
+                "cost": 462,
+                "mutation": 462,
+                "godclass": 0,
+                "mut_fns": 3,
+                "new_fns": 0
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/src/app/features/clients/client-edit-form.ts",
+                "name": "ngOnInit",
+                "container": "",
+                "cc": 5,
+                "wmc_other": 11,
+                "cost": 220,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/clients/client-edit-form.ts",
+                "name": "submit",
+                "container": "",
+                "cc": 4,
+                "wmc_other": 11,
+                "cost": 176,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/clients/client-edit-form.ts",
+                "name": "showError",
+                "container": "",
+                "cc": 3,
+                "wmc_other": 11,
+                "cost": 66,
+                "kind": "mutation"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 5,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 51.76,
+            "impact": 2946,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/client/ClientService.java",
+                "lang": "java",
+                "cost": 460,
+                "mutation": 460,
+                "godclass": 0,
+                "mut_fns": 2,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/client/ClientRequest.java",
+                "lang": "java",
+                "cost": 27,
+                "mutation": 0,
+                "godclass": 27,
+                "mut_fns": 0,
+                "new_fns": 1
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/client/ClientResponse.java",
+                "lang": "java",
+                "cost": 4,
+                "mutation": 4,
+                "godclass": 0,
+                "mut_fns": 1,
+                "new_fns": 0
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/client/ClientService.java",
+                "name": "ClientService::create",
+                "container": "ClientService",
+                "cc": 4,
+                "wmc_other": 23,
+                "cost": 276,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/client/ClientService.java",
+                "name": "ClientService::update",
+                "container": "ClientService",
+                "cc": 4,
+                "wmc_other": 23,
+                "cost": 184,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/client/ClientRequest.java",
+                "name": "ClientRequest::trimmedTaxNumber",
+                "container": "ClientRequest",
+                "cc": 3,
+                "wmc_other": 3,
+                "cost": 27,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/client/ClientResponse.java",
+                "name": "PrimaryContact::from",
+                "container": "PrimaryContact",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "mutation"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 4,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
