@@ -1,0 +1,389 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 810c504..3306ba1 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -2,10 +2,11 @@ import { Component, computed, inject, input } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { ClientContacts } from '../contacts/client-contacts';
++import { Contact } from '../contacts/contact.service';
+ import { ClientProjects } from '../projects/client-projects';
+ import { ClientService } from './client.service';
+ 
+-// A single client's page: their name and email, a link to their statement, counts of their projects and contacts, their contacts, and the projects being done for them.
++// A single client's page: their name, email and main contact, a link to their statement, counts of their projects and contacts, their contacts, and the projects being done for them.
+ @Component({
+   selector: 'app-client-detail',
+   imports: [RouterLink, ClientContacts, ClientProjects],
+@@ -24,6 +25,14 @@ import { ClientService } from './client.service';
+     } @else if (client.value(); as c) {
+       <h1 data-testid="client-detail-name">{{ c.name }}</h1>
+       <p>Email: <span data-testid="client-detail-email">{{ c.email }}</span></p>
++      <p>
++        Main contact:
++        @if (c.primaryContact; as primary) {
++          <span data-testid="client-primary-contact">{{ primary.name }}</span>
++        } @else {
++          <span data-testid="client-primary-contact-none">None chosen</span>
++        }
++      </p>
+       @if (summary.hasValue()) {
+         <ul class="client-badges" aria-label="At a glance" data-testid="client-badges">
+           <li>
+@@ -37,7 +46,11 @@ import { ClientService } from './client.service';
+       <p>
+         <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="client-statement-open">View statement</a>
+       </p>
+-      <app-client-contacts [clientId]="clientId()" (contactAdded)="summary.reload()" />
++      <app-client-contacts
++        [clientId]="clientId()"
++        (contactAdded)="contactAdded()"
++        (primaryChanged)="primaryChanged($event)"
++      />
+       <app-client-projects [clientId]="clientId()" />
+     }
+   `,
+@@ -58,4 +71,16 @@ export class ClientDetail {
+     params: () => this.clientId(),
+     stream: ({ params }) => this.service.summary(params),
+   });
++
++  protected contactAdded(): void {
++    this.summary.reload();
++    // The first contact added becomes the main contact.
++    if (!this.client.value()?.primaryContact) {
++      this.client.reload();
++    }
++  }
++
++  protected primaryChanged(contact: Contact): void {
++    this.client.update((c) => c && { ...c, primaryContact: { id: contact.id, name: contact.name } });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 58279e9..3d67c3a 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -7,6 +7,8 @@ export interface Client {
+   name: string;
+   email: string;
+   archived: boolean;
++  /** The client's main contact; null until one is chosen. */
++  primaryContact: { id: number; name: string } | null;
+ }
+ 
+ /** At-a-glance counts of what one client has. */
+@@ -15,7 +17,7 @@ export interface ClientSummary {
+   contactCount: number;
+ }
+ 
+-export type NewClient = Omit<Client, 'id' | 'archived'>;
++export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact'>;
+ 
+ @Injectable({ providedIn: 'root' })
+ export class ClientService {
+diff --git a/src/main/frontend/src/app/features/contacts/client-contacts.ts b/src/main/frontend/src/app/features/contacts/client-contacts.ts
+index 1b42088..5c3a890 100644
+--- a/src/main/frontend/src/app/features/contacts/client-contacts.ts
++++ b/src/main/frontend/src/app/features/contacts/client-contacts.ts
+@@ -79,6 +79,9 @@ type ContactField = 'name' | 'email' | 'role';
+         @if (contacts.value().length === 0) {
+           <p data-testid="client-contacts-empty">No contacts for this client yet.</p>
+         } @else {
++          @if (primaryError()) {
++            <p role="alert" data-testid="contact-primary-error">{{ primaryError() }}</p>
++          }
+           <table data-testid="client-contacts-table">
+             <caption>Contacts for this client</caption>
+             <thead>
+@@ -86,6 +89,7 @@ type ContactField = 'name' | 'email' | 'role';
+                 <th scope="col">Name</th>
+                 <th scope="col">Email</th>
+                 <th scope="col">Role</th>
++                <th scope="col">Main contact</th>
+               </tr>
+             </thead>
+             <tbody>
+@@ -94,6 +98,18 @@ type ContactField = 'name' | 'email' | 'role';
+                   <td data-testid="contact-name">{{ c.name }}</td>
+                   <td data-testid="contact-email">{{ c.email }}</td>
+                   <td data-testid="contact-role">{{ c.role }}</td>
++                  <td>
++                    <button
++                      type="button"
++                      [attr.data-testid]="'contact-primary-' + c.id"
++                      [attr.aria-pressed]="c.primary"
++                      [attr.aria-label]="c.primary ? c.name + ' is the main contact' : 'Make ' + c.name + ' the main contact'"
++                      [disabled]="c.primary || choosingPrimary()"
++                      (click)="makePrimary(c)"
++                    >
++                      {{ c.primary ? 'Main contact' : 'Make main contact' }}
++                    </button>
++                  </td>
+                 </tr>
+               }
+             </tbody>
+@@ -109,6 +125,8 @@ export class ClientContacts {
+   readonly clientId = input.required<number>();
+   /** Emits each contact once it has been saved. */
+   readonly contactAdded = output<Contact>();
++  /** Emits the contact that has just become the client's main contact. */
++  readonly primaryChanged = output<Contact>();
+ 
+   protected readonly contacts = rxResource({
+     params: () => this.clientId(),
+@@ -116,6 +134,8 @@ export class ClientContacts {
+   });
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
++  protected readonly choosingPrimary = signal(false);
++  protected readonly primaryError = signal<string | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+@@ -137,6 +157,22 @@ export class ClientContacts {
+     return control.invalid && (control.touched || control.dirty);
+   }
+ 
++  protected makePrimary(contact: Contact): void {
++    this.choosingPrimary.set(true);
++    this.primaryError.set(null);
++    this.service.makePrimary(this.clientId(), contact.id).subscribe({
++      next: (updated) => {
++        this.contacts.update((list) => list?.map((c) => ({ ...c, primary: c.id === updated.id })));
++        this.primaryChanged.emit(updated);
++        this.choosingPrimary.set(false);
++      },
++      error: () => {
++        this.primaryError.set('Could not change the main contact. Please try again.');
++        this.choosingPrimary.set(false);
++      },
++    });
++  }
++
+   protected submit(): void {
+     if (this.form.invalid) {
+       this.form.markAllAsTouched();
+diff --git a/src/main/frontend/src/app/features/contacts/contact.service.ts b/src/main/frontend/src/app/features/contacts/contact.service.ts
+index 0d3cce9..14a444d 100644
+--- a/src/main/frontend/src/app/features/contacts/contact.service.ts
++++ b/src/main/frontend/src/app/features/contacts/contact.service.ts
+@@ -8,6 +8,8 @@ export interface Contact {
+   name: string;
+   email: string;
+   role: string;
++  /** Whether this is the client's main contact. */
++  primary: boolean;
+ }
+ 
+ export type NewContact = Pick<Contact, 'name' | 'email' | 'role'>;
+@@ -23,4 +25,8 @@ export class ContactService {
+   create(clientId: number, contact: NewContact): Observable<Contact> {
+     return this.http.post<Contact>(`/api/clients/${clientId}/contacts`, contact);
+   }
++
++  makePrimary(clientId: number, contactId: number): Observable<Contact> {
++    return this.http.post<Contact>(`/api/clients/${clientId}/contacts/${contactId}/primary`, null);
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 24bb12a..dae770c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -79,6 +79,10 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), ((Number) c.get("clientId")).longValue(),
+                     c.get("name"), c.get("email"), c.get("role"));
++            if (Boolean.TRUE.equals(c.get("primary"))) {
++                jdbc.update("UPDATE client SET primary_contact_id = ? WHERE id = ?",
++                        ((Number) c.get("id")).longValue(), ((Number) c.get("clientId")).longValue());
++            }
+         }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+             jdbc.update("INSERT INTO project (id, name, client_id, status, archived, budget) VALUES (?, ?, ?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index 895a9ba..f72ea76 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -1,10 +1,14 @@
+ package net.officefloor.hq.app.client;
+ 
+ import jakarta.persistence.Entity;
++import jakarta.persistence.FetchType;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
++import net.officefloor.hq.app.contact.Contact;
+ 
+ /** A client of the office. */
+ @Entity
+@@ -21,6 +25,11 @@ public class Client {
+ 
+     private boolean archived;
+ 
++    /** The client's main contact, one of its own contacts; none until one is chosen. */
++    @ManyToOne(fetch = FetchType.LAZY)
++    @JoinColumn(name = "primary_contact_id")
++    private Contact primaryContact;
++
+     protected Client() {
+     }
+ 
+@@ -48,4 +57,12 @@ public class Client {
+     public void setArchived(boolean archived) {
+         this.archived = archived;
+     }
++
++    public Contact getPrimaryContact() {
++        return primaryContact;
++    }
++
++    public void setPrimaryContact(Contact primaryContact) {
++        this.primaryContact = primaryContact;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index d085c0f..570878e 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -1,8 +1,16 @@
+ package net.officefloor.hq.app.client;
+ 
+-public record ClientResponse(Long id, String name, String email, boolean archived) {
++import net.officefloor.hq.app.contact.Contact;
++
++public record ClientResponse(Long id, String name, String email, boolean archived, PrimaryContact primaryContact) {
++
++    /** Who the client's main contact is; null when none has been chosen. */
++    public record PrimaryContact(Long id, String name) {
++    }
+ 
+     static ClientResponse from(Client client) {
+-        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.isArchived());
++        Contact primary = client.getPrimaryContact();
++        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.isArchived(),
++                primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ClientContactController.java b/src/main/java/net/officefloor/hq/app/contact/ClientContactController.java
+index dac084d..238ca5b 100644
+--- a/src/main/java/net/officefloor/hq/app/contact/ClientContactController.java
++++ b/src/main/java/net/officefloor/hq/app/contact/ClientContactController.java
+@@ -32,4 +32,10 @@ public class ClientContactController {
+     public ContactResponse create(@PathVariable Long clientId, @Valid @RequestBody ContactRequest request) {
+         return service.create(clientId, request);
+     }
++
++    /** Makes this contact the client's main contact. */
++    @PostMapping("/{contactId}/primary")
++    public ContactResponse makePrimary(@PathVariable Long clientId, @PathVariable Long contactId) {
++        return service.makePrimary(clientId, contactId);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java b/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java
+index badb457..3a8736c 100644
+--- a/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java
++++ b/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.contact;
+ 
+ import java.util.List;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface ContactRepository extends JpaRepository<Contact, Long> {
+@@ -8,6 +9,9 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
+     /** A client's contacts in the order they were added. */
+     List<Contact> findByClientIdOrderById(Long clientId);
+ 
++    /** One of a client's contacts, if it is theirs. */
++    Optional<Contact> findByIdAndClientId(Long id, Long clientId);
++
+     /** How many contacts a client has. */
+     long countByClientId(Long clientId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ContactResponse.java b/src/main/java/net/officefloor/hq/app/contact/ContactResponse.java
+index d5ea6d5..c1b1278 100644
+--- a/src/main/java/net/officefloor/hq/app/contact/ContactResponse.java
++++ b/src/main/java/net/officefloor/hq/app/contact/ContactResponse.java
+@@ -1,9 +1,11 @@
+ package net.officefloor.hq.app.contact;
+ 
+-public record ContactResponse(Long id, Long clientId, String name, String email, String role) {
++/** A contact; {@code primary} marks the client's main contact. */
++public record ContactResponse(Long id, Long clientId, String name, String email, String role, boolean primary) {
+ 
+     static ContactResponse from(Contact contact) {
++        Contact primary = contact.getClient().getPrimaryContact();
+         return new ContactResponse(contact.getId(), contact.getClient().getId(), contact.getName(),
+-                contact.getEmail(), contact.getRole());
++                contact.getEmail(), contact.getRole(), primary != null && primary.getId().equals(contact.getId()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ContactService.java b/src/main/java/net/officefloor/hq/app/contact/ContactService.java
+index 3409c3d..603bcff 100644
+--- a/src/main/java/net/officefloor/hq/app/contact/ContactService.java
++++ b/src/main/java/net/officefloor/hq/app/contact/ContactService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.contact;
+ 
+ import java.util.List;
++import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.Client;
+ import net.officefloor.hq.app.client.ClientRepository;
+ import org.springframework.http.HttpStatus;
+@@ -13,10 +14,12 @@ public class ContactService {
+ 
+     private final ContactRepository contacts;
+     private final ClientRepository clients;
++    private final Audit audit;
+ 
+-    public ContactService(ContactRepository contacts, ClientRepository clients) {
++    public ContactService(ContactRepository contacts, ClientRepository clients, Audit audit) {
+         this.contacts = contacts;
+         this.clients = clients;
++        this.audit = audit;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -33,6 +36,25 @@ public class ContactService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+         Contact saved = contacts.save(new Contact(client, request.name().trim(), request.email().trim(),
+                 request.role().trim()));
++        // A client's first contact is its main contact until another is chosen.
++        if (client.getPrimaryContact() == null) {
++            client.setPrimaryContact(saved);
++        }
+         return ContactResponse.from(saved);
+     }
++
++    /** Makes one of a client's contacts its main contact, recording the change in the audit log. */
++    @Transactional
++    public ContactResponse makePrimary(Long clientId, Long contactId) {
++        Contact contact = contacts.findByIdAndClientId(contactId, clientId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown contact"));
++        Client client = contact.getClient();
++        Contact current = client.getPrimaryContact();
++        if (current == null || !current.getId().equals(contactId)) {
++            client.setPrimaryContact(contact);
++            clients.flush();
++            audit.record("CLIENT_PRIMARY_CONTACT_SET id=" + clientId + " contactId=" + contactId);
++        }
++        return ContactResponse.from(contact);
++    }
+ }
+diff --git a/src/main/resources/db/migration/V21__client_primary_contact.sql b/src/main/resources/db/migration/V21__client_primary_contact.sql
+new file mode 100644
+index 0000000..5edafb5
+--- /dev/null
++++ b/src/main/resources/db/migration/V21__client_primary_contact.sql
+@@ -0,0 +1,6 @@
++-- Each client can have one main contact, chosen from its own contacts. The composite key makes the
++-- database refuse a main contact that belongs to another client.
++ALTER TABLE contact ADD CONSTRAINT contact_id_client_uq UNIQUE (id, client_id);
++ALTER TABLE client ADD COLUMN primary_contact_id BIGINT;
++ALTER TABLE client ADD CONSTRAINT client_primary_contact_fk
++    FOREIGN KEY (primary_contact_id, id) REFERENCES contact (id, client_id);
