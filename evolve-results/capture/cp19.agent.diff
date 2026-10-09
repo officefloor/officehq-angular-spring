@@ -1,0 +1,207 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 7dfcf0c..816a963 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -5,10 +5,18 @@ import { ClientContacts } from '../contacts/client-contacts';
+ import { ClientProjects } from '../projects/client-projects';
+ import { ClientService } from './client.service';
+ 
+-// A single client's page: their name and email, their contacts, and the projects being done for them.
++// A single client's page: their name and email, counts of their projects and contacts, their contacts, and the projects being done for them.
+ @Component({
+   selector: 'app-client-detail',
+   imports: [RouterLink, ClientContacts, ClientProjects],
++  styles: `
++    .client-badges {
++      display: flex;
++      gap: 1rem;
++      padding: 0;
++      list-style: none;
++    }
++  `,
+   template: `
+     <a routerLink="/clients" data-testid="client-back">Back to clients</a>
+     @if (client.error()) {
+@@ -16,7 +24,17 @@ import { ClientService } from './client.service';
+     } @else if (client.value(); as c) {
+       <h1 data-testid="client-detail-name">{{ c.name }}</h1>
+       <p>Email: <span data-testid="client-detail-email">{{ c.email }}</span></p>
+-      <app-client-contacts [clientId]="clientId()" />
++      @if (summary.hasValue()) {
++        <ul class="client-badges" aria-label="At a glance" data-testid="client-badges">
++          <li>
++            Projects: <span data-testid="client-projects-count">{{ summary.value().projectCount }}</span>
++          </li>
++          <li>
++            Contacts: <span data-testid="client-contacts-count">{{ summary.value().contactCount }}</span>
++          </li>
++        </ul>
++      }
++      <app-client-contacts [clientId]="clientId()" (contactAdded)="summary.reload()" />
+       <app-client-projects [clientId]="clientId()" />
+     }
+   `,
+@@ -32,4 +50,9 @@ export class ClientDetail {
+     params: () => this.clientId(),
+     stream: ({ params }) => this.service.get(params),
+   });
++
++  protected readonly summary = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.service.summary(params),
++  });
+ }
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 7579135..62189ac 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -8,6 +8,12 @@ export interface Client {
+   email: string;
+ }
+ 
++/** At-a-glance counts of what one client has. */
++export interface ClientSummary {
++  projectCount: number;
++  contactCount: number;
++}
++
+ export type NewClient = Omit<Client, 'id'>;
+ 
+ @Injectable({ providedIn: 'root' })
+@@ -22,6 +28,10 @@ export class ClientService {
+     return this.http.get<Client>(`/api/clients/${id}`);
+   }
+ 
++  summary(id: number): Observable<ClientSummary> {
++    return this.http.get<ClientSummary>(`/api/clients/${id}/summary`);
++  }
++
+   create(client: NewClient): Observable<Client> {
+     return this.http.post<Client>('/api/clients', client);
+   }
+diff --git a/src/main/frontend/src/app/features/contacts/client-contacts.ts b/src/main/frontend/src/app/features/contacts/client-contacts.ts
+index 437719f..1b42088 100644
+--- a/src/main/frontend/src/app/features/contacts/client-contacts.ts
++++ b/src/main/frontend/src/app/features/contacts/client-contacts.ts
+@@ -1,7 +1,7 @@
+-import { Component, inject, input, signal } from '@angular/core';
++import { Component, inject, input, output, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+-import { ContactService } from './contact.service';
++import { Contact, ContactService } from './contact.service';
+ 
+ type ContactField = 'name' | 'email' | 'role';
+ 
+@@ -107,6 +107,8 @@ export class ClientContacts {
+   private readonly service = inject(ContactService);
+ 
+   readonly clientId = input.required<number>();
++  /** Emits each contact once it has been saved. */
++  readonly contactAdded = output<Contact>();
+ 
+   protected readonly contacts = rxResource({
+     params: () => this.clientId(),
+@@ -148,6 +150,7 @@ export class ClientContacts {
+       .subscribe({
+         next: (created) => {
+           this.contacts.update((list) => [...(list ?? []), created]);
++          this.contactAdded.emit(created);
+           this.form.reset();
+           this.saving.set(false);
+         },
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index 8a256ad..77e8a67 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -31,6 +31,11 @@ public class ClientController {
+         return service.get(id);
+     }
+ 
++    @GetMapping("/{id}/summary")
++    public ClientSummaryResponse summary(@PathVariable Long id) {
++        return service.summary(id);
++    }
++
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClientResponse create(@Valid @RequestBody ClientRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index a8beae3..5784ffe 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -1,6 +1,8 @@
+ package net.officefloor.hq.app.client;
+ 
+ import java.util.List;
++import net.officefloor.hq.app.contact.ContactRepository;
++import net.officefloor.hq.app.project.ProjectRepository;
+ import org.springframework.data.domain.Sort;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -11,9 +13,13 @@ import org.springframework.web.server.ResponseStatusException;
+ public class ClientService {
+ 
+     private final ClientRepository clients;
++    private final ProjectRepository projects;
++    private final ContactRepository contacts;
+ 
+-    public ClientService(ClientRepository clients) {
++    public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts) {
+         this.clients = clients;
++        this.projects = projects;
++        this.contacts = contacts;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -27,6 +33,15 @@ public class ClientService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+     }
+ 
++    /** At-a-glance counts of what one client has. */
++    @Transactional(readOnly = true)
++    public ClientSummaryResponse summary(Long id) {
++        if (!clients.existsById(id)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
++        }
++        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientId(id));
++    }
++
+     @Transactional
+     public ClientResponse create(ClientRequest request) {
+         Client saved = clients.save(new Client(request.name().trim(), request.email().trim()));
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java
+new file mode 100644
+index 0000000..e20b9f7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java
+@@ -0,0 +1,5 @@
++package net.officefloor.hq.app.client;
++
++/** At-a-glance counts of a client's projects and contacts. */
++public record ClientSummaryResponse(long projectCount, long contactCount) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java b/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java
+index 30515a8..badb457 100644
+--- a/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java
++++ b/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java
+@@ -7,4 +7,7 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
+ 
+     /** A client's contacts in the order they were added. */
+     List<Contact> findByClientIdOrderById(Long clientId);
++
++    /** How many contacts a client has. */
++    long countByClientId(Long clientId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index a874031..c392c63 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -18,4 +18,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+     /** One project with its client loaded in the same query. */
+     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
+     Optional<Project> findByIdWithClient(Long id);
++
++    /** How many projects a client has. */
++    long countByClientId(Long clientId);
+ }
