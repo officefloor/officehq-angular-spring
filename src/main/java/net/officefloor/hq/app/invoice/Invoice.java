@@ -126,13 +126,23 @@ public class Invoice {
         this.status = InvoiceStatus.SENT;
     }
 
+    /** Cancels this invoice, so it is no longer owed. */
+    public void markVoid() {
+        this.status = InvoiceStatus.VOID;
+    }
+
+    /** What is left to pay on this invoice given the total paid against it; nothing once it is void. */
+    public BigDecimal amountDue(BigDecimal paid) {
+        return status == InvoiceStatus.VOID ? BigDecimal.ZERO.setScale(2) : amount.subtract(paid);
+    }
+
     /**
      * Works out this sent invoice's status from the total paid against it: PAID once the payments
      * cover the amount, PARTIAL once something has been paid, otherwise still SENT.
      */
     public void applyPaidTotal(BigDecimal paid) {
-        if (status == InvoiceStatus.DRAFT) {
-            throw new IllegalStateException("A draft invoice cannot be paid");
+        if (status == InvoiceStatus.DRAFT || status == InvoiceStatus.VOID) {
+            throw new IllegalStateException("A " + status.name().toLowerCase() + " invoice cannot be paid");
         }
         if (paid.compareTo(amount) >= 0) {
             this.status = InvoiceStatus.PAID;

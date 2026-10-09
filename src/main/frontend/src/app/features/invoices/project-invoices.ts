@@ -18,7 +18,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
 }
 
 // A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each is still left to pay, adds a
-// new draft and sends a draft. Each invoice's status follows from the payments recorded on it; each invoice
+// new draft, sends a draft and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
 // opens onto its line items and payments.
 @Component({
   selector: 'app-project-invoices',
@@ -129,6 +129,16 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
                     >
                       Send
                     </button>
+                  } @else if (i.status === 'SENT') {
+                    <button
+                      type="button"
+                      [attr.data-testid]="'invoice-cancel-' + i.id"
+                      [attr.aria-label]="'Cancel invoice #' + i.id"
+                      [disabled]="busy() === i.id"
+                      (click)="cancel(i.id)"
+                    >
+                      Cancel
+                    </button>
                   }
                 </td>
               </tr>
@@ -142,6 +152,9 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
             </tr>
           </tfoot>
         </table>
+        @if (cancelError()) {
+          <p role="alert" data-testid="invoice-cancel-error">{{ cancelError() }}</p>
+        }
         @if (sendError()) {
           <p role="alert" data-testid="invoice-send-error">{{ sendError() }}</p>
         }
@@ -153,7 +166,7 @@ export class ProjectInvoices {
   private readonly service = inject(InvoiceService);
 
   readonly projectId = input.required<number>();
-  /** Emits when an invoice is sent, changing how much has been invoiced on the project. */
+  /** Emits when an invoice is sent or cancelled, changing how much has been invoiced on the project. */
   readonly invoiced = output<void>();
 
   protected readonly invoices = rxResource({
@@ -168,17 +181,21 @@ export class ProjectInvoices {
       ? [...this.list()].sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.id - b.id)
       : this.list(),
   );
-  // Sum in whole cents so the total is exact rather than accumulating floating-point error.
+  // Sum in whole cents so the total is exact rather than accumulating floating-point error. Void
+  // invoices were cancelled, so they do not count.
   protected readonly totalCents = computed(() =>
-    this.list().reduce((sum, i) => sum + Math.round(i.amount * 100), 0),
+    this.list()
+      .filter((i) => i.status !== 'VOID')
+      .reduce((sum, i) => sum + Math.round(i.amount * 100), 0),
   );
 
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
 
-  // The invoice whose send request is in flight.
+  // The invoice whose send or cancel request is in flight.
   protected readonly busy = signal<number | null>(null);
   protected readonly sendError = signal<string | null>(null);
+  protected readonly cancelError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group(
     {
@@ -235,6 +252,22 @@ export class ProjectInvoices {
       },
       error: () => {
         this.sendError.set('Could not send the invoice. Please try again.');
+        this.busy.set(null);
+      },
+    });
+  }
+
+  protected cancel(invoiceId: number): void {
+    this.busy.set(invoiceId);
+    this.cancelError.set(null);
+    this.service.cancel(this.projectId(), invoiceId).subscribe({
+      next: (voided) => {
+        this.replace(voided);
+        this.busy.set(null);
+        this.invoiced.emit();
+      },
+      error: () => {
+        this.cancelError.set('Could not cancel the invoice. Please try again.');
         this.busy.set(null);
       },
     });

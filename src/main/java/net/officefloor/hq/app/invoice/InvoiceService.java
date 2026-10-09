@@ -51,7 +51,8 @@ public class InvoiceService {
 
     /**
      * A client's statement: every invoice across their projects with what is left to pay on each, and
-     * the total they still owe. Drafts are listed but not owed, as they have not been sent.
+     * the total they still owe. Drafts are listed but not owed, as they have not been sent, nor are
+     * void invoices, as they have been cancelled.
      */
     @Transactional(readOnly = true)
     public ClientStatementResponse statementForClient(Long clientId) {
@@ -63,7 +64,7 @@ public class InvoiceService {
                 .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
                 .toList();
         BigDecimal outstanding = lines.stream()
-                .filter(l -> l.status() != InvoiceStatus.DRAFT)
+                .filter(l -> l.status() != InvoiceStatus.DRAFT && l.status() != InvoiceStatus.VOID)
                 .map(ClientStatementResponse.Line::amountDue)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
@@ -154,6 +155,23 @@ public class InvoiceService {
         invoice.markSent();
         invoices.flush();
         audit.record("INVOICE_SENT id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
+        return toResponse(invoice);
+    }
+
+    /**
+     * Cancels an invoice sent by mistake, so it no longer counts toward what is owed, and records the
+     * cancellation in the audit log. Only a sent invoice with nothing yet paid against it can be voided.
+     */
+    @Transactional
+    public InvoiceResponse cancel(Long projectId, Long invoiceId) {
+        Invoice invoice = find(projectId, invoiceId);
+        if (invoice.getStatus() != InvoiceStatus.SENT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a sent invoice with no payments recorded can be cancelled");
+        }
+        invoice.markVoid();
+        invoices.flush();
+        audit.record("INVOICE_VOIDED id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
         return toResponse(invoice);
     }
 

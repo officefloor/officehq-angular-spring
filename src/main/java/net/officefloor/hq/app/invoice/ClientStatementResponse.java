@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * A client's statement: all of their invoices, each with the project it is for and how much is left
- * to pay, and the total still owed (what is left to pay across their sent invoices).
+ * to pay, and the total still owed (what is left to pay across their sent invoices; void ones are not owed).
  */
 public record ClientStatementResponse(Long clientId, String clientName, List<Line> invoices,
         BigDecimal outstanding) {
@@ -18,7 +18,7 @@ public record ClientStatementResponse(Long clientId, String clientName, List<Lin
         static Line from(Invoice invoice, BigDecimal paid) {
             return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
                     invoice.getAmount(), invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
-                    invoice.getAmount().subtract(paid));
+                    invoice.amountDue(paid));
         }
     }
 }

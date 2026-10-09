@@ -41,6 +41,9 @@ public class PaymentService {
         if (invoice.getStatus() == InvoiceStatus.DRAFT) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Send the invoice before recording a payment");
         }
+        if (invoice.getStatus() == InvoiceStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been cancelled");
+        }
         if (!invoice.getStatus().isOwing()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice is already paid");
         }

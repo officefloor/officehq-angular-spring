@@ -62,4 +62,9 @@ public class InvoiceController {
     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.send(projectId, invoiceId);
     }
+
+    @PostMapping("/{invoiceId}/cancel")
+    public InvoiceResponse cancel(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+        return service.cancel(projectId, invoiceId);
+    }
 }
