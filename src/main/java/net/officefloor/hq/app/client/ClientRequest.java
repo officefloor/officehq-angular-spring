@@ -10,5 +10,5 @@ public record ClientRequest(
         @NotBlank @Email(regexp = ClientRequest.EMAIL_PATTERN) @Size(max = 255) String email) {
 
     /** Requires a dotted domain, which plain {@code @Email} does not (it accepts {@code a@b}). */
-    static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
+    public static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
 }

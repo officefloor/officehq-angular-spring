@@ -41,6 +41,7 @@ public class TestSupportController {
         // referential checks for the duration of the truncates.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
         try {
+            jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
@@ -56,6 +57,11 @@ public class TestSupportController {
         for (Map<String, Object> c : rows(fixture, "clients")) {
             jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"));
+        }
+        for (Map<String, Object> c : rows(fixture, "contacts")) {
+            jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
+                    ((Number) c.get("id")).longValue(), ((Number) c.get("clientId")).longValue(),
+                    c.get("name"), c.get("email"), c.get("role"));
         }
         for (Map<String, Object> p : rows(fixture, "projects")) {
             jdbc.update("INSERT INTO project (id, name, client_id) VALUES (?, ?, ?)",
@@ -75,6 +81,7 @@ public class TestSupportController {
         }
         // Continue generated ids after the explicitly seeded ones.
         restartIdentity("client");
+        restartIdentity("contact");
         restartIdentity("project");
         restartIdentity("invoice");
     }

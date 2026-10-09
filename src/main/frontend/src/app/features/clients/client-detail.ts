@@ -1,13 +1,14 @@
 import { Component, computed, inject, input } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
+import { ClientContacts } from '../contacts/client-contacts';
 import { ClientProjects } from '../projects/client-projects';
 import { ClientService } from './client.service';
 
-// A single client's page: their name and email, and the projects being done for them.
+// A single client's page: their name and email, their contacts, and the projects being done for them.
 @Component({
   selector: 'app-client-detail',
-  imports: [RouterLink, ClientProjects],
+  imports: [RouterLink, ClientContacts, ClientProjects],
   template: `
     <a routerLink="/clients" data-testid="client-back">Back to clients</a>
     @if (client.error()) {
@@ -15,6 +16,7 @@ import { ClientService } from './client.service';
     } @else if (client.value(); as c) {
       <h1 data-testid="client-detail-name">{{ c.name }}</h1>
       <p>Email: <span data-testid="client-detail-email">{{ c.email }}</span></p>
+      <app-client-contacts [clientId]="clientId()" />
       <app-client-projects [clientId]="clientId()" />
     }
   `,
