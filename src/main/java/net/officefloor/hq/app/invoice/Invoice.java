@@ -576,19 +576,29 @@ public class Invoice {
     }
 
     /**
-     * Works out this sent invoice's status from the total paid against it: PAID once the payments
-     * cover the amount, PARTIAL once something has been paid, otherwise still SENT.
+     * This invoice's status given the totals paid and credited against it. Once sent, it is PAID when the
+     * payments and credit notes together clear the amount, PARTIAL once something has been paid or credited,
+     * otherwise still SENT. Drafts and void invoices keep their status, as does one marked paid by hand.
      */
-    public void applyPaidTotal(BigDecimal paid) {
+    public InvoiceStatus statusFor(BigDecimal paid, BigDecimal credited) {
         if (status == InvoiceStatus.DRAFT || status == InvoiceStatus.VOID) {
-            throw new IllegalStateException("A " + status.name().toLowerCase() + " invoice cannot be paid");
+            return status;
         }
-        if (paid.compareTo(amount) >= 0) {
-            this.status = InvoiceStatus.PAID;
-        } else if (paid.signum() > 0) {
-            this.status = InvoiceStatus.PARTIAL;
-        } else {
-            this.status = InvoiceStatus.SENT;
+        BigDecimal settled = paid.add(credited);
+        if (settled.compareTo(amount) >= 0 || (status == InvoiceStatus.PAID && settled.signum() == 0)) {
+            return InvoiceStatus.PAID;
         }
+        return settled.signum() > 0 ? InvoiceStatus.PARTIAL : InvoiceStatus.SENT;
+    }
+
+    /**
+     * Works out this sent invoice's status from the totals paid and credited against it: PAID once the
+     * payments and credit notes cover the amount, PARTIAL once something has been settled, otherwise still SENT.
+     */
+    public void applySettledTotals(BigDecimal paid, BigDecimal credited) {
+        if (status == InvoiceStatus.DRAFT || status == InvoiceStatus.VOID) {
+            throw new IllegalStateException("A " + status.name().toLowerCase() + " invoice cannot be settled");
+        }
+        this.status = statusFor(paid, credited);
     }
 }

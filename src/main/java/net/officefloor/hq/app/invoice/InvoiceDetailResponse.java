@@ -28,6 +28,11 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, 
         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings) {
 
     static InvoiceDetailResponse from(Invoice invoice) {
+        return from(invoice, invoice.getStatus());
+    }
+
+    /** The invoice with the given status, as worked out from what has been paid and credited against it. */
+    static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status) {
         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
@@ -36,7 +41,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, 
                 invoice.getEffectiveTaxPct(),
                 invoice.getEarlyPaymentPct(), invoice.getEarlyPaymentDays(), invoice.getEarlyPaymentBy(),
                 invoice.getEarlyPaymentAmount(),
-                invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+                status, invoice.getIssuedDate(), invoice.getDueDate(),
                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
                 invoice.getProject().getClient().getTaxNumber(),
                 invoice.getDiscounts().stream().map(d -> new InvoiceDiscountResponse(d.getId(), d.getDiscountPct(),

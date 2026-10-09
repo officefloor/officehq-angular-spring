@@ -92,13 +92,14 @@ public class PaymentService {
         if (!invoice.getStatus().isOwing()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice is already paid");
         }
-        BigDecimal settled = payments.sumAmountByInvoiceId(invoice.getId())
-                .add(creditNotes.sumAmountByInvoiceId(invoice.getId())).add(amount);
+        BigDecimal paid = payments.sumAmountByInvoiceId(invoice.getId()).add(amount);
+        BigDecimal credited = creditNotes.sumAmountByInvoiceId(invoice.getId());
+        BigDecimal settled = paid.add(credited);
         if (settled.compareTo(invoice.getAmount()) > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment is more than the balance due");
         }
         Payment saved = payments.saveAndFlush(new Payment(invoice.getId(), amount, date, clientPaymentId));
-        invoice.applyPaidTotal(settled);
+        invoice.applySettledTotals(paid, credited);
         invoices.flush();
         audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount=" + saved.getAmount().toPlainString());
         return PaymentResponse.from(saved);

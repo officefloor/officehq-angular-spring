@@ -14,7 +14,7 @@ public record InvoiceResponse(Long id, Long projectId, Currency currency, BigDec
     static InvoiceResponse from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
         return new InvoiceResponse(invoice.getId(), invoice.getProject().getId(),
                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(),
-                invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+                invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
                 invoice.amountDue(paid, credited));
     }
 }

@@ -58,7 +58,7 @@ public record ClientStatementResponse(Long clientId, String clientName, Currency
 
         static Line from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
             return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
-                    invoice.getAmount(), invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+                    invoice.getAmount(), invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
                     invoice.amountDue(paid, credited), invoice.getTax().add(invoice.getLevy()));
         }
     }

@@ -127,7 +127,9 @@ public class InvoiceService {
     /** A single invoice with its line items. */
     @Transactional(readOnly = true)
     public InvoiceDetailResponse get(Long projectId, Long invoiceId) {
-        return InvoiceDetailResponse.from(find(projectId, invoiceId));
+        Invoice invoice = find(projectId, invoiceId);
+        return InvoiceDetailResponse.from(invoice, invoice.statusFor(payments.sumAmountByInvoiceId(invoiceId),
+                creditNotes.sumAmountByInvoiceId(invoiceId)));
     }
 
     /** Adds a line item to a draft invoice and reworks the invoice amount to match. */
