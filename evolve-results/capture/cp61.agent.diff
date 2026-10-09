@@ -1,0 +1,560 @@
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index 6e3f8d5..5fe3be5 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -47,4 +47,9 @@ export const routes: Routes = [
+     path: 'projects/:projectId/invoices/:invoiceId',
+     loadComponent: () => import('./features/invoices/invoice-detail').then((m) => m.InvoiceDetailPage),
+   },
++  {
++    path: 'settings',
++    data: { section: 'settings', label: 'Settings', order: 4 },
++    loadComponent: () => import('./features/settings/settings').then((m) => m.SettingsPage),
++  },
+ ];
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 79685d0..338ceb7 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -107,6 +107,8 @@ export interface NewInvoice {
+   issuedDate?: string;
+   /** Defaults to 30 days after the issue date on the server when omitted. */
+   dueDate?: string;
++  /** The sales tax percentage; defaults to the default tax rate in the settings on the server when omitted. */
++  taxPct?: number;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index 394c413..d8918ba 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -1,6 +1,6 @@
+ import { CurrencyPipe } from '@angular/common';
+ import { RouterLink } from '@angular/router';
+-import { Component, computed, inject, input, output, signal } from '@angular/core';
++import { Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import {
+   AbstractControl,
+@@ -11,6 +11,7 @@ import {
+ } from '@angular/forms';
+ import { InvoiceService, ProjectInvoice } from './invoice.service';
+ import { CurrencyCode } from '../clients/client.service';
++import { SettingsService } from '../settings/settings.service';
+ 
+ // ISO yyyy-MM-dd strings compare correctly as plain strings.
+ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+@@ -19,7 +20,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+ }
+ 
+ // A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each is still left to pay, adds a
+-// new draft, sends a draft and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
++// new draft (starting from the default tax rate in the settings), sends a draft and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
+ // opens onto its line items and payments.
+ @Component({
+   selector: 'app-project-invoices',
+@@ -28,10 +29,13 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+     <section aria-labelledby="project-invoices-heading" data-testid="project-invoices">
+       <h2 id="project-invoices-heading">Invoices</h2>
+ 
++      <button type="button" data-testid="invoice-new" (click)="startNew()">New invoice</button>
++
+       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="invoice-form" novalidate>
+         <div>
+           <label for="invoice-amount">Amount (optional, or leave blank and add line items)</label>
+           <input
++            #amountInput
+             id="invoice-amount"
+             type="number"
+             inputmode="decimal"
+@@ -68,6 +72,26 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+             </p>
+           }
+         </div>
++        <div>
++          <label for="invoice-tax-rate">Tax rate (%)</label>
++          <input
++            id="invoice-tax-rate"
++            type="number"
++            inputmode="decimal"
++            min="0"
++            max="100"
++            step="0.01"
++            formControlName="taxPct"
++            data-testid="invoice-tax-rate"
++            [attr.aria-invalid]="showTaxError()"
++            [attr.aria-describedby]="showTaxError() ? 'invoice-tax-rate-error' : null"
++          />
++          @if (showTaxError()) {
++            <p id="invoice-tax-rate-error" role="alert" data-testid="invoice-tax-rate-error">
++              Enter a percentage from 0 to 100 with at most two decimal places, or leave it blank for no tax.
++            </p>
++          }
++        </div>
+         <button type="submit" data-testid="invoice-form-submit" [disabled]="saving()">
+           Add invoice
+         </button>
+@@ -165,6 +189,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+ })
+ export class ProjectInvoices {
+   private readonly service = inject(InvoiceService);
++  private readonly settingsService = inject(SettingsService);
+ 
+   readonly projectId = input.required<number>();
+   /** The currency of the client the job is for; the money shown is in it. */
+@@ -205,10 +230,43 @@ export class ProjectInvoices {
+       amount: ['', [Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)]],
+       issuedDate: [''],
+       dueDate: [''],
++      taxPct: ['', [Validators.min(0), Validators.max(100), Validators.pattern(/^\d+(\.\d{1,2})?$/)]],
+     },
+     { validators: dueNotBeforeIssued },
+   );
+ 
++  private readonly amountInput = viewChild.required<ElementRef<HTMLInputElement>>('amountInput');
++
++  // The standard tax rate from the settings; a new invoice starts with it and it can be changed per invoice.
++  private readonly settings = rxResource({ stream: () => this.settingsService.get() });
++  private readonly defaultTaxPct = computed(() =>
++    this.settings.hasValue() ? String(this.settings.value().defaultTaxPct) : '',
++  );
++
++  // Fills in the default tax rate once the settings load, unless a rate has already been typed.
++  private readonly syncTax = effect(() => {
++    const taxPct = this.defaultTaxPct();
++    if (!this.form.controls.taxPct.dirty) {
++      this.form.controls.taxPct.setValue(taxPct);
++    }
++  });
++
++  /** Clears the form back to a fresh invoice, starting from the default tax rate, ready to fill in. */
++  protected startNew(): void {
++    this.resetForm();
++    this.saveError.set(null);
++    this.amountInput().nativeElement.focus();
++  }
++
++  private resetForm(): void {
++    this.form.reset({ amount: '', issuedDate: '', dueDate: '', taxPct: this.defaultTaxPct() });
++  }
++
++  protected showTaxError(): boolean {
++    const control = this.form.controls.taxPct;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
+   protected showDueError(): boolean {
+     return this.form.hasError('dueBeforeIssued') && this.form.controls.dueDate.dirty;
+   }
+@@ -225,16 +283,18 @@ export class ProjectInvoices {
+     }
+     this.saving.set(true);
+     this.saveError.set(null);
+-    const { amount, issuedDate, dueDate } = this.form.getRawValue();
++    const { amount, issuedDate, dueDate, taxPct } = this.form.getRawValue();
+     const invoice = {
+       ...(amount !== '' && amount !== null ? { amount: Number(amount) } : {}),
+       ...(issuedDate ? { issuedDate } : {}),
+       ...(dueDate ? { dueDate } : {}),
++      // A cleared rate means no tax rather than falling back to the default.
++      taxPct: taxPct !== '' && taxPct !== null ? Number(taxPct) : 0,
+     };
+     this.service.create(this.projectId(), invoice).subscribe({
+       next: (created) => {
+         this.invoices.update((list) => [...(list ?? []), created]);
+-        this.form.reset();
++        this.resetForm();
+         this.saving.set(false);
+       },
+       error: () => {
+diff --git a/src/main/frontend/src/app/features/settings/settings.service.ts b/src/main/frontend/src/app/features/settings/settings.service.ts
+new file mode 100644
+index 0000000..0b2caeb
+--- /dev/null
++++ b/src/main/frontend/src/app/features/settings/settings.service.ts
+@@ -0,0 +1,22 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++/** The app-wide settings. */
++export interface Settings {
++  /** The sales tax percentage a new invoice starts with. */
++  defaultTaxPct: number;
++}
++
++@Injectable({ providedIn: 'root' })
++export class SettingsService {
++  private readonly http = inject(HttpClient);
++
++  get(): Observable<Settings> {
++    return this.http.get<Settings>('/api/settings');
++  }
++
++  update(settings: Settings): Observable<Settings> {
++    return this.http.put<Settings>('/api/settings', settings);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+new file mode 100644
+index 0000000..42f156d
+--- /dev/null
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -0,0 +1,96 @@
++import { Component, effect, inject, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { SettingsService } from './settings.service';
++
++// The app-wide settings: the standard sales tax rate that every new invoice starts with.
++@Component({
++  selector: 'app-settings',
++  imports: [ReactiveFormsModule],
++  template: `
++    <h1>Settings</h1>
++    @if (settings.error()) {
++      <p role="alert" data-testid="settings-error">Could not load the settings.</p>
++    }
++    <form [formGroup]="form" (ngSubmit)="save()" data-testid="settings-form" novalidate>
++      <div>
++        <label for="settings-default-tax-rate">Default tax rate (%) for new invoices</label>
++        <input
++          id="settings-default-tax-rate"
++          type="number"
++          inputmode="decimal"
++          min="0"
++          max="100"
++          step="0.01"
++          formControlName="defaultTaxPct"
++          data-testid="settings-default-tax-rate"
++          [attr.aria-invalid]="showError()"
++          [attr.aria-describedby]="showError() ? 'settings-default-tax-rate-error' : null"
++        />
++        @if (showError()) {
++          <p id="settings-default-tax-rate-error" role="alert" data-testid="settings-default-tax-rate-error">
++            Enter a percentage from 0 to 100 with at most two decimal places.
++          </p>
++        }
++      </div>
++      <button type="submit" data-testid="settings-save" [disabled]="saving()">Save settings</button>
++      @if (saved()) {
++        <p role="status" data-testid="settings-saved">Settings saved.</p>
++      }
++      @if (saveError()) {
++        <p role="alert" data-testid="settings-save-error">{{ saveError() }}</p>
++      }
++    </form>
++  `,
++})
++export class SettingsPage {
++  private readonly service = inject(SettingsService);
++
++  protected readonly settings = rxResource({ stream: () => this.service.get() });
++
++  protected readonly saving = signal(false);
++  protected readonly saved = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    defaultTaxPct: [
++      '',
++      [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(/^\d+(\.\d{1,2})?$/)],
++    ],
++  });
++
++  // Starts the field from the saved rate once the settings load, unless it has already been edited.
++  private readonly syncForm = effect(() => {
++    if (this.settings.hasValue() && !this.form.dirty) {
++      this.form.setValue({ defaultTaxPct: String(this.settings.value().defaultTaxPct) });
++    }
++  });
++
++  protected showError(): boolean {
++    const control = this.form.controls.defaultTaxPct;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected save(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.saved.set(false);
++    this.saveError.set(null);
++    const defaultTaxPct = Number(this.form.getRawValue().defaultTaxPct);
++    this.service.update({ defaultTaxPct }).subscribe({
++      next: (updated) => {
++        this.settings.set(updated);
++        this.form.reset({ defaultTaxPct: String(updated.defaultTaxPct) });
++        this.saving.set(false);
++        this.saved.set(true);
++      },
++      error: () => {
++        this.saveError.set('Could not save the settings. Please try again.');
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 7f930c2..64269f9 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -64,6 +64,7 @@ public class TestSupportController {
+         } finally {
+             jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+         }
++        jdbc.update("UPDATE app_settings SET default_tax_pct = 0 WHERE id = 1");
+     }
+ 
+     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
+index 6ed3fdd..23d0558 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.invoice;
+ 
++import jakarta.validation.constraints.DecimalMax;
+ import jakarta.validation.constraints.DecimalMin;
+ import jakarta.validation.constraints.Digits;
+ import java.math.BigDecimal;
+@@ -9,12 +10,13 @@ import java.time.LocalDate;
+  * Payload to add an invoice to a project. Everything is optional: without an amount the invoice
+  * starts as an empty draft to be built up from line items, while an amount is carried as a single
+  * line. The issue date defaults to today and the due date to {@link #DEFAULT_TERM_DAYS} days after
+- * the issue date.
++ * the issue date. The sales tax percentage defaults to the default tax rate in the settings.
+  */
+ public record InvoiceRequest(
+         @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
+         LocalDate issuedDate,
+-        LocalDate dueDate) {
++        LocalDate dueDate,
++        @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal taxPct) {
+ 
+     /** Days between issue and due date when no due date is given. */
+     public static final int DEFAULT_TERM_DAYS = 30;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index d48ccb9..2afdb98 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -11,6 +11,7 @@ import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.project.Project;
+ import net.officefloor.hq.app.project.ProjectRepository;
++import net.officefloor.hq.app.settings.SettingsService;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.PageRequest;
+ import org.springframework.http.HttpStatus;
+@@ -25,14 +26,16 @@ public class InvoiceService {
+     private final ProjectRepository projects;
+     private final PaymentRepository payments;
+     private final ClientRepository clients;
++    private final SettingsService settings;
+     private final Audit audit;
+ 
+     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
+-            ClientRepository clients, Audit audit) {
++            ClientRepository clients, SettingsService settings, Audit audit) {
+         this.invoices = invoices;
+         this.projects = projects;
+         this.clients = clients;
+         this.payments = payments;
++        this.settings = settings;
+         this.audit = audit;
+     }
+ 
+@@ -97,6 +100,7 @@ public class InvoiceService {
+         if (request.amount() != null) {
+             invoice.addLineItem(InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION, BigDecimal.ONE, null, request.amount());
+         }
++        invoice.applyTax(request.taxPct() != null ? request.taxPct() : settings.defaultTaxPct());
+         Invoice saved = invoices.save(invoice);
+         return InvoiceResponse.from(saved, BigDecimal.ZERO);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/Settings.java b/src/main/java/net/officefloor/hq/app/settings/Settings.java
+new file mode 100644
+index 0000000..f4e5d9b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/Settings.java
+@@ -0,0 +1,35 @@
++package net.officefloor.hq.app.settings;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++
++/** The app-wide settings, stored as a single row with id {@link #ID}. */
++@Entity
++@Table(name = "app_settings")
++public class Settings {
++
++    /** The id of the one settings row. */
++    public static final long ID = 1L;
++
++    @Id
++    private Long id;
++
++    /** The sales tax percentage a new invoice starts with. */
++    @Column(name = "default_tax_pct", nullable = false, precision = 5, scale = 2)
++    private BigDecimal defaultTaxPct = BigDecimal.ZERO.setScale(2);
++
++    protected Settings() {
++    }
++
++    public BigDecimal getDefaultTaxPct() {
++        return defaultTaxPct;
++    }
++
++    public void setDefaultTaxPct(BigDecimal defaultTaxPct) {
++        this.defaultTaxPct = defaultTaxPct.setScale(2, RoundingMode.HALF_UP);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+new file mode 100644
+index 0000000..d52aa4f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -0,0 +1,29 @@
++package net.officefloor.hq.app.settings;
++
++import jakarta.validation.Valid;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/settings")
++public class SettingsController {
++
++    private final SettingsService service;
++
++    public SettingsController(SettingsService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public SettingsResponse get() {
++        return service.get();
++    }
++
++    @PutMapping
++    public SettingsResponse update(@Valid @RequestBody SettingsRequest request) {
++        return service.update(request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsRepository.java b/src/main/java/net/officefloor/hq/app/settings/SettingsRepository.java
+new file mode 100644
+index 0000000..3b3b3c1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.settings;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SettingsRepository extends JpaRepository<Settings, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsRequest.java b/src/main/java/net/officefloor/hq/app/settings/SettingsRequest.java
+new file mode 100644
+index 0000000..2011b19
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsRequest.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.settings;
++
++import jakarta.validation.constraints.DecimalMax;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/** Payload to change the app-wide settings: the sales tax percentage new invoices start with. */
++public record SettingsRequest(
++        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal defaultTaxPct) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java b/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
+new file mode 100644
+index 0000000..f8fa3d1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.settings;
++
++import java.math.BigDecimal;
++
++public record SettingsResponse(BigDecimal defaultTaxPct) {
++
++    public static SettingsResponse from(Settings settings) {
++        return new SettingsResponse(settings.getDefaultTaxPct());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+new file mode 100644
+index 0000000..4974ec9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -0,0 +1,39 @@
++package net.officefloor.hq.app.settings;
++
++import java.math.BigDecimal;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++@Service
++public class SettingsService {
++
++    private final SettingsRepository settings;
++
++    public SettingsService(SettingsRepository settings) {
++        this.settings = settings;
++    }
++
++    @Transactional(readOnly = true)
++    public SettingsResponse get() {
++        return SettingsResponse.from(find());
++    }
++
++    @Transactional
++    public SettingsResponse update(SettingsRequest request) {
++        Settings current = find();
++        current.setDefaultTaxPct(request.defaultTaxPct());
++        settings.flush();
++        return SettingsResponse.from(current);
++    }
++
++    /** The sales tax percentage a new invoice starts with when none is given for it. */
++    @Transactional(readOnly = true)
++    public BigDecimal defaultTaxPct() {
++        return find().getDefaultTaxPct();
++    }
++
++    private Settings find() {
++        return settings.findById(Settings.ID)
++                .orElseThrow(() -> new IllegalStateException("The settings row is missing"));
++    }
++}
+diff --git a/src/main/resources/db/migration/V30__app_settings.sql b/src/main/resources/db/migration/V30__app_settings.sql
+new file mode 100644
+index 0000000..23438d3
+--- /dev/null
++++ b/src/main/resources/db/migration/V30__app_settings.sql
+@@ -0,0 +1,10 @@
++-- App-wide settings, held as a single row (id 1). The default tax rate is the sales tax percentage a
++-- new invoice starts with; it starts at zero (no tax).
++CREATE TABLE app_settings (
++    id BIGINT PRIMARY KEY,
++    default_tax_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL,
++    CONSTRAINT app_settings_single_row CHECK (id = 1),
++    CONSTRAINT app_settings_default_tax_pct_range CHECK (default_tax_pct >= 0 AND default_tax_pct <= 100)
++);
++
++INSERT INTO app_settings (id, default_tax_pct) VALUES (1, 0);
