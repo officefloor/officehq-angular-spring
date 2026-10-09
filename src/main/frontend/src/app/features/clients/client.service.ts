@@ -23,6 +23,8 @@ export interface Client {
   taxExempt: boolean;
   /** Whether the client is one of the office's key accounts, marked out wherever they are listed. */
   keyAccount: boolean;
+  /** The client's standard discount, a percentage each new invoice for them starts with; 0 when none. */
+  defaultDiscountPct: number;
   archived: boolean;
   /** The client's main contact; null until one is chosen. */
   primaryContact: { id: number; name: string } | null;

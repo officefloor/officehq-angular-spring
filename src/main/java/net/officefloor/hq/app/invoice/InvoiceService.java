@@ -101,6 +101,11 @@ public class InvoiceService {
             invoice.addLineItem(InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION, BigDecimal.ONE, null, request.amount());
         }
         invoice.applyTax(request.taxPct() != null ? request.taxPct() : settings.defaultTaxPct());
+        // A new invoice starts with the client's standard discount, if they have one.
+        BigDecimal defaultDiscountPct = project.getClient().getDefaultDiscountPct();
+        if (defaultDiscountPct.signum() > 0) {
+            invoice.addDiscount(defaultDiscountPct, BigDecimal.ZERO);
+        }
         Invoice saved = invoices.save(invoice);
         return InvoiceResponse.from(saved, BigDecimal.ZERO);
     }

@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.client;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -10,6 +11,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import net.officefloor.hq.app.contact.Contact;
 
 /** A client of the office. */
@@ -44,6 +47,10 @@ public class Client {
 
     /** Whether the client is one of the office's key accounts, marked out wherever they are listed. */
     private boolean keyAccount;
+
+    /** The client's standard discount, a percentage each new invoice for them starts with; zero when none. */
+    @Column(name = "default_discount_pct", nullable = false, precision = 5, scale = 2)
+    private BigDecimal defaultDiscountPct = BigDecimal.ZERO.setScale(2);
 
     /** The currency the client is billed in; all of their money is in it. */
     @Enumerated(EnumType.STRING)
@@ -120,6 +127,14 @@ public class Client {
 
     public void setKeyAccount(boolean keyAccount) {
         this.keyAccount = keyAccount;
+    }
+
+    public BigDecimal getDefaultDiscountPct() {
+        return defaultDiscountPct;
+    }
+
+    public void setDefaultDiscountPct(BigDecimal defaultDiscountPct) {
+        this.defaultDiscountPct = defaultDiscountPct.setScale(2, RoundingMode.HALF_UP);
     }
 
     public boolean isArchived() {

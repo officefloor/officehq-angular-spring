@@ -72,6 +72,9 @@ public class ClientService {
             client.setTaxInclusive(Boolean.TRUE.equals(request.taxInclusive()));
             client.setTaxExempt(Boolean.TRUE.equals(request.taxExempt()));
             client.setKeyAccount(Boolean.TRUE.equals(request.keyAccount()));
+            if (request.defaultDiscountPct() != null) {
+                client.setDefaultDiscountPct(request.defaultDiscountPct());
+            }
             return respond(clients.saveAndFlush(client));
         } catch (DataIntegrityViolationException e) {
             // Lost a race with a concurrent add of the same email; the unique constraint caught it.
@@ -107,6 +110,10 @@ public class ClientService {
         }
         if (request.keyAccount() != null) {
             client.setKeyAccount(request.keyAccount());
+        }
+        // Only invoices raised from now on start with the standard discount; existing ones keep theirs.
+        if (request.defaultDiscountPct() != null) {
+            client.setDefaultDiscountPct(request.defaultDiscountPct());
         }
         try {
             clients.flush();

@@ -64,6 +64,9 @@ import { Client, ClientService } from './client.service';
         Key account: <span data-testid="client-key-account-flag">{{ c.keyAccount ? 'Yes' : 'No' }}</span>
       </p>
       <p>
+        Standard discount: <span data-testid="client-default-discount">{{ c.defaultDiscountPct > 0 ? c.defaultDiscountPct + '%' : 'None' }}</span>
+      </p>
+      <p>
         Main contact:
         @if (c.primaryContact; as primary) {
           <span data-testid="client-primary-contact">{{ primary.name }}</span>

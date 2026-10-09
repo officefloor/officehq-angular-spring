@@ -79,13 +79,14 @@ public class TestSupportController {
             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
         }
         for (Map<String, Object> c : rows(fixture, "clients")) {
-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, key_account, archived, currency)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"),
                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
                     Boolean.TRUE.equals(c.get("keyAccount")),
                     Boolean.TRUE.equals(c.get("archived")),
-                    c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString());
+                    c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString(),
+                    decimal(c.get("defaultDiscountPct")));
         }
         for (Map<String, Object> c : rows(fixture, "contacts")) {
             jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
@@ -154,7 +155,7 @@ public class TestSupportController {
             // An invoice for a tax-exempt client carries no tax or levy on any line.
             long projectId = ((Number) i.get("projectId")).longValue();
             Map<String, Object> client = jdbc.queryForMap(
-                    "SELECT c.tax_inclusive, c.tax_exempt FROM project p JOIN client c ON c.id = p.client_id WHERE p.id = ?",
+                    "SELECT c.tax_inclusive, c.tax_exempt, c.default_discount_pct FROM project p JOIN client c ON c.id = p.client_id WHERE p.id = ?",
                     projectId);
             boolean taxInclusive = Boolean.TRUE.equals(client.get("TAX_INCLUSIVE"));
             boolean taxExempt = Boolean.TRUE.equals(client.get("TAX_EXEMPT"));
@@ -171,6 +172,13 @@ public class TestSupportController {
             }
             if (i.get("discountAmount") != null && new BigDecimal(i.get("discountAmount").toString()).signum() > 0) {
                 discounts.add(Map.of("amount", i.get("discountAmount")));
+            }
+            // An invoice whose fixture says nothing about discounts starts with the client's standard one, as a
+            // newly raised invoice does.
+            BigDecimal clientDefaultPct = decimal(client.get("DEFAULT_DISCOUNT_PCT"));
+            if (i.get("discounts") == null && i.get("discountPct") == null && i.get("discountAmount") == null
+                    && clientDefaultPct.signum() > 0) {
+                discounts.add(Map.of("pct", clientDefaultPct));
             }
             // The percentages each take their share of the subtotal (never more than is left); the flat
             // amounts are then taken off what is left and shared across the lines in proportion to what

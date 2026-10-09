@@ -135,6 +135,25 @@ import { Client, ClientService } from './client.service';
           Key account
         </label>
       </div>
+      <div>
+        <label for="client-default-discount">Standard discount % (applied to new invoices)</label>
+        <input
+          id="client-default-discount"
+          type="number"
+          min="0"
+          max="100"
+          step="0.01"
+          formControlName="defaultDiscountPct"
+          data-testid="client-form-default-discount"
+          [attr.aria-invalid]="showError('defaultDiscountPct')"
+          [attr.aria-describedby]="showError('defaultDiscountPct') ? 'client-default-discount-error' : null"
+        />
+        @if (showError('defaultDiscountPct')) {
+          <p id="client-default-discount-error" role="alert" data-testid="client-form-default-discount-error">
+            Standard discount must be between 0 and 100.
+          </p>
+        }
+      </div>
       <button type="submit" data-testid="client-form-submit" [disabled]="saving()">Add client</button>
       @if (saveError()) {
         <p role="alert" data-testid="client-form-error">{{ saveError() }}</p>
@@ -296,6 +315,7 @@ export class Clients {
     taxInclusive: false,
     taxExempt: false,
     keyAccount: false,
+    defaultDiscountPct: [0, [Validators.required, Validators.min(0), Validators.max(100)]],
   });
 
   constructor() {
@@ -310,7 +330,7 @@ export class Clients {
     this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
   }
 
-  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress'): boolean {
+  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -320,10 +340,10 @@ export class Clients {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount } = this.form.getRawValue();
+    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount }).subscribe({
+    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created]);
         this.form.reset();

@@ -1,12 +1,16 @@
 package net.officefloor.hq.app.client;
 
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 
 /**
  * Payload to create a client, or to correct an existing client's name, email, phone number, tax number and billing address,
- * whether their prices already include tax and whether they are tax exempt and whether they are a key account (each left as it is when not given).
+ * whether their prices already include tax and whether they are tax exempt and whether they are a key account and their standard discount percentage (each left as it is when not given).
  */
 public record ClientRequest(
         @NotBlank @Size(max = 255) String name,
@@ -16,7 +20,8 @@ public record ClientRequest(
         @Size(max = 500) String billingAddress,
         Boolean taxInclusive,
         Boolean taxExempt,
-        Boolean keyAccount) {
+        Boolean keyAccount,
+        @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal defaultDiscountPct) {
 
     /** Requires a dotted domain, which plain {@code @Email} does not (it accepts {@code a@b}). */
     public static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
