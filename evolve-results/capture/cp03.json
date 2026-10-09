@@ -1,0 +1,330 @@
+{
+  "checkpoint": 3,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48"
+  },
+  "checkpoint_id": "cp03_projects",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "I want to track the projects I do for clients. Let me add a project and pick which client it\nis for. Show each project with the client's name.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nI want to track the projects I do for clients. Let me add a project and pick which client it\nis for. Show each project with the client's name.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "aad0f3e90fe2de6ca5181a9641331d3aa2f31795",
+  "reset_sha": "",
+  "preagent_sha": "3bb1cf38ab0bfeaddf37ed17f8f1b3f49a0ade66",
+  "prev_sha": "3bb1cf38ab0bfeaddf37ed17f8f1b3f49a0ade66",
+  "base_sha": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3356638,
+    "input_tokens": 10,
+    "output_tokens": 6111,
+    "cache_read_tokens": 109139,
+    "cache_creation_tokens": 23947,
+    "num_turns": 5,
+    "duration_ms": 75106,
+    "duration_api_ms": 55367,
+    "model": "claude-opus-5-5",
+    "session_id": "47deec93-ee4a-442a-b7d1-788fcafdece5",
+    "stop_reason": "success",
+    "result_text": "You can now add projects for clients: there's a new **Projects** page where you pick the client when adding a project, and the list shows each project with the client's name. Both Playwright tests pass when run with `bin/e2e`.\n\n**The server is Spring Boot, not OfficeFloor.** The request asked for an OfficeFloor server, but the codebase and `CLAUDE.md` are Spring, so I built it the Spring way, matching the existing client feature.\n\n- **Database:** a new migration, `V3__create_project.sql`, adds a `project` table. Each project must point to an existing client.\n- **Server:** a new `project` package with endpoints to list projects (`GET /api/projects`) and add one (`POST /api/projects`). Each project comes back with its client's id and name, loaded in one query. Adding a project with a missing name or an unknown client is rejected with a 400 error.\n- **Test setup:** I changed the test-only controller so it can seed projects. Resetting now clears the project table before the client table. The database won't normally empty a table another table refers to, so reset turns that check off for the moment it runs.\n- **Front end:** the new Projects page sits in the nav after Clients and follows the same layout and error handling as the Clients page. The client dropdown starts on \"Select a client\", and the form shows an error if you submit without choosing one. Every element the test looks for has the `data-testid` it expects.\n\nThere's no audit record when a project is created, because the test doesn't expect one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.3356638,
+        "num_turns": 5,
+        "duration_ms": 75106,
+        "duration_api_ms": 55367,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp03.agent.jsonl",
+  "agent_diff_file": "cp03.agent.diff",
+  "build_log_file": "cp03.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 7,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 399,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 489,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 238,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 235,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 243,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 291,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 355,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 3.36,
+            "impact": 309,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/src/app/features/projects/projects.ts",
+                "lang": "typescript",
+                "cost": 88,
+                "mutation": 0,
+                "godclass": 88,
+                "mut_fns": 0,
+                "new_fns": 8
+              },
+              {
+                "path": "src/main/frontend/src/app/app.routes.ts",
+                "lang": "typescript",
+                "cost": 9,
+                "mutation": 9,
+                "godclass": 0,
+                "mut_fns": 2,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/project.service.ts",
+                "lang": "typescript",
+                "cost": 6,
+                "mutation": 0,
+                "godclass": 6,
+                "mut_fns": 0,
+                "new_fns": 2
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/src/app/features/projects/projects.ts",
+                "name": "submit",
+                "container": "",
+                "cc": 3,
+                "wmc_other": 0,
+                "cost": 60,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/projects.ts",
+                "name": "showError",
+                "container": "",
+                "cc": 3,
+                "wmc_other": 0,
+                "cost": 12,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/app.routes.ts",
+                "name": "loadComponent",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 3,
+                "cost": 6,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/projects.ts",
+                "name": "next",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 5,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/projects.ts",
+                "name": "constructor",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/projects.ts",
+                "name": "error",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/app.routes.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 3,
+                "cost": 3,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/project.service.ts",
+                "name": "list",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/project.service.ts",
+                "name": "create",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/projects/projects.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 1,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 2,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 2.96,
+            "impact": 91,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/project/ProjectService.java",
+                "lang": "java",
+                "cost": 13,
+                "mutation": 0,
+                "godclass": 13,
+                "mut_fns": 0,
+                "new_fns": 3
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/project/ProjectService.java",
+                "name": "ProjectService::create",
+                "container": "ProjectService",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 6,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/project/ProjectService.java",
+                "name": "ProjectService::ProjectService",
+                "container": "ProjectService",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/project/ProjectService.java",
+                "name": "ProjectService::list",
+                "container": "ProjectService",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 0,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
