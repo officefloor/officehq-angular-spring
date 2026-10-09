@@ -16,3 +16,6 @@ e2e/specs/*
 
 # frontend-maven-plugin downloads node here
 src/main/frontend/node/
+
+# Angular build cache (generated; must not be committed)
+src/main/frontend/.angular/
