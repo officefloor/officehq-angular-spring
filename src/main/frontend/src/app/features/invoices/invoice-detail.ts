@@ -19,6 +19,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 // never taxed), the total before tax, and the final total including both taxes (also shown as the total after tax).
 // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
 // When the net total comes out under the invoice's minimum charge, the minimum is billed instead and marked as applied.
+// It also shows the total savings: every line discount and invoice discount added together.
 // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the set number of days.
 // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
 @Component({
@@ -323,6 +324,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
             <tr>
               <th scope="row" colspan="5">Total after tax</th>
               <td data-testid="invoice-total-inc-tax">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              @if (inv.status === 'DRAFT') {
+                <td></td>
+              }
+            </tr>
+            <tr>
+              <th scope="row" colspan="5">Total savings (all discounts added together)</th>
+              <td data-testid="invoice-total-savings">{{ inv.totalSavings | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }

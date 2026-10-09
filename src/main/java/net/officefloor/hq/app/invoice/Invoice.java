@@ -225,6 +225,16 @@ public class Invoice {
         return discounts.stream().map(this::discountTakenBy).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
+    /**
+     * How much the client saves on this invoice: every discount added together, both what the lines take
+     * off themselves and what the invoice's discounts take off the subtotal, to the cent.
+     */
+    public BigDecimal getTotalSavings() {
+        BigDecimal lineSavings = lineItems.stream().map(l -> l.getGrossAmount().subtract(l.getAmount()))
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        return lineSavings.add(getDiscount());
+    }
+
     /** The sales tax percentage added after the discount; zero when there is no tax. */
     public BigDecimal getTaxPct() {
         return taxPct;

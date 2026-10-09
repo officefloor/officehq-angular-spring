@@ -151,6 +151,8 @@ export interface InvoiceDetail extends Invoice {
   netTotal: number;
   /** Whether the net total came out under the minimum charge, so the minimum is billed instead. */
   minimumApplied: boolean;
+  /** How much the client saves: the line discounts and the invoice's discounts added together. */
+  totalSavings: number;
 }
 
 export interface NewLineItem {
