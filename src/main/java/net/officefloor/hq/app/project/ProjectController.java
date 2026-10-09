@@ -23,8 +23,9 @@ public class ProjectController {
     }
 
     @GetMapping
-    public List<ProjectResponse> list(@RequestParam(defaultValue = "false") boolean includeArchived) {
-        return service.list(includeArchived);
+    public List<ProjectResponse> list(@RequestParam(defaultValue = "false") boolean includeArchived,
+            @RequestParam(required = false) Long tagId) {
+        return service.list(includeArchived, tagId);
     }
 
     @GetMapping("/{id}")

@@ -2,11 +2,13 @@ import { Component, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Client, ClientService } from '../clients/client.service';
+import { Tag, TagService } from '../tags/tag.service';
 import { Project, ProjectService } from './project.service';
 
 // Projects page: add a project for a client and list all projects with their client's name; each
 // project opens its detail page and can be archived once it is no longer needed. Archived projects
-// are kept but left off the list unless the archived toggle is on, where they can be restored.
+// are kept but left off the list unless the archived toggle is on, where they can be restored. The
+// list can be narrowed to the projects carrying a chosen tag.
 @Component({
   selector: 'app-projects',
   imports: [ReactiveFormsModule, RouterLink],
@@ -73,8 +75,26 @@ import { Project, ProjectService } from './project.service';
       <label for="projects-show-archived">Show archived projects</label>
     </div>
 
+    <div>
+      <label for="project-tag-filter">Filter by tag</label>
+      <select
+        id="project-tag-filter"
+        data-testid="project-tag-filter"
+        #tagSelect
+        [value]="tagFilter() ?? ''"
+        (change)="filterByTag(tagSelect.value)"
+      >
+        <option value="">All tags</option>
+        @for (t of tags(); track t.id) {
+          <option [value]="t.id">{{ t.name }}</option>
+        }
+      </select>
+    </div>
+
     @if (projects().length === 0) {
-      <p data-testid="projects-empty">No projects yet.</p>
+      <p data-testid="projects-empty">
+        {{ tagFilter() === null ? 'No projects yet.' : 'No projects with this tag.' }}
+      </p>
     } @else {
       <table data-testid="projects-table">
         <caption>All projects</caption>
@@ -137,6 +157,7 @@ import { Project, ProjectService } from './project.service';
 export class Projects {
   private readonly service = inject(ProjectService);
   private readonly clientService = inject(ClientService);
+  private readonly tagService = inject(TagService);
 
   protected readonly projects = signal<Project[]>([]);
   protected readonly clients = signal<Client[]>([]);
@@ -145,6 +166,8 @@ export class Projects {
   protected readonly deleting = signal<number | null>(null);
   protected readonly deleteError = signal<string | null>(null);
   protected readonly showArchived = signal(false);
+  protected readonly tags = signal<Tag[]>([]);
+  protected readonly tagFilter = signal<number | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -154,6 +177,7 @@ export class Projects {
   constructor() {
     this.load();
     this.clientService.list().subscribe((list) => this.clients.set(list));
+    this.tagService.list().subscribe((list) => this.tags.set(list));
   }
 
   protected showError(field: 'name' | 'clientId'): boolean {
@@ -171,7 +195,10 @@ export class Projects {
     this.saveError.set(null);
     this.service.create({ name: name.trim(), clientId: Number(clientId) }).subscribe({
       next: (created) => {
-        this.projects.update((list) => [...list, created]);
+        // A new project carries no tags, so it only belongs on an unfiltered list.
+        if (this.tagFilter() === null) {
+          this.projects.update((list) => [...list, created]);
+        }
         this.form.reset();
         this.saving.set(false);
       },
@@ -184,6 +211,11 @@ export class Projects {
 
   protected toggleArchived(): void {
     this.showArchived.update((show) => !show);
+    this.load();
+  }
+
+  protected filterByTag(value: string): void {
+    this.tagFilter.set(value === '' ? null : Number(value));
     this.load();
   }
 
@@ -222,6 +254,6 @@ export class Projects {
   }
 
   private load(): void {
-    this.service.list(this.showArchived()).subscribe((list) => this.projects.set(list));
+    this.service.list(this.showArchived(), this.tagFilter()).subscribe((list) => this.projects.set(list));
   }
 }

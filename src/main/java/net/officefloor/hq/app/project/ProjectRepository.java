@@ -15,6 +15,15 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.archived = false ORDER BY p.id")
     List<Project> findActiveWithClient();
 
+    /** All projects carrying a tag, with their client loaded in the same query. */
+    @Query("SELECT p FROM Project p JOIN FETCH p.client JOIN p.tags t WHERE t.id = :tagId ORDER BY p.id")
+    List<Project> findAllByTagIdWithClient(Long tagId);
+
+    /** All projects not archived carrying a tag, with their client loaded in the same query. */
+    @Query("SELECT p FROM Project p JOIN FETCH p.client JOIN p.tags t WHERE t.id = :tagId"
+            + " AND p.archived = false ORDER BY p.id")
+    List<Project> findActiveByTagIdWithClient(Long tagId);
+
     /** A client's projects not archived, with their client loaded in the same query. */
     @Query("SELECT p FROM Project p JOIN FETCH p.client c WHERE c.id = :clientId AND p.archived = false"
             + " ORDER BY p.id")

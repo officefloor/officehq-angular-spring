@@ -22,10 +22,19 @@ public class ProjectService {
         this.audit = audit;
     }
 
-    /** The projects, leaving out archived ones unless they are asked for. */
+    /**
+     * The projects, leaving out archived ones unless they are asked for, and only those carrying the
+     * given tag when one is given.
+     */
     @Transactional(readOnly = true)
-    public List<ProjectResponse> list(boolean includeArchived) {
-        List<Project> found = includeArchived ? projects.findAllWithClient() : projects.findActiveWithClient();
+    public List<ProjectResponse> list(boolean includeArchived, Long tagId) {
+        List<Project> found;
+        if (tagId == null) {
+            found = includeArchived ? projects.findAllWithClient() : projects.findActiveWithClient();
+        } else {
+            found = includeArchived ? projects.findAllByTagIdWithClient(tagId)
+                    : projects.findActiveByTagIdWithClient(tagId);
+        }
         return found.stream().map(ProjectResponse::from).toList();
     }
 
