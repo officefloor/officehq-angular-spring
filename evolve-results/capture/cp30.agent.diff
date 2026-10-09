@@ -1,0 +1,511 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 7fbb292..179711b 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -4,6 +4,7 @@ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+ import { Observable } from 'rxjs';
++import { InvoicePayments } from '../payments/invoice-payments';
+ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+ 
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+@@ -12,7 +13,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ // amount, and the invoice total worked out from them. Lines can be added while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+-  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink],
++  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments],
+   template: `
+     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to project</a>
+     @if (invoice.error()) {
+@@ -211,6 +212,13 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+           }
+         </form>
+       }
++
++      <app-invoice-payments
++        [projectId]="projectIdNumber()"
++        [invoiceId]="inv.id"
++        [invoiceAmount]="totalCents() / 100"
++        [canRecord]="inv.status !== 'DRAFT'"
++      />
+     }
+   `,
+ })
+diff --git a/src/main/frontend/src/app/features/payments/invoice-payments.ts b/src/main/frontend/src/app/features/payments/invoice-payments.ts
+new file mode 100644
+index 0000000..294d5d3
+--- /dev/null
++++ b/src/main/frontend/src/app/features/payments/invoice-payments.ts
+@@ -0,0 +1,160 @@
++import { CurrencyPipe } from '@angular/common';
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, computed, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { PaymentService } from './payment.service';
++
++const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
++
++// The payments a client has made against an invoice, what is still owed, and a form to record
++// another payment once the invoice has been sent.
++@Component({
++  selector: 'app-invoice-payments',
++  imports: [ReactiveFormsModule, CurrencyPipe],
++  template: `
++    <section aria-labelledby="invoice-payments-heading" data-testid="invoice-payments">
++      <h2 id="invoice-payments-heading">Payments</h2>
++      @if (payments.error()) {
++        <p role="alert" data-testid="invoice-payments-error">Could not load the payments.</p>
++      } @else if (payments.hasValue()) {
++        @if (payments.value().length === 0) {
++          <p data-testid="invoice-payments-empty">No payments recorded yet.</p>
++        }
++        <table data-testid="invoice-payments-table">
++          <caption>What the client has paid on this invoice</caption>
++          <thead>
++            <tr>
++              <th scope="col">Date</th>
++              <th scope="col">Amount</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (p of payments.value(); track p.id) {
++              <tr [attr.data-testid]="'payment-row-' + p.id">
++                <td data-testid="payment-date">{{ p.date }}</td>
++                <td data-testid="payment-amount">{{ p.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              </tr>
++            }
++          </tbody>
++          <tfoot>
++            <tr>
++              <th scope="row">Paid</th>
++              <td data-testid="invoice-paid-total">{{ paidCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++            </tr>
++            <tr>
++              <th scope="row">Balance due</th>
++              <td data-testid="invoice-balance-due">{{ balanceCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
++            </tr>
++          </tfoot>
++        </table>
++      }
++
++      @if (canRecord()) {
++        <form [formGroup]="form" (ngSubmit)="submit()" data-testid="payment-form" novalidate>
++          <h3>Record a payment</h3>
++          <div>
++            <label for="payment-amount">Amount</label>
++            <input
++              id="payment-amount"
++              type="number"
++              inputmode="decimal"
++              min="0.01"
++              step="0.01"
++              formControlName="amount"
++              data-testid="payment-form-amount"
++              [attr.aria-invalid]="invalid('amount')"
++              [attr.aria-describedby]="invalid('amount') ? 'payment-amount-error' : null"
++            />
++            @if (invalid('amount')) {
++              <p id="payment-amount-error" role="alert" data-testid="payment-form-amount-error">
++                Enter an amount greater than zero with at most two decimal places.
++              </p>
++            }
++          </div>
++          <div>
++            <label for="payment-date">Date paid</label>
++            <input
++              id="payment-date"
++              type="date"
++              formControlName="date"
++              data-testid="payment-form-date"
++              [attr.aria-invalid]="invalid('date')"
++              [attr.aria-describedby]="invalid('date') ? 'payment-date-error' : null"
++            />
++            @if (invalid('date')) {
++              <p id="payment-date-error" role="alert" data-testid="payment-form-date-error">
++                Enter the date the payment was made.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="payment-form-submit" [disabled]="saving()">Record payment</button>
++          @if (saveError()) {
++            <p role="alert" data-testid="payment-form-error">{{ saveError() }}</p>
++          }
++        </form>
++      }
++    </section>
++  `,
++})
++export class InvoicePayments {
++  private readonly service = inject(PaymentService);
++
++  readonly projectId = input.required<number>();
++  readonly invoiceId = input.required<number>();
++  /** The invoice total, which the payments count down. */
++  readonly invoiceAmount = input.required<number>();
++  /** Payments can be recorded once the invoice has been sent, not while it is a draft. */
++  readonly canRecord = input.required<boolean>();
++
++  protected readonly payments = rxResource({
++    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
++    stream: ({ params }) => this.service.list(params.projectId, params.invoiceId),
++  });
++
++  // Work in whole cents so the totals are exact.
++  protected readonly paidCents = computed(() =>
++    (this.payments.hasValue() ? this.payments.value() : []).reduce((sum, p) => sum + Math.round(p.amount * 100), 0),
++  );
++  protected readonly balanceCents = computed(() => Math.round(this.invoiceAmount() * 100) - this.paidCents());
++
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    date: ['', [Validators.required]],
++  });
++
++  protected invalid(name: 'amount' | 'date'): boolean {
++    const control = this.form.controls[name];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.saveError.set(null);
++    const { amount, date } = this.form.getRawValue();
++    this.service.record(this.projectId(), this.invoiceId(), { amount: Number(amount), date }).subscribe({
++      next: (created) => {
++        this.payments.update((list) =>
++          [...(list ?? []), created].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id),
++        );
++        this.form.reset();
++        this.saving.set(false);
++      },
++      error: (err: HttpErrorResponse) => {
++        this.saveError.set(
++          err.status === 409
++            ? 'That payment is more than the balance due.'
++            : 'Could not record the payment. Please try again.',
++        );
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/payments/payment.service.ts b/src/main/frontend/src/app/features/payments/payment.service.ts
+new file mode 100644
+index 0000000..52e6fc8
+--- /dev/null
++++ b/src/main/frontend/src/app/features/payments/payment.service.ts
+@@ -0,0 +1,31 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++/** Money a client has paid against an invoice. */
++export interface Payment {
++  id: number;
++  invoiceId: number;
++  amount: number;
++  /** ISO date (yyyy-MM-dd) the payment was made. */
++  date: string;
++}
++
++export interface NewPayment {
++  amount: number;
++  date: string;
++}
++
++@Injectable({ providedIn: 'root' })
++export class PaymentService {
++  private readonly http = inject(HttpClient);
++
++  /** An invoice's payments, oldest first. */
++  list(projectId: number, invoiceId: number): Observable<Payment[]> {
++    return this.http.get<Payment[]>(`/api/projects/${projectId}/invoices/${invoiceId}/payments`);
++  }
++
++  record(projectId: number, invoiceId: number, payment: NewPayment): Observable<Payment> {
++    return this.http.post<Payment>(`/api/projects/${projectId}/invoices/${invoiceId}/payments`, payment);
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index be7cf6f..015a5d6 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -49,6 +49,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
+@@ -132,6 +133,11 @@ public class TestSupportController {
+                 }
+             }
+         }
++        for (Map<String, Object> p : rows(fixture, "payments")) {
++            jdbc.update("INSERT INTO payment (id, invoice_id, amount, paid_date) VALUES (?, ?, ?, ?)",
++                    ((Number) p.get("id")).longValue(), ((Number) p.get("invoiceId")).longValue(),
++                    new BigDecimal(p.get("amount").toString()), LocalDate.parse(p.get("date").toString()));
++        }
+         // Continue generated ids after the explicitly seeded ones.
+         restartIdentity("client");
+         restartIdentity("contact");
+@@ -141,6 +147,7 @@ public class TestSupportController {
+         restartIdentity("task");
+         restartIdentity("tag");
+         restartIdentity("note");
++        restartIdentity("payment");
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/payment/InvoicePaymentController.java b/src/main/java/net/officefloor/hq/app/payment/InvoicePaymentController.java
+new file mode 100644
+index 0000000..d1f0101
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/InvoicePaymentController.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app.payment;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The payments a client has made against an invoice, oldest first. */
++@RestController
++@RequestMapping("/api/projects/{projectId}/invoices/{invoiceId}/payments")
++public class InvoicePaymentController {
++
++    private final PaymentService service;
++
++    public InvoicePaymentController(PaymentService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<PaymentResponse> list(@PathVariable Long projectId, @PathVariable Long invoiceId) {
++        return service.list(projectId, invoiceId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public PaymentResponse record(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody PaymentRequest request) {
++        return service.record(projectId, invoiceId, request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/payment/Payment.java b/src/main/java/net/officefloor/hq/app/payment/Payment.java
+new file mode 100644
+index 0000000..3185e77
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/Payment.java
+@@ -0,0 +1,54 @@
++package net.officefloor.hq.app.payment;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** An amount a client has paid against an invoice on a given day. */
++@Entity
++@Table(name = "payment")
++public class Payment {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "invoice_id", nullable = false)
++    private Long invoiceId;
++
++    @Column(nullable = false)
++    private BigDecimal amount;
++
++    @Column(name = "paid_date", nullable = false)
++    private LocalDate date;
++
++    protected Payment() {
++    }
++
++    public Payment(Long invoiceId, BigDecimal amount, LocalDate date) {
++        this.invoiceId = invoiceId;
++        this.amount = amount;
++        this.date = date;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public LocalDate getDate() {
++        return date;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+new file mode 100644
+index 0000000..1084e18
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.payment;
++
++import java.math.BigDecimal;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
++
++public interface PaymentRepository extends JpaRepository<Payment, Long> {
++
++    /** An invoice's payments, oldest first. */
++    List<Payment> findByInvoiceIdOrderByDateAscIdAsc(Long invoiceId);
++
++    /** Total paid against an invoice (zero when nothing has been paid). */
++    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.invoiceId = :invoiceId")
++    BigDecimal sumAmountByInvoiceId(Long invoiceId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentRequest.java b/src/main/java/net/officefloor/hq/app/payment/PaymentRequest.java
+new file mode 100644
+index 0000000..f5096ae
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentRequest.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.payment;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** Payload to record a payment against an invoice. */
++public record PaymentRequest(
++        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
++        @NotNull LocalDate date) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentResponse.java b/src/main/java/net/officefloor/hq/app/payment/PaymentResponse.java
+new file mode 100644
+index 0000000..c15e716
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentResponse.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.payment;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++public record PaymentResponse(Long id, Long invoiceId, BigDecimal amount, LocalDate date) {
++
++    static PaymentResponse from(Payment payment) {
++        return new PaymentResponse(payment.getId(), payment.getInvoiceId(), payment.getAmount(),
++                payment.getDate());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+new file mode 100644
+index 0000000..1030ddd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+@@ -0,0 +1,56 @@
++package net.officefloor.hq.app.payment;
++
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.invoice.Invoice;
++import net.officefloor.hq.app.invoice.InvoiceRepository;
++import net.officefloor.hq.app.invoice.InvoiceStatus;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class PaymentService {
++
++    private final PaymentRepository payments;
++    private final InvoiceRepository invoices;
++    private final Audit audit;
++
++    public PaymentService(PaymentRepository payments, InvoiceRepository invoices, Audit audit) {
++        this.payments = payments;
++        this.invoices = invoices;
++        this.audit = audit;
++    }
++
++    @Transactional(readOnly = true)
++    public List<PaymentResponse> list(Long projectId, Long invoiceId) {
++        find(projectId, invoiceId);
++        return payments.findByInvoiceIdOrderByDateAscIdAsc(invoiceId).stream().map(PaymentResponse::from).toList();
++    }
++
++    /**
++     * Records a payment against an invoice that has been sent to the client. A payment may not take
++     * the total paid beyond the invoice amount.
++     */
++    @Transactional
++    public PaymentResponse record(Long projectId, Long invoiceId, PaymentRequest request) {
++        Invoice invoice = find(projectId, invoiceId);
++        if (invoice.getStatus() == InvoiceStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Send the invoice before recording a payment");
++        }
++        if (payments.sumAmountByInvoiceId(invoiceId).add(request.amount()).compareTo(invoice.getAmount()) > 0) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment is more than the balance due");
++        }
++        Payment saved = payments.saveAndFlush(new Payment(invoiceId, request.amount(), request.date()));
++        audit.record("PAYMENT_RECORDED id=" + saved.getId() + " invoice=" + invoiceId
++                + " amount=" + saved.getAmount().toPlainString() + " date=" + saved.getDate());
++        return PaymentResponse.from(saved);
++    }
++
++    private Invoice find(Long projectId, Long invoiceId) {
++        return invoices.findById(invoiceId)
++                .filter(i -> i.getProject().getId().equals(projectId))
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown invoice"));
++    }
++}
+diff --git a/src/main/resources/db/migration/V16__create_payment.sql b/src/main/resources/db/migration/V16__create_payment.sql
+new file mode 100644
+index 0000000..84b8f47
+--- /dev/null
++++ b/src/main/resources/db/migration/V16__create_payment.sql
+@@ -0,0 +1,12 @@
++-- Money a client has paid against an invoice: how much and on what day. An invoice can be paid in
++-- several instalments; payments are financial records, so they block deleting their invoice.
++CREATE TABLE payment (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    invoice_id BIGINT         NOT NULL,
++    amount     DECIMAL(12, 2) NOT NULL,
++    paid_date  DATE           NOT NULL,
++    CONSTRAINT payment_invoice_fk FOREIGN KEY (invoice_id) REFERENCES invoice (id),
++    CONSTRAINT payment_amount_positive CHECK (amount > 0)
++);
++
++CREATE INDEX payment_invoice_idx ON payment (invoice_id, paid_date);
