@@ -11,7 +11,8 @@ import java.util.List;
 
 /**
  * A currency clients can be billed in, by ISO 4217 code, with the symbol its amounts are shown with and
- * the step they are rounded to when shown (0.05 rounds to the nearest five cents).
+ * the step they are rounded to when shown (0.05 rounds to the nearest five cents), and the number of
+ * decimal places they are shown with (yen has none).
  */
 @Entity
 @Table(name = "currency")
@@ -36,6 +37,9 @@ public class Currency {
     @Column(name = "rounding_step", nullable = false, precision = 10, scale = 2)
     private BigDecimal roundingStep = new BigDecimal("0.01");
 
+    @Column(nullable = false)
+    private int decimals = 2;
+
     protected Currency() {
     }
 
@@ -49,6 +53,10 @@ public class Currency {
 
     public BigDecimal getRoundingStep() {
         return roundingStep;
+    }
+
+    public int getDecimals() {
+        return decimals;
     }
 
     public void setRoundingStep(BigDecimal roundingStep) {

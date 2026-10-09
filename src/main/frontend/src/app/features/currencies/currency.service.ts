@@ -9,6 +9,8 @@ export interface Currency {
   symbol: string;
   /** Amounts in this currency are shown rounded to the nearest multiple of this (0.05 for five cents). */
   roundingStep: number;
+  /** The number of decimal places amounts in this currency are shown with (0 for yen). */
+  decimals: number;
 }
 
 @Injectable({ providedIn: 'root' })

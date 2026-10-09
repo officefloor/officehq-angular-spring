@@ -1,4 +1,3 @@
-import { formatCurrency, getCurrencySymbol } from '@angular/common';
 import { MoneyPipe } from '../currencies/money.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
@@ -165,6 +164,7 @@ export class ClientPaymentForm {
   private readonly payments = inject(PaymentService);
   private readonly depositService = inject(DepositService);
   private readonly creditService = inject(CreditService);
+  private readonly money = new MoneyPipe();
 
   readonly clientId = input.required<number>();
   readonly source = input<PaymentSource>('payment');
@@ -349,6 +349,6 @@ export class ClientPaymentForm {
   }
 
   private format(cents: number): string {
-    return formatCurrency(cents / 100, 'en-US', getCurrencySymbol(this.currency(), 'narrow', 'en-US'), this.currency(), '1.2-2');
+    return this.money.transform(cents / 100, this.currency()) ?? '';
   }
 }
