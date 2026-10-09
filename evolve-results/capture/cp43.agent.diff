@@ -1,0 +1,291 @@
+diff --git a/src/main/frontend/src/app/app.ts b/src/main/frontend/src/app/app.ts
+index cdda257..55a742a 100644
+--- a/src/main/frontend/src/app/app.ts
++++ b/src/main/frontend/src/app/app.ts
+@@ -1,12 +1,13 @@
+ import { Component, inject } from '@angular/core';
+ import { Route, Router, RouterLink, RouterOutlet } from '@angular/router';
++import { GlobalSearch } from './features/search/global-search';
+ 
+ // Minimal base shell. It renders the nav bar and the routed page. The nav comes from the ROUTER'S
+ // OWN CONFIG — every route carrying `data.section` becomes a link — so the shell holds no list of
+ // pages and is not edited when one is added. Every observable element carries a stable data-testid.
+ @Component({
+   selector: 'app-root',
+-  imports: [RouterOutlet, RouterLink],
++  imports: [RouterOutlet, RouterLink, GlobalSearch],
+   template: `
+     <div data-testid="app-root">
+       <nav data-testid="app-nav">
+@@ -18,6 +19,7 @@ import { Route, Router, RouterLink, RouterOutlet } from '@angular/router';
+           >
+         }
+       </nav>
++      <app-global-search />
+       <main data-testid="app-home">
+         <router-outlet />
+       </main>
+diff --git a/src/main/frontend/src/app/features/search/global-search.ts b/src/main/frontend/src/app/features/search/global-search.ts
+new file mode 100644
+index 0000000..c58f954
+--- /dev/null
++++ b/src/main/frontend/src/app/features/search/global-search.ts
+@@ -0,0 +1,81 @@
++import { Component, inject, signal } from '@angular/core';
++import { toObservable, toSignal } from '@angular/core/rxjs-interop';
++import { RouterLink } from '@angular/router';
++import { catchError, debounceTime, distinctUntilChanged, map, of, switchMap } from 'rxjs';
++import { SearchResults, SearchService } from './search.service';
++
++// One search box, shown in the shell on every page, that looks across both clients and projects by
++// name and lists the matches grouped by kind; each match opens its detail page.
++@Component({
++  selector: 'app-global-search',
++  imports: [RouterLink],
++  template: `
++    <div role="search">
++      <label for="global-search">Search clients and projects</label>
++      <input
++        id="global-search"
++        type="search"
++        autocomplete="off"
++        data-testid="global-search"
++        [value]="query()"
++        (input)="onSearch($event)"
++      />
++    </div>
++    @if (results(); as r) {
++      <div data-testid="search-results" aria-live="polite">
++        <section data-testid="search-clients" aria-labelledby="search-clients-heading">
++          <h2 id="search-clients-heading">Clients</h2>
++          @if (r.clients.length === 0) {
++            <p data-testid="search-clients-empty">No clients match.</p>
++          } @else {
++            <ul>
++              @for (c of r.clients; track c.id) {
++                <li [attr.data-testid]="'client-row-' + c.id">
++                  <a [routerLink]="['/clients', c.id]" data-testid="client-name">{{ c.name }}</a>
++                </li>
++              }
++            </ul>
++          }
++        </section>
++        <section data-testid="search-projects" aria-labelledby="search-projects-heading">
++          <h2 id="search-projects-heading">Projects</h2>
++          @if (r.projects.length === 0) {
++            <p data-testid="search-projects-empty">No projects match.</p>
++          } @else {
++            <ul>
++              @for (p of r.projects; track p.id) {
++                <li [attr.data-testid]="'project-row-' + p.id">
++                  <a [routerLink]="['/projects', p.id]" data-testid="project-name">{{ p.name }}</a>
++                  <span data-testid="project-client-name">({{ p.clientName }})</span>
++                </li>
++              }
++            </ul>
++          }
++        </section>
++      </div>
++    }
++  `,
++})
++export class GlobalSearch {
++  private readonly service = inject(SearchService);
++
++  protected readonly query = signal('');
++  // The matches for the current query; null while the query is blank.
++  protected readonly results = toSignal(
++    toObservable(this.query).pipe(
++      map((q) => q.trim()),
++      debounceTime(200),
++      distinctUntilChanged(),
++      switchMap((q) =>
++        q
++          ? this.service.search(q).pipe(catchError(() => of<SearchResults>({ clients: [], projects: [] })))
++          : of(null),
++      ),
++    ),
++    { initialValue: null },
++  );
++
++  protected onSearch(event: Event): void {
++    this.query.set((event.target as HTMLInputElement).value);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/search/search.service.ts b/src/main/frontend/src/app/features/search/search.service.ts
+new file mode 100644
+index 0000000..47b042e
+--- /dev/null
++++ b/src/main/frontend/src/app/features/search/search.service.ts
+@@ -0,0 +1,20 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++import { Client } from '../clients/client.service';
++import { Project } from '../projects/project.service';
++
++/** What one search found, grouped by kind. */
++export interface SearchResults {
++  clients: Client[];
++  projects: Project[];
++}
++
++@Injectable({ providedIn: 'root' })
++export class SearchService {
++  private readonly http = inject(HttpClient);
++
++  search(q: string): Observable<SearchResults> {
++    return this.http.get<SearchResults>('/api/search', { params: { q } });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+index 9e09d1e..815d64d 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+@@ -2,9 +2,15 @@ package net.officefloor.hq.app.client;
+ 
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface ClientRepository extends JpaRepository<Client, Long> {
+ 
+     /** All clients not archived, in id order. */
+     List<Client> findByArchivedFalseOrderById();
++
++    /** Clients not archived whose name contains the text, ignoring case, in id order. */
++    @Query("SELECT c FROM Client c WHERE c.archived = false AND LOWER(c.name) LIKE LOWER(CONCAT('%', :text, '%'))"
++            + " ESCAPE '\\' ORDER BY c.id")
++    List<Client> searchActiveByName(String text);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index 570878e..0928202 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -8,7 +8,7 @@ public record ClientResponse(Long id, String name, String email, boolean archive
+     public record PrimaryContact(Long id, String name) {
+     }
+ 
+-    static ClientResponse from(Client client) {
++    public static ClientResponse from(Client client) {
+         Contact primary = client.getPrimaryContact();
+         return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()));
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index 8f947e6..92b1721 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -36,6 +36,14 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+     @Query("SELECT p FROM Project p JOIN FETCH p.client c WHERE c.id = :clientId ORDER BY p.id")
+     List<Project> findAllByClientIdWithClient(Long clientId);
+ 
++    /**
++     * Projects not archived whose name contains the text, ignoring case, with their client loaded in the
++     * same query.
++     */
++    @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.archived = false"
++            + " AND LOWER(p.name) LIKE LOWER(CONCAT('%', :text, '%')) ESCAPE '\\' ORDER BY p.id")
++    List<Project> searchActiveByNameWithClient(String text);
++
+     /** One project with its client loaded in the same query. */
+     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
+     Optional<Project> findByIdWithClient(Long id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+index e743515..1620bd6 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+@@ -3,7 +3,7 @@ package net.officefloor.hq.app.project;
+ public record ProjectResponse(Long id, String name, Long clientId, String clientName, boolean archived,
+         ProjectStatus status) {
+ 
+-    static ProjectResponse from(Project project) {
++    public static ProjectResponse from(Project project) {
+         return new ProjectResponse(project.getId(), project.getName(),
+                 project.getClient().getId(), project.getClient().getName(), project.isArchived(),
+                 project.getStatus());
+diff --git a/src/main/java/net/officefloor/hq/app/search/SearchController.java b/src/main/java/net/officefloor/hq/app/search/SearchController.java
+new file mode 100644
+index 0000000..3aca18e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/search/SearchController.java
+@@ -0,0 +1,22 @@
++package net.officefloor.hq.app.search;
++
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/search")
++public class SearchController {
++
++    private final SearchService service;
++
++    public SearchController(SearchService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public SearchResponse search(@RequestParam(defaultValue = "") String q) {
++        return service.search(q);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/search/SearchResponse.java b/src/main/java/net/officefloor/hq/app/search/SearchResponse.java
+new file mode 100644
+index 0000000..b000eef
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/search/SearchResponse.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.search;
++
++import java.util.List;
++import net.officefloor.hq.app.client.ClientResponse;
++import net.officefloor.hq.app.project.ProjectResponse;
++
++/** What one search found, grouped by kind. */
++public record SearchResponse(List<ClientResponse> clients, List<ProjectResponse> projects) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/search/SearchService.java b/src/main/java/net/officefloor/hq/app/search/SearchService.java
+new file mode 100644
+index 0000000..8cfff15
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/search/SearchService.java
+@@ -0,0 +1,37 @@
++package net.officefloor.hq.app.search;
++
++import java.util.List;
++import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.client.ClientResponse;
++import net.officefloor.hq.app.project.ProjectRepository;
++import net.officefloor.hq.app.project.ProjectResponse;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++@Service
++public class SearchService {
++
++    private final ClientRepository clients;
++    private final ProjectRepository projects;
++
++    public SearchService(ClientRepository clients, ProjectRepository projects) {
++        this.clients = clients;
++        this.projects = projects;
++    }
++
++    /**
++     * The clients and projects, not archived, whose name contains the query (ignoring case); a blank
++     * query finds nothing.
++     */
++    @Transactional(readOnly = true)
++    public SearchResponse search(String query) {
++        String text = query == null ? "" : query.trim();
++        if (text.isEmpty()) {
++            return new SearchResponse(List.of(), List.of());
++        }
++        String pattern = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
++        return new SearchResponse(
++                clients.searchActiveByName(pattern).stream().map(ClientResponse::from).toList(),
++                projects.searchActiveByNameWithClient(pattern).stream().map(ProjectResponse::from).toList());
++    }
++}
