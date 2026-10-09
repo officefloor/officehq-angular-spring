@@ -1,0 +1,341 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index d5e78ff..bd66cff 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -18,8 +18,9 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // (the tax and levy as a percentage of the total before tax), any flat surcharge (such as a handling fee, added after tax and
+ // never taxed), the total before tax, and the final total including both taxes (also shown as the total after tax).
+ // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
++// When the net total comes out under the invoice's minimum charge, the minimum is billed instead and marked as applied.
+ // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the set number of days.
+-// Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge and the early-payment discount can be changed while it is a draft.
++// Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, Notes],
+@@ -299,6 +300,19 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 <td></td>
+               }
+             </tr>
++            @if (inv.minimumApplied) {
++              <tr data-testid="invoice-minimum-applied">
++                <th scope="row" colspan="5">
++                  Minimum charge applied (net total
++                  <span data-testid="invoice-net-total">{{ inv.netTotal | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span>
++                  is under the minimum)
++                </th>
++                <td data-testid="invoice-minimum-charge">{{ inv.minimumCharge | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                @if (inv.status === 'DRAFT') {
++                  <td></td>
++                }
++              </tr>
++            }
+             <tr>
+               <th scope="row" colspan="5">Total</th>
+               <td data-testid="invoice-amount">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+@@ -500,6 +514,33 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+           }
+         </form>
+ 
++        <form [formGroup]="minimumChargeForm" (ngSubmit)="applyMinimumCharge()" data-testid="minimum-charge-form" novalidate>
++          <h2>Minimum charge</h2>
++          <div>
++            <label for="minimum-charge-amount">Least amount billed when the total comes out under it</label>
++            <input
++              id="minimum-charge-amount"
++              type="number"
++              inputmode="decimal"
++              min="0"
++              step="0.01"
++              formControlName="minimumCharge"
++              data-testid="minimum-charge-form-amount"
++              [attr.aria-invalid]="minimumChargeInvalid()"
++              [attr.aria-describedby]="minimumChargeInvalid() ? 'minimum-charge-amount-error' : null"
++            />
++            @if (minimumChargeInvalid()) {
++              <p id="minimum-charge-amount-error" role="alert" data-testid="minimum-charge-form-amount-error">
++                Enter an amount of 0 or more with at most two decimal places.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="minimum-charge-form-submit" [disabled]="minimumChargeSaving()">Apply minimum charge</button>
++          @if (minimumChargeError()) {
++            <p role="alert" data-testid="minimum-charge-form-error">{{ minimumChargeError() }}</p>
++          }
++        </form>
++
+         <form [formGroup]="earlyPayForm" (ngSubmit)="applyEarlyPayment()" data-testid="early-pay-form" novalidate>
+           <h2>Early-payment discount</h2>
+           <div>
+@@ -913,6 +954,45 @@ export class InvoiceDetailPage {
+     });
+   }
+ 
++  protected readonly minimumChargeSaving = signal(false);
++  protected readonly minimumChargeError = signal<string | null>(null);
++
++  protected readonly minimumChargeForm = this.fb.group({
++    minimumCharge: ['', [Validators.required, Validators.min(0), Validators.pattern(TWO_DECIMALS)]],
++  });
++
++  // Starts the minimum charge field from the invoice's current minimum whenever the invoice loads.
++  private readonly syncMinimumCharge = effect(() => {
++    if (this.invoice.hasValue()) {
++      this.minimumChargeForm.setValue({ minimumCharge: String(this.invoice.value().minimumCharge) });
++    }
++  });
++
++  protected minimumChargeInvalid(): boolean {
++    const control = this.minimumChargeForm.controls.minimumCharge;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected applyMinimumCharge(): void {
++    if (this.minimumChargeForm.invalid) {
++      this.minimumChargeForm.markAllAsTouched();
++      return;
++    }
++    this.minimumChargeSaving.set(true);
++    this.minimumChargeError.set(null);
++    const minimumCharge = Number(this.minimumChargeForm.getRawValue().minimumCharge);
++    this.service.applyMinimumCharge(this.projectIdNumber(), Number(this.invoiceId()), minimumCharge).subscribe({
++      next: (updated) => {
++        this.invoice.set(updated);
++        this.minimumChargeSaving.set(false);
++      },
++      error: () => {
++        this.minimumChargeError.set('Could not apply the minimum charge. Please try again.');
++        this.minimumChargeSaving.set(false);
++      },
++    });
++  }
++
+   protected readonly earlyPaySaving = signal(false);
+   protected readonly earlyPayError = signal<string | null>(null);
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 47ab42d..5c34f15 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -145,6 +145,12 @@ export interface InvoiceDetail extends Invoice {
+   lineItems: LineItem[];
+   /** The client's tax registration number; null when they are not tax registered. */
+   clientTaxNumber: string | null;
++  /** The least the invoice bills; zero when there is no minimum charge. */
++  minimumCharge: number;
++  /** What the invoice comes to before any minimum charge. */
++  netTotal: number;
++  /** Whether the net total came out under the minimum charge, so the minimum is billed instead. */
++  minimumApplied: boolean;
+ }
+ 
+ export interface NewLineItem {
+@@ -249,6 +255,11 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/surcharge`, { surcharge });
+   }
+ 
++  /** Sets the minimum charge billed on a draft invoice when its net total comes out under it; zero removes it. */
++  applyMinimumCharge(projectId: number, invoiceId: number, minimumCharge: number): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/minimum-charge`, { minimumCharge });
++  }
++
+   /** Sets the early-payment discount offered on a draft invoice; zero for either removes the offer. */
+   applyEarlyPayment(projectId: number, invoiceId: number, earlyPaymentPct: number, earlyPaymentDays: number): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/early-payment`, {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 183226e..b477bdc 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -235,13 +235,15 @@ public class TestSupportController {
+             // A flat surcharge (such as a handling fee) is added on last, after any tax.
+             BigDecimal surcharge = i.get("surcharge") == null ? BigDecimal.ZERO
+                     : new BigDecimal(i.get("surcharge").toString());
++            // A minimum charge is billed instead when the net total comes out under it.
++            BigDecimal minimumCharge = decimal(i.get("minimumCharge"));
+             int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+-                    (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge), taxPct, levyPct,
++                    (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
+                     surcharge, taxInclusive, taxExempt,
+-                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due);
++                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge);
+             for (Map<String, Object> d : discounts) {
+                 if (d.get("id") != null) {
+                     jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount, discount_cap) VALUES (?, ?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 187b156..f5cae63 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -42,6 +42,9 @@ import net.officefloor.hq.app.project.Project;
+  * <p>
+  * A tax-exempt invoice (for a tax-exempt client) has no taxable lines at all: it carries no tax or levy
+  * whatever its lines or rates say, so its amount is the subtotal less the discount (plus any surcharge).
++ * <p>
++ * An invoice can carry a minimum charge: when its net total (everything above, worked out as usual) comes
++ * out under it, the minimum is billed instead, and the invoice records that the minimum was applied.
+  */
+ @Entity
+ @Table(name = "invoice")
+@@ -68,6 +71,10 @@ public class Invoice {
+     @Column(nullable = false, precision = 12, scale = 2)
+     private BigDecimal surcharge = BigDecimal.ZERO.setScale(2);
+ 
++    /** The least the invoice bills; zero when there is no minimum charge. */
++    @Column(name = "minimum_charge", nullable = false, precision = 12, scale = 2)
++    private BigDecimal minimumCharge = BigDecimal.ZERO.setScale(2);
++
+     /** Whether the prices already include the tax and levy, so they are backed out rather than added on. */
+     @Column(name = "tax_inclusive", nullable = false)
+     private boolean taxInclusive;
+@@ -269,6 +276,25 @@ public class Invoice {
+         return surcharge;
+     }
+ 
++    /** The least this invoice bills; zero when there is no minimum charge. */
++    public BigDecimal getMinimumCharge() {
++        return minimumCharge;
++    }
++
++    /**
++     * What the invoice comes to before any minimum charge: the subtotal less the discount plus the tax and
++     * levy (unless they are inside the prices), plus the surcharge.
++     */
++    public BigDecimal getNetTotal() {
++        BigDecimal discounted = getSubtotal().subtract(getDiscount());
++        return (taxInclusive ? discounted : discounted.add(getTax()).add(getLevy())).add(surcharge);
++    }
++
++    /** Whether the net total came out under the minimum charge, so the minimum is billed instead. */
++    public boolean isMinimumApplied() {
++        return getNetTotal().compareTo(minimumCharge) < 0;
++    }
++
+     /** The taxable lines (leaving out tax-free ones), each less the discount taken off it, added up. */
+     private BigDecimal getDiscountedTaxable() {
+         return sumOverTaxableLines(line -> line);
+@@ -461,6 +487,12 @@ public class Invoice {
+         recalculateAmount();
+     }
+ 
++    /** Sets the minimum charge billed on this invoice and reworks its amount to match. */
++    public void applyMinimumCharge(BigDecimal minimumCharge) {
++        this.minimumCharge = minimumCharge.setScale(2, RoundingMode.HALF_UP);
++        recalculateAmount();
++    }
++
+     /**
+      * Sets the early-payment discount offered on this invoice: the percentage taken off if it is paid
+      * within the given number of days of being issued. It does not change the amount owed.
+@@ -515,9 +547,7 @@ public class Invoice {
+     }
+ 
+     private void recalculateAmount() {
+-        BigDecimal subtotal = getSubtotal();
+-        BigDecimal discounted = subtotal.subtract(getDiscount());
+-        this.amount = (taxInclusive ? discounted : discounted.add(getTax()).add(getLevy())).add(surcharge);
++        this.amount = getNetTotal().max(minimumCharge);
+     }
+ 
+     /** Marks this invoice as sent to the client. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index b82cb07..33a40c5 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -95,6 +95,12 @@ public class InvoiceController {
+         return service.applySurcharge(projectId, invoiceId, request);
+     }
+ 
++    @PutMapping("/{invoiceId}/minimum-charge")
++    public InvoiceDetailResponse applyMinimumCharge(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody MinimumChargeRequest request) {
++        return service.applyMinimumCharge(projectId, invoiceId, request);
++    }
++
+     @PutMapping("/{invoiceId}/early-payment")
+     public InvoiceDetailResponse applyEarlyPayment(@PathVariable Long projectId, @PathVariable Long invoiceId,
+             @Valid @RequestBody EarlyPaymentRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 1bb2edc..657cc87 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -14,7 +14,8 @@ import net.officefloor.hq.app.client.Currency;
+  * there is no tax at all), the effective tax rate (the sales tax and levy together as a percentage of
+  * the total before tax), any early-payment discount offered (its percentage, the days after issue it
+  * must be paid within, the last day to pay, and the reduced amount; null when none is offered), and the
+- * client's tax number (null when the client is not tax registered).
++ * client's tax number (null when the client is not tax registered), the minimum charge, the net total
++ * before it, and whether the minimum was billed because the net total came out under it.
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+@@ -22,7 +23,8 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency,
+         BigDecimal levyPct, BigDecimal levy, BigDecimal surcharge, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
+         BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
+         InvoiceStatus status, LocalDate issuedDate,
+-        LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts) {
++        LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts,
++        BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied) {
+ 
+     static InvoiceDetailResponse from(Invoice invoice) {
+         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
+@@ -37,6 +39,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency,
+                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
+                 invoice.getProject().getClient().getTaxNumber(),
+                 invoice.getDiscounts().stream().map(d -> new InvoiceDiscountResponse(d.getId(), d.getDiscountPct(),
+-                        d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList());
++                        d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList(),
++                invoice.getMinimumCharge(), invoice.getNetTotal(), invoice.isMinimumApplied());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 1ded4de..3b83add 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -200,6 +200,15 @@ public class InvoiceService {
+         return InvoiceDetailResponse.from(invoice);
+     }
+ 
++    /** Sets the minimum charge on a draft invoice and reworks the invoice amount to match. */
++    @Transactional
++    public InvoiceDetailResponse applyMinimumCharge(Long projectId, Long invoiceId, MinimumChargeRequest request) {
++        Invoice invoice = findDraft(projectId, invoiceId);
++        invoice.applyMinimumCharge(request.minimumCharge());
++        invoices.flush();
++        return InvoiceDetailResponse.from(invoice);
++    }
++
+     /** Sets the early-payment discount offered on a draft invoice. */
+     @Transactional
+     public InvoiceDetailResponse applyEarlyPayment(Long projectId, Long invoiceId, EarlyPaymentRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/MinimumChargeRequest.java b/src/main/java/net/officefloor/hq/app/invoice/MinimumChargeRequest.java
+new file mode 100644
+index 0000000..1a9bfff
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/MinimumChargeRequest.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/** Payload to set the minimum charge billed on a draft invoice; zero removes it. */
++public record MinimumChargeRequest(
++        @NotNull @DecimalMin("0") @Digits(integer = 10, fraction = 2) BigDecimal minimumCharge) {
++}
+diff --git a/src/main/resources/db/migration/V51__invoice_minimum_charge.sql b/src/main/resources/db/migration/V51__invoice_minimum_charge.sql
+new file mode 100644
+index 0000000..e789387
+--- /dev/null
++++ b/src/main/resources/db/migration/V51__invoice_minimum_charge.sql
+@@ -0,0 +1,6 @@
++-- An invoice can carry a minimum charge: when its net total (after the discounts, taxes and surcharge)
++-- comes out under it, the minimum is billed instead. Existing invoices have none, so their amounts are
++-- unchanged.
++ALTER TABLE invoice ADD COLUMN minimum_charge DECIMAL(12, 2) DEFAULT 0 NOT NULL;
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_minimum_charge_non_negative CHECK (minimum_charge >= 0);
