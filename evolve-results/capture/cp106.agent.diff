@@ -1,0 +1,84 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 897c1bb..c27acf1 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -23,6 +23,8 @@ export interface Invoice {
+ /** An invoice as listed for its project, with how much is still left to pay after any payments. */
+ export interface ProjectInvoice extends Invoice {
+   amountDue: number;
++  /** Whether a credit note has been put against the invoice. */
++  creditApplied: boolean;
+ }
+ 
+ /** An invoice as listed across all projects, with the name of the project it is for. */
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index e64458a..31842b2 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -21,7 +21,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+ 
+ // A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each is still left to pay, adds a
+ // new draft (starting from the default tax rate in the settings), sends a draft and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
+-// opens onto its line items and payments.
++// opens onto its line items and payments. Invoices with a credit put against them are flagged.
+ @Component({
+   selector: 'app-project-invoices',
+   imports: [ReactiveFormsModule, CurrencyPipe, RouterLink],
+@@ -153,7 +153,12 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+                 </td>
+                 <td data-testid="invoice-amount">{{ i.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                 <td data-testid="invoice-due-amount">{{ i.amountDue | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+-                <td data-testid="invoice-status">{{ i.status }}</td>
++                <td data-testid="invoice-status">
++                  {{ i.status }}
++                  @if (i.creditApplied) {
++                    <span class="credit-flag" data-testid="invoice-credit-flag">Credited</span>
++                  }
++                </td>
+                 <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
+                 <td data-testid="invoice-due">{{ i.dueDate }}</td>
+                 <td>
+diff --git a/src/main/frontend/src/styles.css b/src/main/frontend/src/styles.css
+index f62315c..1cfe9cc 100644
+--- a/src/main/frontend/src/styles.css
++++ b/src/main/frontend/src/styles.css
+@@ -17,3 +17,15 @@
+     display: none;
+   }
+ }
++
++/* Marks an invoice that has had a credit put against it. */
++.credit-flag {
++  display: inline-block;
++  margin-left: 0.5em;
++  padding: 0 0.4em;
++  border: 1px solid #1a5e20;
++  border-radius: 0.25em;
++  color: #1a5e20;
++  background: #fff;
++  font-size: 0.85em;
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+index c63e24a..e437731 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+@@ -6,15 +6,16 @@ import net.officefloor.hq.app.client.Currency;
+ 
+ /**
+  * An invoice, with how much of it is still left to pay after the payments made and credit notes raised against
+- * it (nothing once void).
++ * it (nothing once void), and whether any credit has been put against it.
+  */
+ public record InvoiceResponse(Long id, Long projectId, Currency currency, BigDecimal amount, InvoiceStatus status,
+-        LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue) {
++        LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue,
++        boolean creditApplied) {
+ 
+     static InvoiceResponse from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
+         return new InvoiceResponse(invoice.getId(), invoice.getProject().getId(),
+                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(),
+                 invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
+-                invoice.amountDue(paid, credited));
++                invoice.amountDue(paid, credited), credited.signum() > 0);
+     }
+ }
