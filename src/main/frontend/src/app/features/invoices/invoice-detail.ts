@@ -188,7 +188,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
               }
             </tr>
             <tr>
-              <th scope="row" colspan="4">
+              <th scope="row" colspan="4" data-testid="invoice-tax-label">
                 Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)
               </th>
               <td data-testid="invoice-tax">{{ inv.tax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
