@@ -12,6 +12,7 @@ import net.officefloor.hq.app.invoice.Invoice;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.payment.PaymentRepository;
+import net.officefloor.hq.app.refund.RefundRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,22 +29,25 @@ public class ClientCreditService {
     private final InvoiceRepository invoices;
     private final PaymentRepository payments;
     private final CreditNoteRepository creditNotes;
+    private final RefundRepository refunds;
 
     public ClientCreditService(ClientRepository clients, DepositRepository deposits,
             DepositApplicationRepository applications, InvoiceRepository invoices, PaymentRepository payments,
-            CreditNoteRepository creditNotes) {
+            CreditNoteRepository creditNotes, RefundRepository refunds) {
         this.clients = clients;
         this.deposits = deposits;
         this.applications = applications;
         this.invoices = invoices;
         this.payments = payments;
         this.creditNotes = creditNotes;
+        this.refunds = refunds;
     }
 
     /**
      * Works out how much credit a client has to spend. A deposit is unused until it is put toward invoices. A credit
      * note is used only as far as it was needed to settle its invoice once payments are counted; anything beyond
      * that (say, a credit on an invoice already paid in full, or on one since cancelled) is still the client's to spend.
+     * Whatever has been refunded to the client is no longer theirs to spend.
      */
     @Transactional(readOnly = true)
     public ClientCreditResponse available(Long clientId) {
@@ -51,8 +55,10 @@ public class ClientCreditService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
         }
         BigDecimal held = deposits.sumAmountByClientId(clientId)
-                .subtract(applications.sumAmountByClientId(clientId)).setScale(2).max(ZERO);
-        BigDecimal unusedCredit = unusedCreditNotes(clientId);
+                .subtract(applications.sumAmountByClientId(clientId))
+                .subtract(refunds.sumFromDepositsByClientId(clientId)).setScale(2).max(ZERO);
+        BigDecimal unusedCredit = unusedCreditNotes(clientId)
+                .subtract(refunds.sumFromCreditNotesByClientId(clientId)).setScale(2).max(ZERO);
         return new ClientCreditResponse(held, unusedCredit, held.add(unusedCredit));
     }
 

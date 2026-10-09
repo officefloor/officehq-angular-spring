@@ -7,7 +7,7 @@ import { DepositService } from './deposit.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
-// The deposits a client has paid up front, before any invoice, with what is still held, how much has been put toward invoices, and a form to record another.
+// The deposits a client has paid up front, before any invoice, with what is still held, how much has been put toward invoices or refunded, and a form to record another.
 @Component({
   selector: 'app-client-deposits',
   imports: [ReactiveFormsModule, CurrencyPipe],
@@ -24,6 +24,12 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
           <p>
             Put toward invoices:
             <span data-testid="client-deposit-applied">{{ deposits.value().applied | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
+          </p>
+        }
+        @if (deposits.value().refunded > 0) {
+          <p>
+            Refunded:
+            <span data-testid="client-deposit-refunded">{{ deposits.value().refunded | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
           </p>
         }
         @if (deposits.value().deposits.length > 0) {

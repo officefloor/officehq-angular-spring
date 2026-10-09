@@ -19,6 +19,7 @@ import net.officefloor.hq.app.deposit.DepositRepository;
 import net.officefloor.hq.app.invoice.Invoice;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
+import net.officefloor.hq.app.refund.RefundRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,19 +34,22 @@ public class PaymentService {
     private final ClientPaymentRepository clientPayments;
     private final DepositRepository deposits;
     private final DepositApplicationRepository depositApplications;
+    private final RefundRepository refunds;
     private final ClientRepository clients;
     private final Clock clock;
     private final Audit audit;
 
     public PaymentService(PaymentRepository payments, CreditNoteRepository creditNotes, InvoiceRepository invoices,
             ClientPaymentRepository clientPayments, DepositRepository deposits,
-            DepositApplicationRepository depositApplications, ClientRepository clients, Clock clock, Audit audit) {
+            DepositApplicationRepository depositApplications, RefundRepository refunds, ClientRepository clients,
+            Clock clock, Audit audit) {
         this.payments = payments;
         this.creditNotes = creditNotes;
         this.invoices = invoices;
         this.clientPayments = clientPayments;
         this.deposits = deposits;
         this.depositApplications = depositApplications;
+        this.refunds = refunds;
         this.clients = clients;
         this.clock = clock;
         this.audit = audit;
@@ -100,7 +104,8 @@ public class PaymentService {
         requireClient(clientId);
         BigDecimal allocated = total(request.allocations(), DepositApplicationRequest.Allocation::amount);
         BigDecimal held = deposits.sumAmountByClientId(clientId)
-                .subtract(depositApplications.sumAmountByClientId(clientId));
+                .subtract(depositApplications.sumAmountByClientId(clientId))
+                .subtract(refunds.sumFromDepositsByClientId(clientId));
         if (allocated.compareTo(held) > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "The shares add up to more than the deposits held");

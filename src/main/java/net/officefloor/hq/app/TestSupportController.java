@@ -60,6 +60,7 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE client_payment RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE refund RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE deposit_application RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE deposit RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");

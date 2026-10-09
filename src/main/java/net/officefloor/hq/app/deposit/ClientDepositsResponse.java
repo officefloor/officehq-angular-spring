@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * The deposits a client has paid, oldest first; {@code total} is what is still held once any
- * already put toward invoices ({@code applied}) is taken off.
+ * already put toward invoices ({@code applied}) or refunded to the client ({@code refunded}) is taken off.
  */
-public record ClientDepositsResponse(BigDecimal total, BigDecimal applied, List<DepositResponse> deposits) {
+public record ClientDepositsResponse(BigDecimal total, BigDecimal applied, BigDecimal refunded, List<DepositResponse> deposits) {
 }

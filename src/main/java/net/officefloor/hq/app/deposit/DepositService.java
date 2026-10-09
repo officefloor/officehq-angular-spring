@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.ClientRepository;
+import net.officefloor.hq.app.refund.RefundRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,13 +15,15 @@ public class DepositService {
 
     private final DepositRepository deposits;
     private final DepositApplicationRepository applications;
+    private final RefundRepository refunds;
     private final ClientRepository clients;
     private final Audit audit;
 
     public DepositService(DepositRepository deposits, DepositApplicationRepository applications,
-            ClientRepository clients, Audit audit) {
+            RefundRepository refunds, ClientRepository clients, Audit audit) {
         this.deposits = deposits;
         this.applications = applications;
+        this.refunds = refunds;
         this.clients = clients;
         this.audit = audit;
     }
@@ -33,7 +36,8 @@ public class DepositService {
         BigDecimal paid = held.stream().map(DepositResponse::amount)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         BigDecimal applied = applications.sumAmountByClientId(clientId).setScale(2);
-        return new ClientDepositsResponse(paid.subtract(applied), applied, held);
+        BigDecimal refunded = refunds.sumFromDepositsByClientId(clientId).setScale(2);
+        return new ClientDepositsResponse(paid.subtract(applied).subtract(refunded), applied, refunded, held);
     }
 
     /** Records money a client paid up front, before any invoice; it is held against the client. */

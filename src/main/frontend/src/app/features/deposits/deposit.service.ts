@@ -21,10 +21,11 @@ export interface NewDepositApplication {
   allocations: { invoiceId: number; amount: number }[];
 }
 
-/** The deposits a client has paid, oldest first; `total` is what is still held after `applied` was put toward invoices. */
+/** The deposits a client has paid, oldest first; `total` is what is still held after `applied` was put toward invoices and `refunded` paid back. */
 export interface ClientDeposits {
   total: number;
   applied: number;
+  refunded: number;
   deposits: Deposit[];
 }
 
