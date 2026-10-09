@@ -1,11 +1,13 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { Client, ClientService } from './client.service';
 
-// Clients page: add a client (name + email) and list all clients, filterable by name.
+// Clients page: add a client (name + email) and list all clients, filterable by name; each client
+// opens its detail page.
 @Component({
   selector: 'app-clients',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, RouterLink],
   template: `
     <h1>Clients</h1>
 
@@ -73,6 +75,7 @@ import { Client, ClientService } from './client.service';
             <tr>
               <th scope="col">Name</th>
               <th scope="col">Email</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -80,6 +83,14 @@ import { Client, ClientService } from './client.service';
               <tr [attr.data-testid]="'client-row-' + c.id">
                 <td data-testid="client-name">{{ c.name }}</td>
                 <td data-testid="client-email">{{ c.email }}</td>
+                <td>
+                  <a
+                    [routerLink]="['/clients', c.id]"
+                    [attr.data-testid]="'client-open-' + c.id"
+                    [attr.aria-label]="'Open ' + c.name"
+                    >Open</a
+                  >
+                </td>
               </tr>
             }
           </tbody>

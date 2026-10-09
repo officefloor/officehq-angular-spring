@@ -22,6 +22,10 @@ export class ProjectService {
     return this.http.get<Project[]>('/api/projects');
   }
 
+  listForClient(clientId: number): Observable<Project[]> {
+    return this.http.get<Project[]>(`/api/clients/${clientId}/projects`);
+  }
+
   get(id: number): Observable<Project> {
     return this.http.get<Project>(`/api/projects/${id}`);
   }

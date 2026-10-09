@@ -11,6 +11,10 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
     @Query("SELECT p FROM Project p JOIN FETCH p.client ORDER BY p.id")
     List<Project> findAllWithClient();
 
+    /** A client's projects with their client loaded in the same query. */
+    @Query("SELECT p FROM Project p JOIN FETCH p.client c WHERE c.id = :clientId ORDER BY p.id")
+    List<Project> findByClientIdWithClient(Long clientId);
+
     /** One project with its client loaded in the same query. */
     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
     Optional<Project> findByIdWithClient(Long id);

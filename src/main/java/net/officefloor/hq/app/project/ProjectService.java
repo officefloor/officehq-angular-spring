@@ -25,6 +25,14 @@ public class ProjectService {
     }
 
     @Transactional(readOnly = true)
+    public List<ProjectResponse> listForClient(Long clientId) {
+        if (!clients.existsById(clientId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+        }
+        return projects.findByClientIdWithClient(clientId).stream().map(ProjectResponse::from).toList();
+    }
+
+    @Transactional(readOnly = true)
     public ProjectResponse get(Long id) {
         return projects.findByIdWithClient(id).map(ProjectResponse::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));

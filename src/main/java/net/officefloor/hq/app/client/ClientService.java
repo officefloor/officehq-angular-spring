@@ -2,8 +2,10 @@ package net.officefloor.hq.app.client;
 
 import java.util.List;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ClientService {
@@ -17,6 +19,12 @@ public class ClientService {
     @Transactional(readOnly = true)
     public List<ClientResponse> list() {
         return clients.findAll(Sort.by("id")).stream().map(ClientResponse::from).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ClientResponse get(Long id) {
+        return clients.findById(id).map(ClientResponse::from)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
     }
 
     @Transactional

@@ -18,6 +18,10 @@ export class ClientService {
     return this.http.get<Client[]>('/api/clients');
   }
 
+  get(id: number): Observable<Client> {
+    return this.http.get<Client>(`/api/clients/${id}`);
+  }
+
   create(client: NewClient): Observable<Client> {
     return this.http.post<Client>('/api/clients', client);
   }
