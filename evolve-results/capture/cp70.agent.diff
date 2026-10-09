@@ -1,0 +1,100 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 1a75677..6400d73 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -12,7 +12,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ 
+ // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
+ // amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
+-// sales tax added on it after the discount, any levy (a second tax) added on the same base, and the final total including both taxes.
++// sales tax added on it after the discount, any levy (a second tax) added on the same base, the total before tax, and the final total including both taxes (also shown as the total after tax).
+ // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
+ // Lines, the discount, the tax rate and the levy rate can be changed while it is a draft.
+ @Component({
+@@ -216,6 +216,13 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                 <td></td>
+               }
+             </tr>
++            <tr>
++              <th scope="row" colspan="4">Total before tax</th>
++              <td data-testid="invoice-total-ex-tax">{{ inv.totalExTax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              @if (inv.status === 'DRAFT') {
++                <td></td>
++              }
++            </tr>
+             <tr>
+               <th scope="row" colspan="4">Total</th>
+               <td data-testid="invoice-amount">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+@@ -223,6 +230,13 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                 <td></td>
+               }
+             </tr>
++            <tr>
++              <th scope="row" colspan="4">Total after tax</th>
++              <td data-testid="invoice-total-inc-tax">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              @if (inv.status === 'DRAFT') {
++                <td></td>
++              }
++            </tr>
+           </tfoot>
+         </table>
+         @if (editError()) {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 63c091e..fdca0a0 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -89,6 +89,8 @@ export interface LineItem {
+  * the tax plus the levy.
+  */
+ export interface InvoiceDetail extends Invoice {
++  /** The total before tax: the amount less the sales tax and levy. */
++  totalExTax: number;
+   subtotal: number;
+   discountPct: number;
+   discount: number;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 7e88c4a..0be2f85 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -96,6 +96,14 @@ public class Invoice {
+         return amount;
+     }
+ 
++    /**
++     * The total before tax: the amount owed less the sales tax and levy, whether they were added on or
++     * are included in the prices.
++     */
++    public BigDecimal getTotalExTax() {
++        return amount.subtract(getTax()).subtract(getLevy());
++    }
++
+     /** The percentage taken off the subtotal; zero when there is no discount. */
+     public BigDecimal getDiscountPct() {
+         return discountPct;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 26b33a9..3c0b298 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -9,18 +9,19 @@ import net.officefloor.hq.app.client.Currency;
+  * A single invoice together with the line items it is built from: their subtotal, the percentage
+  * discount and what it takes off, the sales tax percentage, the taxable base it is charged on (the
+  * taxable lines after the discount) and what it adds, the levy (second tax) percentage and what it adds
+- * on the same base, the amount owed including both taxes, whether the prices already include the taxes
++ * on the same base, the amount owed including both taxes, the total before tax, whether the prices already include the taxes
+  * (so they are worked back out rather than added on), and the
+  * client's tax number (null when the client is not tax registered).
+  */
+-public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal subtotal,
++public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal totalExTax,
++        BigDecimal subtotal,
+         BigDecimal discountPct, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
+         BigDecimal levyPct, BigDecimal levy, boolean taxInclusive, InvoiceStatus status, LocalDate issuedDate,
+         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber) {
+ 
+     static InvoiceDetailResponse from(Invoice invoice) {
+         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
+-                invoice.getProject().getClient().getCurrency(), invoice.getAmount(),
++                invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscount(),
+                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
+                 invoice.getLevyPct(), invoice.getLevy(), invoice.isTaxInclusive(),
