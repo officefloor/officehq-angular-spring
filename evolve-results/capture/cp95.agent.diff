@@ -1,0 +1,197 @@
+diff --git a/src/main/frontend/src/app/features/tasks/project-tasks.ts b/src/main/frontend/src/app/features/tasks/project-tasks.ts
+index c7d1b96..bf0e8c7 100644
+--- a/src/main/frontend/src/app/features/tasks/project-tasks.ts
++++ b/src/main/frontend/src/app/features/tasks/project-tasks.ts
+@@ -39,6 +39,16 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+             data-testid="task-form-due-date"
+           />
+         </div>
++        <div>
++          <label for="task-assignee">Assignee (optional)</label>
++          <input
++            id="task-assignee"
++            type="text"
++            formControlName="assignee"
++            maxlength="255"
++            data-testid="task-form-assignee"
++          />
++        </div>
+         <button type="submit" data-testid="task-form-submit" [disabled]="saving()">Add task</button>
+         @if (saveError()) {
+           <p role="alert" data-testid="task-form-error">{{ saveError() }}</p>
+@@ -79,6 +89,7 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+                 <tr>
+                   <th scope="col">Task</th>
+                   <th scope="col">Due date</th>
++                  <th scope="col">Assignee</th>
+                   <th scope="col">Status</th>
+                   <th scope="col">Action</th>
+                 </tr>
+@@ -88,6 +99,7 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+                   <tr [attr.data-testid]="'task-row-' + t.id">
+                     <td data-testid="task-title">{{ t.title }}</td>
+                     <td data-testid="task-due-date">{{ t.dueDate ?? '' }}</td>
++                    <td data-testid="task-assignee">{{ t.assignee ?? '' }}</td>
+                     <td data-testid="task-status">{{ t.done ? 'DONE' : 'OPEN' }}</td>
+                     <td>
+                       <button
+@@ -140,6 +152,7 @@ export class ProjectTasks {
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     title: ['', [Validators.required, Validators.maxLength(255)]],
+     dueDate: [''],
++    assignee: ['', Validators.maxLength(255)],
+   });
+ 
+   protected setFilter(event: Event): void {
+@@ -152,7 +165,7 @@ export class ProjectTasks {
+   }
+ 
+   protected submit(): void {
+-    const { title: rawTitle, dueDate } = this.form.getRawValue();
++    const { title: rawTitle, dueDate, assignee } = this.form.getRawValue();
+     const title = rawTitle.trim();
+     if (this.form.invalid || !title) {
+       this.form.controls.title.setValue('');
+@@ -161,7 +174,7 @@ export class ProjectTasks {
+     }
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.create(this.projectId(), title, dueDate || null).subscribe({
++    this.service.create(this.projectId(), title, dueDate || null, assignee.trim() || null).subscribe({
+       next: (created) => {
+         this.tasks.update((list) => [...(list ?? []), created]);
+         this.form.reset();
+diff --git a/src/main/frontend/src/app/features/tasks/task.service.ts b/src/main/frontend/src/app/features/tasks/task.service.ts
+index c89321a..59a304a 100644
+--- a/src/main/frontend/src/app/features/tasks/task.service.ts
++++ b/src/main/frontend/src/app/features/tasks/task.service.ts
+@@ -8,6 +8,7 @@ export interface Task {
+   title: string;
+   done: boolean;
+   dueDate: string | null;
++  assignee: string | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+@@ -18,8 +19,13 @@ export class TaskService {
+     return this.http.get<Task[]>(`/api/projects/${projectId}/tasks`);
+   }
+ 
+-  create(projectId: number, title: string, dueDate: string | null): Observable<Task> {
+-    return this.http.post<Task>(`/api/projects/${projectId}/tasks`, { title, dueDate });
++  create(
++    projectId: number,
++    title: string,
++    dueDate: string | null,
++    assignee: string | null,
++  ): Observable<Task> {
++    return this.http.post<Task>(`/api/projects/${projectId}/tasks`, { title, dueDate, assignee });
+   }
+ 
+   toggle(projectId: number, taskId: number): Observable<Task> {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 3f88965..f898064 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -117,10 +117,11 @@ public class TestSupportController {
+                     ((Number) pt.get("projectId")).longValue(), ((Number) pt.get("tagId")).longValue());
+         }
+         for (Map<String, Object> t : rows(fixture, "tasks")) {
+-            jdbc.update("INSERT INTO task (id, project_id, title, done, due_date) VALUES (?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO task (id, project_id, title, done, due_date, assignee) VALUES (?, ?, ?, ?, ?, ?)",
+                     ((Number) t.get("id")).longValue(), ((Number) t.get("projectId")).longValue(),
+                     t.get("title"), Boolean.TRUE.equals(t.get("done")),
+-                    t.get("dueDate") == null ? null : LocalDate.parse(t.get("dueDate").toString()));
++                    t.get("dueDate") == null ? null : LocalDate.parse(t.get("dueDate").toString()),
++                    t.get("assignee"));
+         }
+         for (Map<String, Object> n : rows(fixture, "notes")) {
+             Instant at = n.get("at") == null ? clock.instant() : seedInstant(n.get("at").toString());
+diff --git a/src/main/java/net/officefloor/hq/app/task/Task.java b/src/main/java/net/officefloor/hq/app/task/Task.java
+index 74e204d..0f9a6af 100644
+--- a/src/main/java/net/officefloor/hq/app/task/Task.java
++++ b/src/main/java/net/officefloor/hq/app/task/Task.java
+@@ -31,13 +31,17 @@ public class Task {
+     /** When the task should be finished by; optional. */
+     private LocalDate dueDate;
+ 
++    /** The name of the person the task is for; optional. */
++    private String assignee;
++
+     protected Task() {
+     }
+ 
+-    public Task(Project project, String title, LocalDate dueDate) {
++    public Task(Project project, String title, LocalDate dueDate, String assignee) {
+         this.project = project;
+         this.title = title;
+         this.dueDate = dueDate;
++        this.assignee = assignee;
+     }
+ 
+     public Long getId() {
+@@ -60,6 +64,10 @@ public class Task {
+         return dueDate;
+     }
+ 
++    public String getAssignee() {
++        return assignee;
++    }
++
+     /** Flips the task between open and done. */
+     public void toggle() {
+         this.done = !this.done;
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskRequest.java b/src/main/java/net/officefloor/hq/app/task/TaskRequest.java
+index 590de7b..8aef3df 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskRequest.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskRequest.java
+@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
+ 
+-/** Payload to add a task to a project; the due date is optional. */
+-public record TaskRequest(@NotBlank @Size(max = 255) String title, LocalDate dueDate) {
++/** Payload to add a task to a project; the due date and assignee are optional. */
++public record TaskRequest(@NotBlank @Size(max = 255) String title, LocalDate dueDate,
++        @Size(max = 255) String assignee) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskResponse.java b/src/main/java/net/officefloor/hq/app/task/TaskResponse.java
+index 38bf1df..7176427 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskResponse.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskResponse.java
+@@ -2,10 +2,11 @@ package net.officefloor.hq.app.task;
+ 
+ import java.time.LocalDate;
+ 
+-public record TaskResponse(Long id, Long projectId, String title, boolean done, LocalDate dueDate) {
++public record TaskResponse(Long id, Long projectId, String title, boolean done, LocalDate dueDate,
++        String assignee) {
+ 
+     static TaskResponse from(Task task) {
+         return new TaskResponse(task.getId(), task.getProject().getId(), task.getTitle(), task.isDone(),
+-                task.getDueDate());
++                task.getDueDate(), task.getAssignee());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskService.java b/src/main/java/net/officefloor/hq/app/task/TaskService.java
+index 277fe0a..ee10b28 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskService.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskService.java
+@@ -34,7 +34,8 @@ public class TaskService {
+     public TaskResponse create(Long projectId, TaskRequest request) {
+         Project project = projects.findById(projectId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+-        Task saved = tasks.save(new Task(project, request.title().trim(), request.dueDate()));
++        Task saved = tasks.save(new Task(project, request.title().trim(), request.dueDate(),
++                request.assignee() == null || request.assignee().isBlank() ? null : request.assignee().trim()));
+         return TaskResponse.from(saved);
+     }
+ 
+diff --git a/src/main/resources/db/migration/V54__task_assignee.sql b/src/main/resources/db/migration/V54__task_assignee.sql
+new file mode 100644
+index 0000000..2f70d0a
+--- /dev/null
++++ b/src/main/resources/db/migration/V54__task_assignee.sql
+@@ -0,0 +1,2 @@
++-- A task may name the person it is for.
++ALTER TABLE task ADD COLUMN assignee VARCHAR(255);
