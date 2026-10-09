@@ -135,12 +135,17 @@ public class TestSupportController {
                         "qty", 1, "unitPrice", i.get("amount")));
             }
             BigDecimal amount = BigDecimal.ZERO;
+            BigDecimal taxable = BigDecimal.ZERO;
             for (Map<String, Object> l : lineItems) {
-                amount = amount.add(new BigDecimal(l.get("qty").toString())
-                        .multiply(new BigDecimal(l.get("unitPrice").toString())));
+                BigDecimal line = new BigDecimal(l.get("qty").toString())
+                        .multiply(new BigDecimal(l.get("unitPrice").toString())).setScale(2, RoundingMode.HALF_UP);
+                amount = amount.add(line);
+                if (!Boolean.TRUE.equals(l.get("taxExempt"))) {
+                    taxable = taxable.add(line);
+                }
             }
             // A discount takes a percentage off the line items' subtotal, then sales tax adds a percentage
-            // of what is left; the amount is the discounted subtotal plus the tax.
+            // of what is left of the taxable lines only; the amount is the discounted subtotal plus the tax.
             BigDecimal subtotal = amount.setScale(2, RoundingMode.HALF_UP);
             BigDecimal discountPct = i.get("discountPct") == null ? BigDecimal.ZERO
                     : new BigDecimal(i.get("discountPct").toString());
@@ -148,7 +153,9 @@ public class TestSupportController {
             BigDecimal discounted = subtotal.subtract(discount);
             BigDecimal taxPct = i.get("taxPct") == null ? BigDecimal.ZERO
                     : new BigDecimal(i.get("taxPct").toString());
-            BigDecimal tax = discounted.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            BigDecimal taxableBase = taxable.subtract(
+                    taxable.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+            BigDecimal tax = taxableBase.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
             jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, status, issued_date, due_date)"
                     + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, ((Number) i.get("projectId")).longValue(),

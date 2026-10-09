@@ -11,8 +11,8 @@ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
 // A single invoice: the things it charges for (description, how many and of what, price each), each line's
-// amount, their subtotal, any percentage discount, any sales tax added after it, and the final total
-// including the tax. Lines, the discount and the tax rate can be changed while it is a draft.
+// amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
+// sales tax added on it after the discount, and the final total including the tax. Lines, the discount and the tax rate can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, Notes],
@@ -176,6 +176,13 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                 Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%)
               </th>
               <td data-testid="invoice-discount">{{ inv.discount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              @if (inv.status === 'DRAFT') {
+                <td></td>
+              }
+            </tr>
+            <tr>
+              <th scope="row" colspan="4">Taxable amount (excludes tax-free lines)</th>
+              <td data-testid="invoice-taxable-base">{{ inv.taxableBase | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }

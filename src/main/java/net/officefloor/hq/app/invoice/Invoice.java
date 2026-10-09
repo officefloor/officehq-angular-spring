@@ -24,8 +24,8 @@ import net.officefloor.hq.app.project.Project;
 
 /**
  * An invoice raised against a project. It is built from line items, and can take a percentage off
- * their sum as a discount, then add a percentage sales tax on what is left; its stored amount is always
- * that subtotal less the discount plus the tax.
+ * their sum as a discount, then add a percentage sales tax on what is left of the taxable lines only
+ * (tax-free lines are never taxed); its stored amount is always that subtotal less the discount plus the tax.
  */
 @Entity
 @Table(name = "invoice")
@@ -104,10 +104,19 @@ public class Invoice {
         return taxPct;
     }
 
-    /** How much sales tax is added to the discounted subtotal, to the cent. */
+    /**
+     * What the sales tax is charged on: the taxable lines (leaving out tax-free ones) less the discount
+     * taken off them, to the cent.
+     */
+    public BigDecimal getTaxableBase() {
+        BigDecimal taxable = lineItems.stream().filter(l -> !l.isTaxExempt()).map(InvoiceLineItem::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
+        return taxable.subtract(discountOn(taxable));
+    }
+
+    /** How much sales tax is added on the taxable base, to the cent. */
     public BigDecimal getTax() {
-        BigDecimal subtotal = getSubtotal();
-        return taxOn(subtotal.subtract(discountOn(subtotal)));
+        return taxOn(getTaxableBase());
     }
 
     public InvoiceStatus getStatus() {
@@ -174,14 +183,14 @@ public class Invoice {
         return subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
-    private BigDecimal taxOn(BigDecimal discounted) {
-        return discounted.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    private BigDecimal taxOn(BigDecimal taxableBase) {
+        return taxableBase.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
     private void recalculateAmount() {
         BigDecimal subtotal = getSubtotal();
         BigDecimal discounted = subtotal.subtract(discountOn(subtotal));
-        this.amount = discounted.add(taxOn(discounted));
+        this.amount = discounted.add(getTax());
     }
 
     /** Marks this invoice as sent to the client. */

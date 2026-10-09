@@ -83,14 +83,16 @@ export interface LineItem {
 
 /**
  * A single invoice with the line items it is built from: their subtotal, the percentage discount and
- * what it takes off, and the sales tax percentage and what it adds after the discount; its amount is
- * the subtotal less the discount plus the tax.
+ * what it takes off, and the sales tax percentage, the taxable base it is charged on (the taxable
+ * lines after the discount, leaving out tax-free ones) and what it adds; its amount is the subtotal
+ * less the discount plus the tax.
  */
 export interface InvoiceDetail extends Invoice {
   subtotal: number;
   discountPct: number;
   discount: number;
   taxPct: number;
+  taxableBase: number;
   tax: number;
   lineItems: LineItem[];
 }
