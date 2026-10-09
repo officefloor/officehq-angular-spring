@@ -90,6 +90,23 @@ import { Client, ClientService } from './client.service';
         }
       </div>
       <div>
+        <label for="client-billing-address">Billing address (optional)</label>
+        <textarea
+          id="client-billing-address"
+          rows="3"
+          formControlName="billingAddress"
+          autocomplete="street-address"
+          data-testid="client-form-billing-address"
+          [attr.aria-invalid]="showError('billingAddress')"
+          [attr.aria-describedby]="showError('billingAddress') ? 'client-billing-address-error' : null"
+        ></textarea>
+        @if (showError('billingAddress')) {
+          <p id="client-billing-address-error" role="alert" data-testid="client-form-billing-address-error">
+            Billing address must be 500 characters or fewer.
+          </p>
+        }
+      </div>
+      <div>
         <label>
           <input type="checkbox" formControlName="taxInclusive" data-testid="client-form-tax-inclusive" />
           Prices include tax
@@ -249,6 +266,7 @@ export class Clients {
     ],
     phone: ['', Validators.maxLength(50)],
     taxNumber: ['', Validators.maxLength(50)],
+    billingAddress: ['', Validators.maxLength(500)],
     taxInclusive: false,
   });
 
@@ -264,7 +282,7 @@ export class Clients {
     this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
   }
 
-  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber'): boolean {
+  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress'): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -274,10 +292,10 @@ export class Clients {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, taxNumber, taxInclusive } = this.form.getRawValue();
+    const { name, email, phone, taxNumber, billingAddress, taxInclusive } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, taxInclusive }).subscribe({
+    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created]);
         this.form.reset();

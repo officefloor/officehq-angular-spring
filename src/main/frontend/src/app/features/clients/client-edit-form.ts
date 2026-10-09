@@ -89,6 +89,23 @@ import { Client, ClientService } from './client.service';
         }
       </div>
       <div>
+        <label for="client-edit-billing-address">Billing address (optional)</label>
+        <textarea
+          id="client-edit-billing-address"
+          rows="3"
+          formControlName="billingAddress"
+          autocomplete="street-address"
+          data-testid="client-edit-form-billing-address"
+          [attr.aria-invalid]="showError('billingAddress')"
+          [attr.aria-describedby]="showError('billingAddress') ? 'client-edit-billing-address-error' : null"
+        ></textarea>
+        @if (showError('billingAddress')) {
+          <p id="client-edit-billing-address-error" role="alert" data-testid="client-edit-form-billing-address-error">
+            Billing address must be 500 characters or fewer.
+          </p>
+        }
+      </div>
+      <div>
         <label>
           <input type="checkbox" formControlName="taxInclusive" data-testid="client-edit-form-tax-inclusive" />
           Prices include tax
@@ -127,6 +144,7 @@ export class ClientEditForm implements OnInit {
     ],
     phone: ['', Validators.maxLength(50)],
     taxNumber: ['', Validators.maxLength(50)],
+    billingAddress: ['', Validators.maxLength(500)],
     taxInclusive: false,
   });
 
@@ -135,11 +153,11 @@ export class ClientEditForm implements OnInit {
   }
 
   ngOnInit(): void {
-    const { name, email, phone, taxNumber, taxInclusive } = this.client();
-    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', taxInclusive });
+    const { name, email, phone, taxNumber, billingAddress, taxInclusive } = this.client();
+    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive });
   }
 
-  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber'): boolean {
+  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress'): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -149,10 +167,10 @@ export class ClientEditForm implements OnInit {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, taxNumber, taxInclusive } = this.form.getRawValue();
+    const { name, email, phone, taxNumber, billingAddress, taxInclusive } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, taxInclusive }).subscribe({
+    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive }).subscribe({
       next: (updated) => {
         this.saving.set(false);
         this.saved.emit(updated);

@@ -31,6 +31,9 @@ public class Client {
     /** The client's tax registration number; none when they are not tax registered. */
     private String taxNumber;
 
+    /** Where the client's bills are sent; none when not known. */
+    private String billingAddress;
+
     private boolean archived;
 
     /** Whether the client's prices already include tax, so tax is worked back out of them rather than added on. */
@@ -48,11 +51,12 @@ public class Client {
     protected Client() {
     }
 
-    public Client(String name, String email, String phone, String taxNumber) {
+    public Client(String name, String email, String phone, String taxNumber, String billingAddress) {
         this.name = name;
         this.email = email;
         this.phone = phone;
         this.taxNumber = taxNumber;
+        this.billingAddress = billingAddress;
     }
 
     public Long getId() {
@@ -75,12 +79,17 @@ public class Client {
         return taxNumber;
     }
 
-    /** Corrects the client's name, email, phone number and tax number. */
-    public void rename(String name, String email, String phone, String taxNumber) {
+    public String getBillingAddress() {
+        return billingAddress;
+    }
+
+    /** Corrects the client's name, email, phone number, tax number and billing address. */
+    public void rename(String name, String email, String phone, String taxNumber, String billingAddress) {
         this.name = name;
         this.email = email;
         this.phone = phone;
         this.taxNumber = taxNumber;
+        this.billingAddress = billingAddress;
     }
 
     public boolean isTaxInclusive() {

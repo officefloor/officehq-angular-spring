@@ -68,7 +68,7 @@ public class ClientService {
             throw emailTaken();
         }
         try {
-            Client client = new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber());
+            Client client = new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber(), request.trimmedBillingAddress());
             client.setTaxInclusive(Boolean.TRUE.equals(request.taxInclusive()));
             return respond(clients.saveAndFlush(client));
         } catch (DataIntegrityViolationException e) {
@@ -81,7 +81,7 @@ public class ClientService {
     }
 
     /**
-     * Corrects a client's name, email, phone number and tax number; the email, once trimmed, must not belong to another client.
+     * Corrects a client's name, email, phone number, tax number and billing address; the email, once trimmed, must not belong to another client.
      * When whether their prices include tax changes, their draft invoices are reworked to match; sent ones keep the
      * figures they were issued with. The change is recorded in the audit log.
      */
@@ -92,7 +92,7 @@ public class ClientService {
         if (clients.existsByEmailIgnoreCaseAndIdNot(email, id)) {
             throw emailTaken();
         }
-        client.rename(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber());
+        client.rename(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber(), request.trimmedBillingAddress());
         if (request.taxInclusive() != null && request.taxInclusive() != client.isTaxInclusive()) {
             client.setTaxInclusive(request.taxInclusive());
             invoices.findByClientIdAndStatus(id, InvoiceStatus.DRAFT)

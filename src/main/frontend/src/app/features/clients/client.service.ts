@@ -15,6 +15,8 @@ export interface Client {
   phone: string | null;
   /** The client's tax registration number; null when they are not tax registered. */
   taxNumber: string | null;
+  /** Where the client's bills are sent; null when not known. */
+  billingAddress: string | null;
   /** Whether the client's prices already include tax, so it is worked back out of them rather than added on. */
   taxInclusive: boolean;
   archived: boolean;

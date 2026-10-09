@@ -8,7 +8,7 @@ import { ClientProjects } from '../projects/client-projects';
 import { ClientCurrency } from './client-currency';
 import { Client, ClientService } from './client.service';
 
-// A single client's page: their name, email, phone number, tax number, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, counts of their projects and contacts, their contacts, and the projects being done for them.
+// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, counts of their projects and contacts, their contacts, and the projects being done for them.
 @Component({
   selector: 'app-client-detail',
   imports: [RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm],
@@ -18,6 +18,9 @@ import { Client, ClientService } from './client.service';
       gap: 1rem;
       padding: 0;
       list-style: none;
+    }
+    .client-billing-address {
+      white-space: pre-line;
     }
   `,
   template: `
@@ -41,6 +44,14 @@ import { Client, ClientService } from './client.service';
           <span data-testid="client-tax-number">{{ c.taxNumber }}</span>
         } @else {
           <span data-testid="client-tax-number-none">Not tax registered</span>
+        }
+      </p>
+      <p>
+        Billing address:
+        @if (c.billingAddress) {
+          <span class="client-billing-address" data-testid="client-billing-address">{{ c.billingAddress }}</span>
+        } @else {
+          <span data-testid="client-billing-address-none">Not given</span>
         }
       </p>
       <p>
