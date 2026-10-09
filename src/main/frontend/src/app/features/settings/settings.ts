@@ -3,11 +3,12 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { SettingsService } from './settings.service';
 import { CurrencyRounding } from '../currencies/currency-rounding';
+import { FxRates } from '../fx-rates/fx-rates';
 
-// The app-wide settings: the standard sales tax rate that every new invoice starts with, and how each currency rounds.
+// The app-wide settings: the standard sales tax rate that every new invoice starts with, how each currency rounds, and the exchange rate history.
 @Component({
   selector: 'app-settings',
-  imports: [ReactiveFormsModule, CurrencyRounding],
+  imports: [ReactiveFormsModule, CurrencyRounding, FxRates],
   template: `
     <h1>Settings</h1>
     @if (settings.error()) {
@@ -43,6 +44,7 @@ import { CurrencyRounding } from '../currencies/currency-rounding';
       }
     </form>
     <app-currency-rounding />
+    <app-fx-rates />
   `,
 })
 export class SettingsPage {

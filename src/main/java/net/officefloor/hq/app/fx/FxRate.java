@@ -33,6 +33,12 @@ public class FxRate {
     protected FxRate() {
     }
 
+    public FxRate(String currency, LocalDate rateDate, BigDecimal rate) {
+        this.currency = currency;
+        this.rateDate = rateDate;
+        this.rate = rate;
+    }
+
     public Long getId() {
         return id;
     }
