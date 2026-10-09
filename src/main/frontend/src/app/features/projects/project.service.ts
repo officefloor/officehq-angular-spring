@@ -99,6 +99,10 @@ export class ProjectService {
     return this.http.post<Project>(`/api/projects/${id}/close`, null);
   }
 
+  reopen(id: number): Observable<Project> {
+    return this.http.post<Project>(`/api/projects/${id}/reopen`, null);
+  }
+
   archive(id: number): Observable<Project> {
     return this.http.post<Project>(`/api/projects/${id}/archive`, null);
   }

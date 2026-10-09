@@ -24,8 +24,12 @@ import { ProjectService } from './project.service';
       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
       <p>Status: <span data-testid="project-detail-status">{{ p.status }}</span></p>
       <p>
-        Job: <span data-testid="project-status">{{ p.closed ? 'CLOSED' : 'OPEN' }}</span>
-        @if (!p.closed) {
+        Job: <span data-testid="project-status">{{ p.closed ? 'CLOSED' : 'ACTIVE' }}</span>
+        @if (p.closed) {
+          <button type="button" data-testid="project-reopen" [disabled]="closing()" (click)="reopen()">
+            Reopen job
+          </button>
+        } @else {
           <button type="button" data-testid="project-close" [disabled]="closing()" (click)="close()">
             Close job
           </button>
@@ -86,6 +90,21 @@ export class ProjectDetail {
       },
       error: () => {
         this.closeError.set('Could not close the job.');
+        this.closing.set(false);
+      },
+    });
+  }
+
+  protected reopen(): void {
+    this.closing.set(true);
+    this.closeError.set(null);
+    this.service.reopen(this.projectId()).subscribe({
+      next: (updated) => {
+        this.project.set(updated);
+        this.closing.set(false);
+      },
+      error: () => {
+        this.closeError.set('Could not reopen the job.');
         this.closing.set(false);
       },
     });

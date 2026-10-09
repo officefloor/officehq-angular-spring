@@ -65,6 +65,11 @@ public class ProjectController {
         return service.close(id);
     }
 
+    @PostMapping("/{id}/reopen")
+    public ProjectResponse reopen(@PathVariable Long id) {
+        return service.reopen(id);
+    }
+
     @PostMapping("/{id}/archive")
     public ProjectResponse archive(@PathVariable Long id) {
         return service.archive(id);
