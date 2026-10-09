@@ -1,0 +1,251 @@
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index d4d4bf5..42c937f 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -1,4 +1,4 @@
+-import { Component, computed, inject, input, viewChild } from '@angular/core';
++import { Component, computed, inject, input, signal, viewChild } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { ProjectInvoices } from '../invoices/project-invoices';
+@@ -8,7 +8,7 @@ import { ProjectTasks } from '../tasks/project-tasks';
+ import { ProjectBudgetPanel } from './project-budget';
+ import { ProjectService } from './project.service';
+ 
+-// A single project's page: its name, description, client and status, its budget, its tags, its tasks, its notes, and its invoices.
++// A single project's page: its name, description, client and status, whether it is billable, its budget, its tags, its tasks, its notes, and its invoices.
+ @Component({
+   selector: 'app-project-detail',
+   imports: [RouterLink, ProjectBudgetPanel, ProjectInvoices, Notes, ProjectTags, ProjectTasks],
+@@ -23,6 +23,20 @@ import { ProjectService } from './project.service';
+       }
+       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
+       <p>Status: <span data-testid="project-detail-status">{{ p.status }}</span></p>
++      <p>
++        Billing: <span data-testid="project-billable">{{ p.billable ? 'Billable' : 'Non-billable' }}</span>
++        <button
++          type="button"
++          data-testid="project-billable-toggle"
++          [disabled]="savingBillable()"
++          (click)="setBillable(!p.billable)"
++        >
++          {{ p.billable ? 'Mark non-billable' : 'Mark billable' }}
++        </button>
++      </p>
++      @if (billableError()) {
++        <p role="alert" data-testid="project-billable-error">{{ billableError() }}</p>
++      }
+       <app-project-budget [projectId]="projectId()" [currency]="p.currency" />
+       <app-project-tags [projectId]="projectId()" />
+       <app-project-tasks [projectId]="projectId()" />
+@@ -44,4 +58,22 @@ export class ProjectDetail {
+     params: () => this.projectId(),
+     stream: ({ params }) => this.service.get(params),
+   });
++
++  protected readonly savingBillable = signal(false);
++  protected readonly billableError = signal<string | null>(null);
++
++  protected setBillable(billable: boolean): void {
++    this.savingBillable.set(true);
++    this.billableError.set(null);
++    this.service.setBillable(this.projectId(), billable).subscribe({
++      next: (updated) => {
++        this.project.set(updated);
++        this.savingBillable.set(false);
++      },
++      error: () => {
++        this.billableError.set('Could not change whether the job is billable.');
++        this.savingBillable.set(false);
++      },
++    });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index 7aee4d0..33478ac 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -25,6 +25,8 @@ export interface Project {
+   currency: CurrencyCode;
+   /** A short description of the work; null when none was given. */
+   description: string | null;
++  /** Whether the work is charged to the client; internal work is non-billable. */
++  billable: boolean;
+ }
+ 
+ /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
+@@ -79,6 +81,10 @@ export class ProjectService {
+     return this.http.put<Project>(`/api/projects/${id}/status`, { status });
+   }
+ 
++  setBillable(id: number, billable: boolean): Observable<Project> {
++    return this.http.put<Project>(`/api/projects/${id}/billable`, { billable });
++  }
++
+   budget(id: number): Observable<ProjectBudget> {
+     return this.http.get<ProjectBudget>(`/api/projects/${id}/budget`);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index b272d19..183226e 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -97,13 +97,14 @@ public class TestSupportController {
+             }
+         }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+-            jdbc.update("INSERT INTO project (id, name, code, description, client_id, status, archived, budget)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO project (id, name, code, description, client_id, status, archived, budget, billable)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) p.get("id")).longValue(), p.get("name"), p.get("code"), p.get("description"),
+                     ((Number) p.get("clientId")).longValue(),
+                     p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString(),
+                     Boolean.TRUE.equals(p.get("archived")),
+-                    p.get("budget") == null ? null : new BigDecimal(p.get("budget").toString()));
++                    p.get("budget") == null ? null : new BigDecimal(p.get("budget").toString()),
++                    !Boolean.FALSE.equals(p.get("billable")));
+         }
+         for (Map<String, Object> t : rows(fixture, "tags")) {
+             jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+index f40adf6..56a778a 100644
+--- a/src/main/java/net/officefloor/hq/app/project/Project.java
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -44,6 +44,8 @@ public class Project {
+ 
+     private BigDecimal budget;
+ 
++    private boolean billable = true;
++
+     @ManyToMany
+     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
+             inverseJoinColumns = @JoinColumn(name = "tag_id"))
+@@ -109,6 +111,15 @@ public class Project {
+         this.budget = budget;
+     }
+ 
++    /** Whether the work on this project is charged to the client; internal work is non-billable. */
++    public boolean isBillable() {
++        return billable;
++    }
++
++    public void setBillable(boolean billable) {
++        this.billable = billable;
++    }
++
+     /** The tags labelling this project; add or remove to tag or untag it. */
+     public Set<Tag> getTags() {
+         return tags;
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectBillableRequest.java b/src/main/java/net/officefloor/hq/app/project/ProjectBillableRequest.java
+new file mode 100644
+index 0000000..29ca431
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectBillableRequest.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.project;
++
++import jakarta.validation.constraints.NotNull;
++
++/** Payload to mark a project billable or non-billable. */
++public record ProjectBillableRequest(@NotNull Boolean billable) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectController.java b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+index 2be032a..966c1d7 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+@@ -45,6 +45,11 @@ public class ProjectController {
+         return service.changeStatus(id, request.status());
+     }
+ 
++    @PutMapping("/{id}/billable")
++    public ProjectResponse setBillable(@PathVariable Long id, @Valid @RequestBody ProjectBillableRequest request) {
++        return service.setBillable(id, request.billable());
++    }
++
+     @GetMapping("/{id}/budget")
+     public ProjectBudgetResponse budget(@PathVariable Long id) {
+         return service.budget(id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java b/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java
+index 3507556..8201a6d 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRequest.java
+@@ -8,14 +8,15 @@ import jakarta.validation.constraints.Size;
+ /**
+  * Payload to create a project for a client; without a status the project starts active. The code is
+  * a short reference of letters, digits and dashes, unique across projects. The description is an
+- * optional short summary of the work.
++ * optional short summary of the work. Without saying whether it is billable the project is billable.
+  */
+ public record ProjectRequest(
+         @NotBlank @Size(max = 255) String name,
+         @NotBlank @Pattern(regexp = ProjectRequest.CODE_PATTERN) String code,
+         @NotNull Long clientId,
+         ProjectStatus status,
+-        @Size(max = ProjectRequest.DESCRIPTION_MAX) String description) {
++        @Size(max = ProjectRequest.DESCRIPTION_MAX) String description,
++        Boolean billable) {
+ 
+     /** The longest description a job may carry. */
+     public static final int DESCRIPTION_MAX = 500;
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+index 265c235..f72efeb 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+@@ -3,11 +3,12 @@ package net.officefloor.hq.app.project;
+ import net.officefloor.hq.app.client.Currency;
+ 
+ public record ProjectResponse(Long id, String name, String code, Long clientId, String clientName, boolean archived,
+-        ProjectStatus status, Currency currency, String description) {
++        ProjectStatus status, Currency currency, String description, boolean billable) {
+ 
+     public static ProjectResponse from(Project project) {
+         return new ProjectResponse(project.getId(), project.getName(), project.getCode(),
+                 project.getClient().getId(), project.getClient().getName(), project.isArchived(),
+-                project.getStatus(), project.getClient().getCurrency(), project.getDescription());
++                project.getStatus(), project.getClient().getCurrency(), project.getDescription(),
++                project.isBillable());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index 96c5a7a..ef06436 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -82,6 +82,9 @@ public class ProjectService {
+         if (request.description() != null && !request.description().isBlank()) {
+             project.setDescription(request.description().trim());
+         }
++        if (request.billable() != null) {
++            project.setBillable(request.billable());
++        }
+         try {
+             return ProjectResponse.from(projects.saveAndFlush(project));
+         } catch (DataIntegrityViolationException e) {
+@@ -144,6 +147,19 @@ public class ProjectService {
+         return ProjectResponse.from(project);
+     }
+ 
++    /** Marks a project billable or non-billable, recording the change in the audit log. */
++    @Transactional
++    public ProjectResponse setBillable(Long id, boolean billable) {
++        Project project = projects.findByIdWithClient(id)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
++        if (project.isBillable() != billable) {
++            project.setBillable(billable);
++            projects.flush();
++            audit.record("PROJECT_BILLABLE_SET id=" + id + " billable=" + billable);
++        }
++        return ProjectResponse.from(project);
++    }
++
+     /**
+      * Archives a project: it drops off the project lists but is kept, with its tasks and invoices,
+      * and the archiving is recorded in the audit log.
+diff --git a/src/main/resources/db/migration/V50__project_billable.sql b/src/main/resources/db/migration/V50__project_billable.sql
+new file mode 100644
+index 0000000..4996177
+--- /dev/null
++++ b/src/main/resources/db/migration/V50__project_billable.sql
+@@ -0,0 +1,3 @@
++-- A job can be marked billable (its work is charged to the client) or non-billable (such as internal
++-- work). Existing jobs are billable.
++ALTER TABLE project ADD COLUMN billable BOOLEAN DEFAULT TRUE NOT NULL;
