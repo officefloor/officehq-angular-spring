@@ -1,0 +1,453 @@
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index c516e69..f0f4d94 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -1,6 +1,6 @@
+ import { CurrencyPipe } from '@angular/common';
+ import { RouterLink } from '@angular/router';
+-import { Component, computed, inject, input, signal } from '@angular/core';
++import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import {
+   AbstractControl,
+@@ -153,6 +153,8 @@ export class ProjectInvoices {
+   private readonly service = inject(InvoiceService);
+ 
+   readonly projectId = input.required<number>();
++  /** Emits when an invoice is sent, changing how much has been invoiced on the project. */
++  readonly invoiced = output<void>();
+ 
+   protected readonly invoices = rxResource({
+     params: () => this.projectId(),
+@@ -229,6 +231,7 @@ export class ProjectInvoices {
+       next: (sent) => {
+         this.replace(sent);
+         this.busy.set(null);
++        this.invoiced.emit();
+       },
+       error: () => {
+         this.sendError.set('Could not send the invoice. Please try again.');
+diff --git a/src/main/frontend/src/app/features/projects/project-budget.ts b/src/main/frontend/src/app/features/projects/project-budget.ts
+new file mode 100644
+index 0000000..d291fd0
+--- /dev/null
++++ b/src/main/frontend/src/app/features/projects/project-budget.ts
+@@ -0,0 +1,132 @@
++import { CurrencyPipe } from '@angular/common';
++import { Component, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { ProjectService } from './project.service';
++
++// A project's budget: what it is, how much has been invoiced against it (sent invoices, paid or not),
++// and what is left. Set or change the budget, or clear it by leaving the amount blank.
++@Component({
++  selector: 'app-project-budget',
++  imports: [ReactiveFormsModule, CurrencyPipe],
++  template: `
++    <section aria-labelledby="project-budget-heading" data-testid="project-budget-section">
++      <h2 id="project-budget-heading">Budget</h2>
++
++      @if (budget.error()) {
++        <p role="alert" data-testid="project-budget-error">Could not load the budget.</p>
++      } @else if (budget.hasValue()) {
++        @let b = budget.value();
++        <dl>
++          <dt>Budget</dt>
++          <dd data-testid="project-budget">
++            @if (b.budget === null) {
++              No budget set
++            } @else {
++              {{ b.budget | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}
++            }
++          </dd>
++          <dt>Invoiced</dt>
++          <dd data-testid="project-invoiced">{{ b.invoiced | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</dd>
++          <dt>Remaining</dt>
++          <dd data-testid="project-remaining" [class.over]="b.remaining !== null && b.remaining < 0">
++            @if (b.remaining === null) {
++              —
++            } @else {
++              {{ b.remaining | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}
++            }
++          </dd>
++        </dl>
++        @if (b.remaining !== null && b.remaining < 0) {
++          <p data-testid="project-over-budget">Invoiced over budget.</p>
++        }
++      }
++
++      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="project-budget-form" novalidate>
++        <label for="project-budget-amount">Set budget (leave blank to clear)</label>
++        <input
++          id="project-budget-amount"
++          type="number"
++          inputmode="decimal"
++          min="0"
++          step="0.01"
++          formControlName="budget"
++          data-testid="project-budget-input"
++          [attr.aria-invalid]="showError()"
++          [attr.aria-describedby]="showError() ? 'project-budget-amount-error' : null"
++        />
++        <button type="submit" data-testid="project-budget-submit" [disabled]="saving()">Save budget</button>
++        @if (showError()) {
++          <p id="project-budget-amount-error" role="alert" data-testid="project-budget-input-error">
++            Enter an amount of zero or more with at most two decimal places, or leave it blank.
++          </p>
++        }
++        @if (saveError()) {
++          <p role="alert" data-testid="project-budget-save-error">{{ saveError() }}</p>
++        }
++      </form>
++    </section>
++  `,
++  styles: `
++    dl {
++      display: grid;
++      grid-template-columns: max-content auto;
++      gap: 0.25rem 1rem;
++    }
++    dd {
++      margin: 0;
++    }
++    .over {
++      font-weight: bold;
++    }
++  `,
++})
++export class ProjectBudgetPanel {
++  private readonly service = inject(ProjectService);
++
++  readonly projectId = input.required<number>();
++
++  protected readonly budget = rxResource({
++    params: () => this.projectId(),
++    stream: ({ params }) => this.service.budget(params),
++  });
++
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    budget: ['', [Validators.min(0), Validators.pattern(/^\d+(\.\d{1,2})?$/)]],
++  });
++
++  /** Reloads the figures, e.g. after an invoice on the project has been sent. */
++  reload(): void {
++    this.budget.reload();
++  }
++
++  protected showError(): boolean {
++    const control = this.form.controls.budget;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.saveError.set(null);
++    const { budget } = this.form.getRawValue();
++    const value = budget === '' || budget === null ? null : Number(budget);
++    this.service.setBudget(this.projectId(), value).subscribe({
++      next: (updated) => {
++        this.budget.set(updated);
++        this.form.reset();
++        this.saving.set(false);
++      },
++      error: () => {
++        this.saveError.set('Could not save the budget. Please try again.');
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index 7dbfb10..3a3b4a1 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -1,16 +1,17 @@
+-import { Component, computed, inject, input } from '@angular/core';
++import { Component, computed, inject, input, viewChild } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { ProjectInvoices } from '../invoices/project-invoices';
+ import { ProjectNotes } from '../notes/project-notes';
+ import { ProjectTags } from '../tags/project-tags';
+ import { ProjectTasks } from '../tasks/project-tasks';
++import { ProjectBudgetPanel } from './project-budget';
+ import { ProjectService } from './project.service';
+ 
+-// A single project's page: its name, client and status, its tags, its tasks, its notes, and its invoices.
++// A single project's page: its name, client and status, its budget, its tags, its tasks, its notes, and its invoices.
+ @Component({
+   selector: 'app-project-detail',
+-  imports: [RouterLink, ProjectInvoices, ProjectNotes, ProjectTags, ProjectTasks],
++  imports: [RouterLink, ProjectBudgetPanel, ProjectInvoices, ProjectNotes, ProjectTags, ProjectTasks],
+   template: `
+     <a routerLink="/projects" data-testid="project-back">Back to projects</a>
+     @if (project.error()) {
+@@ -19,10 +20,11 @@ import { ProjectService } from './project.service';
+       <h1 data-testid="project-detail-name">{{ p.name }}</h1>
+       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
+       <p>Status: <span data-testid="project-detail-status">{{ p.status }}</span></p>
++      <app-project-budget [projectId]="projectId()" />
+       <app-project-tags [projectId]="projectId()" />
+       <app-project-tasks [projectId]="projectId()" />
+       <app-project-notes [projectId]="projectId()" />
+-      <app-project-invoices [projectId]="projectId()" />
++      <app-project-invoices [projectId]="projectId()" (invoiced)="budget()?.reload()" />
+     }
+   `,
+ })
+@@ -33,6 +35,8 @@ export class ProjectDetail {
+   readonly id = input.required<string>();
+   protected readonly projectId = computed(() => Number(this.id()));
+ 
++  protected readonly budget = viewChild(ProjectBudgetPanel);
++
+   protected readonly project = rxResource({
+     params: () => this.projectId(),
+     stream: ({ params }) => this.service.get(params),
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index 51dfd55..a83fbbc 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -20,6 +20,13 @@ export interface Project {
+   status: ProjectStatus;
+ }
+ 
++/** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
++export interface ProjectBudget {
++  budget: number | null;
++  invoiced: number;
++  remaining: number | null;
++}
++
+ export interface NewProject {
+   name: string;
+   clientId: number;
+@@ -63,6 +70,14 @@ export class ProjectService {
+     return this.http.put<Project>(`/api/projects/${id}/status`, { status });
+   }
+ 
++  budget(id: number): Observable<ProjectBudget> {
++    return this.http.get<ProjectBudget>(`/api/projects/${id}/budget`);
++  }
++
++  setBudget(id: number, budget: number | null): Observable<ProjectBudget> {
++    return this.http.put<ProjectBudget>(`/api/projects/${id}/budget`, { budget });
++  }
++
+   archive(id: number): Observable<Project> {
+     return this.http.post<Project>(`/api/projects/${id}/archive`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 51a9e42..9b99f55 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -74,11 +74,12 @@ public class TestSupportController {
+                     c.get("name"), c.get("email"), c.get("role"));
+         }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+-            jdbc.update("INSERT INTO project (id, name, client_id, status, archived) VALUES (?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO project (id, name, client_id, status, archived, budget) VALUES (?, ?, ?, ?, ?, ?)",
+                     ((Number) p.get("id")).longValue(), p.get("name"),
+                     ((Number) p.get("clientId")).longValue(),
+                     p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString(),
+-                    Boolean.TRUE.equals(p.get("archived")));
++                    Boolean.TRUE.equals(p.get("archived")),
++                    p.get("budget") == null ? null : new BigDecimal(p.get("budget").toString()));
+         }
+         for (Map<String, Object> t : rows(fixture, "tags")) {
+             jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+index 0e6bcde..ada8bda 100644
+--- a/src/main/java/net/officefloor/hq/app/project/Project.java
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -12,6 +12,7 @@ import jakarta.persistence.JoinTable;
+ import jakarta.persistence.ManyToMany;
+ import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
++import java.math.BigDecimal;
+ import java.util.HashSet;
+ import java.util.Set;
+ import net.officefloor.hq.app.client.Client;
+@@ -37,6 +38,8 @@ public class Project {
+     @Enumerated(EnumType.STRING)
+     private ProjectStatus status = ProjectStatus.ACTIVE;
+ 
++    private BigDecimal budget;
++
+     @ManyToMany
+     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
+             inverseJoinColumns = @JoinColumn(name = "tag_id"))
+@@ -78,6 +81,15 @@ public class Project {
+         this.status = status;
+     }
+ 
++    /** The amount this project is to be invoiced within, or null when no budget is set. */
++    public BigDecimal getBudget() {
++        return budget;
++    }
++
++    public void setBudget(BigDecimal budget) {
++        this.budget = budget;
++    }
++
+     /** The tags labelling this project; add or remove to tag or untag it. */
+     public Set<Tag> getTags() {
+         return tags;
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectBudgetRequest.java b/src/main/java/net/officefloor/hq/app/project/ProjectBudgetRequest.java
+new file mode 100644
+index 0000000..56519f7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectBudgetRequest.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.project;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import java.math.BigDecimal;
++
++/** Payload to set a project's budget; without a budget the project's budget is cleared. */
++public record ProjectBudgetRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal budget) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectBudgetResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectBudgetResponse.java
+new file mode 100644
+index 0000000..ae44c34
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectBudgetResponse.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app.project;
++
++import java.math.BigDecimal;
++
++/**
++ * A project's budget, how much has been invoiced against it (every invoice sent, whether paid or
++ * not; drafts are not yet invoiced) and what is left of it. Budget and remaining are null when no
++ * budget is set.
++ */
++public record ProjectBudgetResponse(BigDecimal budget, BigDecimal invoiced, BigDecimal remaining) {
++
++    static ProjectBudgetResponse of(BigDecimal budget, BigDecimal invoiced) {
++        return new ProjectBudgetResponse(budget, invoiced, budget == null ? null : budget.subtract(invoiced));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectController.java b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+index f24545a..2be032a 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+@@ -45,6 +45,16 @@ public class ProjectController {
+         return service.changeStatus(id, request.status());
+     }
+ 
++    @GetMapping("/{id}/budget")
++    public ProjectBudgetResponse budget(@PathVariable Long id) {
++        return service.budget(id);
++    }
++
++    @PutMapping("/{id}/budget")
++    public ProjectBudgetResponse setBudget(@PathVariable Long id, @Valid @RequestBody ProjectBudgetRequest request) {
++        return service.setBudget(id, request.budget());
++    }
++
+     @PostMapping("/{id}/archive")
+     public ProjectResponse archive(@PathVariable Long id) {
+         return service.archive(id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index 688c290..8f947e6 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -1,8 +1,11 @@
+ package net.officefloor.hq.app.project;
+ 
++import java.math.BigDecimal;
++import java.util.Collection;
+ import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import org.springframework.data.jpa.repository.Query;
+ 
+ public interface ProjectRepository extends JpaRepository<Project, Long> {
+@@ -43,4 +46,8 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+     /** Whether any invoice has been raised against the project. */
+     @Query("SELECT COUNT(i) > 0 FROM Invoice i WHERE i.project.id = :id")
+     boolean hasInvoices(Long id);
++
++    /** Sum of the project's invoices with any of the given statuses (zero when there are none). */
++    @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.project.id = :id AND i.status IN :statuses")
++    BigDecimal sumInvoiceAmountByStatusIn(Long id, Collection<InvoiceStatus> statuses);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index a4e6135..4ff599f 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -1,9 +1,12 @@
+ package net.officefloor.hq.app.project;
+ 
++import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.Client;
+ import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -73,6 +76,40 @@ public class ProjectService {
+         return ProjectResponse.from(saved);
+     }
+ 
++    /** Invoices count as invoiced once sent; drafts have not been invoiced yet. */
++    private static final List<InvoiceStatus> INVOICED =
++            List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID);
++
++    /** The project's budget, how much has been invoiced against it, and what is left. */
++    @Transactional(readOnly = true)
++    public ProjectBudgetResponse budget(Long id) {
++        Project project = projects.findById(id)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++        return budgetOf(project);
++    }
++
++    /** Sets (or, given none, clears) a project's budget, recording the change in the audit log. */
++    @Transactional
++    public ProjectBudgetResponse setBudget(Long id, BigDecimal budget) {
++        Project project = projects.findById(id)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++        BigDecimal scaled = budget == null ? null : budget.setScale(2, RoundingMode.HALF_UP);
++        BigDecimal current = project.getBudget();
++        boolean changed = scaled == null ? current != null : current == null || current.compareTo(scaled) != 0;
++        if (changed) {
++            project.setBudget(scaled);
++            projects.flush();
++            audit.record("PROJECT_BUDGET_SET id=" + id + " budget=" + (scaled == null ? "none" : scaled.toPlainString()));
++        }
++        return budgetOf(project);
++    }
++
++    private ProjectBudgetResponse budgetOf(Project project) {
++        BigDecimal invoiced = projects.sumInvoiceAmountByStatusIn(project.getId(), INVOICED)
++                .setScale(2, RoundingMode.HALF_UP);
++        return ProjectBudgetResponse.of(project.getBudget(), invoiced);
++    }
++
+     /** Marks a project active, on hold or finished, recording the change in the audit log. */
+     @Transactional
+     public ProjectResponse changeStatus(Long id, ProjectStatus status) {
+diff --git a/src/main/resources/db/migration/V19__project_budget.sql b/src/main/resources/db/migration/V19__project_budget.sql
+new file mode 100644
+index 0000000..faa7dc1
+--- /dev/null
++++ b/src/main/resources/db/migration/V19__project_budget.sql
+@@ -0,0 +1,4 @@
++-- A project can carry a budget to invoice against; existing projects have none set.
++ALTER TABLE project ADD COLUMN budget DECIMAL(12, 2);
++
++ALTER TABLE project ADD CONSTRAINT project_budget_not_negative CHECK (budget IS NULL OR budget >= 0);
