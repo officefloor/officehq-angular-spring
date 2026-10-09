@@ -1,0 +1,40 @@
+$ bin/build
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610100208/gated-chain1/.run/pw-artifacts
+
+Running 29 tests using 1 worker
+
+[1A[2K[1/29] [chromium] › cp01_clients.spec.ts:18:7 › clients › lists seeded clients
+[1A[2K[2/29] [chromium] › cp01_clients.spec.ts:35:7 › clients › creates a client
+[1A[2K[3/29] [chromium] › cp02_client_email_validation.spec.ts:7:7 › client email validation › rejects a blank email
+[1A[2K[4/29] [chromium] › cp02_client_email_validation.spec.ts:20:7 › client email validation › rejects a malformed email
+[1A[2K[5/29] [chromium] › cp02_client_email_validation.spec.ts:33:7 › client email validation › accepts a valid email
+[1A[2K[6/29] [chromium] › cp03_projects.spec.ts:7:7 › projects › lists projects with their client name
+[1A[2K[7/29] [chromium] › cp03_projects.spec.ts:27:7 › projects › creates a project for a client
+[1A[2K[8/29] [chromium] › cp04_project_invoices.spec.ts:8:7 › project invoices › a project shows its invoices and their total
+[1A[2K[9/29] [chromium] › cp04_project_invoices.spec.ts:27:7 › project invoices › adds an invoice to a project
+[1A[2K[10/29] [chromium] › cp05_invoice_pay_audit.spec.ts:8:7 › invoice payment › paying a sent invoice updates its status
+[1A[2K[11/29] [chromium] › cp05_invoice_pay_audit.spec.ts:23:7 › invoice payment › paying a sent invoice writes an audit record
+[1A[2K[12/29] [chromium] › cp06_client_search.spec.ts:7:7 › client search › filters clients by name
+[1A[2K[13/29] [chromium] › cp07_client_detail_projects.spec.ts:7:7 › client detail › lists the client's projects
+[1A[2K[14/29] [chromium] › cp08_dashboard.spec.ts:7:7 › dashboard › shows counts and the outstanding total
+[1A[2K[15/29] [chromium] › cp09_currency_format.spec.ts:9:7 › currency formatting › invoice amounts and totals show a currency symbol
+[1A[2K[16/29] [chromium] › cp10_invoice_amount_positive.spec.ts:7:7 › invoice amount validation › rejects a non-positive amount
+[1A[2K[17/29] [chromium] › cp10_invoice_amount_positive.spec.ts:24:7 › invoice amount validation › accepts a positive amount
+[1A[2K[18/29] [chromium] › cp11_invoice_dates.spec.ts:6:7 › invoice dates › an invoice shows its issue and due dates
+[1A[2K[19/29] [chromium] › cp12_invoice_sort_due.spec.ts:6:7 › sort invoices by due date › sorts the invoices earliest due first
+[1A[2K[20/29] [chromium] › cp13_invoice_lifecycle.spec.ts:8:7 › invoice lifecycle › sending a draft invoice moves it to sent and records it
+[1A[2K[21/29] [chromium] › cp13_invoice_lifecycle.spec.ts:24:7 › invoice lifecycle › a draft invoice cannot be paid until it is sent
+[1A[2K[22/29] [chromium] › cp14_all_invoices.spec.ts:6:7 › all invoices › lists invoices from every project with project and status
+[1A[2K[23/29] [chromium] › cp15_invoice_status_filter.spec.ts:6:7 › filter invoices by status › shows only invoices at the chosen stage
+[1A[2K[24/29] [chromium] › cp16_client_contacts.spec.ts:6:7 › client contacts › lists a client's contacts
+[1A[2K[25/29] [chromium] › cp16_client_contacts.spec.ts:31:7 › client contacts › adds a contact to a client
+[1A[2K[26/29] [chromium] › cp17_outstanding_sent_only.spec.ts:7:7 › outstanding counts sent invoices only › the outstanding total excludes drafts
+[1A[2K[27/29] [chromium] › cp18_contact_email_validation.spec.ts:6:7 › contact email validation › rejects a bad contact email
+[1A[2K[28/29] [chromium] › cp19_client_badges.spec.ts:6:7 › client badges › shows project and contact counts
+[1A[2K[29/29] [chromium] › cp20_project_tasks.spec.ts:7:7 › project tasks › lists tasks and lets me tick one off
+[1A[2K  29 passed (12.1s)

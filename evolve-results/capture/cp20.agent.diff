@@ -1,0 +1,468 @@
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index 9e26eb6..dba31c1 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -2,12 +2,13 @@ import { Component, computed, inject, input } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { ProjectInvoices } from '../invoices/project-invoices';
++import { ProjectTasks } from '../tasks/project-tasks';
+ import { ProjectService } from './project.service';
+ 
+-// A single project's page: its name and client, and its invoices.
++// A single project's page: its name and client, its tasks, and its invoices.
+ @Component({
+   selector: 'app-project-detail',
+-  imports: [RouterLink, ProjectInvoices],
++  imports: [RouterLink, ProjectInvoices, ProjectTasks],
+   template: `
+     <a routerLink="/projects" data-testid="project-back">Back to projects</a>
+     @if (project.error()) {
+@@ -15,6 +16,7 @@ import { ProjectService } from './project.service';
+     } @else if (project.value(); as p) {
+       <h1 data-testid="project-detail-name">{{ p.name }}</h1>
+       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
++      <app-project-tasks [projectId]="projectId()" />
+       <app-project-invoices [projectId]="projectId()" />
+     }
+   `,
+diff --git a/src/main/frontend/src/app/features/tasks/project-tasks.ts b/src/main/frontend/src/app/features/tasks/project-tasks.ts
+new file mode 100644
+index 0000000..47b2e88
+--- /dev/null
++++ b/src/main/frontend/src/app/features/tasks/project-tasks.ts
+@@ -0,0 +1,141 @@
++import { Component, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { Task, TaskService } from './task.service';
++
++// A project's task list: add tasks and tick them off (OPEN <-> DONE) as they are finished.
++@Component({
++  selector: 'app-project-tasks',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="project-tasks-heading" data-testid="project-tasks">
++      <h2 id="project-tasks-heading">Tasks</h2>
++
++      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="task-form" novalidate>
++        <div>
++          <label for="task-title">Task</label>
++          <input
++            id="task-title"
++            type="text"
++            formControlName="title"
++            data-testid="task-form-title"
++            [attr.aria-invalid]="showTitleError()"
++            [attr.aria-describedby]="showTitleError() ? 'task-title-error' : null"
++          />
++          @if (showTitleError()) {
++            <p id="task-title-error" role="alert" data-testid="task-form-title-error">
++              Task is required.
++            </p>
++          }
++        </div>
++        <button type="submit" data-testid="task-form-submit" [disabled]="saving()">Add task</button>
++        @if (saveError()) {
++          <p role="alert" data-testid="task-form-error">{{ saveError() }}</p>
++        }
++      </form>
++
++      @if (toggleError()) {
++        <p role="alert" data-testid="task-toggle-error">{{ toggleError() }}</p>
++      }
++
++      @if (tasks.error()) {
++        <p role="alert" data-testid="project-tasks-error">Could not load the tasks.</p>
++      } @else if (tasks.hasValue()) {
++        @if (tasks.value().length === 0) {
++          <p data-testid="project-tasks-empty">No tasks for this project yet.</p>
++        } @else {
++          <table data-testid="project-tasks-table">
++            <caption>Tasks for this project</caption>
++            <thead>
++              <tr>
++                <th scope="col">Task</th>
++                <th scope="col">Status</th>
++                <th scope="col">Action</th>
++              </tr>
++            </thead>
++            <tbody>
++              @for (t of tasks.value(); track t.id) {
++                <tr [attr.data-testid]="'task-row-' + t.id">
++                  <td data-testid="task-title">{{ t.title }}</td>
++                  <td data-testid="task-status">{{ t.done ? 'DONE' : 'OPEN' }}</td>
++                  <td>
++                    <button
++                      type="button"
++                      [attr.data-testid]="'task-toggle-' + t.id"
++                      [attr.aria-pressed]="t.done"
++                      [attr.aria-label]="(t.done ? 'Reopen ' : 'Tick off ') + t.title"
++                      [disabled]="toggling() === t.id"
++                      (click)="toggle(t)"
++                    >
++                      {{ t.done ? 'Reopen' : 'Tick off' }}
++                    </button>
++                  </td>
++                </tr>
++              }
++            </tbody>
++          </table>
++        }
++      }
++    </section>
++  `,
++})
++export class ProjectTasks {
++  private readonly service = inject(TaskService);
++
++  readonly projectId = input.required<number>();
++
++  protected readonly tasks = rxResource({
++    params: () => this.projectId(),
++    stream: ({ params }) => this.service.listForProject(params),
++  });
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++  protected readonly toggling = signal<number | null>(null);
++  protected readonly toggleError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    title: ['', [Validators.required, Validators.maxLength(255)]],
++  });
++
++  protected showTitleError(): boolean {
++    const control = this.form.controls.title;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    const title = this.form.getRawValue().title.trim();
++    if (this.form.invalid || !title) {
++      this.form.controls.title.setValue('');
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.saveError.set(null);
++    this.service.create(this.projectId(), title).subscribe({
++      next: (created) => {
++        this.tasks.update((list) => [...(list ?? []), created]);
++        this.form.reset();
++        this.saving.set(false);
++      },
++      error: () => {
++        this.saveError.set('Could not save the task. Please try again.');
++        this.saving.set(false);
++      },
++    });
++  }
++
++  protected toggle(task: Task): void {
++    this.toggling.set(task.id);
++    this.toggleError.set(null);
++    this.service.toggle(this.projectId(), task.id).subscribe({
++      next: (updated) => {
++        this.tasks.update((list) => (list ?? []).map((t) => (t.id === updated.id ? updated : t)));
++        this.toggling.set(null);
++      },
++      error: () => {
++        this.toggleError.set('Could not update the task. Please try again.');
++        this.toggling.set(null);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/tasks/task.service.ts b/src/main/frontend/src/app/features/tasks/task.service.ts
+new file mode 100644
+index 0000000..860bea5
+--- /dev/null
++++ b/src/main/frontend/src/app/features/tasks/task.service.ts
+@@ -0,0 +1,27 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++export interface Task {
++  id: number;
++  projectId: number;
++  title: string;
++  done: boolean;
++}
++
++@Injectable({ providedIn: 'root' })
++export class TaskService {
++  private readonly http = inject(HttpClient);
++
++  listForProject(projectId: number): Observable<Task[]> {
++    return this.http.get<Task[]>(`/api/projects/${projectId}/tasks`);
++  }
++
++  create(projectId: number, title: string): Observable<Task> {
++    return this.http.post<Task>(`/api/projects/${projectId}/tasks`, { title });
++  }
++
++  toggle(projectId: number, taskId: number): Observable<Task> {
++    return this.http.post<Task>(`/api/projects/${projectId}/tasks/${taskId}/toggle`, null);
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index af8c798..f4008cb 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -41,6 +41,7 @@ public class TestSupportController {
+         // referential checks for the duration of the truncates.
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+         try {
++            jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
+@@ -68,6 +69,11 @@ public class TestSupportController {
+                     ((Number) p.get("id")).longValue(), p.get("name"),
+                     ((Number) p.get("clientId")).longValue());
+         }
++        for (Map<String, Object> t : rows(fixture, "tasks")) {
++            jdbc.update("INSERT INTO task (id, project_id, title, done) VALUES (?, ?, ?, ?)",
++                    ((Number) t.get("id")).longValue(), ((Number) t.get("projectId")).longValue(),
++                    t.get("title"), Boolean.TRUE.equals(t.get("done")));
++        }
+         for (Map<String, Object> i : rows(fixture, "invoices")) {
+             LocalDate issued = i.get("issuedDate") == null ? LocalDate.now()
+                     : LocalDate.parse(i.get("issuedDate").toString());
+@@ -84,6 +90,7 @@ public class TestSupportController {
+         restartIdentity("contact");
+         restartIdentity("project");
+         restartIdentity("invoice");
++        restartIdentity("task");
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/task/Task.java b/src/main/java/net/officefloor/hq/app/task/Task.java
+new file mode 100644
+index 0000000..a482fdc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/Task.java
+@@ -0,0 +1,58 @@
++package net.officefloor.hq.app.task;
++
++import jakarta.persistence.Entity;
++import jakarta.persistence.FetchType;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.ManyToOne;
++import jakarta.persistence.Table;
++import net.officefloor.hq.app.project.Project;
++
++/** A to-do item on a project's task list, ticked off once done. */
++@Entity
++@Table(name = "task")
++public class Task {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @ManyToOne(fetch = FetchType.LAZY, optional = false)
++    @JoinColumn(name = "project_id", nullable = false)
++    private Project project;
++
++    private String title;
++
++    private boolean done;
++
++    protected Task() {
++    }
++
++    public Task(Project project, String title) {
++        this.project = project;
++        this.title = title;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Project getProject() {
++        return project;
++    }
++
++    public String getTitle() {
++        return title;
++    }
++
++    public boolean isDone() {
++        return done;
++    }
++
++    /** Flips the task between open and done. */
++    public void toggle() {
++        this.done = !this.done;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskController.java b/src/main/java/net/officefloor/hq/app/task/TaskController.java
+new file mode 100644
+index 0000000..d969f21
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/TaskController.java
+@@ -0,0 +1,40 @@
++package net.officefloor.hq.app.task;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The task list kept for a project. */
++@RestController
++@RequestMapping("/api/projects/{projectId}/tasks")
++public class TaskController {
++
++    private final TaskService service;
++
++    public TaskController(TaskService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<TaskResponse> list(@PathVariable Long projectId) {
++        return service.listForProject(projectId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public TaskResponse create(@PathVariable Long projectId, @Valid @RequestBody TaskRequest request) {
++        return service.create(projectId, request);
++    }
++
++    @PostMapping("/{taskId}/toggle")
++    public TaskResponse toggle(@PathVariable Long projectId, @PathVariable Long taskId) {
++        return service.toggle(projectId, taskId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskRepository.java b/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
+new file mode 100644
+index 0000000..6bf0e7b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.task;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface TaskRepository extends JpaRepository<Task, Long> {
++
++    /** A project's tasks in the order they were added. */
++    List<Task> findByProjectIdOrderById(Long projectId);
++
++    Optional<Task> findByIdAndProjectId(Long id, Long projectId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskRequest.java b/src/main/java/net/officefloor/hq/app/task/TaskRequest.java
+new file mode 100644
+index 0000000..77c2dc0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/TaskRequest.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.task;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++
++/** Payload to add a task to a project. */
++public record TaskRequest(@NotBlank @Size(max = 255) String title) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskResponse.java b/src/main/java/net/officefloor/hq/app/task/TaskResponse.java
+new file mode 100644
+index 0000000..130f89a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/TaskResponse.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.task;
++
++public record TaskResponse(Long id, Long projectId, String title, boolean done) {
++
++    static TaskResponse from(Task task) {
++        return new TaskResponse(task.getId(), task.getProject().getId(), task.getTitle(), task.isDone());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskService.java b/src/main/java/net/officefloor/hq/app/task/TaskService.java
+new file mode 100644
+index 0000000..4d49c02
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/TaskService.java
+@@ -0,0 +1,50 @@
++package net.officefloor.hq.app.task;
++
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.project.Project;
++import net.officefloor.hq.app.project.ProjectRepository;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class TaskService {
++
++    private final TaskRepository tasks;
++    private final ProjectRepository projects;
++    private final Audit audit;
++
++    public TaskService(TaskRepository tasks, ProjectRepository projects, Audit audit) {
++        this.tasks = tasks;
++        this.projects = projects;
++        this.audit = audit;
++    }
++
++    @Transactional(readOnly = true)
++    public List<TaskResponse> listForProject(Long projectId) {
++        if (!projects.existsById(projectId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
++        }
++        return tasks.findByProjectIdOrderById(projectId).stream().map(TaskResponse::from).toList();
++    }
++
++    @Transactional
++    public TaskResponse create(Long projectId, TaskRequest request) {
++        Project project = projects.findById(projectId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++        Task saved = tasks.save(new Task(project, request.title().trim()));
++        return TaskResponse.from(saved);
++    }
++
++    /** Ticks a task off (or reopens it) and records the change in the audit log. */
++    @Transactional
++    public TaskResponse toggle(Long projectId, Long taskId) {
++        Task task = tasks.findByIdAndProjectId(taskId, projectId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown task"));
++        task.toggle();
++        audit.record("TASK_TOGGLED id=" + task.getId() + " done=" + task.isDone());
++        return TaskResponse.from(task);
++    }
++}
+diff --git a/src/main/resources/db/migration/V9__create_task.sql b/src/main/resources/db/migration/V9__create_task.sql
+new file mode 100644
+index 0000000..c986ffd
+--- /dev/null
++++ b/src/main/resources/db/migration/V9__create_task.sql
+@@ -0,0 +1,9 @@
++CREATE TABLE task (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    project_id BIGINT       NOT NULL,
++    title      VARCHAR(255) NOT NULL,
++    done       BOOLEAN      NOT NULL DEFAULT FALSE,
++    CONSTRAINT task_project_fk FOREIGN KEY (project_id) REFERENCES project (id)
++);
++
++CREATE INDEX task_project_idx ON task (project_id);
