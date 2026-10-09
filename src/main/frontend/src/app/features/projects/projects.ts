@@ -10,7 +10,8 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
 // are kept but left off the list unless the archived toggle is on, where they can be restored. The
 // list can be narrowed to the projects carrying a chosen tag. Each project is marked active, on hold
 // or finished, chosen when it is added and changeable from its row, and the list can be narrowed to
-// the projects at a chosen status.
+// the projects at a chosen status. The tag and status filters combine, e.g. active projects with a
+// given tag.
 @Component({
   selector: 'app-projects',
   imports: [ReactiveFormsModule, RouterLink],
@@ -119,7 +120,9 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
 
     @if (projects().length === 0) {
       <p data-testid="projects-empty">
-        @if (statusFilter() !== null) {
+        @if (statusFilter() !== null && tagFilter() !== null) {
+          No projects at this status with this tag.
+        } @else if (statusFilter() !== null) {
           No projects at this status.
         } @else {
           {{ tagFilter() === null ? 'No projects yet.' : 'No projects with this tag.' }}
