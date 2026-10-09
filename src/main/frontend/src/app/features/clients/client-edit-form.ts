@@ -3,7 +3,7 @@ import { Component, ElementRef, OnInit, afterNextRender, inject, input, output, 
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Client, ClientService } from './client.service';
 
-// Form to correct one client's name, email or phone number. Emits the saved client, or cancelled when abandoned.
+// Form to correct one client's name, email, phone number or tax number. Emits the saved client, or cancelled when abandoned.
 @Component({
   selector: 'app-client-edit-form',
   imports: [ReactiveFormsModule],
@@ -71,6 +71,23 @@ import { Client, ClientService } from './client.service';
           </p>
         }
       </div>
+      <div>
+        <label for="client-edit-tax-number">Tax number (optional)</label>
+        <input
+          id="client-edit-tax-number"
+          type="text"
+          formControlName="taxNumber"
+          autocomplete="off"
+          data-testid="client-edit-form-tax-number"
+          [attr.aria-invalid]="showError('taxNumber')"
+          [attr.aria-describedby]="showError('taxNumber') ? 'client-edit-tax-number-error' : null"
+        />
+        @if (showError('taxNumber')) {
+          <p id="client-edit-tax-number-error" role="alert" data-testid="client-edit-form-tax-number-error">
+            Tax number must be 50 characters or fewer.
+          </p>
+        }
+      </div>
       <button type="submit" data-testid="client-edit-form-submit" [disabled]="saving()">Save</button>
       <button type="button" data-testid="client-edit-form-cancel" (click)="cancelled.emit()">Cancel</button>
       @if (saveError()) {
@@ -103,6 +120,7 @@ export class ClientEditForm implements OnInit {
       ],
     ],
     phone: ['', Validators.maxLength(50)],
+    taxNumber: ['', Validators.maxLength(50)],
   });
 
   constructor() {
@@ -110,11 +128,11 @@ export class ClientEditForm implements OnInit {
   }
 
   ngOnInit(): void {
-    const { name, email, phone } = this.client();
-    this.form.setValue({ name, email, phone: phone ?? '' });
+    const { name, email, phone, taxNumber } = this.client();
+    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '' });
   }
 
-  protected showError(field: 'name' | 'email' | 'phone'): boolean {
+  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber'): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -124,10 +142,10 @@ export class ClientEditForm implements OnInit {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone } = this.form.getRawValue();
+    const { name, email, phone, taxNumber } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null }).subscribe({
+    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null }).subscribe({
       next: (updated) => {
         this.saving.set(false);
         this.saved.emit(updated);

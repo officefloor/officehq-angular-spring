@@ -68,7 +68,8 @@ public class ClientService {
             throw emailTaken();
         }
         try {
-            return respond(clients.saveAndFlush(new Client(request.name().trim(), email, request.trimmedPhone())));
+            return respond(clients.saveAndFlush(
+                    new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber())));
         } catch (DataIntegrityViolationException e) {
             // Lost a race with a concurrent add of the same email; the unique constraint caught it.
             if (String.valueOf(e.getMessage()).toUpperCase().contains("CLIENT_EMAIL_UQ")) {
@@ -79,7 +80,7 @@ public class ClientService {
     }
 
     /**
-     * Corrects a client's name, email and phone number; the email, once trimmed, must not belong to another client.
+     * Corrects a client's name, email, phone number and tax number; the email, once trimmed, must not belong to another client.
      * The change is recorded in the audit log.
      */
     @Transactional
@@ -89,7 +90,7 @@ public class ClientService {
         if (clients.existsByEmailIgnoreCaseAndIdNot(email, id)) {
             throw emailTaken();
         }
-        client.rename(request.name().trim(), email, request.trimmedPhone());
+        client.rename(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber());
         try {
             clients.flush();
         } catch (DataIntegrityViolationException e) {

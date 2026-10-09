@@ -95,6 +95,8 @@ export interface InvoiceDetail extends Invoice {
   taxableBase: number;
   tax: number;
   lineItems: LineItem[];
+  /** The client's tax registration number; null when they are not tax registered. */
+  clientTaxNumber: string | null;
 }
 
 export interface NewLineItem {

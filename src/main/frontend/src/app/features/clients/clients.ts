@@ -6,7 +6,7 @@ import { RouterLink } from '@angular/router';
 import { ClientEditForm } from './client-edit-form';
 import { Client, ClientService } from './client.service';
 
-// Clients page: add a client (name + email, optionally a phone number) and list all clients, filterable by name; each client
+// Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
 // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
 // list and search unless the archived toggle is on, where it can be restored. A client's name or email
 // can be corrected in place from its row. The list can be sorted by name or by how much each client owes.
@@ -69,6 +69,23 @@ import { Client, ClientService } from './client.service';
         @if (showError('phone')) {
           <p id="client-phone-error" role="alert" data-testid="client-form-phone-error">
             Phone number must be 50 characters or fewer.
+          </p>
+        }
+      </div>
+      <div>
+        <label for="client-tax-number">Tax number (optional)</label>
+        <input
+          id="client-tax-number"
+          type="text"
+          formControlName="taxNumber"
+          autocomplete="off"
+          data-testid="client-form-tax-number"
+          [attr.aria-invalid]="showError('taxNumber')"
+          [attr.aria-describedby]="showError('taxNumber') ? 'client-tax-number-error' : null"
+        />
+        @if (showError('taxNumber')) {
+          <p id="client-tax-number-error" role="alert" data-testid="client-form-tax-number-error">
+            Tax number must be 50 characters or fewer.
           </p>
         }
       </div>
@@ -225,6 +242,7 @@ export class Clients {
       ],
     ],
     phone: ['', Validators.maxLength(50)],
+    taxNumber: ['', Validators.maxLength(50)],
   });
 
   constructor() {
@@ -239,7 +257,7 @@ export class Clients {
     this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
   }
 
-  protected showError(field: 'name' | 'email' | 'phone'): boolean {
+  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber'): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -249,10 +267,10 @@ export class Clients {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone } = this.form.getRawValue();
+    const { name, email, phone, taxNumber } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null }).subscribe({
+    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created]);
         this.form.reset();

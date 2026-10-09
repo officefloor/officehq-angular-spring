@@ -13,6 +13,8 @@ export interface Client {
   email: string;
   /** A number to reach the client on; null when not known. */
   phone: string | null;
+  /** The client's tax registration number; null when they are not tax registered. */
+  taxNumber: string | null;
   archived: boolean;
   /** The client's main contact; null until one is chosen. */
   primaryContact: { id: number; name: string } | null;

@@ -28,6 +28,9 @@ public class Client {
     /** A number to reach the client on; none when not known. */
     private String phone;
 
+    /** The client's tax registration number; none when they are not tax registered. */
+    private String taxNumber;
+
     private boolean archived;
 
     /** The currency the client is billed in; all of their money is in it. */
@@ -42,10 +45,11 @@ public class Client {
     protected Client() {
     }
 
-    public Client(String name, String email, String phone) {
+    public Client(String name, String email, String phone, String taxNumber) {
         this.name = name;
         this.email = email;
         this.phone = phone;
+        this.taxNumber = taxNumber;
     }
 
     public Long getId() {
@@ -64,11 +68,16 @@ public class Client {
         return phone;
     }
 
-    /** Corrects the client's name, email and phone number. */
-    public void rename(String name, String email, String phone) {
+    public String getTaxNumber() {
+        return taxNumber;
+    }
+
+    /** Corrects the client's name, email, phone number and tax number. */
+    public void rename(String name, String email, String phone, String taxNumber) {
         this.name = name;
         this.email = email;
         this.phone = phone;
+        this.taxNumber = taxNumber;
     }
 
     public boolean isArchived() {

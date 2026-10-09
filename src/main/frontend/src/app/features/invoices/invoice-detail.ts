@@ -10,7 +10,7 @@ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
-// A single invoice: the things it charges for (description, how many and of what, price each), each line's
+// A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
 // amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
 // sales tax added on it after the discount, and the final total including the tax. Lines, the discount and the tax rate can be changed while it is a draft.
 @Component({
@@ -27,6 +27,9 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
         <span data-testid="invoice-issued">{{ inv.issuedDate }}</span> · Due
         <span data-testid="invoice-due">{{ inv.dueDate }}</span>
       </p>
+      @if (inv.clientTaxNumber) {
+        <p>Client tax number: <span data-testid="invoice-client-tax-number">{{ inv.clientTaxNumber }}</span></p>
+      }
 
       <section aria-labelledby="invoice-lineitems-heading">
         <h2 id="invoice-lineitems-heading" tabindex="-1">Line items</h2>
