@@ -1,0 +1,602 @@
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index dba31c1..4989c7e 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -2,13 +2,14 @@ import { Component, computed, inject, input } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { ProjectInvoices } from '../invoices/project-invoices';
++import { ProjectTags } from '../tags/project-tags';
+ import { ProjectTasks } from '../tasks/project-tasks';
+ import { ProjectService } from './project.service';
+ 
+-// A single project's page: its name and client, its tasks, and its invoices.
++// A single project's page: its name and client, its tags, its tasks, and its invoices.
+ @Component({
+   selector: 'app-project-detail',
+-  imports: [RouterLink, ProjectInvoices, ProjectTasks],
++  imports: [RouterLink, ProjectInvoices, ProjectTags, ProjectTasks],
+   template: `
+     <a routerLink="/projects" data-testid="project-back">Back to projects</a>
+     @if (project.error()) {
+@@ -16,6 +17,7 @@ import { ProjectService } from './project.service';
+     } @else if (project.value(); as p) {
+       <h1 data-testid="project-detail-name">{{ p.name }}</h1>
+       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
++      <app-project-tags [projectId]="projectId()" />
+       <app-project-tasks [projectId]="projectId()" />
+       <app-project-invoices [projectId]="projectId()" />
+     }
+diff --git a/src/main/frontend/src/app/features/tags/project-tags.ts b/src/main/frontend/src/app/features/tags/project-tags.ts
+new file mode 100644
+index 0000000..b0e6a0c
+--- /dev/null
++++ b/src/main/frontend/src/app/features/tags/project-tags.ts
+@@ -0,0 +1,175 @@
++import { Component, computed, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { Observable } from 'rxjs';
++import { Tag, TagService } from './tag.service';
++
++// A project's tags: labels shown as chips that group projects. Put an existing tag on the project,
++// take one off, or create a new tag.
++@Component({
++  selector: 'app-project-tags',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="project-tags-heading" data-testid="project-tags">
++      <h2 id="project-tags-heading">Tags</h2>
++
++      @if (projectTags.error()) {
++        <p role="alert" data-testid="project-tags-error">Could not load the tags.</p>
++      } @else if (projectTags.hasValue()) {
++        @if (projectTags.value().length === 0) {
++          <p data-testid="project-tags-empty">No tags on this project yet.</p>
++        } @else {
++          <ul class="chips" aria-label="Project tags" data-testid="project-tag-list">
++            @for (t of projectTags.value(); track t.id) {
++              <li class="chip">
++                <span [attr.data-testid]="'project-tag-' + t.id">{{ t.name }}</span>
++                <button
++                  type="button"
++                  [attr.data-testid]="'project-tag-remove-' + t.id"
++                  [attr.aria-label]="'Remove tag ' + t.name"
++                  [disabled]="busy()"
++                  (click)="remove(t)"
++                >
++                  <span aria-hidden="true">×</span>
++                </button>
++              </li>
++            }
++          </ul>
++        }
++      }
++
++      <form [formGroup]="addForm" (ngSubmit)="add()" data-testid="project-tag-add-form" novalidate>
++        <label for="project-tag-add">Add tag</label>
++        <select id="project-tag-add" formControlName="tagId" data-testid="project-tag-add">
++          <option value="">Choose a tag…</option>
++          @for (t of availableTags(); track t.id) {
++            <option [value]="t.id">{{ t.name }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="project-tag-add-submit" [disabled]="busy()">Add</button>
++      </form>
++
++      <form [formGroup]="newForm" (ngSubmit)="createTag()" data-testid="tag-new-form" novalidate>
++        <label for="tag-new-name">New tag</label>
++        <input
++          id="tag-new-name"
++          type="text"
++          formControlName="name"
++          maxlength="50"
++          data-testid="tag-new-name"
++        />
++        <button type="submit" data-testid="tag-new-submit" [disabled]="busy()">
++          Create and add
++        </button>
++      </form>
++
++      @if (error()) {
++        <p role="alert" data-testid="project-tag-error">{{ error() }}</p>
++      }
++    </section>
++  `,
++  styles: `
++    .chips {
++      display: flex;
++      flex-wrap: wrap;
++      gap: 0.5rem;
++      list-style: none;
++      padding: 0;
++    }
++    .chip {
++      display: inline-flex;
++      align-items: center;
++      gap: 0.25rem;
++      padding: 0.125rem 0.5rem;
++      border: 1px solid #555;
++      border-radius: 1rem;
++      background: #eef;
++      color: #111;
++    }
++  `,
++})
++export class ProjectTags {
++  private readonly service = inject(TagService);
++  private readonly fb = inject(NonNullableFormBuilder);
++
++  readonly projectId = input.required<number>();
++
++  protected readonly projectTags = rxResource({
++    params: () => this.projectId(),
++    stream: ({ params }) => this.service.listForProject(params),
++  });
++  protected readonly allTags = rxResource({ stream: () => this.service.list() });
++
++  /** Tags that can still be put on the project. */
++  protected readonly availableTags = computed(() => {
++    const applied = new Set((this.projectTags.value() ?? []).map((t) => t.id));
++    return (this.allTags.value() ?? []).filter((t) => !applied.has(t.id));
++  });
++
++  protected readonly busy = signal(false);
++  protected readonly error = signal<string | null>(null);
++
++  protected readonly addForm = this.fb.group({ tagId: ['', Validators.required] });
++  protected readonly newForm = this.fb.group({
++    name: ['', [Validators.required, Validators.maxLength(50)]],
++  });
++
++  protected add(): void {
++    const tagId = Number(this.addForm.getRawValue().tagId);
++    if (!tagId) {
++      this.error.set('Choose a tag to add.');
++      return;
++    }
++    this.apply(this.service.addToProject(this.projectId(), tagId), 'Could not add the tag.', () =>
++      this.addForm.reset(),
++    );
++  }
++
++  protected remove(tag: Tag): void {
++    this.apply(
++      this.service.removeFromProject(this.projectId(), tag.id),
++      'Could not remove the tag.',
++    );
++  }
++
++  protected createTag(): void {
++    const name = this.newForm.getRawValue().name.trim();
++    if (!name) {
++      this.error.set('Enter a name for the new tag.');
++      return;
++    }
++    this.busy.set(true);
++    this.error.set(null);
++    this.service.create(name).subscribe({
++      next: (created) => {
++        this.allTags.update((list) => [...(list ?? []), created]);
++        this.newForm.reset();
++        this.busy.set(false);
++        this.apply(
++          this.service.addToProject(this.projectId(), created.id),
++          'Could not add the tag.',
++        );
++      },
++      error: () => {
++        this.error.set('Could not create the tag. It may already exist.');
++        this.busy.set(false);
++      },
++    });
++  }
++
++  private apply(request: Observable<Tag[]>, failure: string, done?: () => void): void {
++    this.busy.set(true);
++    this.error.set(null);
++    request.subscribe({
++      next: (tags) => {
++        this.projectTags.set(tags);
++        done?.();
++        this.busy.set(false);
++      },
++      error: () => {
++        this.error.set(failure);
++        this.busy.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/tags/tag.service.ts b/src/main/frontend/src/app/features/tags/tag.service.ts
+new file mode 100644
+index 0000000..95ac09a
+--- /dev/null
++++ b/src/main/frontend/src/app/features/tags/tag.service.ts
+@@ -0,0 +1,33 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++export interface Tag {
++  id: number;
++  name: string;
++}
++
++@Injectable({ providedIn: 'root' })
++export class TagService {
++  private readonly http = inject(HttpClient);
++
++  list(): Observable<Tag[]> {
++    return this.http.get<Tag[]>('/api/tags');
++  }
++
++  create(name: string): Observable<Tag> {
++    return this.http.post<Tag>('/api/tags', { name });
++  }
++
++  listForProject(projectId: number): Observable<Tag[]> {
++    return this.http.get<Tag[]>(`/api/projects/${projectId}/tags`);
++  }
++
++  addToProject(projectId: number, tagId: number): Observable<Tag[]> {
++    return this.http.put<Tag[]>(`/api/projects/${projectId}/tags/${tagId}`, null);
++  }
++
++  removeFromProject(projectId: number, tagId: number): Observable<Tag[]> {
++    return this.http.delete<Tag[]>(`/api/projects/${projectId}/tags/${tagId}`);
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index aa60ae4..6f0c679 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -42,6 +42,8 @@ public class TestSupportController {
+         // referential checks for the duration of the truncates.
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+         try {
++            jdbc.execute("TRUNCATE TABLE project_tag");
++            jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
+@@ -71,6 +73,14 @@ public class TestSupportController {
+                     ((Number) p.get("id")).longValue(), p.get("name"),
+                     ((Number) p.get("clientId")).longValue());
+         }
++        for (Map<String, Object> t : rows(fixture, "tags")) {
++            jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",
++                    ((Number) t.get("id")).longValue(), t.get("name"));
++        }
++        for (Map<String, Object> pt : rows(fixture, "projectTags")) {
++            jdbc.update("INSERT INTO project_tag (project_id, tag_id) VALUES (?, ?)",
++                    ((Number) pt.get("projectId")).longValue(), ((Number) pt.get("tagId")).longValue());
++        }
+         for (Map<String, Object> t : rows(fixture, "tasks")) {
+             jdbc.update("INSERT INTO task (id, project_id, title, done) VALUES (?, ?, ?, ?)",
+                     ((Number) t.get("id")).longValue(), ((Number) t.get("projectId")).longValue(),
+@@ -120,6 +130,7 @@ public class TestSupportController {
+         restartIdentity("invoice");
+         restartIdentity("invoice_line_item");
+         restartIdentity("task");
++        restartIdentity("tag");
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+index d05174f..83ad670 100644
+--- a/src/main/java/net/officefloor/hq/app/project/Project.java
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -6,9 +6,14 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
++import jakarta.persistence.JoinTable;
++import jakarta.persistence.ManyToMany;
+ import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
++import java.util.HashSet;
++import java.util.Set;
+ import net.officefloor.hq.app.client.Client;
++import net.officefloor.hq.app.tag.Tag;
+ 
+ /** A project done for a client. */
+ @Entity
+@@ -27,6 +32,11 @@ public class Project {
+ 
+     private boolean archived;
+ 
++    @ManyToMany
++    @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
++            inverseJoinColumns = @JoinColumn(name = "tag_id"))
++    private Set<Tag> tags = new HashSet<>();
++
+     protected Project() {
+     }
+ 
+@@ -54,4 +64,9 @@ public class Project {
+     public void setArchived(boolean archived) {
+         this.archived = archived;
+     }
++
++    /** The tags labelling this project; add or remove to tag or untag it. */
++    public Set<Tag> getTags() {
++        return tags;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/tag/ProjectTagController.java b/src/main/java/net/officefloor/hq/app/tag/ProjectTagController.java
+new file mode 100644
+index 0000000..1e7ff83
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tag/ProjectTagController.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app.tag;
++
++import java.util.List;
++import org.springframework.web.bind.annotation.DeleteMapping;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The tags put on a project. */
++@RestController
++@RequestMapping("/api/projects/{projectId}/tags")
++public class ProjectTagController {
++
++    private final TagService service;
++
++    public ProjectTagController(TagService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<TagResponse> list(@PathVariable Long projectId) {
++        return service.listForProject(projectId);
++    }
++
++    @PutMapping("/{tagId}")
++    public List<TagResponse> add(@PathVariable Long projectId, @PathVariable Long tagId) {
++        return service.tag(projectId, tagId);
++    }
++
++    @DeleteMapping("/{tagId}")
++    public List<TagResponse> remove(@PathVariable Long projectId, @PathVariable Long tagId) {
++        return service.untag(projectId, tagId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tag/Tag.java b/src/main/java/net/officefloor/hq/app/tag/Tag.java
+new file mode 100644
+index 0000000..ccd1902
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tag/Tag.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app.tag;
++
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A label put on projects to group them. */
++@Entity
++@Table(name = "tag")
++public class Tag {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String name;
++
++    protected Tag() {
++    }
++
++    public Tag(String name) {
++        this.name = name;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getName() {
++        return name;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tag/TagController.java b/src/main/java/net/officefloor/hq/app/tag/TagController.java
+new file mode 100644
+index 0000000..6f4da0c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tag/TagController.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app.tag;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The tags available to put on projects. */
++@RestController
++@RequestMapping("/api/tags")
++public class TagController {
++
++    private final TagService service;
++
++    public TagController(TagService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<TagResponse> list() {
++        return service.list();
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public TagResponse create(@Valid @RequestBody TagRequest request) {
++        return service.create(request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tag/TagRepository.java b/src/main/java/net/officefloor/hq/app/tag/TagRepository.java
+new file mode 100644
+index 0000000..d8b3ef2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tag/TagRepository.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.tag;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface TagRepository extends JpaRepository<Tag, Long> {
++
++    /** All tags in name order. */
++    List<Tag> findAllByOrderByNameAsc();
++
++    boolean existsByNameIgnoreCase(String name);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tag/TagRequest.java b/src/main/java/net/officefloor/hq/app/tag/TagRequest.java
+new file mode 100644
+index 0000000..4016922
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tag/TagRequest.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.tag;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++
++/** Payload to create a tag. */
++public record TagRequest(@NotBlank @Size(max = 50) String name) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tag/TagResponse.java b/src/main/java/net/officefloor/hq/app/tag/TagResponse.java
+new file mode 100644
+index 0000000..a4835e0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tag/TagResponse.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.tag;
++
++public record TagResponse(Long id, String name) {
++
++    public static TagResponse from(Tag tag) {
++        return new TagResponse(tag.getId(), tag.getName());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tag/TagService.java b/src/main/java/net/officefloor/hq/app/tag/TagService.java
+new file mode 100644
+index 0000000..11c1eef
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tag/TagService.java
+@@ -0,0 +1,79 @@
++package net.officefloor.hq.app.tag;
++
++import java.util.Comparator;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.project.Project;
++import net.officefloor.hq.app.project.ProjectRepository;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class TagService {
++
++    private final TagRepository tags;
++    private final ProjectRepository projects;
++    private final Audit audit;
++
++    public TagService(TagRepository tags, ProjectRepository projects, Audit audit) {
++        this.tags = tags;
++        this.projects = projects;
++        this.audit = audit;
++    }
++
++    @Transactional(readOnly = true)
++    public List<TagResponse> list() {
++        return tags.findAllByOrderByNameAsc().stream().map(TagResponse::from).toList();
++    }
++
++    @Transactional
++    public TagResponse create(TagRequest request) {
++        String name = request.name().trim();
++        if (tags.existsByNameIgnoreCase(name)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Tag already exists");
++        }
++        return TagResponse.from(tags.save(new Tag(name)));
++    }
++
++    @Transactional(readOnly = true)
++    public List<TagResponse> listForProject(Long projectId) {
++        return responses(findProject(projectId));
++    }
++
++    /** Puts a tag on a project, recording it in the audit log. */
++    @Transactional
++    public List<TagResponse> tag(Long projectId, Long tagId) {
++        Project project = findProject(projectId);
++        Tag tag = tags.findById(tagId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown tag"));
++        if (project.getTags().add(tag)) {
++            projects.flush();
++            audit.record("PROJECT_TAGGED project=" + projectId + " tag=" + tagId);
++        }
++        return responses(project);
++    }
++
++    /** Takes a tag off a project, recording it in the audit log. */
++    @Transactional
++    public List<TagResponse> untag(Long projectId, Long tagId) {
++        Project project = findProject(projectId);
++        if (project.getTags().removeIf(t -> t.getId().equals(tagId))) {
++            projects.flush();
++            audit.record("PROJECT_UNTAGGED project=" + projectId + " tag=" + tagId);
++        }
++        return responses(project);
++    }
++
++    private Project findProject(Long projectId) {
++        return projects.findById(projectId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
++    }
++
++    private static List<TagResponse> responses(Project project) {
++        return project.getTags().stream()
++                .sorted(Comparator.comparing(Tag::getName, String.CASE_INSENSITIVE_ORDER))
++                .map(TagResponse::from).toList();
++    }
++}
+diff --git a/src/main/resources/db/migration/V13__project_tags.sql b/src/main/resources/db/migration/V13__project_tags.sql
+new file mode 100644
+index 0000000..5865402
+--- /dev/null
++++ b/src/main/resources/db/migration/V13__project_tags.sql
+@@ -0,0 +1,17 @@
++-- Projects can be labelled with tags so they can be grouped. A tag is a shared label; a project
++-- carries any number of them. Tagging belongs to the project and goes with it if it is deleted.
++CREATE TABLE tag (
++    id   BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    name VARCHAR(50) NOT NULL,
++    CONSTRAINT tag_name_uq UNIQUE (name)
++);
++
++CREATE TABLE project_tag (
++    project_id BIGINT NOT NULL,
++    tag_id     BIGINT NOT NULL,
++    CONSTRAINT project_tag_pk PRIMARY KEY (project_id, tag_id),
++    CONSTRAINT project_tag_project_fk FOREIGN KEY (project_id) REFERENCES project (id) ON DELETE CASCADE,
++    CONSTRAINT project_tag_tag_fk FOREIGN KEY (tag_id) REFERENCES tag (id) ON DELETE CASCADE
++);
++
++CREATE INDEX project_tag_tag_idx ON project_tag (tag_id);
