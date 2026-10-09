@@ -1,0 +1,198 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index c146122..c430f8a 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -11,8 +11,8 @@ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ 
+ // A single invoice: the things it charges for (description, how many and of what, price each), each line's
+-// amount, their subtotal, any percentage discount, any sales tax added after it, and the final total
+-// including the tax. Lines, the discount and the tax rate can be changed while it is a draft.
++// amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
++// sales tax added on it after the discount, and the final total including the tax. Lines, the discount and the tax rate can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, Notes],
+@@ -180,6 +180,13 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                 <td></td>
+               }
+             </tr>
++            <tr>
++              <th scope="row" colspan="4">Taxable amount (excludes tax-free lines)</th>
++              <td data-testid="invoice-taxable-base">{{ inv.taxableBase | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              @if (inv.status === 'DRAFT') {
++                <td></td>
++              }
++            </tr>
+             <tr>
+               <th scope="row" colspan="4">
+                 Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index ec4d736..b874c13 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -83,14 +83,16 @@ export interface LineItem {
+ 
+ /**
+  * A single invoice with the line items it is built from: their subtotal, the percentage discount and
+- * what it takes off, and the sales tax percentage and what it adds after the discount; its amount is
+- * the subtotal less the discount plus the tax.
++ * what it takes off, and the sales tax percentage, the taxable base it is charged on (the taxable
++ * lines after the discount, leaving out tax-free ones) and what it adds; its amount is the subtotal
++ * less the discount plus the tax.
+  */
+ export interface InvoiceDetail extends Invoice {
+   subtotal: number;
+   discountPct: number;
+   discount: number;
+   taxPct: number;
++  taxableBase: number;
+   tax: number;
+   lineItems: LineItem[];
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 2f7156a..97c3612 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -135,12 +135,17 @@ public class TestSupportController {
+                         "qty", 1, "unitPrice", i.get("amount")));
+             }
+             BigDecimal amount = BigDecimal.ZERO;
++            BigDecimal taxable = BigDecimal.ZERO;
+             for (Map<String, Object> l : lineItems) {
+-                amount = amount.add(new BigDecimal(l.get("qty").toString())
+-                        .multiply(new BigDecimal(l.get("unitPrice").toString())));
++                BigDecimal line = new BigDecimal(l.get("qty").toString())
++                        .multiply(new BigDecimal(l.get("unitPrice").toString())).setScale(2, RoundingMode.HALF_UP);
++                amount = amount.add(line);
++                if (!Boolean.TRUE.equals(l.get("taxExempt"))) {
++                    taxable = taxable.add(line);
++                }
+             }
+             // A discount takes a percentage off the line items' subtotal, then sales tax adds a percentage
+-            // of what is left; the amount is the discounted subtotal plus the tax.
++            // of what is left of the taxable lines only; the amount is the discounted subtotal plus the tax.
+             BigDecimal subtotal = amount.setScale(2, RoundingMode.HALF_UP);
+             BigDecimal discountPct = i.get("discountPct") == null ? BigDecimal.ZERO
+                     : new BigDecimal(i.get("discountPct").toString());
+@@ -148,7 +153,9 @@ public class TestSupportController {
+             BigDecimal discounted = subtotal.subtract(discount);
+             BigDecimal taxPct = i.get("taxPct") == null ? BigDecimal.ZERO
+                     : new BigDecimal(i.get("taxPct").toString());
+-            BigDecimal tax = discounted.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
++            BigDecimal taxableBase = taxable.subtract(
++                    taxable.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
++            BigDecimal tax = taxableBase.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, tax_pct, status, issued_date, due_date)"
+                     + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, ((Number) i.get("projectId")).longValue(),
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 6006ea4..1d793f4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -24,8 +24,8 @@ import net.officefloor.hq.app.project.Project;
+ 
+ /**
+  * An invoice raised against a project. It is built from line items, and can take a percentage off
+- * their sum as a discount, then add a percentage sales tax on what is left; its stored amount is always
+- * that subtotal less the discount plus the tax.
++ * their sum as a discount, then add a percentage sales tax on what is left of the taxable lines only
++ * (tax-free lines are never taxed); its stored amount is always that subtotal less the discount plus the tax.
+  */
+ @Entity
+ @Table(name = "invoice")
+@@ -104,10 +104,19 @@ public class Invoice {
+         return taxPct;
+     }
+ 
+-    /** How much sales tax is added to the discounted subtotal, to the cent. */
++    /**
++     * What the sales tax is charged on: the taxable lines (leaving out tax-free ones) less the discount
++     * taken off them, to the cent.
++     */
++    public BigDecimal getTaxableBase() {
++        BigDecimal taxable = lineItems.stream().filter(l -> !l.isTaxExempt()).map(InvoiceLineItem::getAmount)
++                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
++        return taxable.subtract(discountOn(taxable));
++    }
++
++    /** How much sales tax is added on the taxable base, to the cent. */
+     public BigDecimal getTax() {
+-        BigDecimal subtotal = getSubtotal();
+-        return taxOn(subtotal.subtract(discountOn(subtotal)));
++        return taxOn(getTaxableBase());
+     }
+ 
+     public InvoiceStatus getStatus() {
+@@ -174,14 +183,14 @@ public class Invoice {
+         return subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+     }
+ 
+-    private BigDecimal taxOn(BigDecimal discounted) {
+-        return discounted.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
++    private BigDecimal taxOn(BigDecimal taxableBase) {
++        return taxableBase.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+     }
+ 
+     private void recalculateAmount() {
+         BigDecimal subtotal = getSubtotal();
+         BigDecimal discounted = subtotal.subtract(discountOn(subtotal));
+-        this.amount = discounted.add(taxOn(discounted));
++        this.amount = discounted.add(getTax());
+     }
+ 
+     /** Marks this invoice as sent to the client. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 0c8646b..0ba043c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -7,18 +7,18 @@ import net.officefloor.hq.app.client.Currency;
+ 
+ /**
+  * A single invoice together with the line items it is built from: their subtotal, the percentage
+- * discount and what it takes off, the sales tax percentage and what it adds after the discount, and
+- * the amount owed including that tax.
++ * discount and what it takes off, the sales tax percentage, the taxable base it is charged on (the
++ * taxable lines after the discount) and what it adds, and the amount owed including that tax.
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal subtotal,
+-        BigDecimal discountPct, BigDecimal discount, BigDecimal taxPct, BigDecimal tax, InvoiceStatus status, LocalDate issuedDate,
++        BigDecimal discountPct, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax, InvoiceStatus status, LocalDate issuedDate,
+         LocalDate dueDate, List<LineItemResponse> lineItems) {
+ 
+     static InvoiceDetailResponse from(Invoice invoice) {
+         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
+                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(),
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscount(),
+-                invoice.getTaxPct(), invoice.getTax(),
++                invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
+                 invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
+                 invoice.getLineItems().stream().map(LineItemResponse::from).toList());
+     }
+diff --git a/src/main/resources/db/migration/V33__tax_on_taxable_lines.sql b/src/main/resources/db/migration/V33__tax_on_taxable_lines.sql
+new file mode 100644
+index 0000000..700e57a
+--- /dev/null
++++ b/src/main/resources/db/migration/V33__tax_on_taxable_lines.sql
+@@ -0,0 +1,21 @@
++-- Sales tax is now charged on the taxable lines only: tax-free lines are left out of what the tax is
++-- worked out on. Rework the stored amount of draft invoices to match (subtotal less the discount, plus
++-- the tax on the taxable lines less their discount). Invoices already sent keep the amount they were
++-- issued for.
++ALTER TABLE invoice ADD COLUMN rework_subtotal DECIMAL(14, 2);
++ALTER TABLE invoice ADD COLUMN rework_taxable DECIMAL(14, 2);
++
++UPDATE invoice i SET
++    rework_subtotal = (SELECT COALESCE(SUM(ROUND(l.qty * l.unit_price, 2)), 0)
++                       FROM invoice_line_item l WHERE l.invoice_id = i.id),
++    rework_taxable = (SELECT COALESCE(SUM(ROUND(l.qty * l.unit_price, 2)), 0)
++                      FROM invoice_line_item l WHERE l.invoice_id = i.id AND NOT l.tax_exempt)
++WHERE i.status = 'DRAFT'
++  AND EXISTS (SELECT 1 FROM invoice_line_item l WHERE l.invoice_id = i.id AND l.tax_exempt);
++
++UPDATE invoice SET amount = rework_subtotal - ROUND(rework_subtotal * discount_pct / 100, 2)
++        + ROUND((rework_taxable - ROUND(rework_taxable * discount_pct / 100, 2)) * tax_pct / 100, 2)
++WHERE rework_subtotal IS NOT NULL;
++
++ALTER TABLE invoice DROP COLUMN rework_subtotal;
++ALTER TABLE invoice DROP COLUMN rework_taxable;
