@@ -291,4 +291,34 @@ public class ClientService {
         return clients.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
     }
+
+    /** The client's contact details as a small CSV file: a header row, then one row of name, email and phone. */
+    @Transactional(readOnly = true)
+    public String exportContactDetails(Long id) {
+        Client client = find(id);
+        String phone = client.getPhone();
+        // A phone number made only of the usual characters may start with '+' and is safe as it is.
+        String phoneField = phone != null && phone.matches("[0-9 +()\\-.]*") ? csv(phone) : csv(neutralise(phone));
+        return "name,email,phone\r\n"
+                + csv(neutralise(client.getName())) + "," + csv(neutralise(client.getEmail())) + "," + phoneField + "\r\n";
+    }
+
+    /** Stops a value a spreadsheet would read as a formula from being run when the file is opened. */
+    private static String neutralise(String value) {
+        if (value != null && !value.isEmpty() && "=+-@\t\r".indexOf(value.charAt(0)) >= 0) {
+            return "'" + value;
+        }
+        return value;
+    }
+
+    /** One CSV field, quoted when it holds a comma, quote or line break; a missing value is left empty. */
+    private static String csv(String value) {
+        if (value == null) {
+            return "";
+        }
+        if (value.matches("(?s).*[\",\r\n].*")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
 }

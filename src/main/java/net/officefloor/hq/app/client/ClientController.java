@@ -1,8 +1,13 @@
 package net.officefloor.hq.app.client;
 
 import jakarta.validation.Valid;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,6 +41,15 @@ public class ClientController {
     @GetMapping("/{id}/summary")
     public ClientSummaryResponse summary(@PathVariable Long id) {
         return service.summary(id);
+    }
+
+    /** Downloads the client's contact details as a CSV file. */
+    @GetMapping(value = "/{id}/export", produces = "text/csv")
+    public ResponseEntity<String> export(@PathVariable Long id) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename("client-" + id + ".csv").build().toString())
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .body(service.exportContactDetails(id));
     }
 
     @PostMapping

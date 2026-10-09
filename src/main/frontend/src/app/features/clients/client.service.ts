@@ -41,6 +41,11 @@ export interface ClientSummary {
 
 export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'outstanding'>;
 
+/** Where a client's contact details file is downloaded from. */
+export function exportUrl(id: number): string {
+  return `/api/clients/${id}/export`;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ClientService {
   private readonly http = inject(HttpClient);
@@ -55,6 +60,11 @@ export class ClientService {
 
   summary(id: number): Observable<ClientSummary> {
     return this.http.get<ClientSummary>(`/api/clients/${id}/summary`);
+  }
+
+  /** The client's contact details as the CSV file the export downloads. */
+  exportContactDetails(id: number): Observable<string> {
+    return this.http.get(exportUrl(id), { responseType: 'text' });
   }
 
   create(client: NewClient): Observable<Client> {
