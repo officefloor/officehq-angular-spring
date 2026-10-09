@@ -1,0 +1,189 @@
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index accbb5e..ce54518 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -9,6 +9,11 @@ export const routes: Routes = [
+     data: { section: 'home', label: 'Home', order: 0 },
+     loadComponent: () => import('./features/home/home').then((m) => m.Home),
+   },
++  {
++    path: 'dashboard',
++    data: { section: 'dashboard', label: 'Dashboard', order: 0 },
++    loadComponent: () => import('./features/dashboard/dashboard').then((m) => m.Dashboard),
++  },
+   {
+     path: 'clients',
+     data: { section: 'clients', label: 'Clients', order: 1 },
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+new file mode 100644
+index 0000000..330cb53
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -0,0 +1,18 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++export interface DashboardSummary {
++  clients: number;
++  projects: number;
++  outstanding: number;
++}
++
++@Injectable({ providedIn: 'root' })
++export class DashboardService {
++  private readonly http = inject(HttpClient);
++
++  summary(): Observable<DashboardSummary> {
++    return this.http.get<DashboardSummary>('/api/dashboard');
++  }
++}
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+new file mode 100644
+index 0000000..152319d
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -0,0 +1,46 @@
++import { Component, computed, inject, signal } from '@angular/core';
++import { DashboardService, DashboardSummary } from './dashboard.service';
++
++// Dashboard page: how many clients and projects there are, and the total still owed (the sum of
++// all unpaid invoices).
++@Component({
++  selector: 'app-dashboard',
++  template: `
++    <h1>Dashboard</h1>
++
++    @if (loadError()) {
++      <p role="alert" data-testid="dashboard-error">{{ loadError() }}</p>
++    } @else if (summary(); as s) {
++      <dl data-testid="dashboard-summary">
++        <div>
++          <dt>Clients</dt>
++          <dd data-testid="dashboard-clients-count">{{ s.clients }}</dd>
++        </div>
++        <div>
++          <dt>Projects</dt>
++          <dd data-testid="dashboard-projects-count">{{ s.projects }}</dd>
++        </div>
++        <div>
++          <dt>Outstanding</dt>
++          <dd data-testid="dashboard-outstanding-total">{{ outstanding() }}</dd>
++        </div>
++      </dl>
++    } @else {
++      <p data-testid="dashboard-loading">Loading…</p>
++    }
++  `,
++})
++export class Dashboard {
++  protected readonly summary = signal<DashboardSummary | null>(null);
++  protected readonly loadError = signal<string | null>(null);
++  protected readonly outstanding = computed(() => (this.summary()?.outstanding ?? 0).toFixed(2));
++
++  constructor() {
++    inject(DashboardService)
++      .summary()
++      .subscribe({
++        next: (s) => this.summary.set(s),
++        error: () => this.loadError.set('Could not load the dashboard. Please try again.'),
++      });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+new file mode 100644
+index 0000000..4f9cfca
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.dashboard;
++
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/dashboard")
++public class DashboardController {
++
++    private final DashboardService service;
++
++    public DashboardController(DashboardService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public DashboardResponse summary() {
++        return service.summary();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+new file mode 100644
+index 0000000..926e9bc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++
++/** Summary figures for the dashboard. */
++public record DashboardResponse(long clients, long projects, BigDecimal outstanding) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+new file mode 100644
+index 0000000..50f0a23
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -0,0 +1,31 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.invoice.InvoiceRepository;
++import net.officefloor.hq.app.invoice.InvoiceStatus;
++import net.officefloor.hq.app.project.ProjectRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++@Service
++public class DashboardService {
++
++    private final ClientRepository clients;
++    private final ProjectRepository projects;
++    private final InvoiceRepository invoices;
++
++    public DashboardService(ClientRepository clients, ProjectRepository projects, InvoiceRepository invoices) {
++        this.clients = clients;
++        this.projects = projects;
++        this.invoices = invoices;
++    }
++
++    /** Counts of clients and projects, and the total still owed (sum of unpaid invoices). */
++    @Transactional(readOnly = true)
++    public DashboardResponse summary() {
++        BigDecimal outstanding = invoices.sumAmountByStatus(InvoiceStatus.UNPAID).setScale(2, RoundingMode.HALF_UP);
++        return new DashboardResponse(clients.count(), projects.count(), outstanding);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+index 158a4d6..c982a5f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -1,9 +1,15 @@
+ package net.officefloor.hq.app.invoice;
+ 
++import java.math.BigDecimal;
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+ 
+     List<Invoice> findByProjectIdOrderById(Long projectId);
++
++    /** Sum of the amounts of all invoices with the given status (zero when there are none). */
++    @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.status = :status")
++    BigDecimal sumAmountByStatus(InvoiceStatus status);
+ }
