@@ -31,10 +31,15 @@ public class InvoiceService {
         return invoices.findByProjectIdOrderById(projectId).stream().map(InvoiceResponse::from).toList();
     }
 
-    /** Every invoice across all projects, with the name of the project each one is for. */
+    /**
+     * Every invoice across all projects, with the name of the project each one is for, narrowed to
+     * the given status when one is supplied.
+     */
     @Transactional(readOnly = true)
-    public List<InvoiceSummaryResponse> listAll() {
-        return invoices.findAllWithProject().stream().map(InvoiceSummaryResponse::from).toList();
+    public List<InvoiceSummaryResponse> listAll(InvoiceStatus status) {
+        List<Invoice> found =
+                status == null ? invoices.findAllWithProject() : invoices.findAllWithProjectByStatus(status);
+        return found.stream().map(InvoiceSummaryResponse::from).toList();
     }
 
     @Transactional

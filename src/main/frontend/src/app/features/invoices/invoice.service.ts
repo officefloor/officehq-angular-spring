@@ -2,7 +2,9 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID';
+export const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PAID'] as const;
+
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
 export interface Invoice {
   id: number;
@@ -32,8 +34,10 @@ export interface NewInvoice {
 export class InvoiceService {
   private readonly http = inject(HttpClient);
 
-  listAll(): Observable<InvoiceSummary[]> {
-    return this.http.get<InvoiceSummary[]>('/api/invoices');
+  /** Every invoice across all projects, optionally narrowed to one status. */
+  listAll(status?: InvoiceStatus): Observable<InvoiceSummary[]> {
+    const params: Record<string, string> = status ? { status } : {};
+    return this.http.get<InvoiceSummary[]>('/api/invoices', { params });
   }
 
   listForProject(projectId: number): Observable<Invoice[]> {

@@ -13,6 +13,10 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Query("SELECT i FROM Invoice i JOIN FETCH i.project ORDER BY i.id")
     List<Invoice> findAllWithProject();
 
+    /** Invoices across every project at the given status, with their project loaded in the same query. */
+    @Query("SELECT i FROM Invoice i JOIN FETCH i.project WHERE i.status = :status ORDER BY i.id")
+    List<Invoice> findAllWithProjectByStatus(InvoiceStatus status);
+
     /** Sum of the amounts of all invoices with the given status (zero when there are none). */
     @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.status = :status")
     BigDecimal sumAmountByStatus(InvoiceStatus status);
