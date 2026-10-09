@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { CurrencyPipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -8,10 +9,10 @@ import { Client, ClientService } from './client.service';
 // Clients page: add a client (name + email) and list all clients, filterable by name; each client
 // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
 // list and search unless the archived toggle is on, where it can be restored. A client's name or email
-// can be corrected in place from its row.
+// can be corrected in place from its row. The list can be sorted by name or by how much each client owes.
 @Component({
   selector: 'app-clients',
-  imports: [ReactiveFormsModule, RouterLink, ClientEditForm],
+  imports: [CurrencyPipe, ReactiveFormsModule, RouterLink, ClientEditForm],
   template: `
     <h1>Clients</h1>
 
@@ -89,6 +90,14 @@ import { Client, ClientService } from './client.service';
           (input)="onSearch($event)"
         />
       </div>
+      <div>
+        <label for="client-sort">Sort by</label>
+        <select id="client-sort" data-testid="client-sort" [value]="sort()" (change)="onSort($event)">
+          <option value="added">Date added</option>
+          <option value="name">Name</option>
+          <option value="outstanding">Amount owed</option>
+        </select>
+      </div>
       @if (filteredClients().length === 0) {
         <p role="status" data-testid="clients-no-match">No clients match your search.</p>
       } @else {
@@ -98,6 +107,7 @@ import { Client, ClientService } from './client.service';
             <tr>
               <th scope="col">Name</th>
               <th scope="col">Email</th>
+              <th scope="col">Owed</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
@@ -111,6 +121,7 @@ import { Client, ClientService } from './client.service';
                   }
                 </td>
                 <td data-testid="client-email">{{ c.email }}</td>
+                <td data-testid="client-outstanding">{{ c.outstanding | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
                 <td>
                   <a
                     [routerLink]="['/clients', c.id]"
@@ -152,7 +163,7 @@ import { Client, ClientService } from './client.service';
               </tr>
               @if (editing() === c.id) {
                 <tr [attr.data-testid]="'client-edit-row-' + c.id">
-                  <td colspan="3">
+                  <td colspan="4">
                     <app-client-edit-form [client]="c" (saved)="onSaved($event)" (cancelled)="closeEdit(c)" />
                   </td>
                 </tr>
@@ -169,11 +180,13 @@ export class Clients {
 
   protected readonly clients = signal<Client[]>([]);
   protected readonly query = signal('');
-  // Case-insensitive name filter; an empty query shows every client.
+  protected readonly sort = signal<ClientSort>('added');
+  // Case-insensitive name filter (an empty query shows every client), in the chosen order.
   protected readonly filteredClients = computed(() => {
     const q = this.query().trim().toLowerCase();
     const list = this.clients();
-    return q ? list.filter((c) => c.name.toLowerCase().includes(q)) : list;
+    const filtered = q ? list.filter((c) => c.name.toLowerCase().includes(q)) : list;
+    return sortClients(filtered, this.sort());
   });
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
@@ -202,6 +215,10 @@ export class Clients {
 
   protected onSearch(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
+  }
+
+  protected onSort(event: Event): void {
+    this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
   }
 
   protected showError(field: 'name' | 'email'): boolean {
@@ -293,5 +310,21 @@ export class Clients {
 
   private load(): void {
     this.service.list(this.showArchived()).subscribe((list) => this.clients.set(list));
+  }
+}
+
+type ClientSort = 'added' | 'name' | 'outstanding';
+
+const byName = (a: Client, b: Client) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+
+/** Clients in the given order: as added, by name A-Z, or those owing the most first (then by name). */
+function sortClients(list: Client[], sort: ClientSort): Client[] {
+  switch (sort) {
+    case 'name':
+      return [...list].sort(byName);
+    case 'outstanding':
+      return [...list].sort((a, b) => b.outstanding - a.outstanding || byName(a, b));
+    default:
+      return list;
   }
 }

@@ -2,7 +2,7 @@ package net.officefloor.hq.app.search;
 
 import java.util.List;
 import net.officefloor.hq.app.client.ClientRepository;
-import net.officefloor.hq.app.client.ClientResponse;
+import net.officefloor.hq.app.client.ClientService;
 import net.officefloor.hq.app.project.ProjectRepository;
 import net.officefloor.hq.app.project.ProjectResponse;
 import org.springframework.stereotype.Service;
@@ -12,10 +12,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class SearchService {
 
     private final ClientRepository clients;
+    private final ClientService clientService;
     private final ProjectRepository projects;
 
-    public SearchService(ClientRepository clients, ProjectRepository projects) {
+    public SearchService(ClientRepository clients, ClientService clientService, ProjectRepository projects) {
         this.clients = clients;
+        this.clientService = clientService;
         this.projects = projects;
     }
 
@@ -31,7 +33,7 @@ public class SearchService {
         }
         String pattern = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
         return new SearchResponse(
-                clients.searchActiveByName(pattern).stream().map(ClientResponse::from).toList(),
+                clientService.respond(clients.searchActiveByName(pattern)),
                 projects.searchActiveByNameWithClient(pattern).stream().map(ProjectResponse::from).toList());
     }
 }

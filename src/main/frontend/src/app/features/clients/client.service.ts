@@ -9,6 +9,8 @@ export interface Client {
   archived: boolean;
   /** The client's main contact; null until one is chosen. */
   primaryContact: { id: number; name: string } | null;
+  /** What is left to pay on the client's sent, not yet fully paid invoices. */
+  outstanding: number;
 }
 
 /** At-a-glance counts of what one client has. */
@@ -17,7 +19,7 @@ export interface ClientSummary {
   contactCount: number;
 }
 
-export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact'>;
+export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'outstanding'>;
 
 @Injectable({ providedIn: 'root' })
 export class ClientService {

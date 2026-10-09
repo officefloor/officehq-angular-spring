@@ -39,6 +39,18 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.status IN :statuses")
     BigDecimal sumAmountByStatusIn(Collection<InvoiceStatus> statuses);
 
+    /** Sum of the invoice amounts with any of the given statuses, per client; clients with none are left out. */
+    @Query("SELECT p.client.id AS clientId, SUM(i.amount) AS total FROM Invoice i JOIN i.project p"
+            + " WHERE i.status IN :statuses GROUP BY p.client.id")
+    List<ClientTotal> sumAmountByStatusInPerClient(Collection<InvoiceStatus> statuses);
+
+    /** A total of money for one client. */
+    interface ClientTotal {
+        Long getClientId();
+
+        BigDecimal getTotal();
+    }
+
     /** Number of invoices with any of the given statuses whose due date is before the given date. */
     @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status IN :statuses AND i.dueDate < :date")
     long countByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);
