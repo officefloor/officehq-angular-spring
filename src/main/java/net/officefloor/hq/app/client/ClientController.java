@@ -63,4 +63,9 @@ public class ClientController {
     public ClientResponse restore(@PathVariable Long id) {
         return service.restore(id);
     }
+
+    @PostMapping("/{id}/merge")
+    public ClientResponse merge(@PathVariable Long id, @Valid @RequestBody ClientMergeRequest request) {
+        return service.merge(id, request.targetId());
+    }
 }

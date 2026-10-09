@@ -179,6 +179,44 @@ public class ClientService {
         return respond(client);
     }
 
+    /**
+     * Merges a duplicate client into the client it duplicates: the duplicate's projects (and so their
+     * invoices), contacts, payments, deposits and refunds all move to the kept client, which takes the
+     * duplicate's main contact if it has none of its own, and the duplicate is then removed. Both must
+     * be billed in the same currency, so no money changes currency. Recorded in the audit log.
+     */
+    @Transactional
+    public ClientResponse merge(Long id, Long targetId) {
+        if (id.equals(targetId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A client cannot be merged into itself");
+        }
+        Client source = find(id);
+        Client target = find(targetId);
+        if (source.getCurrency() != target.getCurrency()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only clients billed in the same currency can be merged");
+        }
+        Long adoptedPrimary = target.getPrimaryContact() == null && source.getPrimaryContact() != null
+                ? source.getPrimaryContact().getId()
+                : null;
+        // The main contact must belong to its client, so let it go before the contacts move.
+        source.setPrimaryContact(null);
+        clients.moveProjects(id, targetId);
+        clients.moveContacts(id, targetId);
+        clients.moveClientPayments(id, targetId);
+        clients.moveDeposits(id, targetId);
+        clients.moveDepositApplications(id, targetId);
+        clients.moveRefunds(id, targetId);
+        clients.deleteById(id);
+        Client kept = find(targetId);
+        if (adoptedPrimary != null) {
+            kept.setPrimaryContact(contacts.getReferenceById(adoptedPrimary));
+        }
+        clients.flush();
+        audit.record("CLIENT_MERGED id=" + id + " into=" + targetId);
+        return respond(kept);
+    }
+
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
     /** The given clients, each with what they still owe. */

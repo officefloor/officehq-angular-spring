@@ -71,6 +71,11 @@ export class ClientService {
     return this.http.put<Client>(`/api/clients/${id}/currency`, { currency });
   }
 
+  /** Merges the client into another one, which keeps everything the client had; the client is removed. */
+  merge(id: number, targetId: number): Observable<Client> {
+    return this.http.post<Client>(`/api/clients/${id}/merge`, { targetId });
+  }
+
   archive(id: number): Observable<Client> {
     return this.http.post<Client>(`/api/clients/${id}/archive`, null);
   }

@@ -1,7 +1,7 @@
 import { CurrencyPipe } from '@angular/common';
 import { Component, computed, inject, input, signal, viewChild } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { ClientContacts } from '../contacts/client-contacts';
 import { Contact } from '../contacts/contact.service';
 import { ClientCredit } from '../credit/client-credit';
@@ -9,12 +9,13 @@ import { ClientDeposits } from '../deposits/client-deposits';
 import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
 import { ClientProjects } from '../projects/client-projects';
 import { ClientCurrency } from './client-currency';
+import { ClientMerge } from './client-merge';
 import { Client, ClientService } from './client.service';
 
-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, and the projects being done for them.
+// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
 @Component({
   selector: 'app-client-detail',
-  imports: [CurrencyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit],
+  imports: [CurrencyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge],
   styles: `
     .client-badges {
       display: flex;
@@ -136,11 +137,13 @@ import { Client, ClientService } from './client.service';
         (primaryChanged)="primaryChanged($event)"
       />
       <app-client-projects [clientId]="clientId()" />
+      <app-client-merge [client]="c" (merged)="clientMerged($event)" />
     }
   `,
 })
 export class ClientDetail {
   private readonly service = inject(ClientService);
+  private readonly router = inject(Router);
 
   /** Bound from the `:id` route parameter. */
   readonly id = input.required<string>();
@@ -163,10 +166,15 @@ export class ClientDetail {
   private readonly paymentForm = viewChild(ClientPaymentForm);
   private readonly depositsPanel = viewChild(ClientDeposits);
   private readonly creditPanel = viewChild(ClientCredit);
+  private readonly mergePanel = viewChild(ClientMerge);
+  /** Set once the page is being left, so a merge finishing meanwhile does not pull the user back. */
+  private leaving = false;
 
-  /** Resolves to true once any payment being recorded has been saved, so the page can be left safely. */
+  /** Resolves to true once any payment being recorded, or merge under way, has finished, so the page can be left safely. */
   async canLeave(): Promise<boolean> {
-    await this.paymentForm()?.settled();
+    this.leaving = true;
+    await Promise.all([this.paymentForm()?.settled(), this.mergePanel()?.settled()]);
+    this.leaving = false;
     return true;
   }
 
@@ -199,6 +207,14 @@ export class ClientDetail {
 
   protected currencyChanged(client: Client): void {
     this.client.set(client);
+  }
+
+  protected clientMerged(kept: Client): void {
+    // This client no longer exists; carry on at the one it was merged into, unless the user is already leaving.
+    if (this.leaving) {
+      return;
+    }
+    void this.router.navigate(['/clients', kept.id]);
   }
 
   protected primaryChanged(contact: Contact): void {
