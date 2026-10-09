@@ -1,3 +1,4 @@
+import { CurrencyPipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { DashboardService, DashboardSummary } from './dashboard.service';
 
@@ -5,6 +6,7 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
 // all unpaid invoices).
 @Component({
   selector: 'app-dashboard',
+  imports: [CurrencyPipe],
   template: `
     <h1>Dashboard</h1>
 
@@ -22,7 +24,7 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
         </div>
         <div>
           <dt>Outstanding</dt>
-          <dd data-testid="dashboard-outstanding-total">{{ outstanding() }}</dd>
+          <dd data-testid="dashboard-outstanding-total">{{ outstanding() | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</dd>
         </div>
       </dl>
     } @else {
@@ -33,7 +35,7 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
 export class Dashboard {
   protected readonly summary = signal<DashboardSummary | null>(null);
   protected readonly loadError = signal<string | null>(null);
-  protected readonly outstanding = computed(() => (this.summary()?.outstanding ?? 0).toFixed(2));
+  protected readonly outstanding = computed(() => this.summary()?.outstanding ?? 0);
 
   constructor() {
     inject(DashboardService)

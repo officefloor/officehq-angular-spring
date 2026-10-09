@@ -1,4 +1,4 @@
-import { DecimalPipe } from '@angular/common';
+import { CurrencyPipe } from '@angular/common';
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -8,7 +8,7 @@ import { InvoiceService } from './invoice.service';
 // one as paid.
 @Component({
   selector: 'app-project-invoices',
-  imports: [ReactiveFormsModule, DecimalPipe],
+  imports: [ReactiveFormsModule, CurrencyPipe],
   template: `
     <section aria-labelledby="project-invoices-heading" data-testid="project-invoices">
       <h2 id="project-invoices-heading">Invoices</h2>
@@ -60,7 +60,7 @@ import { InvoiceService } from './invoice.service';
             @for (i of list(); track i.id) {
               <tr [attr.data-testid]="'invoice-row-' + i.id">
                 <td data-testid="invoice-id">#{{ i.id }}</td>
-                <td data-testid="invoice-amount">{{ i.amount | number: '1.2-2' : 'en-US' }}</td>
+                <td data-testid="invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
                 <td data-testid="invoice-status">{{ i.status }}</td>
                 <td>
                   @if (i.status === 'UNPAID') {
@@ -81,7 +81,7 @@ import { InvoiceService } from './invoice.service';
           <tfoot>
             <tr>
               <th scope="row">Total</th>
-              <td data-testid="project-invoices-total">{{ totalCents() / 100 | number: '1.2-2' : 'en-US' }}</td>
+              <td data-testid="project-invoices-total">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
               <td colspan="2"></td>
             </tr>
           </tfoot>
