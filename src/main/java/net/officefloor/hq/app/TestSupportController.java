@@ -111,9 +111,10 @@ public class TestSupportController {
                     ((Number) pt.get("projectId")).longValue(), ((Number) pt.get("tagId")).longValue());
         }
         for (Map<String, Object> t : rows(fixture, "tasks")) {
-            jdbc.update("INSERT INTO task (id, project_id, title, done) VALUES (?, ?, ?, ?)",
+            jdbc.update("INSERT INTO task (id, project_id, title, done, due_date) VALUES (?, ?, ?, ?, ?)",
                     ((Number) t.get("id")).longValue(), ((Number) t.get("projectId")).longValue(),
-                    t.get("title"), Boolean.TRUE.equals(t.get("done")));
+                    t.get("title"), Boolean.TRUE.equals(t.get("done")),
+                    t.get("dueDate") == null ? null : LocalDate.parse(t.get("dueDate").toString()));
         }
         for (Map<String, Object> n : rows(fixture, "notes")) {
             Instant at = n.get("at") == null ? clock.instant() : seedInstant(n.get("at").toString());

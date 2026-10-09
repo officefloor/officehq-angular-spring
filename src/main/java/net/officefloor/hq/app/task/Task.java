@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import net.officefloor.hq.app.project.Project;
 
 /** A to-do item on a project's task list, ticked off once done. */
@@ -27,12 +28,16 @@ public class Task {
 
     private boolean done;
 
+    /** When the task should be finished by; optional. */
+    private LocalDate dueDate;
+
     protected Task() {
     }
 
-    public Task(Project project, String title) {
+    public Task(Project project, String title, LocalDate dueDate) {
         this.project = project;
         this.title = title;
+        this.dueDate = dueDate;
     }
 
     public Long getId() {
@@ -49,6 +54,10 @@ public class Task {
 
     public boolean isDone() {
         return done;
+    }
+
+    public LocalDate getDueDate() {
+        return dueDate;
     }
 
     /** Flips the task between open and done. */

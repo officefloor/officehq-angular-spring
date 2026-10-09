@@ -30,6 +30,15 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
             </p>
           }
         </div>
+        <div>
+          <label for="task-due-date">Due date (optional)</label>
+          <input
+            id="task-due-date"
+            type="date"
+            formControlName="dueDate"
+            data-testid="task-form-due-date"
+          />
+        </div>
         <button type="submit" data-testid="task-form-submit" [disabled]="saving()">Add task</button>
         @if (saveError()) {
           <p role="alert" data-testid="task-form-error">{{ saveError() }}</p>
@@ -69,6 +78,7 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
               <thead>
                 <tr>
                   <th scope="col">Task</th>
+                  <th scope="col">Due date</th>
                   <th scope="col">Status</th>
                   <th scope="col">Action</th>
                 </tr>
@@ -77,6 +87,7 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
                 @for (t of visibleTasks(); track t.id) {
                   <tr [attr.data-testid]="'task-row-' + t.id">
                     <td data-testid="task-title">{{ t.title }}</td>
+                    <td data-testid="task-due-date">{{ t.dueDate ?? '' }}</td>
                     <td data-testid="task-status">{{ t.done ? 'DONE' : 'OPEN' }}</td>
                     <td>
                       <button
@@ -128,6 +139,7 @@ export class ProjectTasks {
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     title: ['', [Validators.required, Validators.maxLength(255)]],
+    dueDate: [''],
   });
 
   protected setFilter(event: Event): void {
@@ -140,7 +152,8 @@ export class ProjectTasks {
   }
 
   protected submit(): void {
-    const title = this.form.getRawValue().title.trim();
+    const { title: rawTitle, dueDate } = this.form.getRawValue();
+    const title = rawTitle.trim();
     if (this.form.invalid || !title) {
       this.form.controls.title.setValue('');
       this.form.markAllAsTouched();
@@ -148,7 +161,7 @@ export class ProjectTasks {
     }
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create(this.projectId(), title).subscribe({
+    this.service.create(this.projectId(), title, dueDate || null).subscribe({
       next: (created) => {
         this.tasks.update((list) => [...(list ?? []), created]);
         this.form.reset();

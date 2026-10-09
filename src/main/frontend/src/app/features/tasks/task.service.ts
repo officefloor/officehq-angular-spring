@@ -7,6 +7,7 @@ export interface Task {
   projectId: number;
   title: string;
   done: boolean;
+  dueDate: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -17,8 +18,8 @@ export class TaskService {
     return this.http.get<Task[]>(`/api/projects/${projectId}/tasks`);
   }
 
-  create(projectId: number, title: string): Observable<Task> {
-    return this.http.post<Task>(`/api/projects/${projectId}/tasks`, { title });
+  create(projectId: number, title: string, dueDate: string | null): Observable<Task> {
+    return this.http.post<Task>(`/api/projects/${projectId}/tasks`, { title, dueDate });
   }
 
   toggle(projectId: number, taskId: number): Observable<Task> {
