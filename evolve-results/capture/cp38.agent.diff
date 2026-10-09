@@ -1,0 +1,253 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 330cb53..7ff2d94 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -6,6 +6,7 @@ export interface DashboardSummary {
+   clients: number;
+   projects: number;
+   outstanding: number;
++  overdue: number;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 436fa94..c11b7d5 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -3,7 +3,8 @@ import { Component, computed, inject, signal } from '@angular/core';
+ import { DashboardService, DashboardSummary } from './dashboard.service';
+ 
+ // Dashboard page: how many clients and projects there are, and the total still owed (what is left
+-// to pay on invoices that have been sent but not yet fully paid; drafts are not counted).
++// to pay on invoices that have been sent but not yet fully paid; drafts are not counted), and how
++// many of those sent invoices are past their due date.
+ @Component({
+   selector: 'app-dashboard',
+   imports: [CurrencyPipe],
+@@ -26,6 +27,10 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
+           <dt>Outstanding</dt>
+           <dd data-testid="dashboard-outstanding-total">{{ outstanding() | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+         </div>
++        <div>
++          <dt>Overdue invoices</dt>
++          <dd data-testid="dashboard-overdue-count">{{ s.overdue }}</dd>
++        </div>
+       </dl>
+     } @else {
+       <p data-testid="dashboard-loading">Loading…</p>
+diff --git a/src/main/java/net/officefloor/hq/app/Application.java b/src/main/java/net/officefloor/hq/app/Application.java
+index 7cdd37c..aa964c4 100644
+--- a/src/main/java/net/officefloor/hq/app/Application.java
++++ b/src/main/java/net/officefloor/hq/app/Application.java
+@@ -1,7 +1,9 @@
+ package net.officefloor.hq.app;
+ 
++import java.time.Clock;
+ import org.springframework.boot.SpringApplication;
+ import org.springframework.boot.autoconfigure.SpringBootApplication;
++import org.springframework.context.annotation.Bean;
+ 
+ /**
+  * Spring Boot host: serves the SPA from static/, with H2 + Flyway (schema migrated on boot) and
+@@ -13,4 +15,10 @@ public class Application {
+     public static void main(String[] args) {
+         SpringApplication.run(Application.class, args);
+     }
++
++    /** The source of "today" for date-based rules (e.g. which invoices are overdue). */
++    @Bean
++    public Clock clock() {
++        return Clock.systemDefaultZone();
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestClock.java b/src/main/java/net/officefloor/hq/app/TestClock.java
+new file mode 100644
+index 0000000..468a96e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/TestClock.java
+@@ -0,0 +1,49 @@
++package net.officefloor.hq.app;
++
++import java.time.Clock;
++import java.time.Instant;
++import java.time.LocalDate;
++import java.time.ZoneId;
++import org.springframework.context.annotation.Primary;
++import org.springframework.context.annotation.Profile;
++import org.springframework.stereotype.Component;
++
++/**
++ * Clock for the end-to-end tests: the system clock, unless a spec has pinned "today" via
++ * /__test__/seed. Profile-guarded like {@link TestSupportController}, and takes precedence over the
++ * application's system clock only under that profile.
++ */
++@Profile("e2e")
++@Primary
++@Component
++public class TestClock extends Clock {
++
++    private final ZoneId zone = ZoneId.systemDefault();
++    private volatile LocalDate today;
++
++    /** Pin "today" to the given date (at the start of the day). */
++    public void setToday(LocalDate today) {
++        this.today = today;
++    }
++
++    /** Return to the system clock. */
++    public void reset() {
++        this.today = null;
++    }
++
++    @Override
++    public ZoneId getZone() {
++        return zone;
++    }
++
++    @Override
++    public Clock withZone(ZoneId zone) {
++        return Clock.system(zone);
++    }
++
++    @Override
++    public Instant instant() {
++        LocalDate pinned = today;
++        return pinned == null ? Instant.now() : pinned.atStartOfDay(zone).toInstant();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 9b99f55..24bb12a 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -30,10 +30,12 @@ public class TestSupportController {
+ 
+     private final Audit audit;
+     private final JdbcTemplate jdbc;
++    private final TestClock clock;
+ 
+-    public TestSupportController(Audit audit, JdbcTemplate jdbc) {
++    public TestSupportController(Audit audit, JdbcTemplate jdbc, TestClock clock) {
+         this.audit = audit;
+         this.jdbc = jdbc;
++        this.clock = clock;
+     }
+ 
+     /** Truncate all domain tables and clear the audit file so each spec starts clean. */
+@@ -41,6 +43,7 @@ public class TestSupportController {
+     @Transactional
+     public void reset() {
+         audit.clear();
++        clock.reset();
+         // Children first; H2 refuses to TRUNCATE a table referenced by a foreign key, so disable
+         // referential checks for the duration of the truncates.
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+@@ -64,6 +67,10 @@ public class TestSupportController {
+     @PostMapping("/seed")
+     @Transactional
+     public void seed(@RequestBody Map<String, Object> fixture) {
++        // "asOf" pins the app's notion of today so date-based figures (e.g. overdue) are deterministic.
++        if (fixture.get("asOf") != null) {
++            clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
++        }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+             jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"));
+@@ -95,14 +102,18 @@ public class TestSupportController {
+                     t.get("title"), Boolean.TRUE.equals(t.get("done")));
+         }
+         for (Map<String, Object> n : rows(fixture, "notes")) {
+-            Instant at = n.get("at") == null ? Instant.now() : Instant.parse(n.get("at").toString());
++            Instant at = n.get("at") == null ? clock.instant() : Instant.parse(n.get("at").toString());
+             jdbc.update("INSERT INTO note (id, target_type, target_id, text, created_at) VALUES (?, ?, ?, ?, ?)",
+                     ((Number) n.get("id")).longValue(), n.get("targetType"),
+                     ((Number) n.get("targetId")).longValue(), n.get("text"), Timestamp.from(at));
+         }
+         for (Map<String, Object> i : rows(fixture, "invoices")) {
+-            LocalDate issued = i.get("issuedDate") == null ? LocalDate.now()
+-                    : LocalDate.parse(i.get("issuedDate").toString());
++            // A missing date is filled in from the other one using the standard payment term; with
++            // neither given the invoice is issued today.
++            LocalDate issued = i.get("issuedDate") != null ? LocalDate.parse(i.get("issuedDate").toString())
++                    : i.get("dueDate") != null
++                            ? LocalDate.parse(i.get("dueDate").toString()).minusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
++                            : LocalDate.now(clock);
+             LocalDate due = i.get("dueDate") == null ? issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
+                     : LocalDate.parse(i.get("dueDate").toString());
+             long invoiceId = ((Number) i.get("id")).longValue();
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+index 926e9bc..9b6ebf4 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+@@ -3,5 +3,5 @@ package net.officefloor.hq.app.dashboard;
+ import java.math.BigDecimal;
+ 
+ /** Summary figures for the dashboard. */
+-public record DashboardResponse(long clients, long projects, BigDecimal outstanding) {
++public record DashboardResponse(long clients, long projects, BigDecimal outstanding, long overdue) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 8d851e4..6695527 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.dashboard;
+ 
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.time.Clock;
++import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+@@ -18,18 +20,20 @@ public class DashboardService {
+     private final ProjectRepository projects;
+     private final InvoiceRepository invoices;
+     private final PaymentRepository payments;
++    private final Clock clock;
+ 
+     public DashboardService(ClientRepository clients, ProjectRepository projects, InvoiceRepository invoices,
+-            PaymentRepository payments) {
++            PaymentRepository payments, Clock clock) {
+         this.clients = clients;
+         this.projects = projects;
+         this.invoices = invoices;
+         this.payments = payments;
++        this.clock = clock;
+     }
+ 
+     /**
+      * Counts of clients and projects, and the total still owed (what is left to pay on sent invoices
+-     * that are not yet fully paid).
++     * that are not yet fully paid), plus how many of those sent invoices are past their due date.
+      */
+     @Transactional(readOnly = true)
+     public DashboardResponse summary() {
+@@ -37,6 +41,7 @@ public class DashboardService {
+         BigDecimal outstanding = invoices.sumAmountByStatusIn(owing)
+                 .subtract(payments.sumAmountByInvoiceStatusIn(owing))
+                 .setScale(2, RoundingMode.HALF_UP);
+-        return new DashboardResponse(clients.count(), projects.count(), outstanding);
++        long overdue = invoices.countByStatusInAndDueDateBefore(owing, LocalDate.now(clock));
++        return new DashboardResponse(clients.count(), projects.count(), outstanding, overdue);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+index 182ab37..602c1cc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+@@ -25,4 +26,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+     /** Sum of the amounts of all invoices with any of the given statuses (zero when there are none). */
+     @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.status IN :statuses")
+     BigDecimal sumAmountByStatusIn(Collection<InvoiceStatus> statuses);
++
++    /** Number of invoices with any of the given statuses whose due date is before the given date. */
++    @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status IN :statuses AND i.dueDate < :date")
++    long countByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);
+ }
