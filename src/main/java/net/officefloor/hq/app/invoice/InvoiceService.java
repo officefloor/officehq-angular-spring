@@ -90,6 +90,22 @@ public class InvoiceService {
     }
 
     /**
+     * What a client owed as at the end of the given day: the running account counting only the entries dated on or
+     * before it.
+     */
+    @Transactional(readOnly = true)
+    public ClientBalanceAsOfResponse balanceAsOf(Long clientId, LocalDate asOf) {
+        Client client = clients.findById(clientId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+        List<Invoice> found = invoices.findByClientIdWithProject(clientId);
+        BigDecimal balance = accountEntries(clientId, found).stream()
+                .filter(e -> e.date() != null && !e.date().isAfter(asOf))
+                .map(StatementEntry::change)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        return new ClientBalanceAsOfResponse(client.getId(), client.getCurrency(), asOf, balance);
+    }
+
+    /**
      * The entries on a client's running account. Drafts have not been sent and void invoices were cancelled, so
      * neither is charged. A payment made out of held deposits is left out, as the deposit was already credited
      * when it was paid in.

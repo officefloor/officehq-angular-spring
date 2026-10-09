@@ -1,11 +1,12 @@
 import { CurrencyPipe } from '@angular/common';
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, computed, inject, input, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { InvoiceService } from './invoice.service';
 
 // A client's statement: every invoice across the client's projects grouped by job, how much is left to
 // pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
+// The balance owed as at a chosen past date can be looked up, counting only entries up to that date.
 // It opens with the running account: invoices, payments, credit notes, deposits and refunds in date order with the
 // balance owed after each.
 // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
@@ -80,6 +81,22 @@ import { InvoiceService } from './invoice.service';
             <dt class="statement-grand-total">Grand total owed</dt>
             <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
           </dl>
+        </section>
+        <section aria-labelledby="statement-asof-heading" data-testid="statement-asof">
+          <h2 id="statement-asof-heading">Balance as at a date</h2>
+          <form class="statement-actions" (submit)="applyAsOf($event, asOfInput.value)">
+            <label for="statement-asof-date">As at</label>
+            <input #asOfInput id="statement-asof-date" type="date" required data-testid="statement-asof-date" />
+            <button type="submit" data-testid="statement-asof-apply">Show balance</button>
+          </form>
+          @if (balanceAsOf.error()) {
+            <p role="alert" data-testid="client-balance-asof-error">Could not load the balance.</p>
+          } @else if (balanceAsOf.value(); as b) {
+            <p aria-live="polite">
+              Owed as at {{ b.asOf }}:
+              <strong data-testid="client-balance-asof">{{ b.balance | currency: b.currency : 'symbol' : '1.2-2' : 'en-US' }}</strong>
+            </p>
+          }
         </section>
         <section aria-labelledby="statement-account-heading" data-testid="statement-account">
           <h2 id="statement-account-heading">Account</h2>
@@ -192,6 +209,24 @@ export class ClientStatement {
     params: () => this.clientId(),
     stream: ({ params }) => this.service.statementForClient(params),
   });
+
+  /** The day the balance is looked up as at; unset until one is applied. */
+  protected readonly asOf = signal<string | undefined>(undefined);
+
+  protected readonly balanceAsOf = rxResource({
+    params: () => {
+      const asOf = this.asOf();
+      return asOf ? { clientId: this.clientId(), asOf } : undefined;
+    },
+    stream: ({ params }) => this.service.balanceAsOf(params.clientId, params.asOf),
+  });
+
+  protected applyAsOf(event: Event, value: string): void {
+    event.preventDefault();
+    if (value) {
+      this.asOf.set(value);
+    }
+  }
 
   protected print(): void {
     window.print();

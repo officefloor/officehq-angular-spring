@@ -95,6 +95,14 @@ export interface ClientStatement {
   entries: StatementEntry[];
 }
 
+/** What a client owed as at the end of a chosen day (negative when in credit). */
+export interface ClientBalanceAsOf {
+  clientId: number;
+  currency: CurrencyCode;
+  asOf: string;
+  balance: number;
+}
+
 /** One thing an invoice charges for; its amount is quantity times unit price, less the line's own discount. */
 export interface LineItem {
   id: number;
@@ -212,6 +220,10 @@ export class InvoiceService {
 
   statementForClient(clientId: number): Observable<ClientStatement> {
     return this.http.get<ClientStatement>(`/api/clients/${clientId}/statement`);
+  }
+
+  balanceAsOf(clientId: number, asOf: string): Observable<ClientBalanceAsOf> {
+    return this.http.get<ClientBalanceAsOf>(`/api/clients/${clientId}/statement/balance`, { params: { asOf } });
   }
 
   create(projectId: number, invoice: NewInvoice): Observable<ProjectInvoice> {
