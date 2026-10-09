@@ -60,6 +60,7 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE client_payment RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE deposit RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice_discount RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
@@ -291,6 +292,11 @@ public class TestSupportController {
                     new BigDecimal(c.get("amount").toString()),
                     Timestamp.from(seedInstant(c.get("date").toString())));
         }
+        for (Map<String, Object> d : rows(fixture, "deposits")) {
+            jdbc.update("INSERT INTO deposit (id, client_id, amount, paid_date) VALUES (?, ?, ?, ?)",
+                    ((Number) d.get("id")).longValue(), ((Number) d.get("clientId")).longValue(),
+                    new BigDecimal(d.get("amount").toString()), LocalDate.parse(d.get("date").toString()));
+        }
         // Continue generated ids after the explicitly seeded ones.
         restartIdentity("client");
         restartIdentity("contact");
@@ -303,6 +309,7 @@ public class TestSupportController {
         restartIdentity("note");
         restartIdentity("payment");
         restartIdentity("credit_note");
+        restartIdentity("deposit");
     }
 
     /** A fixture timestamp, either a full instant or a bare date taken as the start of that day (UTC). */

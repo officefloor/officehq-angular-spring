@@ -3,15 +3,16 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { ClientContacts } from '../contacts/client-contacts';
 import { Contact } from '../contacts/contact.service';
+import { ClientDeposits } from '../deposits/client-deposits';
 import { ClientPaymentForm } from '../payments/client-payment';
 import { ClientProjects } from '../projects/client-projects';
 import { ClientCurrency } from './client-currency';
 import { Client, ClientService } from './client.service';
 
-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, counts of their projects and contacts, their contacts, and the projects being done for them.
+// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, a link to their statement, a form to record a lump payment split across their invoices, the deposits they have paid up front, counts of their projects and contacts, their contacts, and the projects being done for them.
 @Component({
   selector: 'app-client-detail',
-  imports: [RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm],
+  imports: [RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits],
   styles: `
     .client-badges {
       display: flex;
@@ -107,6 +108,7 @@ import { Client, ClientService } from './client.service';
           <p role="status" data-testid="client-payment-recorded">Payment recorded.</p>
         }
       </div>
+      <app-client-deposits [clientId]="clientId()" [currency]="c.currency" />
       <app-client-contacts
         [clientId]="clientId()"
         (contactAdded)="contactAdded()"
