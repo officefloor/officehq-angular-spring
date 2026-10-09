@@ -169,6 +169,15 @@ public class InvoiceService {
         return InvoiceDetailResponse.from(invoice);
     }
 
+    /** Sets the flat surcharge on a draft invoice and reworks the invoice amount to match. */
+    @Transactional
+    public InvoiceDetailResponse applySurcharge(Long projectId, Long invoiceId, SurchargeRequest request) {
+        Invoice invoice = findDraft(projectId, invoiceId);
+        invoice.applySurcharge(request.surcharge());
+        invoices.flush();
+        return InvoiceDetailResponse.from(invoice);
+    }
+
     /** Sets the early-payment discount offered on a draft invoice. */
     @Transactional
     public InvoiceDetailResponse applyEarlyPayment(Long projectId, Long invoiceId, EarlyPaymentRequest request) {

@@ -76,6 +76,12 @@ public class InvoiceController {
         return service.applyLevy(projectId, invoiceId, request);
     }
 
+    @PutMapping("/{invoiceId}/surcharge")
+    public InvoiceDetailResponse applySurcharge(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @Valid @RequestBody SurchargeRequest request) {
+        return service.applySurcharge(projectId, invoiceId, request);
+    }
+
     @PutMapping("/{invoiceId}/early-payment")
     public InvoiceDetailResponse applyEarlyPayment(@PathVariable Long projectId, @PathVariable Long invoiceId,
             @Valid @RequestBody EarlyPaymentRequest request) {

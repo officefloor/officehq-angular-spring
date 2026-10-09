@@ -9,7 +9,7 @@ import net.officefloor.hq.app.client.Currency;
  * A single invoice together with the line items it is built from: their subtotal, the percentage
  * discount, the flat amount discount, and what they take off together, the sales tax percentage, the taxable base it is charged on (the
  * taxable lines after the discount) and what it adds, the levy (second tax) percentage and what it adds
- * on the same base, the amount owed including both taxes, the total before tax, whether the prices already include the taxes
+ * on the same base, any flat surcharge (such as a handling fee) added after tax, the amount owed including both taxes and the surcharge, the total before tax, whether the prices already include the taxes
  * (so they are worked back out rather than added on), whether the client is tax exempt (so
  * there is no tax at all), the effective tax rate (the sales tax and levy together as a percentage of
  * the total before tax), any early-payment discount offered (its percentage, the days after issue it
@@ -19,7 +19,7 @@ import net.officefloor.hq.app.client.Currency;
 public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal totalExTax,
         BigDecimal subtotal,
         BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
-        BigDecimal levyPct, BigDecimal levy, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
+        BigDecimal levyPct, BigDecimal levy, BigDecimal surcharge, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
         BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
         InvoiceStatus status, LocalDate issuedDate,
         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber) {
@@ -29,7 +29,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, 
                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
-                invoice.getLevyPct(), invoice.getLevy(), invoice.isTaxInclusive(), invoice.isTaxExempt(),
+                invoice.getLevyPct(), invoice.getLevy(), invoice.getSurcharge(), invoice.isTaxInclusive(), invoice.isTaxExempt(),
                 invoice.getEffectiveTaxPct(),
                 invoice.getEarlyPaymentPct(), invoice.getEarlyPaymentDays(), invoice.getEarlyPaymentBy(),
                 invoice.getEarlyPaymentAmount(),

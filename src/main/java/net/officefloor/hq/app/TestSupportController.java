@@ -190,11 +190,15 @@ public class TestSupportController {
             // An early-payment discount offered is just recorded; it does not change the amount owed.
             BigDecimal earlyPaymentPct = i.get("earlyPaymentPct") == null ? BigDecimal.ZERO
                     : new BigDecimal(i.get("earlyPaymentPct").toString());
+            // A flat surcharge (such as a handling fee) is added on last, after any tax.
+            BigDecimal surcharge = i.get("surcharge") == null ? BigDecimal.ZERO
+                    : new BigDecimal(i.get("surcharge").toString());
             int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
-            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, discount_amount, tax_pct, levy_pct, tax_inclusive, tax_exempt,"
-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, discount_amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+                    + " early_payment_pct, early_payment_days, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
-                    taxInclusive ? discounted : discounted.add(tax).add(levy), discountPct, discountAmount, taxPct, levyPct, taxInclusive, taxExempt,
+                    (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge), discountPct, discountAmount, taxPct, levyPct,
+                    surcharge, taxInclusive, taxExempt,
                     earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due);
             for (Map<String, Object> l : lineItems) {
                 if (l.get("id") != null) {

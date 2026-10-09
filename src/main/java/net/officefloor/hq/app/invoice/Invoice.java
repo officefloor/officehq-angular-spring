@@ -28,7 +28,8 @@ import net.officefloor.hq.app.project.Project;
  * a flat amount off their sum as a discount, before tax (the flat amount shared across the lines in
  * proportion to what each charges, and never more than the subtotal), then add a percentage sales tax on what is left of the taxable lines only
  * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
- * its stored amount is always that subtotal less the discount plus the tax plus the levy.
+ * its stored amount is always that subtotal less the discount plus the tax plus the levy, plus any flat
+ * surcharge (such as a handling fee), which is added on last and is never taxed.
  * <p>
  * Every figure is worked out line by line: each line is rounded to the cent first and the rounded lines
  * are then added up, and the tax and levy are likewise worked out and rounded on each taxable line before
@@ -36,10 +37,10 @@ import net.officefloor.hq.app.project.Project;
  * <p>
  * A tax-inclusive invoice (for a client whose prices already include tax) instead works the tax and
  * levy back out of the taxable lines after the discount: they are inside the price, so its amount is
- * just the subtotal less the discount, and the taxable base is what is left once they are taken out.
+ * just the subtotal less the discount (plus any surcharge), and the taxable base is what is left once they are taken out.
  * <p>
  * A tax-exempt invoice (for a tax-exempt client) has no taxable lines at all: it carries no tax or levy
- * whatever its lines or rates say, so its amount is the subtotal less the discount.
+ * whatever its lines or rates say, so its amount is the subtotal less the discount (plus any surcharge).
  */
 @Entity
 @Table(name = "invoice")
@@ -68,6 +69,10 @@ public class Invoice {
 
     @Column(name = "levy_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal levyPct = BigDecimal.ZERO.setScale(2);
+
+    /** A flat amount (such as a handling fee) added to the total after tax; zero when there is none. */
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal surcharge = BigDecimal.ZERO.setScale(2);
 
     /** Whether the prices already include the tax and levy, so they are backed out rather than added on. */
     @Column(name = "tax_inclusive", nullable = false)
@@ -211,6 +216,11 @@ public class Invoice {
      */
     public BigDecimal getLevy() {
         return sumOverTaxableLines(this::levyOn);
+    }
+
+    /** The flat amount (such as a handling fee) added to the total after tax; zero when there is none. */
+    public BigDecimal getSurcharge() {
+        return surcharge;
     }
 
     /** The taxable lines (leaving out tax-free ones), each less the discount taken off it, added up. */
@@ -358,6 +368,12 @@ public class Invoice {
         recalculateAmount();
     }
 
+    /** Sets the flat surcharge (such as a handling fee) added to this invoice and reworks its amount to match. */
+    public void applySurcharge(BigDecimal surcharge) {
+        this.surcharge = surcharge.setScale(2, RoundingMode.HALF_UP);
+        recalculateAmount();
+    }
+
     /**
      * Sets the early-payment discount offered on this invoice: the percentage taken off if it is paid
      * within the given number of days of being issued. It does not change the amount owed.
@@ -404,7 +420,7 @@ public class Invoice {
     private void recalculateAmount() {
         BigDecimal subtotal = getSubtotal();
         BigDecimal discounted = subtotal.subtract(getDiscount());
-        this.amount = taxInclusive ? discounted : discounted.add(getTax()).add(getLevy());
+        this.amount = (taxInclusive ? discounted : discounted.add(getTax()).add(getLevy())).add(surcharge);
     }
 
     /** Marks this invoice as sent to the client. */

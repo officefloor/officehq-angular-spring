@@ -15,10 +15,11 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
 // amount, their subtotal, any percentage or flat amount discount (one or the other, taken off before tax), the taxable amount (leaving out tax-free lines), any
 // sales tax added on it after the discount, any levy (a second tax) added on the same base, the effective tax rate
-// (the tax and levy as a percentage of the total before tax), the total before tax, and the final total including both taxes (also shown as the total after tax).
+// (the tax and levy as a percentage of the total before tax), any flat surcharge (such as a handling fee, added after tax and
+// never taxed), the total before tax, and the final total including both taxes (also shown as the total after tax).
 // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
 // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the set number of days.
-// Lines, the discount, the tax rate, the levy rate and the early-payment discount can be changed while it is a draft.
+// Lines, the discount, the tax rate, the levy rate, the surcharge and the early-payment discount can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, Notes],
@@ -249,6 +250,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               }
             </tr>
             <tr>
+              <th scope="row" colspan="5">Surcharge</th>
+              <td data-testid="invoice-surcharge">{{ inv.surcharge | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              @if (inv.status === 'DRAFT') {
+                <td></td>
+              }
+            </tr>
+            <tr>
               <th scope="row" colspan="5">Effective tax rate (tax and levy as a share of the total before tax)</th>
               <td data-testid="invoice-effective-tax-rate">{{ inv.effectiveTaxPct | number: '1.2-2' : 'en-US' }}%</td>
               @if (inv.status === 'DRAFT') {
@@ -411,6 +419,33 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
           <button type="submit" data-testid="levy-form-submit" [disabled]="levySaving()">Apply levy</button>
           @if (levyError()) {
             <p role="alert" data-testid="levy-form-error">{{ levyError() }}</p>
+          }
+        </form>
+
+        <form [formGroup]="surchargeForm" (ngSubmit)="applySurcharge()" data-testid="surcharge-form" novalidate>
+          <h2>Surcharge</h2>
+          <div>
+            <label for="surcharge-amount">Flat amount added to the total, such as a handling fee</label>
+            <input
+              id="surcharge-amount"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              step="0.01"
+              formControlName="surcharge"
+              data-testid="surcharge-form-amount"
+              [attr.aria-invalid]="surchargeInvalid()"
+              [attr.aria-describedby]="surchargeInvalid() ? 'surcharge-amount-error' : null"
+            />
+            @if (surchargeInvalid()) {
+              <p id="surcharge-amount-error" role="alert" data-testid="surcharge-form-amount-error">
+                Enter an amount of 0 or more with at most two decimal places.
+              </p>
+            }
+          </div>
+          <button type="submit" data-testid="surcharge-form-submit" [disabled]="surchargeSaving()">Apply surcharge</button>
+          @if (surchargeError()) {
+            <p role="alert" data-testid="surcharge-form-error">{{ surchargeError() }}</p>
           }
         </form>
 
@@ -734,6 +769,45 @@ export class InvoiceDetailPage {
       error: () => {
         this.levyError.set('Could not apply the levy. Please try again.');
         this.levySaving.set(false);
+      },
+    });
+  }
+
+  protected readonly surchargeSaving = signal(false);
+  protected readonly surchargeError = signal<string | null>(null);
+
+  protected readonly surchargeForm = this.fb.group({
+    surcharge: ['', [Validators.required, Validators.min(0), Validators.pattern(TWO_DECIMALS)]],
+  });
+
+  // Starts the surcharge field from the invoice's current surcharge whenever the invoice loads.
+  private readonly syncSurcharge = effect(() => {
+    if (this.invoice.hasValue()) {
+      this.surchargeForm.setValue({ surcharge: String(this.invoice.value().surcharge) });
+    }
+  });
+
+  protected surchargeInvalid(): boolean {
+    const control = this.surchargeForm.controls.surcharge;
+    return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected applySurcharge(): void {
+    if (this.surchargeForm.invalid) {
+      this.surchargeForm.markAllAsTouched();
+      return;
+    }
+    this.surchargeSaving.set(true);
+    this.surchargeError.set(null);
+    const surcharge = Number(this.surchargeForm.getRawValue().surcharge);
+    this.service.applySurcharge(this.projectIdNumber(), Number(this.invoiceId()), surcharge).subscribe({
+      next: (updated) => {
+        this.invoice.set(updated);
+        this.surchargeSaving.set(false);
+      },
+      error: () => {
+        this.surchargeError.set('Could not apply the surcharge. Please try again.');
+        this.surchargeSaving.set(false);
       },
     });
   }
