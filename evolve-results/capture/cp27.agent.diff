@@ -1,0 +1,186 @@
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index 2ea0dfe..e1d3c6e 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -19,8 +19,12 @@ export interface NewProject {
+ export class ProjectService {
+   private readonly http = inject(HttpClient);
+ 
+-  list(includeArchived = false): Observable<Project[]> {
+-    return this.http.get<Project[]>('/api/projects', { params: { includeArchived } });
++  list(includeArchived = false, tagId: number | null = null): Observable<Project[]> {
++    const params: Record<string, string | number | boolean> = { includeArchived };
++    if (tagId !== null) {
++      params['tagId'] = tagId;
++    }
++    return this.http.get<Project[]>('/api/projects', { params });
+   }
+ 
+   listForClient(clientId: number): Observable<Project[]> {
+diff --git a/src/main/frontend/src/app/features/projects/projects.ts b/src/main/frontend/src/app/features/projects/projects.ts
+index 7c55747..c724314 100644
+--- a/src/main/frontend/src/app/features/projects/projects.ts
++++ b/src/main/frontend/src/app/features/projects/projects.ts
+@@ -2,11 +2,13 @@ import { Component, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+ import { Client, ClientService } from '../clients/client.service';
++import { Tag, TagService } from '../tags/tag.service';
+ import { Project, ProjectService } from './project.service';
+ 
+ // Projects page: add a project for a client and list all projects with their client's name; each
+ // project opens its detail page and can be archived once it is no longer needed. Archived projects
+-// are kept but left off the list unless the archived toggle is on, where they can be restored.
++// are kept but left off the list unless the archived toggle is on, where they can be restored. The
++// list can be narrowed to the projects carrying a chosen tag.
+ @Component({
+   selector: 'app-projects',
+   imports: [ReactiveFormsModule, RouterLink],
+@@ -73,8 +75,26 @@ import { Project, ProjectService } from './project.service';
+       <label for="projects-show-archived">Show archived projects</label>
+     </div>
+ 
++    <div>
++      <label for="project-tag-filter">Filter by tag</label>
++      <select
++        id="project-tag-filter"
++        data-testid="project-tag-filter"
++        #tagSelect
++        [value]="tagFilter() ?? ''"
++        (change)="filterByTag(tagSelect.value)"
++      >
++        <option value="">All tags</option>
++        @for (t of tags(); track t.id) {
++          <option [value]="t.id">{{ t.name }}</option>
++        }
++      </select>
++    </div>
++
+     @if (projects().length === 0) {
+-      <p data-testid="projects-empty">No projects yet.</p>
++      <p data-testid="projects-empty">
++        {{ tagFilter() === null ? 'No projects yet.' : 'No projects with this tag.' }}
++      </p>
+     } @else {
+       <table data-testid="projects-table">
+         <caption>All projects</caption>
+@@ -137,6 +157,7 @@ import { Project, ProjectService } from './project.service';
+ export class Projects {
+   private readonly service = inject(ProjectService);
+   private readonly clientService = inject(ClientService);
++  private readonly tagService = inject(TagService);
+ 
+   protected readonly projects = signal<Project[]>([]);
+   protected readonly clients = signal<Client[]>([]);
+@@ -145,6 +166,8 @@ export class Projects {
+   protected readonly deleting = signal<number | null>(null);
+   protected readonly deleteError = signal<string | null>(null);
+   protected readonly showArchived = signal(false);
++  protected readonly tags = signal<Tag[]>([]);
++  protected readonly tagFilter = signal<number | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+@@ -154,6 +177,7 @@ export class Projects {
+   constructor() {
+     this.load();
+     this.clientService.list().subscribe((list) => this.clients.set(list));
++    this.tagService.list().subscribe((list) => this.tags.set(list));
+   }
+ 
+   protected showError(field: 'name' | 'clientId'): boolean {
+@@ -171,7 +195,10 @@ export class Projects {
+     this.saveError.set(null);
+     this.service.create({ name: name.trim(), clientId: Number(clientId) }).subscribe({
+       next: (created) => {
+-        this.projects.update((list) => [...list, created]);
++        // A new project carries no tags, so it only belongs on an unfiltered list.
++        if (this.tagFilter() === null) {
++          this.projects.update((list) => [...list, created]);
++        }
+         this.form.reset();
+         this.saving.set(false);
+       },
+@@ -187,6 +214,11 @@ export class Projects {
+     this.load();
+   }
+ 
++  protected filterByTag(value: string): void {
++    this.tagFilter.set(value === '' ? null : Number(value));
++    this.load();
++  }
++
+   protected archive(project: Project): void {
+     this.deleting.set(project.id);
+     this.deleteError.set(null);
+@@ -222,6 +254,6 @@ export class Projects {
+   }
+ 
+   private load(): void {
+-    this.service.list(this.showArchived()).subscribe((list) => this.projects.set(list));
++    this.service.list(this.showArchived(), this.tagFilter()).subscribe((list) => this.projects.set(list));
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectController.java b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+index 585f7b4..7e421f8 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+@@ -23,8 +23,9 @@ public class ProjectController {
+     }
+ 
+     @GetMapping
+-    public List<ProjectResponse> list(@RequestParam(defaultValue = "false") boolean includeArchived) {
+-        return service.list(includeArchived);
++    public List<ProjectResponse> list(@RequestParam(defaultValue = "false") boolean includeArchived,
++            @RequestParam(required = false) Long tagId) {
++        return service.list(includeArchived, tagId);
+     }
+ 
+     @GetMapping("/{id}")
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index aaed867..6e6e055 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -15,6 +15,15 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.archived = false ORDER BY p.id")
+     List<Project> findActiveWithClient();
+ 
++    /** All projects carrying a tag, with their client loaded in the same query. */
++    @Query("SELECT p FROM Project p JOIN FETCH p.client JOIN p.tags t WHERE t.id = :tagId ORDER BY p.id")
++    List<Project> findAllByTagIdWithClient(Long tagId);
++
++    /** All projects not archived carrying a tag, with their client loaded in the same query. */
++    @Query("SELECT p FROM Project p JOIN FETCH p.client JOIN p.tags t WHERE t.id = :tagId"
++            + " AND p.archived = false ORDER BY p.id")
++    List<Project> findActiveByTagIdWithClient(Long tagId);
++
+     /** A client's projects not archived, with their client loaded in the same query. */
+     @Query("SELECT p FROM Project p JOIN FETCH p.client c WHERE c.id = :clientId AND p.archived = false"
+             + " ORDER BY p.id")
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index c29dba0..6c7a912 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -22,10 +22,19 @@ public class ProjectService {
+         this.audit = audit;
+     }
+ 
+-    /** The projects, leaving out archived ones unless they are asked for. */
++    /**
++     * The projects, leaving out archived ones unless they are asked for, and only those carrying the
++     * given tag when one is given.
++     */
+     @Transactional(readOnly = true)
+-    public List<ProjectResponse> list(boolean includeArchived) {
+-        List<Project> found = includeArchived ? projects.findAllWithClient() : projects.findActiveWithClient();
++    public List<ProjectResponse> list(boolean includeArchived, Long tagId) {
++        List<Project> found;
++        if (tagId == null) {
++            found = includeArchived ? projects.findAllWithClient() : projects.findActiveWithClient();
++        } else {
++            found = includeArchived ? projects.findAllByTagIdWithClient(tagId)
++                    : projects.findActiveByTagIdWithClient(tagId);
++        }
+         return found.stream().map(ProjectResponse::from).toList();
+     }
+ 
