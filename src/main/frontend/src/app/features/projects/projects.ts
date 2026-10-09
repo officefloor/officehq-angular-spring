@@ -1,4 +1,3 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -6,7 +5,8 @@ import { Client, ClientService } from '../clients/client.service';
 import { Project, ProjectService } from './project.service';
 
 // Projects page: add a project for a client and list all projects with their client's name; each
-// project opens its detail page and can be deleted once it is no longer needed.
+// project opens its detail page and can be archived once it is no longer needed. Archived projects
+// are kept but left off the list unless the archived toggle is on, where they can be restored.
 @Component({
   selector: 'app-projects',
   imports: [ReactiveFormsModule, RouterLink],
@@ -62,6 +62,17 @@ import { Project, ProjectService } from './project.service';
       <p role="alert" data-testid="project-delete-error">{{ deleteError() }}</p>
     }
 
+    <div>
+      <input
+        id="projects-show-archived"
+        type="checkbox"
+        data-testid="projects-show-archived"
+        [checked]="showArchived()"
+        (change)="toggleArchived()"
+      />
+      <label for="projects-show-archived">Show archived projects</label>
+    </div>
+
     @if (projects().length === 0) {
       <p data-testid="projects-empty">No projects yet.</p>
     } @else {
@@ -77,7 +88,12 @@ import { Project, ProjectService } from './project.service';
         <tbody>
           @for (p of projects(); track p.id) {
             <tr [attr.data-testid]="'project-row-' + p.id">
-              <td data-testid="project-name">{{ p.name }}</td>
+              <td data-testid="project-name">
+                {{ p.name }}
+                @if (p.archived) {
+                  <span [attr.data-testid]="'project-archived-' + p.id">(archived)</span>
+                }
+              </td>
               <td data-testid="project-client">{{ p.clientName }}</td>
               <td>
                 <a
@@ -86,15 +102,30 @@ import { Project, ProjectService } from './project.service';
                   [attr.aria-label]="'Open ' + p.name"
                   >Open</a
                 >
-                <button
-                  type="button"
-                  [attr.data-testid]="'project-delete-' + p.id"
-                  [attr.aria-label]="'Delete ' + p.name"
-                  [disabled]="deleting() === p.id"
-                  (click)="remove(p)"
-                >
-                  Delete
-                </button>
+                @if (p.archived) {
+                  <button
+                    type="button"
+                    [attr.data-testid]="'project-restore-' + p.id"
+                    [attr.aria-label]="'Restore ' + p.name"
+                    [disabled]="deleting() === p.id"
+                    (click)="restore(p)"
+                  >
+                    Restore
+                  </button>
+                } @else {
+                  <!-- Deleting a project now archives it; the delete anchor is kept on the same control. -->
+                  <span [attr.data-testid]="'project-delete-' + p.id">
+                    <button
+                      type="button"
+                      [attr.data-testid]="'project-archive-' + p.id"
+                      [attr.aria-label]="'Archive ' + p.name"
+                      [disabled]="deleting() === p.id"
+                      (click)="archive(p)"
+                    >
+                      Archive
+                    </button>
+                  </span>
+                }
               </td>
             </tr>
           }
@@ -113,6 +144,7 @@ export class Projects {
   protected readonly saveError = signal<string | null>(null);
   protected readonly deleting = signal<number | null>(null);
   protected readonly deleteError = signal<string | null>(null);
+  protected readonly showArchived = signal(false);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -120,7 +152,7 @@ export class Projects {
   });
 
   constructor() {
-    this.service.list().subscribe((list) => this.projects.set(list));
+    this.load();
     this.clientService.list().subscribe((list) => this.clients.set(list));
   }
 
@@ -150,22 +182,46 @@ export class Projects {
     });
   }
 
-  protected remove(project: Project): void {
+  protected toggleArchived(): void {
+    this.showArchived.update((show) => !show);
+    this.load();
+  }
+
+  protected archive(project: Project): void {
     this.deleting.set(project.id);
     this.deleteError.set(null);
-    this.service.delete(project.id).subscribe({
-      next: () => {
-        this.projects.update((list) => list.filter((p) => p.id !== project.id));
-        this.deleting.set(null);
-      },
-      error: (err: unknown) => {
-        this.deleteError.set(
-          err instanceof HttpErrorResponse && err.status === 409
-            ? `Could not delete ${project.name}: it has invoices.`
-            : `Could not delete ${project.name}. Please try again.`,
+    this.service.archive(project.id).subscribe({
+      next: (archived) => {
+        this.projects.update((list) =>
+          this.showArchived()
+            ? list.map((p) => (p.id === archived.id ? archived : p))
+            : list.filter((p) => p.id !== archived.id),
         );
         this.deleting.set(null);
       },
+      error: () => {
+        this.deleteError.set(`Could not archive ${project.name}. Please try again.`);
+        this.deleting.set(null);
+      },
     });
+  }
+
+  protected restore(project: Project): void {
+    this.deleting.set(project.id);
+    this.deleteError.set(null);
+    this.service.restore(project.id).subscribe({
+      next: (restored) => {
+        this.projects.update((list) => list.map((p) => (p.id === restored.id ? restored : p)));
+        this.deleting.set(null);
+      },
+      error: () => {
+        this.deleteError.set(`Could not restore ${project.name}. Please try again.`);
+        this.deleting.set(null);
+      },
+    });
+  }
+
+  private load(): void {
+    this.service.list(this.showArchived()).subscribe((list) => this.projects.set(list));
   }
 }

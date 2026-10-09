@@ -22,9 +22,11 @@ public class ProjectService {
         this.audit = audit;
     }
 
+    /** The projects, leaving out archived ones unless they are asked for. */
     @Transactional(readOnly = true)
-    public List<ProjectResponse> list() {
-        return projects.findAllWithClient().stream().map(ProjectResponse::from).toList();
+    public List<ProjectResponse> list(boolean includeArchived) {
+        List<Project> found = includeArchived ? projects.findAllWithClient() : projects.findActiveWithClient();
+        return found.stream().map(ProjectResponse::from).toList();
     }
 
     @Transactional(readOnly = true)
@@ -32,7 +34,7 @@ public class ProjectService {
         if (!clients.existsById(clientId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
         }
-        return projects.findByClientIdWithClient(clientId).stream().map(ProjectResponse::from).toList();
+        return projects.findActiveByClientIdWithClient(clientId).stream().map(ProjectResponse::from).toList();
     }
 
     @Transactional(readOnly = true)
@@ -50,18 +52,31 @@ public class ProjectService {
     }
 
     /**
-     * Deletes a project (and its tasks) and records the deletion in the audit log. A project that
-     * has been invoiced is kept, so its invoices are never lost.
+     * Archives a project: it drops off the project lists but is kept, with its tasks and invoices,
+     * and the archiving is recorded in the audit log.
      */
     @Transactional
-    public void delete(Long id) {
-        Project project = projects.findById(id)
+    public ProjectResponse archive(Long id) {
+        Project project = projects.findByIdWithClient(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
-        if (projects.hasInvoices(id)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project has invoices");
+        if (!project.isArchived()) {
+            project.setArchived(true);
+            projects.flush();
+            audit.record("PROJECT_ARCHIVED id=" + id);
         }
-        projects.delete(project);
-        projects.flush();
-        audit.record("PROJECT_DELETED id=" + id);
+        return ProjectResponse.from(project);
+    }
+
+    /** Brings an archived project back onto the project lists, recording it in the audit log. */
+    @Transactional
+    public ProjectResponse restore(Long id) {
+        Project project = projects.findByIdWithClient(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+        if (project.isArchived()) {
+            project.setArchived(false);
+            projects.flush();
+            audit.record("PROJECT_RESTORED id=" + id);
+        }
+        return ProjectResponse.from(project);
     }
 }

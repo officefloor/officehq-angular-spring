@@ -25,6 +25,8 @@ public class Project {
     @JoinColumn(name = "client_id", nullable = false)
     private Client client;
 
+    private boolean archived;
+
     protected Project() {
     }
 
@@ -43,5 +45,13 @@ public class Project {
 
     public Client getClient() {
         return client;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
     }
 }

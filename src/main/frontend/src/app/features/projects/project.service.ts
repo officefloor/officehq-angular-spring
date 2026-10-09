@@ -7,6 +7,7 @@ export interface Project {
   name: string;
   clientId: number;
   clientName: string;
+  archived: boolean;
 }
 
 export interface NewProject {
@@ -18,8 +19,8 @@ export interface NewProject {
 export class ProjectService {
   private readonly http = inject(HttpClient);
 
-  list(): Observable<Project[]> {
-    return this.http.get<Project[]>('/api/projects');
+  list(includeArchived = false): Observable<Project[]> {
+    return this.http.get<Project[]>('/api/projects', { params: { includeArchived } });
   }
 
   listForClient(clientId: number): Observable<Project[]> {
@@ -34,7 +35,11 @@ export class ProjectService {
     return this.http.post<Project>('/api/projects', project);
   }
 
-  delete(id: number): Observable<void> {
-    return this.http.delete<void>(`/api/projects/${id}`);
+  archive(id: number): Observable<Project> {
+    return this.http.post<Project>(`/api/projects/${id}/archive`, null);
+  }
+
+  restore(id: number): Observable<Project> {
+    return this.http.post<Project>(`/api/projects/${id}/restore`, null);
   }
 }
