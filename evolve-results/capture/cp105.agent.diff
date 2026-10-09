@@ -1,0 +1,166 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index 54e4861..ad9c320 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -1,11 +1,12 @@
+ import { CurrencyPipe } from '@angular/common';
+-import { Component, computed, inject, input } from '@angular/core';
++import { Component, computed, inject, input, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { InvoiceService } from './invoice.service';
+ 
+ // A client's statement: every invoice across the client's projects grouped by job, how much is left to
+ // pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
++// The balance owed as at a chosen past date can be looked up, counting only entries up to that date.
+ // It opens with the running account: invoices, payments, credit notes, deposits and refunds in date order with the
+ // balance owed after each.
+ // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
+@@ -81,6 +82,22 @@ import { InvoiceService } from './invoice.service';
+             <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+           </dl>
+         </section>
++        <section aria-labelledby="statement-asof-heading" data-testid="statement-asof">
++          <h2 id="statement-asof-heading">Balance as at a date</h2>
++          <form class="statement-actions" (submit)="applyAsOf($event, asOfInput.value)">
++            <label for="statement-asof-date">As at</label>
++            <input #asOfInput id="statement-asof-date" type="date" required data-testid="statement-asof-date" />
++            <button type="submit" data-testid="statement-asof-apply">Show balance</button>
++          </form>
++          @if (balanceAsOf.error()) {
++            <p role="alert" data-testid="client-balance-asof-error">Could not load the balance.</p>
++          } @else if (balanceAsOf.value(); as b) {
++            <p aria-live="polite">
++              Owed as at {{ b.asOf }}:
++              <strong data-testid="client-balance-asof">{{ b.balance | currency: b.currency : 'symbol' : '1.2-2' : 'en-US' }}</strong>
++            </p>
++          }
++        </section>
+         <section aria-labelledby="statement-account-heading" data-testid="statement-account">
+           <h2 id="statement-account-heading">Account</h2>
+           @if (s.entries.length === 0) {
+@@ -193,6 +210,24 @@ export class ClientStatement {
+     stream: ({ params }) => this.service.statementForClient(params),
+   });
+ 
++  /** The day the balance is looked up as at; unset until one is applied. */
++  protected readonly asOf = signal<string | undefined>(undefined);
++
++  protected readonly balanceAsOf = rxResource({
++    params: () => {
++      const asOf = this.asOf();
++      return asOf ? { clientId: this.clientId(), asOf } : undefined;
++    },
++    stream: ({ params }) => this.service.balanceAsOf(params.clientId, params.asOf),
++  });
++
++  protected applyAsOf(event: Event, value: string): void {
++    event.preventDefault();
++    if (value) {
++      this.asOf.set(value);
++    }
++  }
++
+   protected print(): void {
+     window.print();
+   }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 8bd5820..897c1bb 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -95,6 +95,14 @@ export interface ClientStatement {
+   entries: StatementEntry[];
+ }
+ 
++/** What a client owed as at the end of a chosen day (negative when in credit). */
++export interface ClientBalanceAsOf {
++  clientId: number;
++  currency: CurrencyCode;
++  asOf: string;
++  balance: number;
++}
++
+ /** One thing an invoice charges for; its amount is quantity times unit price, less the line's own discount. */
+ export interface LineItem {
+   id: number;
+@@ -214,6 +222,10 @@ export class InvoiceService {
+     return this.http.get<ClientStatement>(`/api/clients/${clientId}/statement`);
+   }
+ 
++  balanceAsOf(clientId: number, asOf: string): Observable<ClientBalanceAsOf> {
++    return this.http.get<ClientBalanceAsOf>(`/api/clients/${clientId}/statement/balance`, { params: { asOf } });
++  }
++
+   create(projectId: number, invoice: NewInvoice): Observable<ProjectInvoice> {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices`, invoice);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientBalanceAsOfResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientBalanceAsOfResponse.java
+new file mode 100644
+index 0000000..398f97e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientBalanceAsOfResponse.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import net.officefloor.hq.app.client.Currency;
++
++/** What a client owed as at the end of a chosen day, in the client's currency (negative when in credit). */
++public record ClientBalanceAsOfResponse(Long clientId, Currency currency, LocalDate asOf, BigDecimal balance) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java
+index b279590..87a279d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java
+@@ -1,8 +1,11 @@
+ package net.officefloor.hq.app.invoice;
+ 
++import java.time.LocalDate;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /** A client's statement: every invoice raised across their projects and the total they still owe. */
+@@ -20,4 +23,11 @@ public class ClientStatementController {
+     public ClientStatementResponse get(@PathVariable Long clientId) {
+         return service.statementForClient(clientId);
+     }
++
++    /** What the client owed as at the end of the given day. */
++    @GetMapping("/balance")
++    public ClientBalanceAsOfResponse balanceAsOf(@PathVariable Long clientId,
++            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        return service.balanceAsOf(clientId, asOf);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index e868cf4..d791a65 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -89,6 +89,22 @@ public class InvoiceService {
+                 accountEntries(clientId, found));
+     }
+ 
++    /**
++     * What a client owed as at the end of the given day: the running account counting only the entries dated on or
++     * before it.
++     */
++    @Transactional(readOnly = true)
++    public ClientBalanceAsOfResponse balanceAsOf(Long clientId, LocalDate asOf) {
++        Client client = clients.findById(clientId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
++        List<Invoice> found = invoices.findByClientIdWithProject(clientId);
++        BigDecimal balance = accountEntries(clientId, found).stream()
++                .filter(e -> e.date() != null && !e.date().isAfter(asOf))
++                .map(StatementEntry::change)
++                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++        return new ClientBalanceAsOfResponse(client.getId(), client.getCurrency(), asOf, balance);
++    }
++
+     /**
+      * The entries on a client's running account. Drafts have not been sent and void invoices were cancelled, so
+      * neither is charged. A payment made out of held deposits is left out, as the deposit was already credited
