@@ -142,7 +142,7 @@ public class InvoiceService {
         return InvoiceDetailResponse.from(invoice);
     }
 
-    /** Sets the percentage and flat discount on a draft invoice and reworks the invoice amount to match. */
+    /** Sets the percentage or flat discount on a draft invoice and reworks the invoice amount to match. */
     @Transactional
     public InvoiceDetailResponse applyDiscount(Long projectId, Long invoiceId, DiscountRequest request) {
         Invoice invoice = findDraft(projectId, invoiceId);

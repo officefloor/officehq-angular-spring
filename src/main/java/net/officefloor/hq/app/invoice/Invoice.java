@@ -24,9 +24,9 @@ import java.util.function.UnaryOperator;
 import net.officefloor.hq.app.project.Project;
 
 /**
- * An invoice raised against a project. It is built from line items, and can take a percentage and/or
- * a flat amount off their sum as a discount (the flat amount shared across the lines in proportion to
- * what each charges, and never more than is left after the percentage), then add a percentage sales tax on what is left of the taxable lines only
+ * An invoice raised against a project. It is built from line items, and can take either a percentage or
+ * a flat amount off their sum as a discount, before tax (the flat amount shared across the lines in
+ * proportion to what each charges, and never more than the subtotal), then add a percentage sales tax on what is left of the taxable lines only
  * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
  * its stored amount is always that subtotal less the discount plus the tax plus the levy.
  * <p>
@@ -285,8 +285,14 @@ public class Invoice {
         applyDiscount(discountPct, BigDecimal.ZERO);
     }
 
-    /** Sets the percentage and the flat amount taken off this invoice and reworks its amount to match. */
+    /**
+     * Sets the discount on this invoice, either a percentage or a flat amount (the other being zero), and
+     * reworks its amount to match.
+     */
     public void applyDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
+        if (discountPct.signum() != 0 && discountAmount.signum() != 0) {
+            throw new IllegalArgumentException("A discount is either a percentage or a flat amount, not both");
+        }
         this.discountPct = discountPct.setScale(2, RoundingMode.HALF_UP);
         this.discountAmount = discountAmount.setScale(2, RoundingMode.HALF_UP);
         recalculateAmount();

@@ -13,7 +13,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 
 // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
-// amount, their subtotal, any percentage or flat amount discount, the taxable amount (leaving out tax-free lines), any
+// amount, their subtotal, any percentage or flat amount discount (one or the other, taken off before tax), the taxable amount (leaving out tax-free lines), any
 // sales tax added on it after the discount, any levy (a second tax) added on the same base, the effective tax rate
 // (the tax and levy as a percentage of the total before tax), the total before tax, and the final total including both taxes (also shown as the total after tax).
 // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
@@ -212,8 +212,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
             <tr>
               <th scope="row" colspan="5">
                 @if (inv.discountAmount > 0) {
-                  Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span> off@if (inv.discountPct > 0) {
-                    plus <span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%})
+                  Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span> off)
                 } @else {
                   Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%)
                 }

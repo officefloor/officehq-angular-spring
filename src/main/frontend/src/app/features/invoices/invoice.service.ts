@@ -184,7 +184,7 @@ export class InvoiceService {
     return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`);
   }
 
-  /** Sets the percentage and the flat amount taken off a draft invoice; zero for both removes the discount. */
+  /** Sets the percentage or the flat amount taken off a draft invoice (the other being zero); zero for both removes the discount. */
   applyDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discount`, {
       discountPct,
