@@ -1,8 +1,11 @@
 package net.officefloor.hq.app.project;
 
+import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import net.officefloor.hq.app.invoice.InvoiceStatus;
 import org.springframework.data.jpa.repository.Query;
 
 public interface ProjectRepository extends JpaRepository<Project, Long> {
@@ -43,4 +46,8 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
     /** Whether any invoice has been raised against the project. */
     @Query("SELECT COUNT(i) > 0 FROM Invoice i WHERE i.project.id = :id")
     boolean hasInvoices(Long id);
+
+    /** Sum of the project's invoices with any of the given statuses (zero when there are none). */
+    @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.project.id = :id AND i.status IN :statuses")
+    BigDecimal sumInvoiceAmountByStatusIn(Long id, Collection<InvoiceStatus> statuses);
 }

@@ -45,6 +45,16 @@ public class ProjectController {
         return service.changeStatus(id, request.status());
     }
 
+    @GetMapping("/{id}/budget")
+    public ProjectBudgetResponse budget(@PathVariable Long id) {
+        return service.budget(id);
+    }
+
+    @PutMapping("/{id}/budget")
+    public ProjectBudgetResponse setBudget(@PathVariable Long id, @Valid @RequestBody ProjectBudgetRequest request) {
+        return service.setBudget(id, request.budget());
+    }
+
     @PostMapping("/{id}/archive")
     public ProjectResponse archive(@PathVariable Long id) {
         return service.archive(id);

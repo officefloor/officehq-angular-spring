@@ -1,9 +1,12 @@
 package net.officefloor.hq.app.project;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.Client;
 import net.officefloor.hq.app.client.ClientRepository;
+import net.officefloor.hq.app.invoice.InvoiceStatus;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,6 +74,40 @@ public class ProjectService {
         }
         Project saved = projects.save(project);
         return ProjectResponse.from(saved);
+    }
+
+    /** Invoices count as invoiced once sent; drafts have not been invoiced yet. */
+    private static final List<InvoiceStatus> INVOICED =
+            List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID);
+
+    /** The project's budget, how much has been invoiced against it, and what is left. */
+    @Transactional(readOnly = true)
+    public ProjectBudgetResponse budget(Long id) {
+        Project project = projects.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+        return budgetOf(project);
+    }
+
+    /** Sets (or, given none, clears) a project's budget, recording the change in the audit log. */
+    @Transactional
+    public ProjectBudgetResponse setBudget(Long id, BigDecimal budget) {
+        Project project = projects.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
+        BigDecimal scaled = budget == null ? null : budget.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal current = project.getBudget();
+        boolean changed = scaled == null ? current != null : current == null || current.compareTo(scaled) != 0;
+        if (changed) {
+            project.setBudget(scaled);
+            projects.flush();
+            audit.record("PROJECT_BUDGET_SET id=" + id + " budget=" + (scaled == null ? "none" : scaled.toPlainString()));
+        }
+        return budgetOf(project);
+    }
+
+    private ProjectBudgetResponse budgetOf(Project project) {
+        BigDecimal invoiced = projects.sumInvoiceAmountByStatusIn(project.getId(), INVOICED)
+                .setScale(2, RoundingMode.HALF_UP);
+        return ProjectBudgetResponse.of(project.getBudget(), invoiced);
     }
 
     /** Marks a project active, on hold or finished, recording the change in the audit log. */

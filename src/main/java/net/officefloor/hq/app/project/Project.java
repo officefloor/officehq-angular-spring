@@ -12,6 +12,7 @@ import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Set;
 import net.officefloor.hq.app.client.Client;
@@ -36,6 +37,8 @@ public class Project {
 
     @Enumerated(EnumType.STRING)
     private ProjectStatus status = ProjectStatus.ACTIVE;
+
+    private BigDecimal budget;
 
     @ManyToMany
     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
@@ -76,6 +79,15 @@ public class Project {
 
     public void setStatus(ProjectStatus status) {
         this.status = status;
+    }
+
+    /** The amount this project is to be invoiced within, or null when no budget is set. */
+    public BigDecimal getBudget() {
+        return budget;
+    }
+
+    public void setBudget(BigDecimal budget) {
+        this.budget = budget;
     }
 
     /** The tags labelling this project; add or remove to tag or untag it. */

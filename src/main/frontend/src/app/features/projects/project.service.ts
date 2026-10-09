@@ -20,6 +20,13 @@ export interface Project {
   status: ProjectStatus;
 }
 
+/** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
+export interface ProjectBudget {
+  budget: number | null;
+  invoiced: number;
+  remaining: number | null;
+}
+
 export interface NewProject {
   name: string;
   clientId: number;
@@ -61,6 +68,14 @@ export class ProjectService {
 
   changeStatus(id: number, status: ProjectStatus): Observable<Project> {
     return this.http.put<Project>(`/api/projects/${id}/status`, { status });
+  }
+
+  budget(id: number): Observable<ProjectBudget> {
+    return this.http.get<ProjectBudget>(`/api/projects/${id}/budget`);
+  }
+
+  setBudget(id: number, budget: number | null): Observable<ProjectBudget> {
+    return this.http.put<ProjectBudget>(`/api/projects/${id}/budget`, { budget });
   }
 
   archive(id: number): Observable<Project> {

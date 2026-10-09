@@ -1,6 +1,6 @@
 import { CurrencyPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import {
   AbstractControl,
@@ -153,6 +153,8 @@ export class ProjectInvoices {
   private readonly service = inject(InvoiceService);
 
   readonly projectId = input.required<number>();
+  /** Emits when an invoice is sent, changing how much has been invoiced on the project. */
+  readonly invoiced = output<void>();
 
   protected readonly invoices = rxResource({
     params: () => this.projectId(),
@@ -229,6 +231,7 @@ export class ProjectInvoices {
       next: (sent) => {
         this.replace(sent);
         this.busy.set(null);
+        this.invoiced.emit();
       },
       error: () => {
         this.sendError.set('Could not send the invoice. Please try again.');
