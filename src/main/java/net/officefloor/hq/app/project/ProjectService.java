@@ -24,10 +24,10 @@ public class ProjectService {
 
     /**
      * The projects, leaving out archived ones unless they are asked for, and only those carrying the
-     * given tag when one is given.
+     * given tag and at the given status when those are given.
      */
     @Transactional(readOnly = true)
-    public List<ProjectResponse> list(boolean includeArchived, Long tagId) {
+    public List<ProjectResponse> list(boolean includeArchived, Long tagId, ProjectStatus status) {
         List<Project> found;
         if (tagId == null) {
             found = includeArchived ? projects.findAllWithClient() : projects.findActiveWithClient();
@@ -35,7 +35,8 @@ public class ProjectService {
             found = includeArchived ? projects.findAllByTagIdWithClient(tagId)
                     : projects.findActiveByTagIdWithClient(tagId);
         }
-        return found.stream().map(ProjectResponse::from).toList();
+        return found.stream().filter(p -> status == null || p.getStatus() == status).map(ProjectResponse::from)
+                .toList();
     }
 
     @Transactional(readOnly = true)

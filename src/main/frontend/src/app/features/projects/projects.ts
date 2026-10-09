@@ -9,7 +9,8 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
 // project opens its detail page and can be archived once it is no longer needed. Archived projects
 // are kept but left off the list unless the archived toggle is on, where they can be restored. The
 // list can be narrowed to the projects carrying a chosen tag. Each project is marked active, on hold
-// or finished, chosen when it is added and changeable from its row.
+// or finished, chosen when it is added and changeable from its row, and the list can be narrowed to
+// the projects at a chosen status.
 @Component({
   selector: 'app-projects',
   imports: [ReactiveFormsModule, RouterLink],
@@ -100,9 +101,29 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
       </select>
     </div>
 
+    <div>
+      <label for="project-status-filter">Filter by status</label>
+      <select
+        id="project-status-filter"
+        data-testid="project-status-filter"
+        #statusFilterSelect
+        [value]="statusFilter() ?? ''"
+        (change)="filterByStatus(statusFilterSelect.value)"
+      >
+        <option value="">All statuses</option>
+        @for (s of statuses; track s.value) {
+          <option [value]="s.value">{{ s.label }}</option>
+        }
+      </select>
+    </div>
+
     @if (projects().length === 0) {
       <p data-testid="projects-empty">
-        {{ tagFilter() === null ? 'No projects yet.' : 'No projects with this tag.' }}
+        @if (statusFilter() !== null) {
+          No projects at this status.
+        } @else {
+          {{ tagFilter() === null ? 'No projects yet.' : 'No projects with this tag.' }}
+        }
       </p>
     } @else {
       <table data-testid="projects-table">
@@ -196,6 +217,7 @@ export class Projects {
   protected readonly showArchived = signal(false);
   protected readonly tags = signal<Tag[]>([]);
   protected readonly tagFilter = signal<number | null>(null);
+  protected readonly statusFilter = signal<ProjectStatus | null>(null);
   protected readonly statuses = PROJECT_STATUSES;
 
   protected readonly form = inject(NonNullableFormBuilder).group({
@@ -225,8 +247,9 @@ export class Projects {
     this.saveError.set(null);
     this.service.create({ name: name.trim(), clientId: Number(clientId), status }).subscribe({
       next: (created) => {
-        // A new project carries no tags, so it only belongs on an unfiltered list.
-        if (this.tagFilter() === null) {
+        // A new project carries no tags, so it only belongs on a list not filtered by tag, and only
+        // when its status matches any status filter.
+        if (this.tagFilter() === null && this.matchesStatusFilter(created)) {
           this.projects.update((list) => [...list, created]);
         }
         this.form.reset();
@@ -249,12 +272,22 @@ export class Projects {
     this.load();
   }
 
+  protected filterByStatus(value: string): void {
+    this.statusFilter.set(value === '' ? null : (value as ProjectStatus));
+    this.load();
+  }
+
   protected changeStatus(project: Project, status: string): void {
     this.deleting.set(project.id);
     this.deleteError.set(null);
     this.service.changeStatus(project.id, status as ProjectStatus).subscribe({
       next: (changed) => {
-        this.projects.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
+        // A project moved off the filtered status drops off the list.
+        this.projects.update((list) =>
+          this.matchesStatusFilter(changed)
+            ? list.map((p) => (p.id === changed.id ? changed : p))
+            : list.filter((p) => p.id !== changed.id),
+        );
         this.deleting.set(null);
       },
       error: () => {
@@ -298,7 +331,14 @@ export class Projects {
     });
   }
 
+  private matchesStatusFilter(project: Project): boolean {
+    const status = this.statusFilter();
+    return status === null || project.status === status;
+  }
+
   private load(): void {
-    this.service.list(this.showArchived(), this.tagFilter()).subscribe((list) => this.projects.set(list));
+    this.service
+      .list(this.showArchived(), this.tagFilter(), this.statusFilter())
+      .subscribe((list) => this.projects.set(list));
   }
 }

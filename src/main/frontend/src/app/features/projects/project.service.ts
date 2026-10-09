@@ -30,10 +30,17 @@ export interface NewProject {
 export class ProjectService {
   private readonly http = inject(HttpClient);
 
-  list(includeArchived = false, tagId: number | null = null): Observable<Project[]> {
+  list(
+    includeArchived = false,
+    tagId: number | null = null,
+    status: ProjectStatus | null = null,
+  ): Observable<Project[]> {
     const params: Record<string, string | number | boolean> = { includeArchived };
     if (tagId !== null) {
       params['tagId'] = tagId;
+    }
+    if (status !== null) {
+      params['status'] = status;
     }
     return this.http.get<Project[]>('/api/projects', { params });
   }
