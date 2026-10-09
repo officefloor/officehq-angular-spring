@@ -1,0 +1,472 @@
+diff --git a/src/main/frontend/src/app/features/credit-notes/credit-note.service.ts b/src/main/frontend/src/app/features/credit-notes/credit-note.service.ts
+new file mode 100644
+index 0000000..580b77e
+--- /dev/null
++++ b/src/main/frontend/src/app/features/credit-notes/credit-note.service.ts
+@@ -0,0 +1,30 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++/** Money given back to a client against an invoice. */
++export interface CreditNote {
++  id: number;
++  invoiceId: number;
++  amount: number;
++  /** ISO instant the credit note was raised. */
++  issuedAt: string;
++}
++
++export interface NewCreditNote {
++  amount: number;
++}
++
++@Injectable({ providedIn: 'root' })
++export class CreditNoteService {
++  private readonly http = inject(HttpClient);
++
++  /** An invoice's credit notes, oldest first. */
++  list(projectId: number, invoiceId: number): Observable<CreditNote[]> {
++    return this.http.get<CreditNote[]>(`/api/projects/${projectId}/invoices/${invoiceId}/credit-notes`);
++  }
++
++  issue(projectId: number, invoiceId: number, creditNote: NewCreditNote): Observable<CreditNote> {
++    return this.http.post<CreditNote>(`/api/projects/${projectId}/invoices/${invoiceId}/credit-notes`, creditNote);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/credit-notes/invoice-credit-notes.ts b/src/main/frontend/src/app/features/credit-notes/invoice-credit-notes.ts
+new file mode 100644
+index 0000000..972cdc3
+--- /dev/null
++++ b/src/main/frontend/src/app/features/credit-notes/invoice-credit-notes.ts
+@@ -0,0 +1,138 @@
++import { CurrencyPipe, DatePipe } from '@angular/common';
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, computed, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { CreditNoteService } from './credit-note.service';
++import { CurrencyCode } from '../clients/client.service';
++
++const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
++
++// The credit notes raised against an invoice to give money back to the client, and a form to raise
++// another once the invoice has been sent and while it is not cancelled.
++@Component({
++  selector: 'app-invoice-credit-notes',
++  imports: [ReactiveFormsModule, CurrencyPipe, DatePipe],
++  template: `
++    <section aria-labelledby="invoice-credit-notes-heading" data-testid="invoice-credit-notes">
++      <h2 id="invoice-credit-notes-heading">Credit notes</h2>
++      @if (creditNotes.error()) {
++        <p role="alert" data-testid="invoice-credit-notes-error">Could not load the credit notes.</p>
++      } @else if (creditNotes.hasValue()) {
++        @if (creditNotes.value().length === 0) {
++          <p data-testid="invoice-credit-notes-empty">No credit notes raised yet.</p>
++        } @else {
++          <table data-testid="invoice-credit-notes-table">
++            <caption>Money given back to the client on this invoice</caption>
++            <thead>
++              <tr>
++                <th scope="col">Raised</th>
++                <th scope="col">Amount</th>
++              </tr>
++            </thead>
++            <tbody>
++              @for (c of creditNotes.value(); track c.id) {
++                <tr [attr.data-testid]="'credit-note-row-' + c.id">
++                  <td data-testid="credit-note-date">{{ c.issuedAt | date: 'yyyy-MM-dd' }}</td>
++                  <td data-testid="credit-note-amount">{{ c.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++                </tr>
++              }
++            </tbody>
++            <tfoot>
++              <tr>
++                <th scope="row">Credited</th>
++                <td data-testid="invoice-credited-total">{{ creditedCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
++              </tr>
++            </tfoot>
++          </table>
++        }
++      }
++
++      @if (canIssue()) {
++        <form [formGroup]="form" (ngSubmit)="submit()" data-testid="credit-note-form" novalidate>
++          <h3>Raise a credit note</h3>
++          <div>
++            <label for="credit-note-amount">Amount</label>
++            <input
++              id="credit-note-amount"
++              type="number"
++              inputmode="decimal"
++              min="0.01"
++              step="0.01"
++              formControlName="amount"
++              data-testid="credit-note-form-amount"
++              [attr.aria-invalid]="invalid()"
++              [attr.aria-describedby]="invalid() ? 'credit-note-amount-error' : null"
++            />
++            @if (invalid()) {
++              <p id="credit-note-amount-error" role="alert" data-testid="credit-note-form-amount-error">
++                Enter an amount greater than zero with at most two decimal places.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="credit-note-form-submit" [disabled]="saving()">Raise credit note</button>
++          @if (saveError()) {
++            <p role="alert" data-testid="credit-note-form-error">{{ saveError() }}</p>
++          }
++        </form>
++      }
++    </section>
++  `,
++})
++export class InvoiceCreditNotes {
++  private readonly service = inject(CreditNoteService);
++
++  readonly projectId = input.required<number>();
++  readonly invoiceId = input.required<number>();
++  /** The currency of the client the job is for; the money shown is in it. */
++  readonly currency = input.required<CurrencyCode>();
++  /** Credit notes can be raised once the invoice has been sent, unless it has been cancelled. */
++  readonly canIssue = input.required<boolean>();
++
++  protected readonly creditNotes = rxResource({
++    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
++    stream: ({ params }) => this.service.list(params.projectId, params.invoiceId),
++  });
++
++  // Work in whole cents so the total is exact.
++  protected readonly creditedCents = computed(() =>
++    (this.creditNotes.hasValue() ? this.creditNotes.value() : []).reduce((sum, c) => sum + Math.round(c.amount * 100), 0),
++  );
++
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++  });
++
++  protected invalid(): boolean {
++    const control = this.form.controls.amount;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.saveError.set(null);
++    const { amount } = this.form.getRawValue();
++    this.service.issue(this.projectId(), this.invoiceId(), { amount: Number(amount) }).subscribe({
++      next: (created) => {
++        this.creditNotes.update((list) => [...(list ?? []), created]);
++        this.form.reset();
++        this.saving.set(false);
++      },
++      error: (err: HttpErrorResponse) => {
++        this.saveError.set(
++          err.status === 409
++            ? 'That credit is more than is left on the invoice.'
++            : 'Could not raise the credit note. Please try again.',
++        );
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 1171fa5..d90fa39 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -6,6 +6,7 @@ import { RouterLink } from '@angular/router';
+ import { Observable } from 'rxjs';
+ import { Notes } from '../notes/notes';
+ import { InvoicePayments } from '../payments/invoice-payments';
++import { InvoiceCreditNotes } from '../credit-notes/invoice-credit-notes';
+ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+ 
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+@@ -24,7 +25,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+-  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, Notes],
++  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, Notes],
+   template: `
+     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
+     @if (invoice.error()) {
+@@ -708,6 +709,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+         (recorded)="invoice.reload()"
+       />
+ 
++      <app-invoice-credit-notes
++        [projectId]="projectIdNumber()"
++        [invoiceId]="inv.id"
++        [currency]="inv.currency"
++        [canIssue]="inv.status !== 'DRAFT' && inv.status !== 'VOID'"
++      />
++
+       <app-notes [projectId]="projectIdNumber()" [invoiceId]="inv.id" />
+     }
+   `,
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index d280a62..c8262d6 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -57,6 +57,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE client_payment RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
+diff --git a/src/main/java/net/officefloor/hq/app/creditnote/CreditNote.java b/src/main/java/net/officefloor/hq/app/creditnote/CreditNote.java
+new file mode 100644
+index 0000000..0c1151b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/creditnote/CreditNote.java
+@@ -0,0 +1,54 @@
++package net.officefloor.hq.app.creditnote;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.Instant;
++
++/** An amount given back to a client against an invoice. */
++@Entity
++@Table(name = "credit_note")
++public class CreditNote {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "invoice_id", nullable = false)
++    private Long invoiceId;
++
++    @Column(nullable = false, precision = 12, scale = 2)
++    private BigDecimal amount;
++
++    @Column(name = "issued_at", nullable = false)
++    private Instant issuedAt;
++
++    protected CreditNote() {
++    }
++
++    public CreditNote(Long invoiceId, BigDecimal amount, Instant issuedAt) {
++        this.invoiceId = invoiceId;
++        this.amount = amount.setScale(2);
++        this.issuedAt = issuedAt;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public Instant getIssuedAt() {
++        return issuedAt;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java
+new file mode 100644
+index 0000000..2657f3f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.creditnote;
++
++import java.math.BigDecimal;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
++
++public interface CreditNoteRepository extends JpaRepository<CreditNote, Long> {
++
++    /** An invoice's credit notes, oldest first. */
++    List<CreditNote> findByInvoiceIdOrderByIdAsc(Long invoiceId);
++
++    /** Total credited against an invoice (zero when nothing has been credited). */
++    @Query("SELECT COALESCE(SUM(c.amount), 0) FROM CreditNote c WHERE c.invoiceId = :invoiceId")
++    BigDecimal sumAmountByInvoiceId(Long invoiceId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRequest.java b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRequest.java
+new file mode 100644
+index 0000000..90a11b6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRequest.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.creditnote;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/** Payload to raise a credit note against an invoice. */
++public record CreditNoteRequest(
++        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteResponse.java b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteResponse.java
+new file mode 100644
+index 0000000..71f585e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteResponse.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.creditnote;
++
++import java.math.BigDecimal;
++import java.time.Instant;
++
++public record CreditNoteResponse(Long id, Long invoiceId, BigDecimal amount, Instant issuedAt) {
++
++    static CreditNoteResponse from(CreditNote note) {
++        return new CreditNoteResponse(note.getId(), note.getInvoiceId(), note.getAmount(), note.getIssuedAt());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteService.java b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteService.java
+new file mode 100644
+index 0000000..2339763
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteService.java
+@@ -0,0 +1,63 @@
++package net.officefloor.hq.app.creditnote;
++
++import java.math.BigDecimal;
++import java.time.Clock;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.invoice.Invoice;
++import net.officefloor.hq.app.invoice.InvoiceRepository;
++import net.officefloor.hq.app.invoice.InvoiceStatus;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class CreditNoteService {
++
++    private final CreditNoteRepository creditNotes;
++    private final InvoiceRepository invoices;
++    private final Clock clock;
++    private final Audit audit;
++
++    public CreditNoteService(CreditNoteRepository creditNotes, InvoiceRepository invoices, Clock clock, Audit audit) {
++        this.creditNotes = creditNotes;
++        this.invoices = invoices;
++        this.clock = clock;
++        this.audit = audit;
++    }
++
++    @Transactional(readOnly = true)
++    public List<CreditNoteResponse> list(Long projectId, Long invoiceId) {
++        find(projectId, invoiceId);
++        return creditNotes.findByInvoiceIdOrderByIdAsc(invoiceId).stream().map(CreditNoteResponse::from).toList();
++    }
++
++    /**
++     * Raises a credit note against an invoice that has been sent to the client and not cancelled. The
++     * credit notes on an invoice may not add up to more than the invoice amount.
++     */
++    @Transactional
++    public CreditNoteResponse issue(Long projectId, Long invoiceId, CreditNoteRequest request) {
++        Invoice invoice = find(projectId, invoiceId);
++        if (invoice.getStatus() == InvoiceStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Send the invoice before raising a credit note");
++        }
++        if (invoice.getStatus() == InvoiceStatus.VOID) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been cancelled");
++        }
++        BigDecimal credited = creditNotes.sumAmountByInvoiceId(invoiceId).add(request.amount());
++        if (credited.compareTo(invoice.getAmount()) > 0) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Credit is more than the invoice amount");
++        }
++        CreditNote saved = creditNotes.saveAndFlush(new CreditNote(invoiceId, request.amount(), clock.instant()));
++        audit.record("CREDIT_NOTE_ISSUED invoice=" + invoiceId + " amount=" + saved.getAmount().toPlainString());
++        return CreditNoteResponse.from(saved);
++    }
++
++    private Invoice find(Long projectId, Long invoiceId) {
++        return invoices.findById(invoiceId)
++                .filter(i -> i.getProject().getId().equals(projectId))
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown invoice"));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/creditnote/InvoiceCreditNoteController.java b/src/main/java/net/officefloor/hq/app/creditnote/InvoiceCreditNoteController.java
+new file mode 100644
+index 0000000..f9e4209
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/creditnote/InvoiceCreditNoteController.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app.creditnote;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The credit notes raised against an invoice, oldest first. */
++@RestController
++@RequestMapping("/api/projects/{projectId}/invoices/{invoiceId}/credit-notes")
++public class InvoiceCreditNoteController {
++
++    private final CreditNoteService service;
++
++    public InvoiceCreditNoteController(CreditNoteService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<CreditNoteResponse> list(@PathVariable Long projectId, @PathVariable Long invoiceId) {
++        return service.list(projectId, invoiceId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public CreditNoteResponse issue(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody CreditNoteRequest request) {
++        return service.issue(projectId, invoiceId, request);
++    }
++}
+diff --git a/src/main/resources/db/migration/V53__create_credit_note.sql b/src/main/resources/db/migration/V53__create_credit_note.sql
+new file mode 100644
+index 0000000..4c64546
+--- /dev/null
++++ b/src/main/resources/db/migration/V53__create_credit_note.sql
+@@ -0,0 +1,12 @@
++-- Money given back to a client against an invoice they were sent. An invoice can carry several
++-- credit notes; like payments they are financial records, so they block deleting their invoice.
++CREATE TABLE credit_note (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    invoice_id BIGINT         NOT NULL,
++    amount     DECIMAL(12, 2) NOT NULL,
++    issued_at  TIMESTAMP      NOT NULL,
++    CONSTRAINT credit_note_invoice_fk FOREIGN KEY (invoice_id) REFERENCES invoice (id),
++    CONSTRAINT credit_note_amount_positive CHECK (amount > 0)
++);
++
++CREATE INDEX credit_note_invoice_idx ON credit_note (invoice_id);
