@@ -24,9 +24,10 @@ import java.util.function.UnaryOperator;
 import net.officefloor.hq.app.project.Project;
 
 /**
- * An invoice raised against a project. It is built from line items, and can take either a percentage or
- * a flat amount off their sum as a discount, before tax (the flat amount shared across the lines in
- * proportion to what each charges, and never more than the subtotal), then add a percentage sales tax on what is left of the taxable lines only
+ * An invoice raised against a project. It is built from line items, and can take several discounts off
+ * their sum before tax, each either a percentage or a flat amount (the percentages each taking their share
+ * of the subtotal first, then the flat amounts, shared across the lines in proportion to what each
+ * charges; together never more than the subtotal), then add a percentage sales tax on what is left of the taxable lines only
  * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
  * its stored amount is always that subtotal less the discount plus the tax plus the levy, plus any flat
  * surcharge (such as a handling fee), which is added on last and is never taxed.
@@ -56,13 +57,6 @@ public class Invoice {
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount = BigDecimal.ZERO.setScale(2);
-
-    @Column(name = "discount_pct", nullable = false, precision = 5, scale = 2)
-    private BigDecimal discountPct = BigDecimal.ZERO.setScale(2);
-
-    /** A flat amount taken off the subtotal (after the percentage); zero when there is none. */
-    @Column(name = "discount_amount", nullable = false, precision = 12, scale = 2)
-    private BigDecimal discountAmount = BigDecimal.ZERO.setScale(2);
 
     @Column(name = "tax_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal taxPct = BigDecimal.ZERO.setScale(2);
@@ -103,6 +97,11 @@ public class Invoice {
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id")
     private List<InvoiceLineItem> lineItems = new ArrayList<>();
+
+    /** The discounts taken off the subtotal before tax, in the order they were added. */
+    @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id")
+    private List<InvoiceDiscount> discounts = new ArrayList<>();
 
     protected Invoice() {
     }
@@ -148,14 +147,49 @@ public class Invoice {
         return getTax().add(getLevy()).multiply(BigDecimal.valueOf(100)).divide(totalExTax, 2, RoundingMode.HALF_UP);
     }
 
-    /** The percentage taken off the subtotal; zero when there is no discount. */
-    public BigDecimal getDiscountPct() {
-        return discountPct;
+    /** The discounts on this invoice, in the order they were added. */
+    public List<InvoiceDiscount> getDiscounts() {
+        return List.copyOf(discounts);
     }
 
-    /** The flat amount asked to be taken off the subtotal; zero when there is no flat discount. */
+    /**
+     * The percentages taken off the subtotal, added up (never more than 100); zero when there is no
+     * percentage discount.
+     */
+    public BigDecimal getDiscountPct() {
+        return discounts.stream().map(InvoiceDiscount::getDiscountPct).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add)
+                .min(BigDecimal.valueOf(100).setScale(2));
+    }
+
+    /** The flat amounts asked to be taken off the subtotal, added up; zero when there is no flat discount. */
     public BigDecimal getDiscountAmount() {
-        return discountAmount;
+        return discounts.stream().map(InvoiceDiscount::getDiscountAmount).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    }
+
+    /**
+     * How much one of this invoice's discounts actually takes off the subtotal, to the cent. The
+     * percentages are taken first, each its share of the subtotal, then the flat amounts in the order
+     * they were added; none takes off more than is left after those before it.
+     */
+    public BigDecimal discountTakenBy(InvoiceDiscount discount) {
+        BigDecimal subtotal = getSubtotal();
+        BigDecimal left = subtotal;
+        for (InvoiceDiscount d : discountsInOrderTaken()) {
+            BigDecimal wanted = d.isPercentage() ? percentOf(subtotal, d.getDiscountPct()) : d.getDiscountAmount();
+            BigDecimal taken = wanted.min(left.max(BigDecimal.ZERO.setScale(2)));
+            if (d == discount) {
+                return taken;
+            }
+            left = left.subtract(taken);
+        }
+        return BigDecimal.ZERO.setScale(2);
+    }
+
+    /** The percentage discounts first, then the flat ones, each in the order they were added. */
+    private List<InvoiceDiscount> discountsInOrderTaken() {
+        List<InvoiceDiscount> ordered = new ArrayList<>(discounts.stream().filter(InvoiceDiscount::isPercentage).toList());
+        ordered.addAll(discounts.stream().filter(d -> !d.isPercentage()).toList());
+        return ordered;
     }
 
     /**
@@ -166,10 +200,9 @@ public class Invoice {
         return lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** How much the discount (the percentage and the flat amount together) takes off the subtotal, to the cent. */
+    /** How much the discounts take off the subtotal together (what each takes off, added up), to the cent. */
     public BigDecimal getDiscount() {
-        BigDecimal subtotal = getSubtotal();
-        return percentOf(subtotal, discountPct).add(flatDiscountOn(subtotal));
+        return discounts.stream().map(this::discountTakenBy).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /** The sales tax percentage added after the discount; zero when there is no tax. */
@@ -326,22 +359,47 @@ public class Invoice {
         return lineItems.stream().filter(l -> l.getId().equals(lineItemId)).findFirst();
     }
 
-    /** Sets the percentage taken off this invoice and reworks its amount to match. */
+    /** Replaces this invoice's discounts with a single percentage and reworks its amount to match. */
     public void applyDiscount(BigDecimal discountPct) {
         applyDiscount(discountPct, BigDecimal.ZERO);
     }
 
     /**
-     * Sets the discount on this invoice, either a percentage or a flat amount (the other being zero), and
-     * reworks its amount to match.
+     * Replaces this invoice's discounts with a single one, either a percentage or a flat amount (the other
+     * being zero; zero for both leaves no discount), and reworks its amount to match.
      */
     public void applyDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
-        if (discountPct.signum() != 0 && discountAmount.signum() != 0) {
-            throw new IllegalArgumentException("A discount is either a percentage or a flat amount, not both");
+        InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount);
+        discounts.clear();
+        if (discountPct.signum() != 0 || discountAmount.signum() != 0) {
+            discounts.add(discount);
         }
-        this.discountPct = discountPct.setScale(2, RoundingMode.HALF_UP);
-        this.discountAmount = discountAmount.setScale(2, RoundingMode.HALF_UP);
         recalculateAmount();
+    }
+
+    /**
+     * Adds another discount to this invoice, either a percentage or a flat amount (the other being zero),
+     * and reworks its amount to match.
+     */
+    public InvoiceDiscount addDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
+        if (discountPct.signum() == 0 && discountAmount.signum() == 0) {
+            throw new IllegalArgumentException("A discount takes off a percentage or a flat amount");
+        }
+        InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount);
+        discounts.add(discount);
+        recalculateAmount();
+        return discount;
+    }
+
+    /** Removes a discount from this invoice and reworks its amount to match. */
+    public void removeDiscount(InvoiceDiscount discount) {
+        discounts.remove(discount);
+        recalculateAmount();
+    }
+
+    /** The discount on this invoice with the given id, if there is one. */
+    public Optional<InvoiceDiscount> findDiscount(Long discountId) {
+        return discounts.stream().filter(d -> d.getId().equals(discountId)).findFirst();
     }
 
     /** Sets the sales tax percentage added to this invoice and reworks its amount to match. */
@@ -384,23 +442,23 @@ public class Invoice {
     }
 
     /**
-     * The discount taken off one line, to the cent: its percentage, plus its share of the flat amount in
-     * proportion to what the line charges out of the subtotal.
+     * The discount taken off one line, to the cent: the percentages together, plus its share of what the
+     * flat amounts take off in proportion to what the line charges out of the subtotal.
      */
     private BigDecimal discountOn(BigDecimal line) {
-        BigDecimal pct = percentOf(line, discountPct);
+        BigDecimal pct = percentOf(line, getDiscountPct());
         BigDecimal subtotal = getSubtotal();
         if (subtotal.signum() == 0) {
             return pct;
         }
-        BigDecimal flatShare = flatDiscountOn(subtotal).multiply(line).divide(subtotal, 2, RoundingMode.HALF_UP);
+        BigDecimal flatShare = flatDiscount().multiply(line).divide(subtotal, 2, RoundingMode.HALF_UP);
         return pct.add(flatShare);
     }
 
-    /** The flat amount actually taken off the subtotal: never more than is left after the percentage. */
-    private BigDecimal flatDiscountOn(BigDecimal subtotal) {
-        BigDecimal left = subtotal.subtract(percentOf(subtotal, discountPct)).max(BigDecimal.ZERO.setScale(2));
-        return discountAmount.min(left);
+    /** What the flat discounts actually take off the subtotal together: never more than is left after the percentages. */
+    private BigDecimal flatDiscount() {
+        return discounts.stream().filter(d -> !d.isPercentage()).map(this::discountTakenBy)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /** The sales tax on one discounted taxable line (or inside it, when tax-inclusive), to the cent. */

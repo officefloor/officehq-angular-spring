@@ -8,8 +8,8 @@ import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 
 /**
- * Payload to set the discount on a draft invoice: either a percentage taken off or a flat amount taken
- * off (omitted is none), never both; zero for both removes the discount.
+ * Payload for a discount on a draft invoice: either a percentage taken off or a flat amount taken off
+ * (omitted is none), never both. Setting the discount with zero for both removes all discounts.
  */
 public record DiscountRequest(
         @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal discountPct,

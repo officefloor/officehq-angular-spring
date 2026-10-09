@@ -91,9 +91,18 @@ export interface LineItem {
   grossAmount: number;
 }
 
+/** One discount on an invoice: a percentage or a flat amount (the other zero), and what it takes off. */
+export interface InvoiceDiscount {
+  id: number;
+  discountPct: number;
+  discountAmount: number;
+  /** What this discount actually takes off the subtotal. */
+  amount: number;
+}
+
 /**
- * A single invoice with the line items it is built from: their subtotal, the percentage and flat
- * amount discount and what they take off, and the sales tax percentage, the taxable base it is charged on (the taxable
+ * A single invoice with the line items it is built from: their subtotal, each of its discounts (a
+ * percentage or flat amount) and what they take off together, and the sales tax percentage, the taxable base it is charged on (the taxable
  * lines after the discount, leaving out tax-free ones) and what it adds, and the levy (a second tax)
  * percentage and what it adds on that same base, and any flat surcharge (such as a handling fee) added
  * after tax; its amount is the subtotal less the discount plus the tax plus the levy plus the surcharge.
@@ -102,11 +111,14 @@ export interface InvoiceDetail extends Invoice {
   /** The total before tax: the amount less the sales tax and levy. */
   totalExTax: number;
   subtotal: number;
+  /** The percentage discounts added up; zero when there are none. */
   discountPct: number;
-  /** A flat amount taken off the subtotal after the percentage; zero when there is none. */
+  /** The flat amount discounts added up (taken off after the percentages); zero when there are none. */
   discountAmount: number;
-  /** What the percentage and flat amount take off together. */
+  /** What all the discounts take off together, before tax. */
   discount: number;
+  /** Each discount on the invoice, in the order it was added. */
+  discounts: InvoiceDiscount[];
   taxPct: number;
   taxableBase: number;
   tax: number;
@@ -200,6 +212,19 @@ export class InvoiceService {
       discountPct,
       discountAmount,
     });
+  }
+
+  /** Adds another percentage or flat amount discount to a draft invoice (the other being zero). */
+  addDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discounts`, {
+      discountPct,
+      discountAmount,
+    });
+  }
+
+  /** Removes one discount from a draft invoice. */
+  removeDiscount(projectId: number, invoiceId: number, discountId: number): Observable<InvoiceDetail> {
+    return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discounts/${discountId}`);
   }
 
   /** Sets the sales tax percentage added to a draft invoice after its discount; zero removes the tax. */

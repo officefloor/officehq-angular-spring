@@ -6,6 +6,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.client.Currency;
@@ -58,6 +59,7 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE client_payment RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE invoice_discount RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
@@ -139,8 +141,6 @@ public class TestSupportController {
                 lineItems = List.of(Map.of("description", InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION,
                         "qty", 1, "unitPrice", i.get("amount")));
             }
-            BigDecimal discountPct = i.get("discountPct") == null ? BigDecimal.ZERO
-                    : new BigDecimal(i.get("discountPct").toString());
             BigDecimal taxPct = i.get("taxPct") == null ? BigDecimal.ZERO
                     : new BigDecimal(i.get("taxPct").toString());
             BigDecimal levyPct = i.get("levyPct") == null ? BigDecimal.ZERO
@@ -156,10 +156,20 @@ public class TestSupportController {
                     projectId);
             boolean taxInclusive = Boolean.TRUE.equals(client.get("TAX_INCLUSIVE"));
             boolean taxExempt = Boolean.TRUE.equals(client.get("TAX_EXEMPT"));
-            BigDecimal discountAmount = i.get("discountAmount") == null ? BigDecimal.ZERO
-                    : new BigDecimal(i.get("discountAmount").toString());
-            // A flat discount is taken off after the percentage (never more than is left) and is shared
-            // across the lines in proportion to what each charges.
+            // An invoice may carry several discounts, each a percentage ("pct") or a flat amount ("amount");
+            // an older fixture gives at most one as discountPct / discountAmount.
+            List<Map<String, Object>> discounts = new ArrayList<>(rows(i, "discounts"));
+            if (i.get("discountPct") != null && new BigDecimal(i.get("discountPct").toString()).signum() > 0) {
+                discounts.add(Map.of("pct", i.get("discountPct")));
+            }
+            if (i.get("discountAmount") != null && new BigDecimal(i.get("discountAmount").toString()).signum() > 0) {
+                discounts.add(Map.of("amount", i.get("discountAmount")));
+            }
+            BigDecimal discountPct = discounts.stream().map(d -> decimal(d.get("pct")))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add).min(BigDecimal.valueOf(100));
+            // The percentages each take their share of the subtotal (never more than is left); the flat
+            // amounts are then taken off what is left and shared across the lines in proportion to what
+            // each charges.
             // Each line is first taken down by its own discount, if it has one.
             List<BigDecimal> lines = lineItems.stream().map(l -> {
                 BigDecimal gross = new BigDecimal(l.get("qty").toString())
@@ -167,9 +177,21 @@ public class TestSupportController {
                 return gross.subtract(gross.multiply(lineDiscountPct(l)).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
             }).toList();
             BigDecimal subtotal = lines.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-            BigDecimal pctDiscount = subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            BigDecimal flatDiscount = discountAmount.setScale(2, RoundingMode.HALF_UP)
-                    .min(subtotal.subtract(pctDiscount).max(BigDecimal.ZERO.setScale(2)));
+            BigDecimal left = subtotal;
+            for (Map<String, Object> d : discounts) {
+                if (decimal(d.get("pct")).signum() > 0) {
+                    left = left.subtract(subtotal.multiply(decimal(d.get("pct"))).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+                            .min(left.max(BigDecimal.ZERO.setScale(2))));
+                }
+            }
+            BigDecimal pctDiscount = subtotal.subtract(left);
+            for (Map<String, Object> d : discounts) {
+                if (decimal(d.get("pct")).signum() == 0) {
+                    left = left.subtract(decimal(d.get("amount")).setScale(2, RoundingMode.HALF_UP)
+                            .min(left.max(BigDecimal.ZERO.setScale(2))));
+                }
+            }
+            BigDecimal flatDiscount = subtotal.subtract(left).subtract(pctDiscount);
             BigDecimal tax = BigDecimal.ZERO.setScale(2);
             BigDecimal levy = BigDecimal.ZERO.setScale(2);
             for (int n = 0; n < lineItems.size(); n++) {
@@ -195,12 +217,21 @@ public class TestSupportController {
             BigDecimal surcharge = i.get("surcharge") == null ? BigDecimal.ZERO
                     : new BigDecimal(i.get("surcharge").toString());
             int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
-            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, discount_amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+                    + " early_payment_pct, early_payment_days, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
-                    (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge), discountPct, discountAmount, taxPct, levyPct,
+                    (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge), taxPct, levyPct,
                     surcharge, taxInclusive, taxExempt,
                     earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due);
+            for (Map<String, Object> d : discounts) {
+                if (d.get("id") != null) {
+                    jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount) VALUES (?, ?, ?, ?)",
+                            ((Number) d.get("id")).longValue(), invoiceId, decimal(d.get("pct")), decimal(d.get("amount")));
+                } else {
+                    jdbc.update("INSERT INTO invoice_discount (invoice_id, discount_pct, discount_amount) VALUES (?, ?, ?)",
+                            invoiceId, decimal(d.get("pct")), decimal(d.get("amount")));
+                }
+            }
             for (Map<String, Object> l : lineItems) {
                 if (l.get("id") != null) {
                     jdbc.update("INSERT INTO invoice_line_item (id, invoice_id, description, qty, unit, unit_price, tax_exempt, discount_pct)"
@@ -228,6 +259,7 @@ public class TestSupportController {
         restartIdentity("project");
         restartIdentity("invoice");
         restartIdentity("invoice_line_item");
+        restartIdentity("invoice_discount");
         restartIdentity("task");
         restartIdentity("tag");
         restartIdentity("note");
@@ -256,6 +288,11 @@ public class TestSupportController {
     private void restartIdentity(String table) {
         Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM " + table, Long.class);
         jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH " + next);
+    }
+
+    /** A fixture number, zero when it is not given. */
+    private static BigDecimal decimal(Object value) {
+        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
     }
 
     @SuppressWarnings("unchecked")

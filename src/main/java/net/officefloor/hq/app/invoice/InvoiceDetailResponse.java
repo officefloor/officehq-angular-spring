@@ -6,8 +6,8 @@ import java.util.List;
 import net.officefloor.hq.app.client.Currency;
 
 /**
- * A single invoice together with the line items it is built from: their subtotal, the percentage
- * discount, the flat amount discount, and what they take off together, the sales tax percentage, the taxable base it is charged on (the
+ * A single invoice together with the line items it is built from: their subtotal, each discount on it
+ * (with what it takes off), the percentage discounts and flat amount discounts added up, and what they all take off together, the sales tax percentage, the taxable base it is charged on (the
  * taxable lines after the discount) and what it adds, the levy (second tax) percentage and what it adds
  * on the same base, any flat surcharge (such as a handling fee) added after tax, the amount owed including both taxes and the surcharge, the total before tax, whether the prices already include the taxes
  * (so they are worked back out rather than added on), whether the client is tax exempt (so
@@ -22,7 +22,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, 
         BigDecimal levyPct, BigDecimal levy, BigDecimal surcharge, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
         BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
         InvoiceStatus status, LocalDate issuedDate,
-        LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber) {
+        LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts) {
 
     static InvoiceDetailResponse from(Invoice invoice) {
         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
@@ -35,6 +35,8 @@ public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, 
                 invoice.getEarlyPaymentAmount(),
                 invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
-                invoice.getProject().getClient().getTaxNumber());
+                invoice.getProject().getClient().getTaxNumber(),
+                invoice.getDiscounts().stream().map(d -> new InvoiceDiscountResponse(d.getId(), d.getDiscountPct(),
+                        d.getDiscountAmount(), invoice.discountTakenBy(d))).toList());
     }
 }

@@ -142,11 +142,33 @@ public class InvoiceService {
         return InvoiceDetailResponse.from(invoice);
     }
 
-    /** Sets the percentage or flat discount on a draft invoice and reworks the invoice amount to match. */
+    /** Replaces the discounts on a draft invoice with a single percentage or flat one and reworks the invoice amount to match. */
     @Transactional
     public InvoiceDetailResponse applyDiscount(Long projectId, Long invoiceId, DiscountRequest request) {
         Invoice invoice = findDraft(projectId, invoiceId);
         invoice.applyDiscount(request.discountPct(), request.flatAmount());
+        invoices.flush();
+        return InvoiceDetailResponse.from(invoice);
+    }
+
+    /** Adds another percentage or flat discount to a draft invoice and reworks the invoice amount to match. */
+    @Transactional
+    public InvoiceDetailResponse addDiscount(Long projectId, Long invoiceId, DiscountRequest request) {
+        Invoice invoice = findDraft(projectId, invoiceId);
+        if (request.discountPct().signum() == 0 && request.flatAmount().signum() == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A discount takes off a percentage or a flat amount");
+        }
+        invoice.addDiscount(request.discountPct(), request.flatAmount());
+        invoices.flush();
+        return InvoiceDetailResponse.from(invoice);
+    }
+
+    /** Removes one discount from a draft invoice and reworks the invoice amount to match. */
+    @Transactional
+    public InvoiceDetailResponse removeDiscount(Long projectId, Long invoiceId, Long discountId) {
+        Invoice invoice = findDraft(projectId, invoiceId);
+        invoice.removeDiscount(invoice.findDiscount(discountId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Discount not found")));
         invoices.flush();
         return InvoiceDetailResponse.from(invoice);
     }
