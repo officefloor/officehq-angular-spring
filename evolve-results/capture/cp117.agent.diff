@@ -1,0 +1,237 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index d373378..93518e6 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -5,6 +5,7 @@ import { Router, RouterLink } from '@angular/router';
+ import { ClientContacts } from '../contacts/client-contacts';
+ import { Contact } from '../contacts/contact.service';
+ import { ClientCredit } from '../credit/client-credit';
++import { ClientAging } from '../invoices/client-aging';
+ import { ClientDeposits } from '../deposits/client-deposits';
+ import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
+ import { ClientProjects } from '../projects/client-projects';
+@@ -13,10 +14,10 @@ import { ClientExport } from './client-export';
+ import { ClientMerge } from './client-merge';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, an export of their contact details to a file, a link to their statement, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
++// A single client's page: their name, email, phone number, tax number, billing address, main contact and currency, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport],
++  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -100,6 +101,7 @@ import { Client, ClientService } from './client.service';
+       <p>
+         <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="client-statement-open">View statement</a>
+       </p>
++      <app-client-aging [clientId]="clientId()" />
+       <p>
+         <button
+           type="button"
+@@ -168,6 +170,7 @@ export class ClientDetail {
+   private readonly paymentForm = viewChild(ClientPaymentForm);
+   private readonly depositsPanel = viewChild(ClientDeposits);
+   private readonly creditPanel = viewChild(ClientCredit);
++  private readonly agingPanel = viewChild(ClientAging);
+   private readonly mergePanel = viewChild(ClientMerge);
+   /** Set once the page is being left, so a merge finishing meanwhile does not pull the user back. */
+   private leaving = false;
+@@ -191,6 +194,7 @@ export class ClientDetail {
+     // A payment may use up the client's credit or leave some over as credit, so both panels can change.
+     this.depositsPanel()?.reload();
+     this.creditPanel()?.reload();
++    this.agingPanel()?.reload();
+     this.client.reload();
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/client-aging.ts b/src/main/frontend/src/app/features/invoices/client-aging.ts
+new file mode 100644
+index 0000000..4d3350b
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/client-aging.ts
+@@ -0,0 +1,52 @@
++import { Component, inject, input } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { InvoiceService } from './invoice.service';
++
++// How old a client's debt is: what is left to pay split into current (up to 30 days overdue), 31 to 60 days, and more than 60 days overdue.
++@Component({
++  selector: 'app-client-aging',
++  imports: [MoneyPipe],
++  styles: `
++    .client-aging {
++      display: grid;
++      grid-template-columns: max-content max-content;
++      gap: 0.25rem 1.5rem;
++    }
++    .client-aging dd {
++      margin: 0;
++      text-align: right;
++    }
++  `,
++  template: `
++    <section aria-labelledby="client-aging-heading" data-testid="client-aging">
++      <h2 id="client-aging-heading">Debt by age</h2>
++      @if (aging.error()) {
++        <p role="alert" data-testid="client-aging-error">Could not load how old the debt is.</p>
++      } @else if (aging.value(); as a) {
++        <dl class="client-aging">
++          <dt>Current (up to 30 days overdue)</dt>
++          <dd data-testid="aging-current">{{ a.current | money: a.currency }}</dd>
++          <dt>31 to 60 days overdue</dt>
++          <dd data-testid="aging-30-60">{{ a.days30To60 | money: a.currency }}</dd>
++          <dt>More than 60 days overdue</dt>
++          <dd data-testid="aging-60-plus">{{ a.days60Plus | money: a.currency }}</dd>
++        </dl>
++      }
++    </section>
++  `,
++})
++export class ClientAging {
++  private readonly service = inject(InvoiceService);
++
++  readonly clientId = input.required<number>();
++
++  protected readonly aging = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.service.agingForClient(params),
++  });
++
++  reload(): void {
++    this.aging.reload();
++  }
++}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index c7d13e2..c71922d 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -105,6 +105,16 @@ export interface ClientBalanceAsOf {
+   balance: number;
+ }
+ 
++/** How old a client's debt is as at today: what is current (up to 30 days overdue), 31 to 60 days, and more than 60 days overdue. */
++export interface ClientAging {
++  clientId: number;
++  currency: CurrencyCode;
++  asOf: string;
++  current: number;
++  days30To60: number;
++  days60Plus: number;
++}
++
+ /** One thing an invoice charges for; its amount is quantity times unit price, less the line's own discount. */
+ export interface LineItem {
+   id: number;
+@@ -241,6 +251,10 @@ export class InvoiceService {
+     return this.http.get<ClientBalanceAsOf>(`/api/clients/${clientId}/statement/balance`, { params: { asOf } });
+   }
+ 
++  agingForClient(clientId: number): Observable<ClientAging> {
++    return this.http.get<ClientAging>(`/api/clients/${clientId}/statement/aging`);
++  }
++
+   create(projectId: number, invoice: NewInvoice): Observable<ProjectInvoice> {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices`, invoice);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientAgingResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientAgingResponse.java
+new file mode 100644
+index 0000000..bb79af4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientAgingResponse.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * How old a client's debt is as at today, in the client's currency: what is left to pay on their sent invoices split by
++ * how many days past due each one is — current (not yet due, or up to 30 days overdue), 31 to 60 days, and more than
++ * 60 days.
++ */
++public record ClientAgingResponse(Long clientId, String currency, LocalDate asOf, BigDecimal current,
++        BigDecimal days30To60, BigDecimal days60Plus) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java
+index 87a279d..d617a2a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java
+@@ -30,4 +30,10 @@ public class ClientStatementController {
+             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+         return service.balanceAsOf(clientId, asOf);
+     }
++
++    /** How old the client's debt is: what is current, 31 to 60 days overdue, and more than 60 days overdue. */
++    @GetMapping("/aging")
++    public ClientAgingResponse aging(@PathVariable Long clientId) {
++        return service.agingForClient(clientId);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index a44f9ab..d8b5186 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -1,9 +1,11 @@
+ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.Clock;
+ import java.time.LocalDate;
+ import java.time.ZoneOffset;
++import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Map;
+@@ -111,6 +113,47 @@ public class InvoiceService {
+         return new ClientBalanceAsOfResponse(client.getId(), client.getCurrency(), asOf, balance);
+     }
+ 
++    /**
++     * How old a client's debt is as at today: what is left to pay on each owed invoice (not a draft, void or written
++     * off) counted against how many days past its due date it is.
++     */
++    @Transactional(readOnly = true)
++    public ClientAgingResponse agingForClient(Long clientId) {
++        Client client = clients.findById(clientId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
++        LocalDate today = LocalDate.now(clock);
++        List<Invoice> found = invoices.findByClientIdWithProject(clientId);
++        Map<Long, BigDecimal> paid = paidByInvoice(found);
++        Map<Long, BigDecimal> credited = creditedByInvoice(found);
++        BigDecimal current = BigDecimal.ZERO.setScale(2);
++        BigDecimal days30To60 = BigDecimal.ZERO.setScale(2);
++        BigDecimal days60Plus = BigDecimal.ZERO.setScale(2);
++        for (Invoice invoice : found) {
++            BigDecimal invoicePaid = paid.getOrDefault(invoice.getId(), BigDecimal.ZERO);
++            BigDecimal invoiceCredited = credited.getOrDefault(invoice.getId(), BigDecimal.ZERO);
++            InvoiceStatus status = invoice.statusFor(invoicePaid, invoiceCredited);
++            if (status == InvoiceStatus.DRAFT || status.isClosedUnpaid()) {
++                continue;
++            }
++            BigDecimal due = invoice.amountDue(invoicePaid, invoiceCredited);
++            if (due.signum() <= 0) {
++                continue;
++            }
++            long overdue = invoice.getDueDate() == null ? 0
++                    : ChronoUnit.DAYS.between(invoice.getDueDate(), today);
++            if (overdue > 60) {
++                days60Plus = days60Plus.add(due);
++            } else if (overdue > 30) {
++                days30To60 = days30To60.add(due);
++            } else {
++                current = current.add(due);
++            }
++        }
++        return new ClientAgingResponse(client.getId(), client.getCurrency(), today,
++                current.setScale(2, RoundingMode.HALF_UP), days30To60.setScale(2, RoundingMode.HALF_UP),
++                days60Plus.setScale(2, RoundingMode.HALF_UP));
++    }
++
+     /**
+      * The entries on a client's running account. Drafts have not been sent and void invoices were cancelled, so
+      * neither is charged. A payment made out of held deposits is left out, as the deposit was already credited
