@@ -9,7 +9,7 @@ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
-// A single invoice: the things it charges for (description, how many, price each), each line's
+// A single invoice: the things it charges for (description, how many and of what, price each), each line's
 // amount, and the invoice total worked out from them. Lines can be added while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
@@ -37,6 +37,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             <tr>
               <th scope="col">Description</th>
               <th scope="col">Quantity</th>
+              <th scope="col">Unit</th>
               <th scope="col">Unit price</th>
               <th scope="col">Amount</th>
               @if (inv.status === 'DRAFT') {
@@ -76,6 +77,17 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                   </td>
                   <td>
                     <input
+                      type="text"
+                      [formControl]="editForm.controls.unit"
+                      data-testid="lineitem-edit-unit"
+                      aria-label="Unit"
+                      [attr.aria-invalid]="editForm.controls.unit.invalid"
+                      (keydown.enter)="saveEdit(l.id)"
+                      (keydown.escape)="cancelEdit(l.id)"
+                    />
+                  </td>
+                  <td>
+                    <input
                       type="number"
                       inputmode="decimal"
                       min="0.01"
@@ -105,6 +117,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                 } @else {
                   <td data-testid="lineitem-description">{{ l.description }}</td>
                   <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
+                  <td data-testid="lineitem-unit">{{ l.unit ?? '' }}</td>
                   <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
                   <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
                   @if (inv.status === 'DRAFT') {
@@ -136,7 +149,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row" colspan="3">Total</th>
+              <th scope="row" colspan="4">Total</th>
               <td data-testid="invoice-amount">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
@@ -184,6 +197,22 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             @if (invalid('qty')) {
               <p id="lineitem-qty-error" role="alert" data-testid="lineitem-form-qty-error">
                 Enter a quantity greater than zero with at most two decimal places.
+              </p>
+            }
+          </div>
+          <div>
+            <label for="lineitem-unit">Unit (optional, e.g. hours)</label>
+            <input
+              id="lineitem-unit"
+              type="text"
+              formControlName="unit"
+              data-testid="lineitem-form-unit"
+              [attr.aria-invalid]="invalid('unit')"
+              [attr.aria-describedby]="invalid('unit') ? 'lineitem-unit-error' : null"
+            />
+            @if (invalid('unit')) {
+              <p id="lineitem-unit-error" role="alert" data-testid="lineitem-form-unit-error">
+                Unit must be at most 50 characters.
               </p>
             }
           </div>
@@ -256,10 +285,11 @@ export class InvoiceDetailPage {
   protected readonly form = this.fb.group({
     description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+    unit: ['', [Validators.maxLength(50)]],
     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
   });
 
-  protected invalid(name: 'description' | 'qty' | 'unitPrice'): boolean {
+  protected invalid(name: 'description' | 'qty' | 'unit' | 'unitPrice'): boolean {
     const control = this.form.controls[name];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -271,8 +301,8 @@ export class InvoiceDetailPage {
     }
     this.saving.set(true);
     this.saveError.set(null);
-    const { description, qty, unitPrice } = this.form.getRawValue();
-    const item = { description: description.trim(), qty: Number(qty), unitPrice: Number(unitPrice) };
+    const { description, qty, unit, unitPrice } = this.form.getRawValue();
+    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice) };
     this.service.addLineItem(this.projectIdNumber(), Number(this.invoiceId()), item).subscribe({
       next: (updated) => {
         this.invoice.set(updated);
@@ -294,6 +324,7 @@ export class InvoiceDetailPage {
   protected readonly editForm = this.fb.group({
     description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+    unit: ['', [Validators.maxLength(50)]],
     unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
   });
 
@@ -302,6 +333,7 @@ export class InvoiceDetailPage {
     this.editForm.setValue({
       description: line.description,
       qty: String(line.qty),
+      unit: line.unit ?? '',
       unitPrice: String(line.unitPrice),
     });
     this.editingId.set(line.id);
@@ -319,8 +351,8 @@ export class InvoiceDetailPage {
       this.editForm.markAllAsTouched();
       return;
     }
-    const { description, qty, unitPrice } = this.editForm.getRawValue();
-    const item = { description: description.trim(), qty: Number(qty), unitPrice: Number(unitPrice) };
+    const { description, qty, unit, unitPrice } = this.editForm.getRawValue();
+    const item = { description: description.trim(), qty: Number(qty), unit: unit.trim() || null, unitPrice: Number(unitPrice) };
     this.run(
       this.service.updateLineItem(this.projectIdNumber(), Number(this.invoiceId()), lineItemId, item),
       'Could not save the line item. Please try again.',

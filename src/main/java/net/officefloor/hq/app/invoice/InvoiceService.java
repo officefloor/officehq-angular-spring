@@ -101,7 +101,7 @@ public class InvoiceService {
         }
         Invoice invoice = new Invoice(project, issued, due);
         if (request.amount() != null) {
-            invoice.addLineItem(InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION, BigDecimal.ONE, request.amount());
+            invoice.addLineItem(InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION, BigDecimal.ONE, null, request.amount());
         }
         Invoice saved = invoices.save(invoice);
         return InvoiceResponse.from(saved, BigDecimal.ZERO);
@@ -117,7 +117,7 @@ public class InvoiceService {
     @Transactional
     public InvoiceDetailResponse addLineItem(Long projectId, Long invoiceId, LineItemRequest request) {
         Invoice invoice = findDraft(projectId, invoiceId);
-        invoice.addLineItem(request.description().strip(), request.qty(), request.unitPrice());
+        invoice.addLineItem(request.description().strip(), request.qty(), request.normalizedUnit(), request.unitPrice());
         invoices.flush();
         return InvoiceDetailResponse.from(invoice);
     }
@@ -128,7 +128,8 @@ public class InvoiceService {
             LineItemRequest request) {
         Invoice invoice = findDraft(projectId, invoiceId);
         InvoiceLineItem item = findLineItem(invoice, lineItemId);
-        invoice.updateLineItem(item, request.description().strip(), request.qty(), request.unitPrice());
+        invoice.updateLineItem(item, request.description().strip(), request.qty(), request.normalizedUnit(),
+                request.unitPrice());
         invoices.flush();
         return InvoiceDetailResponse.from(invoice);
     }

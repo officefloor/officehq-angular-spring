@@ -54,6 +54,8 @@ export interface LineItem {
   id: number;
   description: string;
   qty: number;
+  /** What the quantity counts, such as hours; null when the line does not say. */
+  unit: string | null;
   unitPrice: number;
   amount: number;
 }
@@ -66,6 +68,7 @@ export interface InvoiceDetail extends Invoice {
 export interface NewLineItem {
   description: string;
   qty: number;
+  unit: string | null;
   unitPrice: number;
 }
 

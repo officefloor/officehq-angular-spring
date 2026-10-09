@@ -92,16 +92,17 @@ public class Invoice {
     }
 
     /** Adds a line to this invoice and reworks its amount to include what the line charges. */
-    public InvoiceLineItem addLineItem(String description, BigDecimal qty, BigDecimal unitPrice) {
-        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unitPrice);
+    public InvoiceLineItem addLineItem(String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
+        InvoiceLineItem item = new InvoiceLineItem(this, description, qty, unit, unitPrice);
         lineItems.add(item);
         recalculateAmount();
         return item;
     }
 
     /** Changes one of this invoice's lines and reworks its amount to match. */
-    public void updateLineItem(InvoiceLineItem item, String description, BigDecimal qty, BigDecimal unitPrice) {
-        item.update(description, qty, unitPrice);
+    public void updateLineItem(InvoiceLineItem item, String description, BigDecimal qty, String unit,
+            BigDecimal unitPrice) {
+        item.update(description, qty, unit, unitPrice);
         recalculateAmount();
     }
 

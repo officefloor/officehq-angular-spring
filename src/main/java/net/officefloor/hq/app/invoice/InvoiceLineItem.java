@@ -12,7 +12,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
-/** One thing an invoice charges for: a description, how many, and the price of each. */
+/** One thing an invoice charges for: a description, how many (in what unit), and the price of each. */
 @Entity
 @Table(name = "invoice_line_item")
 public class InvoiceLineItem {
@@ -31,22 +31,27 @@ public class InvoiceLineItem {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal qty;
 
+    @Column(length = 50)
+    private String unit;
+
     @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal unitPrice;
 
     protected InvoiceLineItem() {
     }
 
-    InvoiceLineItem(Invoice invoice, String description, BigDecimal qty, BigDecimal unitPrice) {
+    InvoiceLineItem(Invoice invoice, String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
         this.invoice = invoice;
         this.description = description;
         this.qty = qty;
+        this.unit = unit;
         this.unitPrice = unitPrice;
     }
 
-    void update(String description, BigDecimal qty, BigDecimal unitPrice) {
+    void update(String description, BigDecimal qty, String unit, BigDecimal unitPrice) {
         this.description = description;
         this.qty = qty;
+        this.unit = unit;
         this.unitPrice = unitPrice;
     }
 
@@ -64,6 +69,11 @@ public class InvoiceLineItem {
 
     public BigDecimal getQty() {
         return qty;
+    }
+
+    /** What the quantity counts, such as hours; null when the line does not say. */
+    public String getUnit() {
+        return unit;
     }
 
     public BigDecimal getUnitPrice() {
