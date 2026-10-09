@@ -1,16 +1,17 @@
 import { DatePipe } from '@angular/common';
-import { Component, inject, input, signal } from '@angular/core';
+import { Component, computed, inject, input, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { NoteService } from './note.service';
 
-// A project's notes: write a note and read them back, newest first.
+// The notes kept on a job, or on one of its invoices when an invoice is given: write a note and read
+// them back, newest first.
 @Component({
-  selector: 'app-project-notes',
+  selector: 'app-notes',
   imports: [ReactiveFormsModule, DatePipe],
   template: `
-    <section aria-labelledby="project-notes-heading" data-testid="project-notes">
-      <h2 id="project-notes-heading">Notes</h2>
+    <section [attr.aria-labelledby]="kind() + '-notes-heading'" [attr.data-testid]="kind() + '-notes'">
+      <h2 [id]="kind() + '-notes-heading'">Notes</h2>
 
       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="note-form" novalidate>
         <div>
@@ -37,12 +38,16 @@ import { NoteService } from './note.service';
       </form>
 
       @if (notes.error()) {
-        <p role="alert" data-testid="project-notes-error">Could not load the notes.</p>
+        <p role="alert" [attr.data-testid]="kind() + '-notes-error'">Could not load the notes.</p>
       } @else if (notes.hasValue()) {
         @if (notes.value().length === 0) {
-          <p data-testid="project-notes-empty">No notes on this job yet.</p>
+          <p [attr.data-testid]="kind() + '-notes-empty'">No notes on this {{ label() }} yet.</p>
         } @else {
-          <ol class="notes" aria-label="Job notes, newest first" data-testid="project-note-list">
+          <ol
+            class="notes"
+            [attr.aria-label]="(kind() === 'invoice' ? 'Invoice' : 'Job') + ' notes, newest first'"
+            [attr.data-testid]="kind() + '-note-list'"
+          >
             @for (n of notes.value(); track n.id) {
               <li [attr.data-testid]="'note-row-' + n.id">
                 <time [attr.datetime]="n.at" data-testid="note-at">{{ n.at | date: 'medium' }}</time>
@@ -65,14 +70,22 @@ import { NoteService } from './note.service';
     }
   `,
 })
-export class ProjectNotes {
+export class Notes {
   private readonly service = inject(NoteService);
 
   readonly projectId = input.required<number>();
+  /** When given, the notes are the invoice's rather than the job's. */
+  readonly invoiceId = input<number>();
+
+  protected readonly kind = computed(() => (this.invoiceId() === undefined ? 'project' : 'invoice'));
+  protected readonly label = computed(() => (this.kind() === 'invoice' ? 'invoice' : 'job'));
 
   protected readonly notes = rxResource({
-    params: () => this.projectId(),
-    stream: ({ params }) => this.service.listForProject(params),
+    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
+    stream: ({ params }) =>
+      params.invoiceId === undefined
+        ? this.service.listForProject(params.projectId)
+        : this.service.listForInvoice(params.projectId, params.invoiceId),
   });
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
@@ -95,7 +108,12 @@ export class ProjectNotes {
     }
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.createForProject(this.projectId(), text).subscribe({
+    const invoiceId = this.invoiceId();
+    const request =
+      invoiceId === undefined
+        ? this.service.createForProject(this.projectId(), text)
+        : this.service.createForInvoice(this.projectId(), invoiceId, text);
+    request.subscribe({
       next: (created) => {
         this.notes.update((list) => [created, ...(list ?? [])]);
         this.form.reset();

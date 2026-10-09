@@ -23,4 +23,13 @@ export class NoteService {
   createForProject(projectId: number, text: string): Observable<Note> {
     return this.http.post<Note>(`/api/projects/${projectId}/notes`, { text });
   }
+
+  /** An invoice's notes, newest first. */
+  listForInvoice(projectId: number, invoiceId: number): Observable<Note[]> {
+    return this.http.get<Note[]>(`/api/projects/${projectId}/invoices/${invoiceId}/notes`);
+  }
+
+  createForInvoice(projectId: number, invoiceId: number, text: string): Observable<Note> {
+    return this.http.post<Note>(`/api/projects/${projectId}/invoices/${invoiceId}/notes`, { text });
+  }
 }

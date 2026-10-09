@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.invoice.InvoiceRequest;
@@ -106,7 +107,7 @@ public class TestSupportController {
                     t.get("title"), Boolean.TRUE.equals(t.get("done")));
         }
         for (Map<String, Object> n : rows(fixture, "notes")) {
-            Instant at = n.get("at") == null ? clock.instant() : Instant.parse(n.get("at").toString());
+            Instant at = n.get("at") == null ? clock.instant() : seedInstant(n.get("at").toString());
             jdbc.update("INSERT INTO note (id, target_type, target_id, text, created_at) VALUES (?, ?, ?, ?, ?)",
                     ((Number) n.get("id")).longValue(), n.get("targetType"),
                     ((Number) n.get("targetId")).longValue(), n.get("text"), Timestamp.from(at));
@@ -177,6 +178,11 @@ public class TestSupportController {
         restartIdentity("tag");
         restartIdentity("note");
         restartIdentity("payment");
+    }
+
+    /** A fixture timestamp, either a full instant or a bare date taken as the start of that day (UTC). */
+    private static Instant seedInstant(String value) {
+        return value.contains("T") ? Instant.parse(value) : LocalDate.parse(value).atStartOfDay(ZoneOffset.UTC).toInstant();
     }
 
     /**

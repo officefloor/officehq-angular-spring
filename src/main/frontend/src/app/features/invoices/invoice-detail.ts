@@ -4,6 +4,7 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
+import { Notes } from '../notes/notes';
 import { InvoicePayments } from '../payments/invoice-payments';
 import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
 
@@ -14,7 +15,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 // including the tax. Lines, the discount and the tax rate can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
-  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments],
+  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, Notes],
   template: `
     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
     @if (invoice.error()) {
@@ -331,6 +332,8 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
         [canRecord]="inv.status === 'SENT' || inv.status === 'PARTIAL'"
         (recorded)="invoice.reload()"
       />
+
+      <app-notes [projectId]="projectIdNumber()" [invoiceId]="inv.id" />
     }
   `,
 })
