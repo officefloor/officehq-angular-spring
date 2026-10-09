@@ -1,0 +1,276 @@
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index d8918ba..e64458a 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -29,9 +29,21 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+     <section aria-labelledby="project-invoices-heading" data-testid="project-invoices">
+       <h2 id="project-invoices-heading">Invoices</h2>
+ 
+-      <button type="button" data-testid="invoice-new" (click)="startNew()">New invoice</button>
++      <button
++        type="button"
++        data-testid="invoice-new"
++        [disabled]="closed()"
++        [attr.aria-describedby]="closed() ? 'invoice-closed-note' : null"
++        (click)="startNew()"
++      >
++        New invoice
++      </button>
++      @if (closed()) {
++        <p id="invoice-closed-note" data-testid="invoice-closed-note">This job is closed; no new invoice can be raised on it.</p>
++      }
+ 
+       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="invoice-form" novalidate>
++        <fieldset [disabled]="closed()">
+         <div>
+           <label for="invoice-amount">Amount (optional, or leave blank and add line items)</label>
+           <input
+@@ -98,6 +110,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+         @if (saveError()) {
+           <p role="alert" data-testid="invoice-form-error">{{ saveError() }}</p>
+         }
++        </fieldset>
+       </form>
+ 
+       @if (invoices.error()) {
+@@ -194,6 +207,8 @@ export class ProjectInvoices {
+   readonly projectId = input.required<number>();
+   /** The currency of the client the job is for; the money shown is in it. */
+   readonly currency = input.required<CurrencyCode>();
++  /** Whether the job is closed; no new invoice can be raised on a closed job. */
++  readonly closed = input(false);
+   /** Emits when an invoice is sent or cancelled, changing how much has been invoiced on the project. */
+   readonly invoiced = output<void>();
+ 
+@@ -277,6 +292,9 @@ export class ProjectInvoices {
+   }
+ 
+   protected submit(): void {
++    if (this.closed()) {
++      return;
++    }
+     if (this.form.invalid) {
+       this.form.markAllAsTouched();
+       return;
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index 42c937f..45fb68b 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -8,7 +8,7 @@ import { ProjectTasks } from '../tasks/project-tasks';
+ import { ProjectBudgetPanel } from './project-budget';
+ import { ProjectService } from './project.service';
+ 
+-// A single project's page: its name, description, client and status, whether it is billable, its budget, its tags, its tasks, its notes, and its invoices.
++// A single project's page: its name, description, client and status, whether it is open or closed, whether it is billable, its budget, its tags, its tasks, its notes, and its invoices.
+ @Component({
+   selector: 'app-project-detail',
+   imports: [RouterLink, ProjectBudgetPanel, ProjectInvoices, Notes, ProjectTags, ProjectTasks],
+@@ -23,6 +23,17 @@ import { ProjectService } from './project.service';
+       }
+       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
+       <p>Status: <span data-testid="project-detail-status">{{ p.status }}</span></p>
++      <p>
++        Job: <span data-testid="project-status">{{ p.closed ? 'CLOSED' : 'OPEN' }}</span>
++        @if (!p.closed) {
++          <button type="button" data-testid="project-close" [disabled]="closing()" (click)="close()">
++            Close job
++          </button>
++        }
++      </p>
++      @if (closeError()) {
++        <p role="alert" data-testid="project-close-error">{{ closeError() }}</p>
++      }
+       <p>
+         Billing: <span data-testid="project-billable">{{ p.billable ? 'Billable' : 'Non-billable' }}</span>
+         <button
+@@ -41,7 +52,7 @@ import { ProjectService } from './project.service';
+       <app-project-tags [projectId]="projectId()" />
+       <app-project-tasks [projectId]="projectId()" />
+       <app-notes [projectId]="projectId()" />
+-      <app-project-invoices [projectId]="projectId()" [currency]="p.currency" (invoiced)="budget()?.reload()" />
++      <app-project-invoices [projectId]="projectId()" [currency]="p.currency" [closed]="p.closed" (invoiced)="budget()?.reload()" />
+     }
+   `,
+ })
+@@ -62,6 +73,24 @@ export class ProjectDetail {
+   protected readonly savingBillable = signal(false);
+   protected readonly billableError = signal<string | null>(null);
+ 
++  protected readonly closing = signal(false);
++  protected readonly closeError = signal<string | null>(null);
++
++  protected close(): void {
++    this.closing.set(true);
++    this.closeError.set(null);
++    this.service.close(this.projectId()).subscribe({
++      next: (updated) => {
++        this.project.set(updated);
++        this.closing.set(false);
++      },
++      error: () => {
++        this.closeError.set('Could not close the job.');
++        this.closing.set(false);
++      },
++    });
++  }
++
+   protected setBillable(billable: boolean): void {
+     this.savingBillable.set(true);
+     this.billableError.set(null);
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index 33478ac..6552e02 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -27,6 +27,8 @@ export interface Project {
+   description: string | null;
+   /** Whether the work is charged to the client; internal work is non-billable. */
+   billable: boolean;
++  /** Whether the job is closed; no new invoice can be raised on a closed job. */
++  closed: boolean;
+ }
+ 
+ /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
+@@ -93,6 +95,10 @@ export class ProjectService {
+     return this.http.put<ProjectBudget>(`/api/projects/${id}/budget`, { budget });
+   }
+ 
++  close(id: number): Observable<Project> {
++    return this.http.post<Project>(`/api/projects/${id}/close`, null);
++  }
++
+   archive(id: number): Observable<Project> {
+     return this.http.post<Project>(`/api/projects/${id}/archive`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 0fe7759..d0b6ae8 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -101,14 +101,14 @@ public class TestSupportController {
+             }
+         }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+-            jdbc.update("INSERT INTO project (id, name, code, description, client_id, status, archived, budget, billable)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO project (id, name, code, description, client_id, status, archived, budget, billable, closed)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) p.get("id")).longValue(), p.get("name"), p.get("code"), p.get("description"),
+                     ((Number) p.get("clientId")).longValue(),
+                     p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString(),
+                     Boolean.TRUE.equals(p.get("archived")),
+                     p.get("budget") == null ? null : new BigDecimal(p.get("budget").toString()),
+-                    !Boolean.FALSE.equals(p.get("billable")));
++                    !Boolean.FALSE.equals(p.get("billable")), Boolean.TRUE.equals(p.get("closed")));
+         }
+         for (Map<String, Object> t : rows(fixture, "tags")) {
+             jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index fde17f3..007114e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -105,6 +105,9 @@ public class InvoiceService {
+     public InvoiceResponse create(Long projectId, InvoiceRequest request) {
+         Project project = projects.findById(projectId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
++        if (project.isClosed()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The job is closed; no new invoice can be raised on it");
++        }
+         LocalDate issued = request.issuedDate() != null ? request.issuedDate() : LocalDate.now();
+         LocalDate due = request.dueDate() != null ? request.dueDate() : issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS);
+         if (due.isBefore(issued)) {
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+index 56a778a..18516f0 100644
+--- a/src/main/java/net/officefloor/hq/app/project/Project.java
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -39,6 +39,8 @@ public class Project {
+ 
+     private boolean archived;
+ 
++    private boolean closed;
++
+     @Enumerated(EnumType.STRING)
+     private ProjectStatus status = ProjectStatus.ACTIVE;
+ 
+@@ -94,6 +96,15 @@ public class Project {
+         this.archived = archived;
+     }
+ 
++    /** Whether the job is closed; no new invoice can be raised on a closed job. */
++    public boolean isClosed() {
++        return closed;
++    }
++
++    public void setClosed(boolean closed) {
++        this.closed = closed;
++    }
++
+     public ProjectStatus getStatus() {
+         return status;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectController.java b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+index 966c1d7..70ec145 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+@@ -60,6 +60,11 @@ public class ProjectController {
+         return service.setBudget(id, request.budget());
+     }
+ 
++    @PostMapping("/{id}/close")
++    public ProjectResponse close(@PathVariable Long id) {
++        return service.close(id);
++    }
++
+     @PostMapping("/{id}/archive")
+     public ProjectResponse archive(@PathVariable Long id) {
+         return service.archive(id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+index f72efeb..84b0722 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+@@ -3,12 +3,13 @@ package net.officefloor.hq.app.project;
+ import net.officefloor.hq.app.client.Currency;
+ 
+ public record ProjectResponse(Long id, String name, String code, Long clientId, String clientName, boolean archived,
+-        ProjectStatus status, Currency currency, String description, boolean billable) {
++        ProjectStatus status, Currency currency, String description, boolean billable,
++        boolean closed) {
+ 
+     public static ProjectResponse from(Project project) {
+         return new ProjectResponse(project.getId(), project.getName(), project.getCode(),
+                 project.getClient().getId(), project.getClient().getName(), project.isArchived(),
+                 project.getStatus(), project.getClient().getCurrency(), project.getDescription(),
+-                project.isBillable());
++                project.isBillable(), project.isClosed());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index ef06436..1b0247a 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -160,6 +160,19 @@ public class ProjectService {
+         return ProjectResponse.from(project);
+     }
+ 
++    /** Closes a job so no new invoice can be raised on it, recording the closing in the audit log. */
++    @Transactional
++    public ProjectResponse close(Long id) {
++        Project project = projects.findByIdWithClient(id)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
++        if (!project.isClosed()) {
++            project.setClosed(true);
++            projects.flush();
++            audit.record("PROJECT_CLOSED id=" + id);
++        }
++        return ProjectResponse.from(project);
++    }
++
+     /**
+      * Archives a project: it drops off the project lists but is kept, with its tasks and invoices,
+      * and the archiving is recorded in the audit log.
+diff --git a/src/main/resources/db/migration/V59__project_closed.sql b/src/main/resources/db/migration/V59__project_closed.sql
+new file mode 100644
+index 0000000..5380ad1
+--- /dev/null
++++ b/src/main/resources/db/migration/V59__project_closed.sql
+@@ -0,0 +1,2 @@
++-- A job can be closed; once closed no new invoice can be raised on it. Existing jobs are open.
++ALTER TABLE project ADD COLUMN closed BOOLEAN NOT NULL DEFAULT FALSE;
