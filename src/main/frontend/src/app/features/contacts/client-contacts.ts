@@ -79,6 +79,9 @@ type ContactField = 'name' | 'email' | 'role';
         @if (contacts.value().length === 0) {
           <p data-testid="client-contacts-empty">No contacts for this client yet.</p>
         } @else {
+          @if (primaryError()) {
+            <p role="alert" data-testid="contact-primary-error">{{ primaryError() }}</p>
+          }
           <table data-testid="client-contacts-table">
             <caption>Contacts for this client</caption>
             <thead>
@@ -86,6 +89,7 @@ type ContactField = 'name' | 'email' | 'role';
                 <th scope="col">Name</th>
                 <th scope="col">Email</th>
                 <th scope="col">Role</th>
+                <th scope="col">Main contact</th>
               </tr>
             </thead>
             <tbody>
@@ -94,6 +98,18 @@ type ContactField = 'name' | 'email' | 'role';
                   <td data-testid="contact-name">{{ c.name }}</td>
                   <td data-testid="contact-email">{{ c.email }}</td>
                   <td data-testid="contact-role">{{ c.role }}</td>
+                  <td>
+                    <button
+                      type="button"
+                      [attr.data-testid]="'contact-primary-' + c.id"
+                      [attr.aria-pressed]="c.primary"
+                      [attr.aria-label]="c.primary ? c.name + ' is the main contact' : 'Make ' + c.name + ' the main contact'"
+                      [disabled]="c.primary || choosingPrimary()"
+                      (click)="makePrimary(c)"
+                    >
+                      {{ c.primary ? 'Main contact' : 'Make main contact' }}
+                    </button>
+                  </td>
                 </tr>
               }
             </tbody>
@@ -109,6 +125,8 @@ export class ClientContacts {
   readonly clientId = input.required<number>();
   /** Emits each contact once it has been saved. */
   readonly contactAdded = output<Contact>();
+  /** Emits the contact that has just become the client's main contact. */
+  readonly primaryChanged = output<Contact>();
 
   protected readonly contacts = rxResource({
     params: () => this.clientId(),
@@ -116,6 +134,8 @@ export class ClientContacts {
   });
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
+  protected readonly choosingPrimary = signal(false);
+  protected readonly primaryError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -135,6 +155,22 @@ export class ClientContacts {
   protected showError(field: ContactField): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected makePrimary(contact: Contact): void {
+    this.choosingPrimary.set(true);
+    this.primaryError.set(null);
+    this.service.makePrimary(this.clientId(), contact.id).subscribe({
+      next: (updated) => {
+        this.contacts.update((list) => list?.map((c) => ({ ...c, primary: c.id === updated.id })));
+        this.primaryChanged.emit(updated);
+        this.choosingPrimary.set(false);
+      },
+      error: () => {
+        this.primaryError.set('Could not change the main contact. Please try again.');
+        this.choosingPrimary.set(false);
+      },
+    });
   }
 
   protected submit(): void {

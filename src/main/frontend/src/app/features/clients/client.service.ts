@@ -7,6 +7,8 @@ export interface Client {
   name: string;
   email: string;
   archived: boolean;
+  /** The client's main contact; null until one is chosen. */
+  primaryContact: { id: number; name: string } | null;
 }
 
 /** At-a-glance counts of what one client has. */
@@ -15,7 +17,7 @@ export interface ClientSummary {
   contactCount: number;
 }
 
-export type NewClient = Omit<Client, 'id' | 'archived'>;
+export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact'>;
 
 @Injectable({ providedIn: 'root' })
 export class ClientService {

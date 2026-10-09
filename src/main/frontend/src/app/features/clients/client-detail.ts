@@ -2,10 +2,11 @@ import { Component, computed, inject, input } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { ClientContacts } from '../contacts/client-contacts';
+import { Contact } from '../contacts/contact.service';
 import { ClientProjects } from '../projects/client-projects';
 import { ClientService } from './client.service';
 
-// A single client's page: their name and email, a link to their statement, counts of their projects and contacts, their contacts, and the projects being done for them.
+// A single client's page: their name, email and main contact, a link to their statement, counts of their projects and contacts, their contacts, and the projects being done for them.
 @Component({
   selector: 'app-client-detail',
   imports: [RouterLink, ClientContacts, ClientProjects],
@@ -24,6 +25,14 @@ import { ClientService } from './client.service';
     } @else if (client.value(); as c) {
       <h1 data-testid="client-detail-name">{{ c.name }}</h1>
       <p>Email: <span data-testid="client-detail-email">{{ c.email }}</span></p>
+      <p>
+        Main contact:
+        @if (c.primaryContact; as primary) {
+          <span data-testid="client-primary-contact">{{ primary.name }}</span>
+        } @else {
+          <span data-testid="client-primary-contact-none">None chosen</span>
+        }
+      </p>
       @if (summary.hasValue()) {
         <ul class="client-badges" aria-label="At a glance" data-testid="client-badges">
           <li>
@@ -37,7 +46,11 @@ import { ClientService } from './client.service';
       <p>
         <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="client-statement-open">View statement</a>
       </p>
-      <app-client-contacts [clientId]="clientId()" (contactAdded)="summary.reload()" />
+      <app-client-contacts
+        [clientId]="clientId()"
+        (contactAdded)="contactAdded()"
+        (primaryChanged)="primaryChanged($event)"
+      />
       <app-client-projects [clientId]="clientId()" />
     }
   `,
@@ -58,4 +71,16 @@ export class ClientDetail {
     params: () => this.clientId(),
     stream: ({ params }) => this.service.summary(params),
   });
+
+  protected contactAdded(): void {
+    this.summary.reload();
+    // The first contact added becomes the main contact.
+    if (!this.client.value()?.primaryContact) {
+      this.client.reload();
+    }
+  }
+
+  protected primaryChanged(contact: Contact): void {
+    this.client.update((c) => c && { ...c, primaryContact: { id: contact.id, name: contact.name } });
+  }
 }

@@ -79,6 +79,10 @@ public class TestSupportController {
             jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
                     ((Number) c.get("id")).longValue(), ((Number) c.get("clientId")).longValue(),
                     c.get("name"), c.get("email"), c.get("role"));
+            if (Boolean.TRUE.equals(c.get("primary"))) {
+                jdbc.update("UPDATE client SET primary_contact_id = ? WHERE id = ?",
+                        ((Number) c.get("id")).longValue(), ((Number) c.get("clientId")).longValue());
+            }
         }
         for (Map<String, Object> p : rows(fixture, "projects")) {
             jdbc.update("INSERT INTO project (id, name, client_id, status, archived, budget) VALUES (?, ?, ?, ?, ?, ?)",

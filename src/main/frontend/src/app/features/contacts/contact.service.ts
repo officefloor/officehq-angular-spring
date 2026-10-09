@@ -8,6 +8,8 @@ export interface Contact {
   name: string;
   email: string;
   role: string;
+  /** Whether this is the client's main contact. */
+  primary: boolean;
 }
 
 export type NewContact = Pick<Contact, 'name' | 'email' | 'role'>;
@@ -22,5 +24,9 @@ export class ContactService {
 
   create(clientId: number, contact: NewContact): Observable<Contact> {
     return this.http.post<Contact>(`/api/clients/${clientId}/contacts`, contact);
+  }
+
+  makePrimary(clientId: number, contactId: number): Observable<Contact> {
+    return this.http.post<Contact>(`/api/clients/${clientId}/contacts/${contactId}/primary`, null);
   }
 }

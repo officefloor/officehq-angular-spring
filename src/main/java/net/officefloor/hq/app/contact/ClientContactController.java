@@ -32,4 +32,10 @@ public class ClientContactController {
     public ContactResponse create(@PathVariable Long clientId, @Valid @RequestBody ContactRequest request) {
         return service.create(clientId, request);
     }
+
+    /** Makes this contact the client's main contact. */
+    @PostMapping("/{contactId}/primary")
+    public ContactResponse makePrimary(@PathVariable Long clientId, @PathVariable Long contactId) {
+        return service.makePrimary(clientId, contactId);
+    }
 }
