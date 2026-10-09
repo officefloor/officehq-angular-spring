@@ -33,7 +33,15 @@ public class TestSupportController {
     @Transactional
     public void reset() {
         audit.clear();
-        jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
+        // Children first; H2 refuses to TRUNCATE a table referenced by a foreign key, so disable
+        // referential checks for the duration of the truncates.
+        jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        try {
+            jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
+        } finally {
+            jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+        }
     }
 
     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
@@ -44,9 +52,19 @@ public class TestSupportController {
             jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"));
         }
+        for (Map<String, Object> p : rows(fixture, "projects")) {
+            jdbc.update("INSERT INTO project (id, name, client_id) VALUES (?, ?, ?)",
+                    ((Number) p.get("id")).longValue(), p.get("name"),
+                    ((Number) p.get("clientId")).longValue());
+        }
         // Continue generated ids after the explicitly seeded ones.
-        Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM client", Long.class);
-        jdbc.execute("ALTER TABLE client ALTER COLUMN id RESTART WITH " + next);
+        restartIdentity("client");
+        restartIdentity("project");
+    }
+
+    private void restartIdentity(String table) {
+        Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM " + table, Long.class);
+        jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH " + next);
     }
 
     @SuppressWarnings("unchecked")
