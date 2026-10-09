@@ -1,0 +1,357 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 3ede036..f2a844c 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -63,6 +63,9 @@ import { Client, ClientService } from './client.service';
+       <p>
+         Key account: <span data-testid="client-key-account-flag">{{ c.keyAccount ? 'Yes' : 'No' }}</span>
+       </p>
++      <p>
++        Standard discount: <span data-testid="client-default-discount">{{ c.defaultDiscountPct > 0 ? c.defaultDiscountPct + '%' : 'None' }}</span>
++      </p>
+       <p>
+         Main contact:
+         @if (c.primaryContact; as primary) {
+diff --git a/src/main/frontend/src/app/features/clients/client-edit-form.ts b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+index ea483fd..bba1d25 100644
+--- a/src/main/frontend/src/app/features/clients/client-edit-form.ts
++++ b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+@@ -3,7 +3,7 @@ import { Component, ElementRef, OnInit, afterNextRender, inject, input, output,
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Client, ClientService } from './client.service';
+ 
+-// Form to correct one client's name, email, phone number, tax number, whether their prices include tax or whether they are tax exempt. Emits the saved client, or cancelled when abandoned.
++// Form to correct one client's name, email, phone number, tax number, whether their prices include tax or whether they are tax exempt, whether they are a key account and their standard discount. Emits the saved client, or cancelled when abandoned.
+ @Component({
+   selector: 'app-client-edit-form',
+   imports: [ReactiveFormsModule],
+@@ -123,6 +123,25 @@ import { Client, ClientService } from './client.service';
+           Key account
+         </label>
+       </div>
++      <div>
++        <label for="client-edit-default-discount">Standard discount % (applied to new invoices)</label>
++        <input
++          id="client-edit-default-discount"
++          type="number"
++          min="0"
++          max="100"
++          step="0.01"
++          formControlName="defaultDiscountPct"
++          data-testid="client-edit-form-default-discount"
++          [attr.aria-invalid]="showError('defaultDiscountPct')"
++          [attr.aria-describedby]="showError('defaultDiscountPct') ? 'client-edit-default-discount-error' : null"
++        />
++        @if (showError('defaultDiscountPct')) {
++          <p id="client-edit-default-discount-error" role="alert" data-testid="client-edit-form-default-discount-error">
++            Standard discount must be between 0 and 100.
++          </p>
++        }
++      </div>
+       <button type="submit" data-testid="client-edit-form-submit" [disabled]="saving()">Save</button>
+       <button type="button" data-testid="client-edit-form-cancel" (click)="cancelled.emit()">Cancel</button>
+       @if (saveError()) {
+@@ -160,6 +179,7 @@ export class ClientEditForm implements OnInit {
+     taxInclusive: false,
+     taxExempt: false,
+     keyAccount: false,
++    defaultDiscountPct: [0, [Validators.required, Validators.min(0), Validators.max(100)]],
+   });
+ 
+   constructor() {
+@@ -167,11 +187,11 @@ export class ClientEditForm implements OnInit {
+   }
+ 
+   ngOnInit(): void {
+-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount } = this.client();
+-    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt, keyAccount });
++    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.client();
++    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt, keyAccount, defaultDiscountPct });
+   }
+ 
+-  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress'): boolean {
++  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -181,10 +201,10 @@ export class ClientEditForm implements OnInit {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount } = this.form.getRawValue();
++    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount }).subscribe({
++    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
+       next: (updated) => {
+         this.saving.set(false);
+         this.saved.emit(updated);
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 4f187d9..edd3c65 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -23,6 +23,8 @@ export interface Client {
+   taxExempt: boolean;
+   /** Whether the client is one of the office's key accounts, marked out wherever they are listed. */
+   keyAccount: boolean;
++  /** The client's standard discount, a percentage each new invoice for them starts with; 0 when none. */
++  defaultDiscountPct: number;
+   archived: boolean;
+   /** The client's main contact; null until one is chosen. */
+   primaryContact: { id: number; name: string } | null;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index a216a2b..edcec40 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -135,6 +135,25 @@ import { Client, ClientService } from './client.service';
+           Key account
+         </label>
+       </div>
++      <div>
++        <label for="client-default-discount">Standard discount % (applied to new invoices)</label>
++        <input
++          id="client-default-discount"
++          type="number"
++          min="0"
++          max="100"
++          step="0.01"
++          formControlName="defaultDiscountPct"
++          data-testid="client-form-default-discount"
++          [attr.aria-invalid]="showError('defaultDiscountPct')"
++          [attr.aria-describedby]="showError('defaultDiscountPct') ? 'client-default-discount-error' : null"
++        />
++        @if (showError('defaultDiscountPct')) {
++          <p id="client-default-discount-error" role="alert" data-testid="client-form-default-discount-error">
++            Standard discount must be between 0 and 100.
++          </p>
++        }
++      </div>
+       <button type="submit" data-testid="client-form-submit" [disabled]="saving()">Add client</button>
+       @if (saveError()) {
+         <p role="alert" data-testid="client-form-error">{{ saveError() }}</p>
+@@ -296,6 +315,7 @@ export class Clients {
+     taxInclusive: false,
+     taxExempt: false,
+     keyAccount: false,
++    defaultDiscountPct: [0, [Validators.required, Validators.min(0), Validators.max(100)]],
+   });
+ 
+   constructor() {
+@@ -310,7 +330,7 @@ export class Clients {
+     this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
+   }
+ 
+-  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress'): boolean {
++  protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -320,10 +340,10 @@ export class Clients {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount } = this.form.getRawValue();
++    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount }).subscribe({
++    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created]);
+         this.form.reset();
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index b477bdc..d280a62 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -79,13 +79,14 @@ public class TestSupportController {
+             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, key_account, archived, currency)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"),
+                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
+                     Boolean.TRUE.equals(c.get("keyAccount")),
+                     Boolean.TRUE.equals(c.get("archived")),
+-                    c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString());
++                    c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString(),
++                    decimal(c.get("defaultDiscountPct")));
+         }
+         for (Map<String, Object> c : rows(fixture, "contacts")) {
+             jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
+@@ -154,7 +155,7 @@ public class TestSupportController {
+             // An invoice for a tax-exempt client carries no tax or levy on any line.
+             long projectId = ((Number) i.get("projectId")).longValue();
+             Map<String, Object> client = jdbc.queryForMap(
+-                    "SELECT c.tax_inclusive, c.tax_exempt FROM project p JOIN client c ON c.id = p.client_id WHERE p.id = ?",
++                    "SELECT c.tax_inclusive, c.tax_exempt, c.default_discount_pct FROM project p JOIN client c ON c.id = p.client_id WHERE p.id = ?",
+                     projectId);
+             boolean taxInclusive = Boolean.TRUE.equals(client.get("TAX_INCLUSIVE"));
+             boolean taxExempt = Boolean.TRUE.equals(client.get("TAX_EXEMPT"));
+@@ -172,6 +173,13 @@ public class TestSupportController {
+             if (i.get("discountAmount") != null && new BigDecimal(i.get("discountAmount").toString()).signum() > 0) {
+                 discounts.add(Map.of("amount", i.get("discountAmount")));
+             }
++            // An invoice whose fixture says nothing about discounts starts with the client's standard one, as a
++            // newly raised invoice does.
++            BigDecimal clientDefaultPct = decimal(client.get("DEFAULT_DISCOUNT_PCT"));
++            if (i.get("discounts") == null && i.get("discountPct") == null && i.get("discountAmount") == null
++                    && clientDefaultPct.signum() > 0) {
++                discounts.add(Map.of("pct", clientDefaultPct));
++            }
+             // The percentages each take their share of the subtotal (never more than is left); the flat
+             // amounts are then taken off what is left and shared across the lines in proportion to what
+             // each charges.
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index 07f4df8..0aedc31 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.client;
+ 
++import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.EnumType;
+ import jakarta.persistence.Enumerated;
+@@ -10,6 +11,8 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+ /** A client of the office. */
+@@ -45,6 +48,10 @@ public class Client {
+     /** Whether the client is one of the office's key accounts, marked out wherever they are listed. */
+     private boolean keyAccount;
+ 
++    /** The client's standard discount, a percentage each new invoice for them starts with; zero when none. */
++    @Column(name = "default_discount_pct", nullable = false, precision = 5, scale = 2)
++    private BigDecimal defaultDiscountPct = BigDecimal.ZERO.setScale(2);
++
+     /** The currency the client is billed in; all of their money is in it. */
+     @Enumerated(EnumType.STRING)
+     private Currency currency = Currency.USD;
+@@ -122,6 +129,14 @@ public class Client {
+         this.keyAccount = keyAccount;
+     }
+ 
++    public BigDecimal getDefaultDiscountPct() {
++        return defaultDiscountPct;
++    }
++
++    public void setDefaultDiscountPct(BigDecimal defaultDiscountPct) {
++        this.defaultDiscountPct = defaultDiscountPct.setScale(2, RoundingMode.HALF_UP);
++    }
++
+     public boolean isArchived() {
+         return archived;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+index 8d53c2f..1a6a8f4 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+@@ -1,12 +1,16 @@
+ package net.officefloor.hq.app.client;
+ 
++import jakarta.validation.constraints.DecimalMax;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
+ 
+ /**
+  * Payload to create a client, or to correct an existing client's name, email, phone number, tax number and billing address,
+- * whether their prices already include tax and whether they are tax exempt and whether they are a key account (each left as it is when not given).
++ * whether their prices already include tax and whether they are tax exempt and whether they are a key account and their standard discount percentage (each left as it is when not given).
+  */
+ public record ClientRequest(
+         @NotBlank @Size(max = 255) String name,
+@@ -16,7 +20,8 @@ public record ClientRequest(
+         @Size(max = 500) String billingAddress,
+         Boolean taxInclusive,
+         Boolean taxExempt,
+-        Boolean keyAccount) {
++        Boolean keyAccount,
++        @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal defaultDiscountPct) {
+ 
+     /** Requires a dotted domain, which plain {@code @Email} does not (it accepts {@code a@b}). */
+     public static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index b8ef1de..c25ac51 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -3,7 +3,7 @@ package net.officefloor.hq.app.client;
+ import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+-public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, boolean taxInclusive, boolean taxExempt, boolean keyAccount, boolean archived, PrimaryContact primaryContact,
++public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, boolean taxInclusive, boolean taxExempt, boolean keyAccount, BigDecimal defaultDiscountPct, boolean archived, PrimaryContact primaryContact,
+         Currency currency, BigDecimal outstanding) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+@@ -13,7 +13,7 @@ public record ClientResponse(Long id, String name, String email, String phone, S
+     /** A client with what they still owe, in their currency: what is left to pay on their sent, not yet fully paid invoices. */
+     public static ClientResponse from(Client client, BigDecimal outstanding) {
+         Contact primary = client.getPrimaryContact();
+-        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.isTaxInclusive(), client.isTaxExempt(), client.isKeyAccount(), client.isArchived(),
++        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.isTaxInclusive(), client.isTaxExempt(), client.isKeyAccount(), client.getDefaultDiscountPct(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
+                 client.getCurrency(), outstanding);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 3e9e9df..0ca112d 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -72,6 +72,9 @@ public class ClientService {
+             client.setTaxInclusive(Boolean.TRUE.equals(request.taxInclusive()));
+             client.setTaxExempt(Boolean.TRUE.equals(request.taxExempt()));
+             client.setKeyAccount(Boolean.TRUE.equals(request.keyAccount()));
++            if (request.defaultDiscountPct() != null) {
++                client.setDefaultDiscountPct(request.defaultDiscountPct());
++            }
+             return respond(clients.saveAndFlush(client));
+         } catch (DataIntegrityViolationException e) {
+             // Lost a race with a concurrent add of the same email; the unique constraint caught it.
+@@ -108,6 +111,10 @@ public class ClientService {
+         if (request.keyAccount() != null) {
+             client.setKeyAccount(request.keyAccount());
+         }
++        // Only invoices raised from now on start with the standard discount; existing ones keep theirs.
++        if (request.defaultDiscountPct() != null) {
++            client.setDefaultDiscountPct(request.defaultDiscountPct());
++        }
+         try {
+             clients.flush();
+         } catch (DataIntegrityViolationException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 3b83add..c661160 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -101,6 +101,11 @@ public class InvoiceService {
+             invoice.addLineItem(InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION, BigDecimal.ONE, null, request.amount());
+         }
+         invoice.applyTax(request.taxPct() != null ? request.taxPct() : settings.defaultTaxPct());
++        // A new invoice starts with the client's standard discount, if they have one.
++        BigDecimal defaultDiscountPct = project.getClient().getDefaultDiscountPct();
++        if (defaultDiscountPct.signum() > 0) {
++            invoice.addDiscount(defaultDiscountPct, BigDecimal.ZERO);
++        }
+         Invoice saved = invoices.save(invoice);
+         return InvoiceResponse.from(saved, BigDecimal.ZERO);
+     }
+diff --git a/src/main/resources/db/migration/V52__client_default_discount.sql b/src/main/resources/db/migration/V52__client_default_discount.sql
+new file mode 100644
+index 0000000..34cbccf
+--- /dev/null
++++ b/src/main/resources/db/migration/V52__client_default_discount.sql
+@@ -0,0 +1,3 @@
++-- A client can have a standard discount, a percentage that each new invoice for them starts with
++-- applied. Existing clients have none.
++ALTER TABLE client ADD COLUMN default_discount_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
