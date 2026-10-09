@@ -136,32 +136,32 @@ public class TestSupportController {
                 lineItems = List.of(Map.of("description", InvoiceRequest.SINGLE_AMOUNT_DESCRIPTION,
                         "qty", 1, "unitPrice", i.get("amount")));
             }
-            BigDecimal amount = BigDecimal.ZERO;
-            BigDecimal taxable = BigDecimal.ZERO;
+            BigDecimal discountPct = i.get("discountPct") == null ? BigDecimal.ZERO
+                    : new BigDecimal(i.get("discountPct").toString());
+            BigDecimal taxPct = i.get("taxPct") == null ? BigDecimal.ZERO
+                    : new BigDecimal(i.get("taxPct").toString());
+            BigDecimal levyPct = i.get("levyPct") == null ? BigDecimal.ZERO
+                    : new BigDecimal(i.get("levyPct").toString());
+            // Each line is rounded to the cent first and the rounded lines are added up. A discount takes a
+            // percentage off the subtotal; sales tax and a levy each add their percentage of every taxable
+            // line after its discount, rounded per line and then added up. The amount is the discounted
+            // subtotal plus the tax plus the levy.
+            BigDecimal subtotal = BigDecimal.ZERO.setScale(2);
+            BigDecimal tax = BigDecimal.ZERO.setScale(2);
+            BigDecimal levy = BigDecimal.ZERO.setScale(2);
             for (Map<String, Object> l : lineItems) {
                 BigDecimal line = new BigDecimal(l.get("qty").toString())
                         .multiply(new BigDecimal(l.get("unitPrice").toString())).setScale(2, RoundingMode.HALF_UP);
-                amount = amount.add(line);
+                subtotal = subtotal.add(line);
                 if (!Boolean.TRUE.equals(l.get("taxExempt"))) {
-                    taxable = taxable.add(line);
+                    BigDecimal base = line.subtract(
+                            line.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+                    tax = tax.add(base.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+                    levy = levy.add(base.multiply(levyPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
                 }
             }
-            // A discount takes a percentage off the line items' subtotal, then sales tax adds a percentage
-            // of what is left of the taxable lines only, and a levy adds its own percentage of that same taxable
-            // base; the amount is the discounted subtotal plus the tax plus the levy.
-            BigDecimal subtotal = amount.setScale(2, RoundingMode.HALF_UP);
-            BigDecimal discountPct = i.get("discountPct") == null ? BigDecimal.ZERO
-                    : new BigDecimal(i.get("discountPct").toString());
             BigDecimal discount = subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
             BigDecimal discounted = subtotal.subtract(discount);
-            BigDecimal taxPct = i.get("taxPct") == null ? BigDecimal.ZERO
-                    : new BigDecimal(i.get("taxPct").toString());
-            BigDecimal taxableBase = taxable.subtract(
-                    taxable.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
-            BigDecimal tax = taxableBase.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            BigDecimal levyPct = i.get("levyPct") == null ? BigDecimal.ZERO
-                    : new BigDecimal(i.get("levyPct").toString());
-            BigDecimal levy = taxableBase.multiply(levyPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
             // An invoice for a tax-inclusive client already has the taxes inside its prices, so its amount is
             // just the discounted subtotal.
             long projectId = ((Number) i.get("projectId")).longValue();

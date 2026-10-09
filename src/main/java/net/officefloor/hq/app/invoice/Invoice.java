@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 import net.officefloor.hq.app.project.Project;
 
 /**
@@ -27,6 +28,10 @@ import net.officefloor.hq.app.project.Project;
  * their sum as a discount, then add a percentage sales tax on what is left of the taxable lines only
  * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
  * its stored amount is always that subtotal less the discount plus the tax plus the levy.
+ * <p>
+ * Every figure is worked out line by line: each line is rounded to the cent first and the rounded lines
+ * are then added up, and the tax and levy are likewise worked out and rounded on each taxable line before
+ * being added up, so the totals are sums of rounded lines rather than a rounded sum.
  * <p>
  * A tax-inclusive invoice (for a client whose prices already include tax) instead works the tax and
  * levy back out of the taxable lines after the discount: they are inside the price, so its amount is
@@ -109,10 +114,9 @@ public class Invoice {
         return discountPct;
     }
 
-    /** What the line items add up to, before any discount. */
+    /** What the line items add up to, before any discount: the sum of each line rounded to the cent. */
     public BigDecimal getSubtotal() {
-        return lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
+        return lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /** How much the discount takes off the subtotal, to the cent. */
@@ -140,9 +144,12 @@ public class Invoice {
         return taxInclusive ? gross.subtract(getTax()).subtract(getLevy()) : gross;
     }
 
-    /** How much sales tax is added on the taxable base (or is inside it, when tax-inclusive), to the cent. */
+    /**
+     * How much sales tax is added on the taxable base (or is inside it, when tax-inclusive): the tax on
+     * each taxable line rounded to the cent, added up.
+     */
     public BigDecimal getTax() {
-        return taxInclusive ? includedIn(getDiscountedTaxable(), taxPct) : taxOn(getTaxableBase());
+        return sumOverTaxableLines(this::taxOn);
     }
 
     /** The levy (second tax) percentage added on top of the sales tax; zero when there is no levy. */
@@ -150,16 +157,24 @@ public class Invoice {
         return levyPct;
     }
 
-    /** How much levy is added on the taxable base (or is inside it, when tax-inclusive), to the cent. */
+    /**
+     * How much levy is added on the taxable base (or is inside it, when tax-inclusive): the levy on each
+     * taxable line rounded to the cent, added up.
+     */
     public BigDecimal getLevy() {
-        return taxInclusive ? includedIn(getDiscountedTaxable(), levyPct) : percentOf(getTaxableBase(), levyPct);
+        return sumOverTaxableLines(this::levyOn);
     }
 
-    /** The taxable lines (leaving out tax-free ones) less the discount taken off them, to the cent. */
+    /** The taxable lines (leaving out tax-free ones), each less the discount taken off it, added up. */
     private BigDecimal getDiscountedTaxable() {
-        BigDecimal taxable = lineItems.stream().filter(l -> !l.isTaxExempt()).map(InvoiceLineItem::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
-        return taxable.subtract(discountOn(taxable));
+        return sumOverTaxableLines(line -> line);
+    }
+
+    /** Works a figure out on each taxable line after its discount, to the cent, and adds them up. */
+    private BigDecimal sumOverTaxableLines(UnaryOperator<BigDecimal> perLine) {
+        return lineItems.stream().filter(l -> !l.isTaxExempt()).map(InvoiceLineItem::getAmount)
+                .map(amount -> perLine.apply(amount.subtract(discountOn(amount))))
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /**
@@ -247,8 +262,14 @@ public class Invoice {
         return subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
-    private BigDecimal taxOn(BigDecimal taxableBase) {
-        return percentOf(taxableBase, taxPct);
+    /** The sales tax on one discounted taxable line (or inside it, when tax-inclusive), to the cent. */
+    private BigDecimal taxOn(BigDecimal line) {
+        return taxInclusive ? includedIn(line, taxPct) : percentOf(line, taxPct);
+    }
+
+    /** The levy on one discounted taxable line (or inside it, when tax-inclusive), to the cent. */
+    private BigDecimal levyOn(BigDecimal line) {
+        return taxInclusive ? includedIn(line, levyPct) : percentOf(line, levyPct);
     }
 
     private static BigDecimal percentOf(BigDecimal base, BigDecimal pct) {

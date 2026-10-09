@@ -34,7 +34,7 @@ public class InvoiceLineItem {
     @Column(length = 50)
     private String unit;
 
-    @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
+    @Column(name = "unit_price", nullable = false, precision = 14, scale = 4)
     private BigDecimal unitPrice;
 
     @Column(name = "tax_exempt", nullable = false)
@@ -91,7 +91,7 @@ public class InvoiceLineItem {
         return taxExempt;
     }
 
-    /** What this line charges: quantity times unit price, to the cent. */
+    /** What this line charges: quantity times unit price, rounded to the cent on its own before lines are added up. */
     public BigDecimal getAmount() {
         return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
     }

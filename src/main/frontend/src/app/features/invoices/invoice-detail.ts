@@ -9,6 +9,8 @@ import { InvoicePayments } from '../payments/invoice-payments';
 import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+// A unit price may be a fraction of a cent; each line is rounded to the cent on its own.
+const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 
 // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
 // amount, their subtotal, any percentage discount, the taxable amount (leaving out tax-free lines), any
@@ -113,7 +115,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                       type="number"
                       inputmode="decimal"
                       min="0.01"
-                      step="0.01"
+                      step="0.0001"
                       [formControl]="editForm.controls.unitPrice"
                       data-testid="lineitem-edit-unitprice"
                       aria-label="Unit price"
@@ -145,8 +147,8 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                   </td>
                   <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
                   <td data-testid="lineitem-unit">{{ l.unit ?? '' }}</td>
-                  <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
-                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice) / 100 | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: inv.currency : 'symbol' : '1.2-4' : 'en-US' }}</td>
+                  <td data-testid="lineitem-amount">{{ l.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
                   @if (inv.status === 'DRAFT') {
                     <td>
                       <button
@@ -389,7 +391,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
               type="number"
               inputmode="decimal"
               min="0.01"
-              step="0.01"
+              step="0.0001"
               formControlName="unitPrice"
               data-testid="lineitem-form-unitprice"
               [attr.aria-invalid]="invalid('unitPrice')"
@@ -397,7 +399,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             />
             @if (invalid('unitPrice')) {
               <p id="lineitem-unitprice-error" role="alert" data-testid="lineitem-form-unitprice-error">
-                Enter a price greater than zero with at most two decimal places.
+                Enter a price greater than zero with at most four decimal places.
               </p>
             }
           </div>
@@ -441,9 +443,10 @@ export class InvoiceDetailPage {
     stream: ({ params }) => this.service.get(params.projectId, params.invoiceId),
   });
 
-  // Work in whole cents so the total is exact rather than accumulating floating-point error.
+  // Work in whole cents (and ten-thousandths of a unit price) so the line is exact rather than
+  // accumulating floating-point error; each line is rounded to the cent on its own.
   protected lineCents(qty: number, unitPrice: number): number {
-    return Math.round(Math.round(qty * 100) * Math.round(unitPrice * 100) / 100);
+    return Math.round((Math.round(qty * 100) * Math.round(unitPrice * 10000)) / 10000);
   }
 
   protected readonly discountSaving = signal(false);
@@ -570,7 +573,7 @@ export class InvoiceDetailPage {
     description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
     unit: ['', [Validators.maxLength(50)]],
-    unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+    unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(FOUR_DECIMALS)]],
     taxExempt: false,
   });
 
@@ -610,7 +613,7 @@ export class InvoiceDetailPage {
     description: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(255)]],
     qty: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
     unit: ['', [Validators.maxLength(50)]],
-    unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+    unitPrice: ['', [Validators.required, Validators.min(0.01), Validators.pattern(FOUR_DECIMALS)]],
     taxExempt: false,
   });
 
