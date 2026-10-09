@@ -9,10 +9,18 @@ export interface Invoice {
   projectId: number;
   amount: number;
   status: InvoiceStatus;
+  /** ISO date (yyyy-MM-dd) the invoice was issued. */
+  issuedDate: string;
+  /** ISO date (yyyy-MM-dd) payment is due. */
+  dueDate: string;
 }
 
 export interface NewInvoice {
   amount: number;
+  /** Defaults to today on the server when omitted. */
+  issuedDate?: string;
+  /** Defaults to 30 days after the issue date on the server when omitted. */
+  dueDate?: string;
 }
 
 @Injectable({ providedIn: 'root' })

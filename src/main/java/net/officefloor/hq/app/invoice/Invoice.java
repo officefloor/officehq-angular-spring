@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import net.officefloor.hq.app.project.Project;
 
 /** An invoice raised against a project. */
@@ -34,12 +35,20 @@ public class Invoice {
     @Column(nullable = false, length = 16)
     private InvoiceStatus status = InvoiceStatus.UNPAID;
 
+    @Column(name = "issued_date", nullable = false)
+    private LocalDate issuedDate;
+
+    @Column(name = "due_date", nullable = false)
+    private LocalDate dueDate;
+
     protected Invoice() {
     }
 
-    public Invoice(Project project, BigDecimal amount) {
+    public Invoice(Project project, BigDecimal amount, LocalDate issuedDate, LocalDate dueDate) {
         this.project = project;
         this.amount = amount;
+        this.issuedDate = issuedDate;
+        this.dueDate = dueDate;
     }
 
     public Long getId() {
@@ -56,6 +65,14 @@ public class Invoice {
 
     public InvoiceStatus getStatus() {
         return status;
+    }
+
+    public LocalDate getIssuedDate() {
+        return issuedDate;
+    }
+
+    public LocalDate getDueDate() {
+        return dueDate;
     }
 
     /** Marks this invoice as paid. */

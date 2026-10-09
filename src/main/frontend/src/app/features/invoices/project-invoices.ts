@@ -1,11 +1,23 @@
 import { CurrencyPipe } from '@angular/common';
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
-import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  AbstractControl,
+  NonNullableFormBuilder,
+  ReactiveFormsModule,
+  ValidationErrors,
+  Validators,
+} from '@angular/forms';
 import { InvoiceService } from './invoice.service';
 
-// A project's invoices: lists them, shows what they add up to, adds a new one by amount, and marks
-// one as paid.
+// ISO yyyy-MM-dd strings compare correctly as plain strings.
+function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+  const { issuedDate, dueDate } = group.value as { issuedDate?: string; dueDate?: string };
+  return issuedDate && dueDate && dueDate < issuedDate ? { dueBeforeIssued: true } : null;
+}
+
+// A project's invoices: lists them with their issue and due dates, shows what they add up to, adds a
+// new one, and marks one as paid.
 @Component({
   selector: 'app-project-invoices',
   imports: [ReactiveFormsModule, CurrencyPipe],
@@ -33,6 +45,26 @@ import { InvoiceService } from './invoice.service';
             </p>
           }
         </div>
+        <div>
+          <label for="invoice-issued">Issued (optional, defaults to today)</label>
+          <input id="invoice-issued" type="date" formControlName="issuedDate" data-testid="invoice-form-issued" />
+        </div>
+        <div>
+          <label for="invoice-due">Due (optional, defaults to 30 days after issue)</label>
+          <input
+            id="invoice-due"
+            type="date"
+            formControlName="dueDate"
+            data-testid="invoice-form-due"
+            [attr.aria-invalid]="showDueError()"
+            [attr.aria-describedby]="showDueError() ? 'invoice-due-error' : null"
+          />
+          @if (showDueError()) {
+            <p id="invoice-due-error" role="alert" data-testid="invoice-form-due-error">
+              The due date cannot be before the issue date.
+            </p>
+          }
+        </div>
         <button type="submit" data-testid="invoice-form-submit" [disabled]="saving()">
           Add invoice
         </button>
@@ -53,6 +85,8 @@ import { InvoiceService } from './invoice.service';
               <th scope="col">Invoice</th>
               <th scope="col">Amount</th>
               <th scope="col">Status</th>
+              <th scope="col">Issued</th>
+              <th scope="col">Due</th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
@@ -62,6 +96,8 @@ import { InvoiceService } from './invoice.service';
                 <td data-testid="invoice-id">#{{ i.id }}</td>
                 <td data-testid="invoice-amount">{{ i.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
                 <td data-testid="invoice-status">{{ i.status }}</td>
+                <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
+                <td data-testid="invoice-due">{{ i.dueDate }}</td>
                 <td>
                   @if (i.status === 'UNPAID') {
                     <button
@@ -82,7 +118,7 @@ import { InvoiceService } from './invoice.service';
             <tr>
               <th scope="row">Total</th>
               <td data-testid="project-invoices-total">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
-              <td colspan="2"></td>
+              <td colspan="4"></td>
             </tr>
           </tfoot>
         </table>
@@ -114,12 +150,21 @@ export class ProjectInvoices {
   protected readonly paying = signal<number | null>(null);
   protected readonly payError = signal<string | null>(null);
 
-  protected readonly form = inject(NonNullableFormBuilder).group({
-    amount: [
-      '',
-      [Validators.required, Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)],
-    ],
-  });
+  protected readonly form = inject(NonNullableFormBuilder).group(
+    {
+      amount: [
+        '',
+        [Validators.required, Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)],
+      ],
+      issuedDate: [''],
+      dueDate: [''],
+    },
+    { validators: dueNotBeforeIssued },
+  );
+
+  protected showDueError(): boolean {
+    return this.form.hasError('dueBeforeIssued') && this.form.controls.dueDate.dirty;
+  }
 
   protected showError(): boolean {
     const control = this.form.controls.amount;
@@ -133,8 +178,13 @@ export class ProjectInvoices {
     }
     this.saving.set(true);
     this.saveError.set(null);
-    const amount = Number(this.form.getRawValue().amount);
-    this.service.create(this.projectId(), { amount }).subscribe({
+    const { amount, issuedDate, dueDate } = this.form.getRawValue();
+    const invoice = {
+      amount: Number(amount),
+      ...(issuedDate ? { issuedDate } : {}),
+      ...(dueDate ? { dueDate } : {}),
+    };
+    this.service.create(this.projectId(), invoice).subscribe({
       next: (created) => {
         this.invoices.update((list) => [...(list ?? []), created]);
         this.form.reset();

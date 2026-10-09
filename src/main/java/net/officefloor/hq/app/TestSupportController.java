@@ -1,8 +1,11 @@
 package net.officefloor.hq.app;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.invoice.InvoiceRequest;
+import net.officefloor.hq.app.invoice.InvoiceStatus;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,15 +63,31 @@ public class TestSupportController {
                     ((Number) p.get("clientId")).longValue());
         }
         for (Map<String, Object> i : rows(fixture, "invoices")) {
-            jdbc.update("INSERT INTO invoice (id, project_id, amount, status) VALUES (?, ?, ?, ?)",
+            LocalDate issued = i.get("issuedDate") == null ? LocalDate.now()
+                    : LocalDate.parse(i.get("issuedDate").toString());
+            LocalDate due = i.get("dueDate") == null ? issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
+                    : LocalDate.parse(i.get("dueDate").toString());
+            jdbc.update("INSERT INTO invoice (id, project_id, amount, status, issued_date, due_date)"
+                    + " VALUES (?, ?, ?, ?, ?, ?)",
                     ((Number) i.get("id")).longValue(), ((Number) i.get("projectId")).longValue(),
                     new BigDecimal(i.get("amount").toString()),
-                    i.getOrDefault("status", "UNPAID"));
+                    seedStatus(i.get("status")), issued, due);
         }
         // Continue generated ids after the explicitly seeded ones.
         restartIdentity("client");
         restartIdentity("project");
         restartIdentity("invoice");
+    }
+
+    /**
+     * Fixtures may describe an issued-but-unpaid invoice as "SENT"; this domain models that state
+     * as UNPAID.
+     */
+    private static String seedStatus(Object status) {
+        if (status == null || "SENT".equals(status)) {
+            return InvoiceStatus.UNPAID.name();
+        }
+        return status.toString();
     }
 
     private void restartIdentity(String table) {

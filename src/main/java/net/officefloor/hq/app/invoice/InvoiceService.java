@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.invoice;
 
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.project.Project;
@@ -34,7 +35,12 @@ public class InvoiceService {
     public InvoiceResponse create(Long projectId, InvoiceRequest request) {
         Project project = projects.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project"));
-        Invoice saved = invoices.save(new Invoice(project, request.amount()));
+        LocalDate issued = request.issuedDate() != null ? request.issuedDate() : LocalDate.now();
+        LocalDate due = request.dueDate() != null ? request.dueDate() : issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS);
+        if (due.isBefore(issued)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Due date must not be before the issue date");
+        }
+        Invoice saved = invoices.save(new Invoice(project, request.amount(), issued, due));
         return InvoiceResponse.from(saved);
     }
 
