@@ -117,6 +117,12 @@ import { Client, ClientService } from './client.service';
           Tax exempt (no tax on any invoice)
         </label>
       </div>
+      <div>
+        <label>
+          <input type="checkbox" formControlName="keyAccount" data-testid="client-edit-form-key-account" />
+          Key account
+        </label>
+      </div>
       <button type="submit" data-testid="client-edit-form-submit" [disabled]="saving()">Save</button>
       <button type="button" data-testid="client-edit-form-cancel" (click)="cancelled.emit()">Cancel</button>
       @if (saveError()) {
@@ -153,6 +159,7 @@ export class ClientEditForm implements OnInit {
     billingAddress: ['', Validators.maxLength(500)],
     taxInclusive: false,
     taxExempt: false,
+    keyAccount: false,
   });
 
   constructor() {
@@ -160,8 +167,8 @@ export class ClientEditForm implements OnInit {
   }
 
   ngOnInit(): void {
-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt } = this.client();
-    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt });
+    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount } = this.client();
+    this.form.setValue({ name, email, phone: phone ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt, keyAccount });
   }
 
   protected showError(field: 'name' | 'email' | 'phone' | 'taxNumber' | 'billingAddress'): boolean {
@@ -174,10 +181,10 @@ export class ClientEditForm implements OnInit {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt } = this.form.getRawValue();
+    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt }).subscribe({
+    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount }).subscribe({
       next: (updated) => {
         this.saving.set(false);
         this.saved.emit(updated);

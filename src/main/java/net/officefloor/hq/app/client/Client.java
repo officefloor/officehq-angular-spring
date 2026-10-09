@@ -42,6 +42,9 @@ public class Client {
     /** Whether the client is tax exempt, so none of their invoices carry any tax whatever the lines say. */
     private boolean taxExempt;
 
+    /** Whether the client is one of the office's key accounts, marked out wherever they are listed. */
+    private boolean keyAccount;
+
     /** The currency the client is billed in; all of their money is in it. */
     @Enumerated(EnumType.STRING)
     private Currency currency = Currency.USD;
@@ -109,6 +112,14 @@ public class Client {
 
     public void setTaxExempt(boolean taxExempt) {
         this.taxExempt = taxExempt;
+    }
+
+    public boolean isKeyAccount() {
+        return keyAccount;
+    }
+
+    public void setKeyAccount(boolean keyAccount) {
+        this.keyAccount = keyAccount;
     }
 
     public boolean isArchived() {

@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 
 /**
  * Payload to create a client, or to correct an existing client's name, email, phone number, tax number and billing address,
- * whether their prices already include tax and whether they are tax exempt (each left as it is when not given).
+ * whether their prices already include tax and whether they are tax exempt and whether they are a key account (each left as it is when not given).
  */
 public record ClientRequest(
         @NotBlank @Size(max = 255) String name,
@@ -15,7 +15,8 @@ public record ClientRequest(
         @Size(max = 50) String taxNumber,
         @Size(max = 500) String billingAddress,
         Boolean taxInclusive,
-        Boolean taxExempt) {
+        Boolean taxExempt,
+        Boolean keyAccount) {
 
     /** Requires a dotted domain, which plain {@code @Email} does not (it accepts {@code a@b}). */
     public static final String EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";

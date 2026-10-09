@@ -21,6 +21,8 @@ export interface Client {
   taxInclusive: boolean;
   /** Whether the client is tax exempt, so none of their invoices carry any tax whatever the lines say. */
   taxExempt: boolean;
+  /** Whether the client is one of the office's key accounts, marked out wherever they are listed. */
+  keyAccount: boolean;
   archived: boolean;
   /** The client's main contact; null until one is chosen. */
   primaryContact: { id: number; name: string } | null;

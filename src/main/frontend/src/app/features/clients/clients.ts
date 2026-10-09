@@ -9,10 +9,21 @@ import { Client, ClientService } from './client.service';
 // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
 // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
 // list and search unless the archived toggle is on, where it can be restored. A client's name or email
-// can be corrected in place from its row. The list can be sorted by name or by how much each client owes.
+// can be corrected in place from its row. Key accounts carry a marker beside their name. The list can be sorted by name or by how much each client owes.
 @Component({
   selector: 'app-clients',
   imports: [CurrencyPipe, ReactiveFormsModule, RouterLink, ClientEditForm],
+  styles: `
+    .key-account {
+      margin-inline-start: 0.5em;
+      padding: 0 0.4em;
+      border: 1px solid #7a5200;
+      border-radius: 0.25em;
+      color: #5c3d00;
+      background: #fff4d6;
+      font-size: 0.85em;
+    }
+  `,
   template: `
     <h1>Clients</h1>
 
@@ -118,6 +129,12 @@ import { Client, ClientService } from './client.service';
           Tax exempt (no tax on any invoice)
         </label>
       </div>
+      <div>
+        <label>
+          <input type="checkbox" formControlName="keyAccount" data-testid="client-form-key-account" />
+          Key account
+        </label>
+      </div>
       <button type="submit" data-testid="client-form-submit" [disabled]="saving()">Add client</button>
       @if (saveError()) {
         <p role="alert" data-testid="client-form-error">{{ saveError() }}</p>
@@ -179,6 +196,9 @@ import { Client, ClientService } from './client.service';
               <tr [attr.data-testid]="'client-row-' + c.id">
                 <td data-testid="client-name">
                   {{ c.name }}
+                  @if (c.keyAccount) {
+                    <span class="key-account" data-testid="client-key-account">Key account</span>
+                  }
                   @if (c.archived) {
                     <span [attr.data-testid]="'client-archived-' + c.id">(archived)</span>
                   }
@@ -275,6 +295,7 @@ export class Clients {
     billingAddress: ['', Validators.maxLength(500)],
     taxInclusive: false,
     taxExempt: false,
+    keyAccount: false,
   });
 
   constructor() {
@@ -299,10 +320,10 @@ export class Clients {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt } = this.form.getRawValue();
+    const { name, email, phone, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt }).subscribe({
+    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created]);
         this.form.reset();

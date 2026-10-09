@@ -76,10 +76,11 @@ public class TestSupportController {
             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
         }
         for (Map<String, Object> c : rows(fixture, "clients")) {
-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, archived, currency)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, key_account, archived, currency)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"),
                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
+                    Boolean.TRUE.equals(c.get("keyAccount")),
                     Boolean.TRUE.equals(c.get("archived")),
                     c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString());
         }
