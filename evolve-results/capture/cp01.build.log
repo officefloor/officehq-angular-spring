@@ -1,0 +1,13 @@
+$ bin/build
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610100208/gated-chain1/.run/pw-artifacts
+
+Running 2 tests using 1 worker
+
+[1A[2K[1/2] [chromium] › cp01_clients.spec.ts:18:7 › clients › lists seeded clients
+[1A[2K[2/2] [chromium] › cp01_clients.spec.ts:35:7 › clients › creates a client
+[1A[2K  2 passed (1.7s)

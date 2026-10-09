@@ -1,0 +1,400 @@
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index 19e0ad8..93a23c1 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -9,4 +9,9 @@ export const routes: Routes = [
+     data: { section: 'home', label: 'Home', order: 0 },
+     loadComponent: () => import('./features/home/home').then((m) => m.Home),
+   },
++  {
++    path: 'clients',
++    data: { section: 'clients', label: 'Clients', order: 1 },
++    loadComponent: () => import('./features/clients/clients').then((m) => m.Clients),
++  },
+ ];
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+new file mode 100644
+index 0000000..4eb3b04
+--- /dev/null
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -0,0 +1,24 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++export interface Client {
++  id: number;
++  name: string;
++  email: string;
++}
++
++export type NewClient = Omit<Client, 'id'>;
++
++@Injectable({ providedIn: 'root' })
++export class ClientService {
++  private readonly http = inject(HttpClient);
++
++  list(): Observable<Client[]> {
++    return this.http.get<Client[]>('/api/clients');
++  }
++
++  create(client: NewClient): Observable<Client> {
++    return this.http.post<Client>('/api/clients', client);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+new file mode 100644
+index 0000000..e532e46
+--- /dev/null
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -0,0 +1,121 @@
++import { Component, inject, signal } from '@angular/core';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { Client, ClientService } from './client.service';
++
++// Clients page: add a client (name + email) and list all clients.
++@Component({
++  selector: 'app-clients',
++  imports: [ReactiveFormsModule],
++  template: `
++    <h1>Clients</h1>
++
++    <form [formGroup]="form" (ngSubmit)="submit()" data-testid="client-form" novalidate>
++      <div>
++        <label for="client-name">Name</label>
++        <input
++          id="client-name"
++          type="text"
++          formControlName="name"
++          autocomplete="organization"
++          data-testid="client-form-name"
++          [attr.aria-invalid]="showError('name')"
++          [attr.aria-describedby]="showError('name') ? 'client-name-error' : null"
++        />
++        @if (showError('name')) {
++          <p id="client-name-error" role="alert" data-testid="client-form-name-error">
++            Name is required.
++          </p>
++        }
++      </div>
++      <div>
++        <label for="client-email">Email</label>
++        <input
++          id="client-email"
++          type="email"
++          formControlName="email"
++          autocomplete="email"
++          data-testid="client-form-email"
++          [attr.aria-invalid]="showError('email')"
++          [attr.aria-describedby]="showError('email') ? 'client-email-error' : null"
++        />
++        @if (showError('email')) {
++          <p id="client-email-error" role="alert" data-testid="client-form-email-error">
++            Enter a valid email address.
++          </p>
++        }
++      </div>
++      <button type="submit" data-testid="client-form-submit" [disabled]="saving()">Add client</button>
++      @if (saveError()) {
++        <p role="alert" data-testid="client-form-error">{{ saveError() }}</p>
++      }
++    </form>
++
++    @if (clients().length === 0) {
++      <p data-testid="clients-empty">No clients yet.</p>
++    } @else {
++      <table data-testid="clients-table">
++        <caption>All clients</caption>
++        <thead>
++          <tr>
++            <th scope="col">Name</th>
++            <th scope="col">Email</th>
++          </tr>
++        </thead>
++        <tbody>
++          @for (c of clients(); track c.id) {
++            <tr [attr.data-testid]="'client-row-' + c.id">
++              <td data-testid="client-name">{{ c.name }}</td>
++              <td data-testid="client-email">{{ c.email }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    }
++  `,
++})
++export class Clients {
++  private readonly service = inject(ClientService);
++
++  protected readonly clients = signal<Client[]>([]);
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    name: ['', [Validators.required, Validators.maxLength(255)]],
++    email: ['', [Validators.required, Validators.email, Validators.maxLength(255)]],
++  });
++
++  constructor() {
++    this.load();
++  }
++
++  protected showError(field: 'name' | 'email'): boolean {
++    const control = this.form.controls[field];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    const { name, email } = this.form.getRawValue();
++    this.saving.set(true);
++    this.saveError.set(null);
++    this.service.create({ name: name.trim(), email: email.trim() }).subscribe({
++      next: (created) => {
++        this.clients.update((list) => [...list, created]);
++        this.form.reset();
++        this.saving.set(false);
++      },
++      error: () => {
++        this.saveError.set('Could not save the client. Please try again.');
++        this.saving.set(false);
++      },
++    });
++  }
++
++  private load(): void {
++    this.service.list().subscribe((list) => this.clients.set(list));
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index ec8c4d2..a4e3e8a 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -1,7 +1,10 @@
+ package net.officefloor.hq.app;
+ 
++import java.util.List;
+ import java.util.Map;
+ import org.springframework.context.annotation.Profile;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -18,21 +21,37 @@ import org.springframework.web.bind.annotation.RestController;
+ public class TestSupportController {
+ 
+     private final Audit audit;
++    private final JdbcTemplate jdbc;
+ 
+-    public TestSupportController(Audit audit) {
++    public TestSupportController(Audit audit, JdbcTemplate jdbc) {
+         this.audit = audit;
++        this.jdbc = jdbc;
+     }
+ 
+     /** Truncate all domain tables and clear the audit file so each spec starts clean. */
+     @PostMapping("/reset")
++    @Transactional
+     public void reset() {
+         audit.clear();
+-        // TODO: TRUNCATE the domain tables that currently exist (inject a JdbcTemplate/repo).
++        jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
+     }
+ 
+     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
+     @PostMapping("/seed")
++    @Transactional
+     public void seed(@RequestBody Map<String, Object> fixture) {
+-        // TODO: insert rows for the fixture.
++        for (Map<String, Object> c : rows(fixture, "clients")) {
++            jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
++                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"));
++        }
++        // Continue generated ids after the explicitly seeded ones.
++        Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM client", Long.class);
++        jdbc.execute("ALTER TABLE client ALTER COLUMN id RESTART WITH " + next);
++    }
++
++    @SuppressWarnings("unchecked")
++    private static List<Map<String, Object>> rows(Map<String, Object> fixture, String key) {
++        Object value = fixture.get(key);
++        return value == null ? List.of() : (List<Map<String, Object>>) value;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+new file mode 100644
+index 0000000..a5aee17
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -0,0 +1,41 @@
++package net.officefloor.hq.app.client;
++
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A client of the office. */
++@Entity
++@Table(name = "client")
++public class Client {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String name;
++
++    private String email;
++
++    protected Client() {
++    }
++
++    public Client(String name, String email) {
++        this.name = name;
++        this.email = email;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+new file mode 100644
+index 0000000..5842ddd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app.client;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/clients")
++public class ClientController {
++
++    private final ClientService service;
++
++    public ClientController(ClientService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<ClientResponse> list() {
++        return service.list();
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public ClientResponse create(@Valid @RequestBody ClientRequest request) {
++        return service.create(request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+new file mode 100644
+index 0000000..468b90b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.client;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface ClientRepository extends JpaRepository<Client, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+new file mode 100644
+index 0000000..0fdc694
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.client;
++
++import jakarta.validation.constraints.Email;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++
++/** Payload to create a client. */
++public record ClientRequest(
++        @NotBlank @Size(max = 255) String name,
++        @NotBlank @Email @Size(max = 255) String email) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+new file mode 100644
+index 0000000..1c48b8a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.client;
++
++public record ClientResponse(Long id, String name, String email) {
++
++    static ClientResponse from(Client client) {
++        return new ClientResponse(client.getId(), client.getName(), client.getEmail());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+new file mode 100644
+index 0000000..6777622
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -0,0 +1,27 @@
++package net.officefloor.hq.app.client;
++
++import java.util.List;
++import org.springframework.data.domain.Sort;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++@Service
++public class ClientService {
++
++    private final ClientRepository clients;
++
++    public ClientService(ClientRepository clients) {
++        this.clients = clients;
++    }
++
++    @Transactional(readOnly = true)
++    public List<ClientResponse> list() {
++        return clients.findAll(Sort.by("id")).stream().map(ClientResponse::from).toList();
++    }
++
++    @Transactional
++    public ClientResponse create(ClientRequest request) {
++        Client saved = clients.save(new Client(request.name().trim(), request.email().trim()));
++        return ClientResponse.from(saved);
++    }
++}
+diff --git a/src/main/resources/db/migration/V1__create_client.sql b/src/main/resources/db/migration/V1__create_client.sql
+new file mode 100644
+index 0000000..c76f172
+--- /dev/null
++++ b/src/main/resources/db/migration/V1__create_client.sql
+@@ -0,0 +1,5 @@
++CREATE TABLE client (
++    id    BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    name  VARCHAR(255) NOT NULL,
++    email VARCHAR(255) NOT NULL
++);
