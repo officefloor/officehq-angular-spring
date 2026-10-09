@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.Client;
 import net.officefloor.hq.app.client.ClientRepository;
+import net.officefloor.hq.app.creditnote.CreditNoteRepository;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.Project;
 import net.officefloor.hq.app.project.ProjectRepository;
@@ -25,16 +26,18 @@ public class InvoiceService {
     private final InvoiceRepository invoices;
     private final ProjectRepository projects;
     private final PaymentRepository payments;
+    private final CreditNoteRepository creditNotes;
     private final ClientRepository clients;
     private final SettingsService settings;
     private final Audit audit;
 
     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
-            ClientRepository clients, SettingsService settings, Audit audit) {
+            CreditNoteRepository creditNotes, ClientRepository clients, SettingsService settings, Audit audit) {
         this.invoices = invoices;
         this.projects = projects;
         this.clients = clients;
         this.payments = payments;
+        this.creditNotes = creditNotes;
         this.settings = settings;
         this.audit = audit;
     }
@@ -46,8 +49,10 @@ public class InvoiceService {
         }
         List<Invoice> found = invoices.findByProjectIdOrderById(projectId);
         Map<Long, BigDecimal> paid = paidByInvoice(found);
+        Map<Long, BigDecimal> credited = creditedByInvoice(found);
         return found.stream()
-                .map(i -> InvoiceResponse.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                .map(i -> InvoiceResponse.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO),
+                        credited.getOrDefault(i.getId(), BigDecimal.ZERO)))
                 .toList();
     }
 
@@ -62,8 +67,10 @@ public class InvoiceService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
         List<Invoice> found = invoices.findByClientIdWithProject(clientId);
         Map<Long, BigDecimal> paid = paidByInvoice(found);
+        Map<Long, BigDecimal> credited = creditedByInvoice(found);
         List<ClientStatementResponse.Line> lines = found.stream()
-                .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO),
+                        credited.getOrDefault(i.getId(), BigDecimal.ZERO)))
                 .toList();
         return ClientStatementResponse.from(client.getId(), client.getName(), client.getCurrency(), lines);
     }
@@ -73,6 +80,13 @@ public class InvoiceService {
                 : payments.sumAmountByInvoiceIds(found.stream().map(Invoice::getId).toList()).stream()
                         .collect(Collectors.toMap(PaymentRepository.InvoicePaidTotal::getInvoiceId,
                                 PaymentRepository.InvoicePaidTotal::getPaid));
+    }
+
+    private Map<Long, BigDecimal> creditedByInvoice(List<Invoice> found) {
+        return found.isEmpty() ? Map.of()
+                : creditNotes.sumAmountByInvoiceIds(found.stream().map(Invoice::getId).toList()).stream()
+                        .collect(Collectors.toMap(CreditNoteRepository.InvoiceCreditedTotal::getInvoiceId,
+                                CreditNoteRepository.InvoiceCreditedTotal::getCredited));
     }
 
     /**
@@ -107,7 +121,7 @@ public class InvoiceService {
             invoice.addDiscount(defaultDiscountPct, BigDecimal.ZERO);
         }
         Invoice saved = invoices.save(invoice);
-        return InvoiceResponse.from(saved, BigDecimal.ZERO);
+        return InvoiceResponse.from(saved, BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
     /** A single invoice with its line items. */
@@ -257,7 +271,8 @@ public class InvoiceService {
     }
 
     private InvoiceResponse toResponse(Invoice invoice) {
-        return InvoiceResponse.from(invoice, payments.sumAmountByInvoiceId(invoice.getId()));
+        return InvoiceResponse.from(invoice, payments.sumAmountByInvoiceId(invoice.getId()),
+                creditNotes.sumAmountByInvoiceId(invoice.getId()));
     }
 
     private Invoice find(Long projectId, Long invoiceId) {

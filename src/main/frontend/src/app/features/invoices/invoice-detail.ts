@@ -7,6 +7,7 @@ import { Observable } from 'rxjs';
 import { Notes } from '../notes/notes';
 import { InvoicePayments } from '../payments/invoice-payments';
 import { InvoiceCreditNotes } from '../credit-notes/invoice-credit-notes';
+import { CreditNoteService } from '../credit-notes/credit-note.service';
 import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
@@ -704,6 +705,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
         [projectId]="projectIdNumber()"
         [invoiceId]="inv.id"
         [invoiceAmount]="inv.amount"
+        [credited]="credited()"
         [currency]="inv.currency"
         [canRecord]="inv.status === 'SENT' || inv.status === 'PARTIAL'"
         (recorded)="invoice.reload()"
@@ -714,6 +716,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
         [invoiceId]="inv.id"
         [currency]="inv.currency"
         [canIssue]="inv.status !== 'DRAFT' && inv.status !== 'VOID'"
+        (issued)="creditNotes.reload()"
       />
 
       <app-notes [projectId]="projectIdNumber()" [invoiceId]="inv.id" />
@@ -722,6 +725,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 })
 export class InvoiceDetailPage {
   private readonly service = inject(InvoiceService);
+  private readonly creditNoteService = inject(CreditNoteService);
   private readonly injector = inject(Injector);
   private readonly fb = inject(NonNullableFormBuilder);
 
@@ -735,6 +739,17 @@ export class InvoiceDetailPage {
     params: () => ({ projectId: this.projectIdNumber(), invoiceId: Number(this.invoiceId()) }),
     stream: ({ params }) => this.service.get(params.projectId, params.invoiceId),
   });
+
+  // The credit notes reduce what is left to pay alongside the payments.
+  protected readonly creditNotes = rxResource({
+    params: () => ({ projectId: this.projectIdNumber(), invoiceId: Number(this.invoiceId()) }),
+    stream: ({ params }) => this.creditNoteService.list(params.projectId, params.invoiceId),
+  });
+  protected readonly credited = computed(
+    () =>
+      (this.creditNotes.hasValue() ? this.creditNotes.value() : []).reduce((sum, c) => sum + Math.round(c.amount * 100), 0) /
+      100,
+  );
 
   // Work in whole cents (and ten-thousandths of a unit price) so the line is exact rather than
   // accumulating floating-point error; each line, and then its own discount, is rounded to the cent on its own.

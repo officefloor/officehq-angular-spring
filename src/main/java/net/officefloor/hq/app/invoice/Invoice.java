@@ -570,9 +570,9 @@ public class Invoice {
         this.status = InvoiceStatus.VOID;
     }
 
-    /** What is left to pay on this invoice given the total paid against it; nothing once it is void. */
-    public BigDecimal amountDue(BigDecimal paid) {
-        return status == InvoiceStatus.VOID ? BigDecimal.ZERO.setScale(2) : amount.subtract(paid);
+    /** What is left to pay on this invoice given the totals paid and credited against it; nothing once it is void. */
+    public BigDecimal amountDue(BigDecimal paid, BigDecimal credited) {
+        return status == InvoiceStatus.VOID ? BigDecimal.ZERO.setScale(2) : amount.subtract(paid).subtract(credited);
     }
 
     /**

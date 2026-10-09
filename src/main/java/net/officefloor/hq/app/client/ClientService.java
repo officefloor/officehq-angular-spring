@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.contact.ContactRepository;
+import net.officefloor.hq.app.creditnote.CreditNoteRepository;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.payment.PaymentRepository;
@@ -27,15 +28,17 @@ public class ClientService {
     private final ContactRepository contacts;
     private final InvoiceRepository invoices;
     private final PaymentRepository payments;
+    private final CreditNoteRepository creditNotes;
     private final Audit audit;
 
     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
-            InvoiceRepository invoices, PaymentRepository payments, Audit audit) {
+            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes, Audit audit) {
         this.clients = clients;
         this.projects = projects;
         this.contacts = contacts;
         this.invoices = invoices;
         this.payments = payments;
+        this.creditNotes = creditNotes;
         this.audit = audit;
     }
 
@@ -219,7 +222,7 @@ public class ClientService {
 
     /**
      * What each client still owes: what is left to pay on their sent invoices that are not yet fully
-     * paid. Clients owing nothing are left out.
+     * paid, after the payments and credit notes against them. Clients owing nothing are left out.
      */
     private Map<Long, BigDecimal> outstandingByClient() {
         List<InvoiceStatus> owing = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL);
@@ -227,6 +230,8 @@ public class ClientService {
         invoices.sumAmountByStatusInPerClient(owing).forEach(t -> owed.merge(t.getClientId(), t.getTotal(),
                 BigDecimal::add));
         payments.sumAmountByInvoiceStatusInPerClient(owing).forEach(t -> owed.merge(t.getClientId(),
+                t.getTotal().negate(), BigDecimal::add));
+        creditNotes.sumAmountByInvoiceStatusInPerClient(owing).forEach(t -> owed.merge(t.getClientId(),
                 t.getTotal().negate(), BigDecimal::add));
         owed.replaceAll((id, amount) -> amount.setScale(2, RoundingMode.HALF_UP));
         return owed;

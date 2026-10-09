@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.ClientRepository;
+import net.officefloor.hq.app.creditnote.CreditNoteRepository;
 import net.officefloor.hq.app.invoice.Invoice;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
@@ -19,14 +20,16 @@ import org.springframework.web.server.ResponseStatusException;
 public class PaymentService {
 
     private final PaymentRepository payments;
+    private final CreditNoteRepository creditNotes;
     private final InvoiceRepository invoices;
     private final ClientPaymentRepository clientPayments;
     private final ClientRepository clients;
     private final Audit audit;
 
-    public PaymentService(PaymentRepository payments, InvoiceRepository invoices,
+    public PaymentService(PaymentRepository payments, CreditNoteRepository creditNotes, InvoiceRepository invoices,
             ClientPaymentRepository clientPayments, ClientRepository clients, Audit audit) {
         this.payments = payments;
+        this.creditNotes = creditNotes;
         this.invoices = invoices;
         this.clientPayments = clientPayments;
         this.clients = clients;
@@ -41,8 +44,8 @@ public class PaymentService {
 
     /**
      * Records a payment against an invoice that has been sent to the client and is still owing, and
-     * works out the invoice's status from what has now been paid. A payment may not take the total
-     * paid beyond the invoice amount.
+     * works out the invoice's status from what has now been paid and credited. A payment may not take
+     * the total paid and credited beyond the invoice amount.
      */
     @Transactional
     public PaymentResponse record(Long projectId, Long invoiceId, PaymentRequest request) {
@@ -89,12 +92,13 @@ public class PaymentService {
         if (!invoice.getStatus().isOwing()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice is already paid");
         }
-        BigDecimal paid = payments.sumAmountByInvoiceId(invoice.getId()).add(amount);
-        if (paid.compareTo(invoice.getAmount()) > 0) {
+        BigDecimal settled = payments.sumAmountByInvoiceId(invoice.getId())
+                .add(creditNotes.sumAmountByInvoiceId(invoice.getId())).add(amount);
+        if (settled.compareTo(invoice.getAmount()) > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment is more than the balance due");
         }
         Payment saved = payments.saveAndFlush(new Payment(invoice.getId(), amount, date, clientPaymentId));
-        invoice.applyPaidTotal(paid);
+        invoice.applyPaidTotal(settled);
         invoices.flush();
         audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount=" + saved.getAmount().toPlainString());
         return PaymentResponse.from(saved);

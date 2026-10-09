@@ -284,6 +284,12 @@ public class TestSupportController {
                     ((Number) p.get("id")).longValue(), ((Number) p.get("invoiceId")).longValue(),
                     new BigDecimal(p.get("amount").toString()), LocalDate.parse(p.get("date").toString()));
         }
+        for (Map<String, Object> c : rows(fixture, "creditNotes")) {
+            jdbc.update("INSERT INTO credit_note (id, invoice_id, amount, issued_at) VALUES (?, ?, ?, ?)",
+                    ((Number) c.get("id")).longValue(), ((Number) c.get("invoiceId")).longValue(),
+                    new BigDecimal(c.get("amount").toString()),
+                    Timestamp.from(seedInstant(c.get("date").toString())));
+        }
         // Continue generated ids after the explicitly seeded ones.
         restartIdentity("client");
         restartIdentity("contact");
@@ -295,6 +301,7 @@ public class TestSupportController {
         restartIdentity("tag");
         restartIdentity("note");
         restartIdentity("payment");
+        restartIdentity("credit_note");
     }
 
     /** A fixture timestamp, either a full instant or a bare date taken as the start of that day (UTC). */

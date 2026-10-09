@@ -56,10 +56,10 @@ public record ClientStatementResponse(Long clientId, String clientName, Currency
     public record Line(Long id, Long projectId, String projectName, BigDecimal amount, InvoiceStatus status,
             LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue, BigDecimal tax) {
 
-        static Line from(Invoice invoice, BigDecimal paid) {
+        static Line from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
             return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
                     invoice.getAmount(), invoice.getStatus(), invoice.getIssuedDate(), invoice.getDueDate(),
-                    invoice.amountDue(paid), invoice.getTax().add(invoice.getLevy()));
+                    invoice.amountDue(paid, credited), invoice.getTax().add(invoice.getLevy()));
         }
     }
 }

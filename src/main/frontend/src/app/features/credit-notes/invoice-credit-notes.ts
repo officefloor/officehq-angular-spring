@@ -1,6 +1,6 @@
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CreditNoteService } from './credit-note.service';
@@ -88,6 +88,8 @@ export class InvoiceCreditNotes {
   readonly currency = input.required<CurrencyCode>();
   /** Credit notes can be raised once the invoice has been sent, unless it has been cancelled. */
   readonly canIssue = input.required<boolean>();
+  /** Emits once a credit note has been raised, as it changes what is left to pay on the invoice. */
+  readonly issued = output<void>();
 
   protected readonly creditNotes = rxResource({
     params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
@@ -124,6 +126,7 @@ export class InvoiceCreditNotes {
         this.creditNotes.update((list) => [...(list ?? []), created]);
         this.form.reset();
         this.saving.set(false);
+        this.issued.emit();
       },
       error: (err: HttpErrorResponse) => {
         this.saveError.set(

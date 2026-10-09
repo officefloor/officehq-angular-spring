@@ -105,6 +105,8 @@ export class InvoicePayments {
   readonly invoiceId = input.required<number>();
   /** The invoice total, which the payments count down. */
   readonly invoiceAmount = input.required<number>();
+  /** The total of the credit notes raised against the invoice, which also count it down. */
+  readonly credited = input(0);
   /** The currency of the client the job is for; the money shown is in it. */
   readonly currency = input.required<CurrencyCode>();
   /** Payments can be recorded once the invoice has been sent, until it is fully paid. */
@@ -121,7 +123,9 @@ export class InvoicePayments {
   protected readonly paidCents = computed(() =>
     (this.payments.hasValue() ? this.payments.value() : []).reduce((sum, p) => sum + Math.round(p.amount * 100), 0),
   );
-  protected readonly balanceCents = computed(() => Math.round(this.invoiceAmount() * 100) - this.paidCents());
+  protected readonly balanceCents = computed(() =>
+    Math.round(this.invoiceAmount() * 100) - Math.round(this.credited() * 100) - this.paidCents(),
+  );
 
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
