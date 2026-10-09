@@ -1,0 +1,507 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index da0d75d..8c6c785 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -22,6 +22,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // never taxed), the total before tax, and the final total including both taxes (also shown as the total after tax).
+ // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
+ // When the net total comes out under the invoice's minimum charge, the minimum is billed instead and marked as applied.
++// A foreign invoice also shows its total in the home currency, converted at the exchange rate from its issue date.
+ // It also shows the total savings: every line discount and invoice discount added together.
+ // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the set number of days.
+ // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+@@ -334,6 +335,19 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 <td></td>
+               }
+             </tr>
++            @if (inv.currency !== inv.homeCurrency) {
++              <tr>
++                <th scope="row" colspan="5">Total in {{ inv.homeCurrency }} (at the rate on {{ inv.issuedDate }})</th>
++                @if (inv.homeAmount !== null) {
++                  <td data-testid="invoice-home-amount">{{ inv.homeAmount | money: inv.homeCurrency }}</td>
++                } @else {
++                  <td data-testid="invoice-home-amount-missing">No exchange rate</td>
++                }
++                @if (inv.status === 'DRAFT') {
++                  <td></td>
++                }
++              </tr>
++            }
+             <tr>
+               <th scope="row" colspan="5">Total after tax</th>
+               <td data-testid="invoice-total-inc-tax">{{ inv.amount | money: inv.currency }}</td>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index c27acf1..3b6ca71 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -184,6 +184,13 @@ export interface InvoiceDetail extends Invoice {
+   minimumApplied: boolean;
+   /** How much the client saves: the line discounts and the invoice's discounts added together. */
+   totalSavings: number;
++  /** The currency the business keeps its own totals in. */
++  homeCurrency: string;
++  /**
++   * A foreign invoice's amount converted into the home currency at the exchange rate from its issue date;
++   * null when it is already in the home currency or there is no rate for that date.
++   */
++  homeAmount: number | null;
+ }
+ 
+ export interface NewLineItem {
+diff --git a/src/main/frontend/src/app/features/settings/settings.service.ts b/src/main/frontend/src/app/features/settings/settings.service.ts
+index 0b2caeb..bcefaf5 100644
+--- a/src/main/frontend/src/app/features/settings/settings.service.ts
++++ b/src/main/frontend/src/app/features/settings/settings.service.ts
+@@ -6,6 +6,8 @@ import { Observable } from 'rxjs';
+ export interface Settings {
+   /** The sales tax percentage a new invoice starts with. */
+   defaultTaxPct: number;
++  /** The currency foreign invoices are converted into for the business's own totals (read-only). */
++  homeCurrency?: string;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 742d1cb..63f0071 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -68,6 +68,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE fx_rate RESTART IDENTITY");
+             // Back to the standard currencies, each rounding to the cent and shown with two decimals.
+             jdbc.execute("DELETE FROM currency");
+             jdbc.execute("INSERT INTO currency (code, symbol, rounding_step) VALUES ('USD', '$', 0.01), ('EUR', '€', 0.01),"
+@@ -75,7 +76,7 @@ public class TestSupportController {
+         } finally {
+             jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+         }
+-        jdbc.update("UPDATE app_settings SET default_tax_pct = 0 WHERE id = 1");
++        jdbc.update("UPDATE app_settings SET default_tax_pct = 0, home_currency = 'USD' WHERE id = 1");
+     }
+ 
+     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
+@@ -94,6 +95,14 @@ public class TestSupportController {
+                     c.get("roundingStep") == null ? new BigDecimal("0.01") : decimal(c.get("roundingStep")),
+                     c.get("decimals") == null ? 2 : ((Number) c.get("decimals")).intValue());
+         }
++        if (fixture.get("homeCurrency") != null) {
++            jdbc.update("UPDATE app_settings SET home_currency = ? WHERE id = 1", fixture.get("homeCurrency").toString());
++        }
++        // An exchange rate: from its date, one unit of the currency is worth "rate" units of the home currency.
++        for (Map<String, Object> r : rows(fixture, "fxRates")) {
++            jdbc.update("INSERT INTO fx_rate (currency, rate_date, rate) VALUES (?, ?, ?)",
++                    r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
++        }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+             jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct)"
+                     + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/fx/FxRate.java b/src/main/java/net/officefloor/hq/app/fx/FxRate.java
+new file mode 100644
+index 0000000..2fc247b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/fx/FxRate.java
+@@ -0,0 +1,51 @@
++package net.officefloor.hq.app.fx;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * An exchange rate: from its date (until the currency's next rate), one unit of the currency is worth
++ * {@link #getRate()} units of the home currency.
++ */
++@Entity
++@Table(name = "fx_rate")
++public class FxRate {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(nullable = false, length = 3)
++    private String currency;
++
++    @Column(name = "rate_date", nullable = false)
++    private LocalDate rateDate;
++
++    @Column(nullable = false, precision = 19, scale = 6)
++    private BigDecimal rate;
++
++    protected FxRate() {
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getCurrency() {
++        return currency;
++    }
++
++    public LocalDate getRateDate() {
++        return rateDate;
++    }
++
++    public BigDecimal getRate() {
++        return rate;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/fx/FxRateRepository.java b/src/main/java/net/officefloor/hq/app/fx/FxRateRepository.java
+new file mode 100644
+index 0000000..7a7e184
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/fx/FxRateRepository.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.fx;
++
++import java.time.LocalDate;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface FxRateRepository extends JpaRepository<FxRate, Long> {
++
++    /** The currency's rate in effect on the date: its latest rate dated on or before it. */
++    Optional<FxRate> findFirstByCurrencyAndRateDateLessThanEqualOrderByRateDateDesc(String currency, LocalDate date);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/fx/FxRateService.java b/src/main/java/net/officefloor/hq/app/fx/FxRateService.java
+new file mode 100644
+index 0000000..e37ec09
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/fx/FxRateService.java
+@@ -0,0 +1,29 @@
++package net.officefloor.hq.app.fx;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.time.LocalDate;
++import java.util.Optional;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Converts foreign amounts into the home currency at the exchange rate in effect on a given date. */
++@Service
++public class FxRateService {
++
++    private final FxRateRepository rates;
++
++    public FxRateService(FxRateRepository rates) {
++        this.rates = rates;
++    }
++
++    /**
++     * The amount in the home currency, converted at the currency's rate on the date (its latest rate dated
++     * on or before it); empty when the currency has no rate by then.
++     */
++    @Transactional(readOnly = true)
++    public Optional<BigDecimal> toHome(String currency, LocalDate date, BigDecimal amount) {
++        return rates.findFirstByCurrencyAndRateDateLessThanEqualOrderByRateDateDesc(currency, date)
++                .map(r -> amount.multiply(r.getRate()).setScale(2, RoundingMode.HALF_UP));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index c6b50b9..e51521f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -15,7 +15,9 @@ import java.util.List;
+  * must be paid within, the last day to pay, and the reduced amount; null when none is offered), and the
+  * client's tax number (null when the client is not tax registered), the minimum charge, the net total
+  * before it, whether the minimum was billed because the net total came out under it, and the total
+- * savings (the line discounts and the invoice's discounts added together).
++ * savings (the line discounts and the invoice's discounts added together). A foreign invoice also gives
++ * the home currency and its amount converted into it at the exchange rate from the invoice's issue date
++ * (null when the invoice is already in the home currency or there is no rate for that date).
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+@@ -24,14 +26,14 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+         BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
+         InvoiceStatus status, LocalDate issuedDate,
+         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts,
+-        BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings) {
++        BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
++        String homeCurrency, BigDecimal homeAmount) {
+ 
+-    static InvoiceDetailResponse from(Invoice invoice) {
+-        return from(invoice, invoice.getStatus());
+-    }
+-
+-    /** The invoice with the given status, as worked out from what has been paid and credited against it. */
+-    static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status) {
++    /**
++     * The invoice with the given status, as worked out from what has been paid and credited against it, and
++     * its amount in the home currency.
++     */
++    static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status, String homeCurrency, BigDecimal homeAmount) {
+         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
+                 invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
+@@ -46,6 +48,6 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+                 invoice.getDiscounts().stream().map(d -> new InvoiceDiscountResponse(d.getId(), d.getDiscountPct(),
+                         d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList(),
+                 invoice.getMinimumCharge(), invoice.getNetTotal(), invoice.isMinimumApplied(),
+-                invoice.getTotalSavings());
++                invoice.getTotalSavings(), homeCurrency, homeAmount);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index d791a65..c0550de 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -14,6 +14,7 @@ import net.officefloor.hq.app.creditnote.CreditNote;
+ import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+ import net.officefloor.hq.app.deposit.Deposit;
+ import net.officefloor.hq.app.deposit.DepositRepository;
++import net.officefloor.hq.app.fx.FxRateService;
+ import net.officefloor.hq.app.payment.Payment;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.project.Project;
+@@ -39,11 +40,12 @@ public class InvoiceService {
+     private final DepositRepository deposits;
+     private final RefundRepository refunds;
+     private final SettingsService settings;
++    private final FxRateService fxRates;
+     private final Audit audit;
+ 
+     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
+             CreditNoteRepository creditNotes, ClientRepository clients, DepositRepository deposits,
+-            RefundRepository refunds, SettingsService settings, Audit audit) {
++            RefundRepository refunds, SettingsService settings, FxRateService fxRates, Audit audit) {
+         this.invoices = invoices;
+         this.projects = projects;
+         this.clients = clients;
+@@ -52,6 +54,7 @@ public class InvoiceService {
+         this.payments = payments;
+         this.creditNotes = creditNotes;
+         this.settings = settings;
++        this.fxRates = fxRates;
+         this.audit = audit;
+     }
+ 
+@@ -203,7 +206,7 @@ public class InvoiceService {
+     @Transactional(readOnly = true)
+     public InvoiceDetailResponse get(Long projectId, Long invoiceId) {
+         Invoice invoice = find(projectId, invoiceId);
+-        return InvoiceDetailResponse.from(invoice, invoice.statusFor(payments.sumAmountByInvoiceId(invoiceId),
++        return detail(invoice, invoice.statusFor(payments.sumAmountByInvoiceId(invoiceId),
+                 creditNotes.sumAmountByInvoiceId(invoiceId)));
+     }
+ 
+@@ -214,7 +217,7 @@ public class InvoiceService {
+         invoice.addLineItem(request.description().strip(), request.qty(), request.normalizedUnit(), request.unitPrice(),
+                 request.exempt(), request.lineDiscountPct());
+         invoices.flush();
+-        return InvoiceDetailResponse.from(invoice);
++        return detail(invoice);
+     }
+ 
+     /** Changes a line item on a draft invoice and reworks the invoice amount to match. */
+@@ -226,7 +229,7 @@ public class InvoiceService {
+         invoice.updateLineItem(item, request.description().strip(), request.qty(), request.normalizedUnit(),
+                 request.unitPrice(), request.exempt(), request.lineDiscountPct());
+         invoices.flush();
+-        return InvoiceDetailResponse.from(invoice);
++        return detail(invoice);
+     }
+ 
+     /** Removes a line item from a draft invoice and reworks the invoice amount to match. */
+@@ -235,7 +238,7 @@ public class InvoiceService {
+         Invoice invoice = findDraft(projectId, invoiceId);
+         invoice.removeLineItem(findLineItem(invoice, lineItemId));
+         invoices.flush();
+-        return InvoiceDetailResponse.from(invoice);
++        return detail(invoice);
+     }
+ 
+     /** Replaces the discounts on a draft invoice with a single percentage or flat one and reworks the invoice amount to match. */
+@@ -244,7 +247,7 @@ public class InvoiceService {
+         Invoice invoice = findDraft(projectId, invoiceId);
+         invoice.applyDiscount(request.discountPct(), request.flatAmount(), request.discountCap());
+         invoices.flush();
+-        return InvoiceDetailResponse.from(invoice);
++        return detail(invoice);
+     }
+ 
+     /** Adds another percentage or flat discount to a draft invoice and reworks the invoice amount to match. */
+@@ -256,7 +259,7 @@ public class InvoiceService {
+         }
+         invoice.addDiscount(request.discountPct(), request.flatAmount(), request.discountCap());
+         invoices.flush();
+-        return InvoiceDetailResponse.from(invoice);
++        return detail(invoice);
+     }
+ 
+     /** Removes one discount from a draft invoice and reworks the invoice amount to match. */
+@@ -266,7 +269,7 @@ public class InvoiceService {
+         invoice.removeDiscount(invoice.findDiscount(discountId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Discount not found")));
+         invoices.flush();
+-        return InvoiceDetailResponse.from(invoice);
++        return detail(invoice);
+     }
+ 
+     /** Sets the sales tax percentage on a draft invoice and reworks the invoice amount to match. */
+@@ -275,7 +278,7 @@ public class InvoiceService {
+         Invoice invoice = findDraft(projectId, invoiceId);
+         invoice.applyTax(request.taxPct());
+         invoices.flush();
+-        return InvoiceDetailResponse.from(invoice);
++        return detail(invoice);
+     }
+ 
+     /** Sets the levy (second tax) percentage on a draft invoice and reworks the invoice amount to match. */
+@@ -284,7 +287,7 @@ public class InvoiceService {
+         Invoice invoice = findDraft(projectId, invoiceId);
+         invoice.applyLevy(request.levyPct());
+         invoices.flush();
+-        return InvoiceDetailResponse.from(invoice);
++        return detail(invoice);
+     }
+ 
+     /** Sets the flat surcharge on a draft invoice and reworks the invoice amount to match. */
+@@ -293,7 +296,7 @@ public class InvoiceService {
+         Invoice invoice = findDraft(projectId, invoiceId);
+         invoice.applySurcharge(request.surcharge());
+         invoices.flush();
+-        return InvoiceDetailResponse.from(invoice);
++        return detail(invoice);
+     }
+ 
+     /** Sets the minimum charge on a draft invoice and reworks the invoice amount to match. */
+@@ -302,7 +305,7 @@ public class InvoiceService {
+         Invoice invoice = findDraft(projectId, invoiceId);
+         invoice.applyMinimumCharge(request.minimumCharge());
+         invoices.flush();
+-        return InvoiceDetailResponse.from(invoice);
++        return detail(invoice);
+     }
+ 
+     /** Sets the early-payment discount offered on a draft invoice. */
+@@ -311,7 +314,7 @@ public class InvoiceService {
+         Invoice invoice = findDraft(projectId, invoiceId);
+         invoice.applyEarlyPayment(request.earlyPaymentPct(), request.earlyPaymentDays());
+         invoices.flush();
+-        return InvoiceDetailResponse.from(invoice);
++        return detail(invoice);
+     }
+ 
+     /** Sends a draft invoice and records the sending in the audit log. */
+@@ -364,7 +367,7 @@ public class InvoiceService {
+         invoice.markWrittenOff();
+         invoices.flush();
+         audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + balance.setScale(2).toPlainString());
+-        return InvoiceDetailResponse.from(invoice);
++        return detail(invoice);
+     }
+ 
+     private InvoiceResponse toResponse(Invoice invoice) {
+@@ -390,4 +393,20 @@ public class InvoiceService {
+         return invoice.findLineItem(lineItemId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown line item"));
+     }
++
++    private InvoiceDetailResponse detail(Invoice invoice) {
++        return detail(invoice, invoice.getStatus());
++    }
++
++    /**
++     * The invoice in full; a foreign invoice also converted into the home currency at the exchange rate
++     * from its issue date, so a later rate never changes what it was worth.
++     */
++    private InvoiceDetailResponse detail(Invoice invoice, InvoiceStatus status) {
++        String home = settings.homeCurrency();
++        String currency = invoice.getProject().getClient().getCurrency();
++        BigDecimal homeAmount = currency.equals(home) ? null
++                : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount()).orElse(null);
++        return InvoiceDetailResponse.from(invoice, status, home, homeAmount);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/Settings.java b/src/main/java/net/officefloor/hq/app/settings/Settings.java
+index f4e5d9b..38ec6f0 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/Settings.java
++++ b/src/main/java/net/officefloor/hq/app/settings/Settings.java
+@@ -22,6 +22,10 @@ public class Settings {
+     @Column(name = "default_tax_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal defaultTaxPct = BigDecimal.ZERO.setScale(2);
+ 
++    /** The currency foreign invoices are converted into for the business's own totals. */
++    @Column(name = "home_currency", nullable = false, length = 3)
++    private String homeCurrency = "USD";
++
+     protected Settings() {
+     }
+ 
+@@ -29,6 +33,10 @@ public class Settings {
+         return defaultTaxPct;
+     }
+ 
++    public String getHomeCurrency() {
++        return homeCurrency;
++    }
++
+     public void setDefaultTaxPct(BigDecimal defaultTaxPct) {
+         this.defaultTaxPct = defaultTaxPct.setScale(2, RoundingMode.HALF_UP);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java b/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
+index f8fa3d1..abf716a 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
+@@ -2,9 +2,9 @@ package net.officefloor.hq.app.settings;
+ 
+ import java.math.BigDecimal;
+ 
+-public record SettingsResponse(BigDecimal defaultTaxPct) {
++public record SettingsResponse(BigDecimal defaultTaxPct, String homeCurrency) {
+ 
+     public static SettingsResponse from(Settings settings) {
+-        return new SettingsResponse(settings.getDefaultTaxPct());
++        return new SettingsResponse(settings.getDefaultTaxPct(), settings.getHomeCurrency());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 4974ec9..ac6a8d4 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -32,6 +32,12 @@ public class SettingsService {
+         return find().getDefaultTaxPct();
+     }
+ 
++    /** The currency foreign invoices are converted into for the business's own totals. */
++    @Transactional(readOnly = true)
++    public String homeCurrency() {
++        return find().getHomeCurrency();
++    }
++
+     private Settings find() {
+         return settings.findById(Settings.ID)
+                 .orElseThrow(() -> new IllegalStateException("The settings row is missing"));
+diff --git a/src/main/resources/db/migration/V64__home_currency_fx_rates.sql b/src/main/resources/db/migration/V64__home_currency_fx_rates.sql
+new file mode 100644
+index 0000000..69109e3
+--- /dev/null
++++ b/src/main/resources/db/migration/V64__home_currency_fx_rates.sql
+@@ -0,0 +1,17 @@
++-- The home currency foreign invoices are converted into for the business's own totals; existing data
++-- keeps US dollars.
++ALTER TABLE app_settings ADD COLUMN home_currency VARCHAR(3) DEFAULT 'USD' NOT NULL;
++ALTER TABLE app_settings ADD CONSTRAINT app_settings_home_currency_fk FOREIGN KEY (home_currency) REFERENCES currency (code);
++
++-- Exchange rates by date: one unit of the currency is worth this many units of the home currency from
++-- the rate date until the next rate for that currency. An invoice converts at the rate in effect on its
++-- issue date.
++CREATE TABLE fx_rate (
++    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    currency VARCHAR(3) NOT NULL,
++    rate_date DATE NOT NULL,
++    rate DECIMAL(19, 6) NOT NULL,
++    CONSTRAINT fx_rate_currency_fk FOREIGN KEY (currency) REFERENCES currency (code),
++    CONSTRAINT fx_rate_one_per_day UNIQUE (currency, rate_date),
++    CONSTRAINT fx_rate_positive CHECK (rate > 0)
++);

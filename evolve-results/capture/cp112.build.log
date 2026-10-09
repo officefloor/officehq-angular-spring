@@ -1,0 +1,230 @@
+$ bin/build
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610100208/gated-chain1/.run/pw-artifacts
+
+Running 134 tests using 1 worker
+
+[1A[2K[1/134] [chromium] › cp01_clients.spec.ts:7:7 › clients › lists seeded clients, excluding archived
+[1A[2K[2/134] [chromium] › cp01_clients.spec.ts:21:7 › clients › creates a client with a unique email
+[1A[2K[3/134] [chromium] › cp02_client_email_validation.spec.ts:7:7 › client email validation › rejects a blank email
+[1A[2K[4/134] [chromium] › cp02_client_email_validation.spec.ts:20:7 › client email validation › rejects a malformed email
+[1A[2K[5/134] [chromium] › cp02_client_email_validation.spec.ts:33:7 › client email validation › accepts a valid email
+[1A[2K[6/134] [chromium] › cp03_projects.spec.ts:7:7 › projects › lists projects with their client name, excluding archived
+[1A[2K[7/134] [chromium] › cp03_projects.spec.ts:25:7 › projects › creates a project for a client
+[1A[2K[8/134] [chromium] › cp04_project_invoices.spec.ts:8:7 › project invoices › a project shows its invoices and their total
+[1A[2K[9/134] [chromium] › cp04_project_invoices.spec.ts:27:7 › project invoices › adding a line item to a new invoice sets its amount
+[1A[2K[10/134] [chromium] › cp05_invoice_pay_audit.spec.ts:8:7 › invoice payment › recording a full payment marks the invoice paid
+[1A[2K[11/134] [chromium] › cp06_client_search.spec.ts:6:7 › client search › filters clients by name and skips archived matches
+[1A[2K[12/134] [chromium] › cp07_client_detail_projects.spec.ts:7:7 › client detail › lists the client's active projects by default
+[1A[2K[13/134] [chromium] › cp08_dashboard.spec.ts:7:7 › dashboard › shows counts and per-currency outstanding totals
+[1A[2K[14/134] [chromium] › cp09_currency_format.spec.ts:6:7 › currency formatting › invoice amounts and totals show commas
+[1A[2K[15/134] [chromium] › cp10_invoice_amount_positive.spec.ts:7:7 › invoice amount validation › rejects a non-positive amount
+[1A[2K[16/134] [chromium] › cp10_invoice_amount_positive.spec.ts:24:7 › invoice amount validation › accepts a positive amount
+[1A[2K[17/134] [chromium] › cp100_deposit_allocation.spec.ts:7:7 › deposit allocation › allocates a deposit across invoices
+[1A[2K[18/134] [chromium] › cp101_available_credit.spec.ts:8:7 › available credit › sums unused deposits and credit notes
+[1A[2K[19/134] [chromium] › cp102_job_close.spec.ts:6:7 › close job › a closed job cannot take a new invoice
+[1A[2K[20/134] [chromium] › cp103_refund.spec.ts:8:7 › refund › refunding reduces available credit
+[1A[2K[21/134] [chromium] › cp104_statement_running_balance.spec.ts:8:7 › statement running balance › lists entries in date order with a running balance
+[1A[2K[22/134] [chromium] › cp105_balance_as_of_date.spec.ts:6:7 › balance as of date › shows the balance at a past date
+[1A[2K[23/134] [chromium] › cp106_credit_applied_flag.spec.ts:6:7 › credit applied flag › flags an invoice with a credit
+[1A[2K[24/134] [chromium] › cp107_client_merge.spec.ts:6:7 › merge clients › merges one client into another
+[1A[2K[25/134] [chromium] › cp108_payment_consumes_credit.spec.ts:9:7 › payment consumes credit › a deposit then a payment settle invoices and reconcile
+[1A[2K[26/134] [chromium] › cp109_currency_rounding_rule.spec.ts:7:7 › currency rounding rule › rounds to the currency step
+[1A[2K[27/134] [chromium] › cp11_invoice_dates.spec.ts:6:7 › invoice dates › an invoice shows its issue and due dates
+[1A[2K[28/134] [chromium] › cp110_currency_display.spec.ts:7:7 › currency display › shows the right symbol and decimals
+[1A[2K[29/134] [chromium] › cp111_job_reopen.spec.ts:6:7 › reopen job › reopening a closed job makes it active again
+[1A[2K[30/134] [chromium] › cp112_fx_at_invoice_date.spec.ts:9:7 › convert at invoice date › uses the invoice-date rate for the home figure
+[1A[2K[31/134] [chromium] › cp12_invoice_sort_due.spec.ts:6:7 › sort invoices by due date › sorts the invoices earliest due first
+[1A[2K[32/134] [chromium] › cp13_invoice_lifecycle.spec.ts:8:7 › invoice lifecycle › sending a draft invoice moves it to sent and records it
+[1A[2K[33/134] [chromium] › cp13_invoice_lifecycle.spec.ts:24:7 › invoice lifecycle › a sent invoice becomes paid once a covering payment is recorded
+[1A[2K[34/134] [chromium] › cp14_all_invoices.spec.ts:6:7 › all invoices › lists invoices from every project with project and status
+[1A[2K[35/134] [chromium] › cp15_invoice_status_filter.spec.ts:6:7 › filter invoices by status › shows only invoices at the chosen stage
+[1A[2K[36/134] [chromium] › cp16_client_contacts.spec.ts:6:7 › client contacts › lists a client's contacts
+[1A[2K[37/134] [chromium] › cp16_client_contacts.spec.ts:31:7 › client contacts › adds a contact to a client
+[1A[2K[38/134] [chromium] › cp17_outstanding_sent_only.spec.ts:7:7 › outstanding counts sent invoices only › outstanding is discounted, excludes drafts, and is per currency
+[1A[2K[39/134] [chromium] › cp18_contact_email_validation.spec.ts:6:7 › contact email validation › rejects a bad contact email
+[1A[2K[40/134] [chromium] › cp19_client_badges.spec.ts:6:7 › client badges › shows project and contact counts
+[1A[2K[41/134] [chromium] › cp20_project_tasks.spec.ts:7:7 › project tasks › lists tasks and lets me tick one off
+[1A[2K[42/134] [chromium] › cp21_invoice_line_items.spec.ts:7:7 › invoice line items › invoice amount is the sum of its line items
+[1A[2K[43/134] [chromium] › cp21_invoice_line_items.spec.ts:30:7 › invoice line items › adding a line item increases the invoice total
+[1A[2K[44/134] [chromium] › cp21_invoice_line_items.spec.ts:50:7 › invoice line items › a line discount nets into the subtotal
+[1A[2K[45/134] [chromium] › cp22_line_items_edit.spec.ts:6:7 › edit line items › removing a line item lowers the total
+[1A[2K[46/134] [chromium] › cp23_task_filter.spec.ts:6:7 › filter tasks › shows only open or only done tasks
+[1A[2K[47/134] [chromium] › cp24_project_delete_audit.spec.ts:8:7 › remove a project › removing archives the project and records it
+[1A[2K[48/134] [chromium] › cp25_project_archive.spec.ts:8:7 › archive a project › archiving hides the project but keeps it
+[1A[2K[49/134] [chromium] › cp26_project_tags.spec.ts:8:7 › project tags › shows, adds and removes tags on a project
+[1A[2K[50/134] [chromium] › cp27_project_tag_filter.spec.ts:6:7 › filter projects by tag › shows only projects with the chosen tag
+[1A[2K[51/134] [chromium] › cp28_project_notes.spec.ts:6:7 › project notes › shows notes newest first and adds a new one on top
+[1A[2K[52/134] [chromium] › cp29_client_archive.spec.ts:8:7 › archive a client › archiving hides the client but keeps it
+[1A[2K[53/134] [chromium] › cp30_invoice_payments.spec.ts:8:7 › invoice payments › shows and records payments on an invoice
+[1A[2K[54/134] [chromium] › cp31_invoice_amount_due.spec.ts:7:7 › invoice amount due › amount due uses the discounted total
+[1A[2K[55/134] [chromium] › cp32_invoice_status_derived.spec.ts:8:7 › derived invoice status › a part payment then full payment drive the status
+[1A[2K[56/134] [chromium] › cp32_invoice_status_derived.spec.ts:32:7 › derived invoice status › a credit that clears the remainder settles the invoice
+[1A[2K  1) [chromium] › cp32_invoice_status_derived.spec.ts:32:7 › derived invoice status › a credit that clears the remainder settles the invoice 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('invoice-row-1').getByTestId('invoice-status')
+    Expected string: [32m"PAID"[39m
+    Received string: [31m"[7m [27mPAID[7m Credited[27m"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('invoice-row-1').getByTestId('invoice-status')[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+
+
+      43 |
+      44 |     await expect(page.getByTestId('invoice-row-1').getByTestId('invoice-due-amount')).toHaveText('$0.00');
+    > 45 |     await expect(page.getByTestId('invoice-row-1').getByTestId('invoice-status')).toHaveText('PAID');
+         |                                                                                   ^
+      46 |   });
+      47 | });
+      48 |
+
+        at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp32_invoice_status_derived.spec.ts:45:83
+
+
+[1A[2K[57/134] [chromium] › cp33_client_statement.spec.ts:8:7 › client statement › the total owed uses discounted amounts in the client currency
+[1A[2K[58/134] [chromium] › cp33_client_statement.spec.ts:24:7 › client statement › lists entries in date order with a running balance
+[1A[2K[59/134] [chromium] › cp34_project_status.spec.ts:7:7 › project status › shows a project's status
+[1A[2K[60/134] [chromium] › cp34_project_status.spec.ts:17:7 › project status › sets the status when creating a project
+[1A[2K[61/134] [chromium] › cp35_project_status_filter.spec.ts:6:7 › filter projects by status › shows only projects at the chosen status
+[1A[2K[62/134] [chromium] › cp36_client_active_projects_default.spec.ts:7:7 › client active projects by default › shows active projects, with a toggle for the rest
+[1A[2K[63/134] [chromium] › cp37_project_budget.spec.ts:7:7 › project budget › shows budget, invoiced and remaining
+[1A[2K[64/134] [chromium] › cp38_dashboard_overdue.spec.ts:7:7 › dashboard overdue › counts sent invoices past their due date
+[1A[2K[65/134] [chromium] › cp39_invoice_pagination.spec.ts:6:7 › invoice pagination › pages through the invoice list ten at a time
+[1A[2K[66/134] [chromium] › cp40_thousands_separator.spec.ts:7:7 › thousands separators › shows commas in large amounts in the client currency
+[1A[2K[67/134] [chromium] › cp41_invoice_cancel_audit.spec.ts:9:7 › cancel invoice › cancelling voids the invoice and records it
+[1A[2K[68/134] [chromium] › cp41_invoice_cancel_audit.spec.ts:24:7 › cancel invoice › a voided invoice is excluded from outstanding
+[1A[2K[69/134] [chromium] › cp42_client_primary_contact.spec.ts:6:7 › primary contact › shows and changes the main contact
+[1A[2K[70/134] [chromium] › cp43_global_search.spec.ts:6:7 › global search › finds matching clients and projects
+[1A[2K[71/134] [chromium] › cp44_client_unique_email.spec.ts:7:7 › client unique email › rejects a duplicate email
+[1A[2K[72/134] [chromium] › cp45_client_edit.spec.ts:6:7 › edit client › updates a client name and email
+[1A[2K[73/134] [chromium] › cp46_line_item_qty_unit.spec.ts:6:7 › line item quantity and unit › shows quantity, unit and per-line amount
+[1A[2K[74/134] [chromium] › cp47_invoice_discount.spec.ts:7:7 › invoice discount › a percentage discount
+[1A[2K[75/134] [chromium] › cp47_invoice_discount.spec.ts:22:7 › invoice discount › a fixed-amount discount
+[1A[2K[76/134] [chromium] › cp47_invoice_discount.spec.ts:37:7 › invoice discount › several discounts combine
+[1A[2K[77/134] [chromium] › cp48_discount_everywhere.spec.ts:7:7 › discount everywhere › a percentage discount flows to outstanding
+[1A[2K[78/134] [chromium] › cp48_discount_everywhere.spec.ts:18:7 › discount everywhere › a discount and a surcharge both flow to outstanding
+[1A[2K[79/134] [chromium] › cp49_sales_tax.spec.ts:8:7 › sales tax › adds tax after the discount (all lines taxable, no levy)
+[1A[2K[80/134] [chromium] › cp49_sales_tax.spec.ts:27:7 › sales tax › excludes tax-free lines from the tax base
+[1A[2K[81/134] [chromium] › cp49_sales_tax.spec.ts:51:7 › sales tax › adds a levy on top when one applies
+[1A[2K[82/134] [chromium] › cp50_combined_filter.spec.ts:6:7 › combined project filter › shows active projects with the chosen label
+[1A[2K[83/134] [chromium] › cp51_client_sort.spec.ts:6:7 › client sort › sorts clients by outstanding amount
+[1A[2K[84/134] [chromium] › cp52_project_to_job_rename.spec.ts:10:7 › projects relabelled to jobs › the section reads "job" while its testids stay unchanged
+[1A[2K[85/134] [chromium] › cp53_job_code.spec.ts:6:7 › job code › shows a job code
+[1A[2K[86/134] [chromium] › cp53_job_code.spec.ts:16:7 › job code › rejects a duplicate code
+[1A[2K[87/134] [chromium] › cp54_invoice_notes.spec.ts:6:7 › invoice notes › shows and adds notes on an invoice
+[1A[2K[88/134] [chromium] › cp55_dashboard_top_clients.spec.ts:7:7 › dashboard top clients › ranks clients by outstanding, shown in their currency
+[1A[2K[89/134] [chromium] › cp56_payment_allocation.spec.ts:7:7 › payment allocation › splits one payment across two invoices
+[1A[2K[90/134] [chromium] › cp56_payment_allocation.spec.ts:33:7 › payment allocation › allocates a deposit across invoices
+[1A[2K[91/134] [chromium] › cp57_statement_by_job.spec.ts:7:7 › statement grouped by job › groups invoices by job with subtotals
+[1A[2K[92/134] [chromium] › cp58_client_restore.spec.ts:7:7 › restore client › restores an archived client
+[1A[2K[93/134] [chromium] › cp59_statement_printable.spec.ts:6:7 › printable statement › shows a printable statement with a grand total
+[1A[2K[94/134] [chromium] › cp60_multi_currency.spec.ts:7:7 › multi currency › sets a client currency and shows their money in it
+[1A[2K[95/134] [chromium] › cp60_multi_currency.spec.ts:26:7 › multi currency › home screen keeps totals separate per currency
+[1A[2K[96/134] [chromium] › cp61_default_tax_rate.spec.ts:9:7 › default tax rate › new invoices start with the default tax rate
+[1A[2K[97/134] [chromium] › cp62_client_phone.spec.ts:6:7 › client phone › shows a client phone number
+[1A[2K[98/134] [chromium] › cp63_line_tax_exempt.spec.ts:9:7 › tax-free line items › shows the tax-free marker and lets a line be marked exempt
+[1A[2K[99/134] [chromium] › cp64_tax_per_taxable_line.spec.ts:10:7 › tax from taxable lines only › excludes tax-free lines from the tax
+[1A[2K[100/134] [chromium] › cp65_tax_summary_line.spec.ts:7:7 › tax summary line › shows the taxable base, the rate label and the tax
+[1A[2K[101/134] [chromium] › cp66_client_tax_number.spec.ts:7:7 › client tax number › shows the client tax number on the client and the invoice
+[1A[2K[102/134] [chromium] › cp67_job_description.spec.ts:8:7 › job description › shows a job description
+[1A[2K[103/134] [chromium] › cp68_second_tax.spec.ts:9:7 › second tax (levy) › adds a levy on top of the sales tax
+[1A[2K[104/134] [chromium] › cp69_tax_inclusive_pricing.spec.ts:7:7 › tax-inclusive pricing › backs the tax out of a tax-inclusive price
+[1A[2K[105/134] [chromium] › cp70_total_ex_and_inc_tax.spec.ts:6:7 › total before and after tax › shows the ex-tax and inc-tax totals
+[1A[2K[106/134] [chromium] › cp71_tax_rounding_per_line.spec.ts:6:7 › tax rounded per line › rounds a taxable line's tax to the cent
+[1A[2K[107/134] [chromium] › cp72_round_per_line_then_sum.spec.ts:10:7 › round each line then sum › totals the rounded line amounts
+[1A[2K[108/134] [chromium] › cp73_client_billing_address.spec.ts:6:7 › client billing address › shows a client billing address
+[1A[2K[109/134] [chromium] › cp74_tax_exempt_client.spec.ts:7:7 › tax-exempt client › charges no tax for a tax-exempt client
+[1A[2K[110/134] [chromium] › cp75_effective_tax_rate.spec.ts:7:7 › effective tax rate › shows tax as a percentage of the whole invoice
+[1A[2K[111/134] [chromium] › cp76_statement_tax_totals.spec.ts:8:7 › statement tax totals › shows tax per job and overall on the statement
+[1A[2K[112/134] [chromium] › cp77_fixed_amount_discount.spec.ts:6:7 › fixed-amount discount › takes a flat amount off the invoice
+[1A[2K[113/134] [chromium] › cp78_client_key_account.spec.ts:7:7 › key account flag › marks key accounts
+[1A[2K[114/134] [chromium] › cp79_line_discount.spec.ts:6:7 › line discount › shows a line amount after its own discount
+[1A[2K[115/134] [chromium] › cp80_discount_pct_or_fixed.spec.ts:7:7 › percentage or fixed discount › a fixed-amount discount comes off before tax
+[1A[2K[116/134] [chromium] › cp81_early_payment_discount.spec.ts:7:7 › early-payment discount › shows the reduced early-payment amount
+[1A[2K[117/134] [chromium] › cp82_surcharge.spec.ts:6:7 › invoice surcharge › a surcharge adds to the total
+[1A[2K[118/134] [chromium] › cp83_task_due_date.spec.ts:6:7 › task due date › shows a task due date
+[1A[2K[119/134] [chromium] › cp84_stacked_discounts.spec.ts:8:7 › stacked discounts › shows each discount and the combined total
+[1A[2K[120/134] [chromium] › cp85_discount_cap.spec.ts:7:7 › discount cap › caps a percentage discount at the maximum
+[1A[2K[121/134] [chromium] › cp86_job_billable_flag.spec.ts:7:7 › job billable flag › shows whether a job is billable
+[1A[2K[122/134] [chromium] › cp87_discount_as_breakdown_line.spec.ts:7:7 › discount breakdown line › shows a discount as a negative breakdown line
+[1A[2K[123/134] [chromium] › cp88_line_level_discount_in_subtotal.spec.ts:9:7 › line discount nets into the subtotal › subtotal already reflects line discounts
+[1A[2K[124/134] [chromium] › cp89_minimum_charge.spec.ts:7:7 › minimum charge › bills the minimum when the net total is lower
+[1A[2K[125/134] [chromium] › cp90_total_savings.spec.ts:6:7 › total savings › sums the discounts into a savings figure
+[1A[2K[126/134] [chromium] › cp91_client_default_discount.spec.ts:6:7 › client default discount › a new invoice starts with the client default discount
+[1A[2K[127/134] [chromium] › cp92_adjustments_everywhere.spec.ts:9:7 › adjustments everywhere › outstanding reflects discounts and surcharges
+[1A[2K[128/134] [chromium] › cp93_credit_note.spec.ts:7:7 › credit note › raises a credit note against an invoice
+[1A[2K[129/134] [chromium] › cp94_credit_reduces_balance.spec.ts:6:7 › credit reduces balance › the invoice due drops by the credit
+[1A[2K[130/134] [chromium] › cp95_task_assignee.spec.ts:6:7 › task assignee › shows who a task is for
+[1A[2K[131/134] [chromium] › cp96_status_with_credits.spec.ts:7:7 › status accounts for credits › a credit that clears the balance settles the invoice
+[1A[2K  2) [chromium] › cp96_status_with_credits.spec.ts:7:7 › status accounts for credits › a credit that clears the balance settles the invoice 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('invoice-row-1').getByTestId('invoice-status')
+    Expected string: [32m"PAID"[39m
+    Received string: [31m"[7m [27mPAID[7m Credited[27m"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('invoice-row-1').getByTestId('invoice-status')[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+    [2m  -   locator resolved to <td data-testid="invoice-status">…</td>[22m
+    [2m  -   unexpected value " PAID Credited"[22m
+
+
+      18 |
+      19 |     await expect(page.getByTestId('invoice-row-1').getByTestId('invoice-due-amount')).toHaveText('$0.00');
+    > 20 |     await expect(page.getByTestId('invoice-row-1').getByTestId('invoice-status')).toHaveText('PAID');
+         |                                                                                   ^
+      21 |   });
+      22 | });
+      23 |
+
+        at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp96_status_with_credits.spec.ts:20:83
+
+
+[1A[2K[132/134] [chromium] › cp97_write_off.spec.ts:8:7 › write off › writing off an invoice removes it from what is owed
+[1A[2K[133/134] [chromium] › cp98_client_deposit.spec.ts:6:7 › client deposit › records a deposit held for the client
+[1A[2K[134/134] [chromium] › cp99_client_lifetime_billed.spec.ts:6:7 › client lifetime billed › sums all invoices ever billed to the client
+[1A[2K  2 failed
+    [chromium] › cp32_invoice_status_derived.spec.ts:32:7 › derived invoice status › a credit that clears the remainder settles the invoice 
+    [chromium] › cp96_status_with_credits.spec.ts:7:7 › status accounts for credits › a credit that clears the balance settles the invoice 
+  132 passed (1.3m)
