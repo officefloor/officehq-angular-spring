@@ -1,0 +1,443 @@
+diff --git a/src/main/frontend/src/app/features/notes/note.service.ts b/src/main/frontend/src/app/features/notes/note.service.ts
+new file mode 100644
+index 0000000..32dd729
+--- /dev/null
++++ b/src/main/frontend/src/app/features/notes/note.service.ts
+@@ -0,0 +1,26 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++export interface Note {
++  id: number;
++  targetType: string;
++  targetId: number;
++  text: string;
++  /** When the note was written (ISO-8601 instant). */
++  at: string;
++}
++
++@Injectable({ providedIn: 'root' })
++export class NoteService {
++  private readonly http = inject(HttpClient);
++
++  /** A project's notes, newest first. */
++  listForProject(projectId: number): Observable<Note[]> {
++    return this.http.get<Note[]>(`/api/projects/${projectId}/notes`);
++  }
++
++  createForProject(projectId: number, text: string): Observable<Note> {
++    return this.http.post<Note>(`/api/projects/${projectId}/notes`, { text });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/notes/project-notes.ts b/src/main/frontend/src/app/features/notes/project-notes.ts
+new file mode 100644
+index 0000000..317fcfe
+--- /dev/null
++++ b/src/main/frontend/src/app/features/notes/project-notes.ts
+@@ -0,0 +1,110 @@
++import { DatePipe } from '@angular/common';
++import { Component, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { NoteService } from './note.service';
++
++// A project's notes: write a note and read them back, newest first.
++@Component({
++  selector: 'app-project-notes',
++  imports: [ReactiveFormsModule, DatePipe],
++  template: `
++    <section aria-labelledby="project-notes-heading" data-testid="project-notes">
++      <h2 id="project-notes-heading">Notes</h2>
++
++      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="note-form" novalidate>
++        <div>
++          <label for="note-text">Note</label>
++          <textarea
++            id="note-text"
++            rows="3"
++            formControlName="text"
++            maxlength="2000"
++            data-testid="note-form-text"
++            [attr.aria-invalid]="showTextError()"
++            [attr.aria-describedby]="showTextError() ? 'note-text-error' : null"
++          ></textarea>
++          @if (showTextError()) {
++            <p id="note-text-error" role="alert" data-testid="note-form-text-error">
++              Note is required.
++            </p>
++          }
++        </div>
++        <button type="submit" data-testid="note-form-submit" [disabled]="saving()">Add note</button>
++        @if (saveError()) {
++          <p role="alert" data-testid="note-form-error">{{ saveError() }}</p>
++        }
++      </form>
++
++      @if (notes.error()) {
++        <p role="alert" data-testid="project-notes-error">Could not load the notes.</p>
++      } @else if (notes.hasValue()) {
++        @if (notes.value().length === 0) {
++          <p data-testid="project-notes-empty">No notes on this project yet.</p>
++        } @else {
++          <ol class="notes" aria-label="Project notes, newest first" data-testid="project-note-list">
++            @for (n of notes.value(); track n.id) {
++              <li [attr.data-testid]="'note-row-' + n.id">
++                <time [attr.datetime]="n.at" data-testid="note-at">{{ n.at | date: 'medium' }}</time>
++                <p data-testid="note-text">{{ n.text }}</p>
++              </li>
++            }
++          </ol>
++        }
++      }
++    </section>
++  `,
++  styles: `
++    .notes {
++      list-style: none;
++      padding: 0;
++    }
++    .notes p {
++      margin: 0.25rem 0 1rem;
++      white-space: pre-wrap;
++    }
++  `,
++})
++export class ProjectNotes {
++  private readonly service = inject(NoteService);
++
++  readonly projectId = input.required<number>();
++
++  protected readonly notes = rxResource({
++    params: () => this.projectId(),
++    stream: ({ params }) => this.service.listForProject(params),
++  });
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    text: ['', [Validators.required, Validators.maxLength(2000)]],
++  });
++
++  protected showTextError(): boolean {
++    const control = this.form.controls.text;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    const text = this.form.getRawValue().text.trim();
++    if (this.form.invalid || !text) {
++      this.form.controls.text.setValue('');
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.saveError.set(null);
++    this.service.createForProject(this.projectId(), text).subscribe({
++      next: (created) => {
++        this.notes.update((list) => [created, ...(list ?? [])]);
++        this.form.reset();
++        this.saving.set(false);
++      },
++      error: () => {
++        this.saveError.set('Could not save the note. Please try again.');
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index 4989c7e..39ec1f0 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -2,14 +2,15 @@ import { Component, computed, inject, input } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { ProjectInvoices } from '../invoices/project-invoices';
++import { ProjectNotes } from '../notes/project-notes';
+ import { ProjectTags } from '../tags/project-tags';
+ import { ProjectTasks } from '../tasks/project-tasks';
+ import { ProjectService } from './project.service';
+ 
+-// A single project's page: its name and client, its tags, its tasks, and its invoices.
++// A single project's page: its name and client, its tags, its tasks, its notes, and its invoices.
+ @Component({
+   selector: 'app-project-detail',
+-  imports: [RouterLink, ProjectInvoices, ProjectTags, ProjectTasks],
++  imports: [RouterLink, ProjectInvoices, ProjectNotes, ProjectTags, ProjectTasks],
+   template: `
+     <a routerLink="/projects" data-testid="project-back">Back to projects</a>
+     @if (project.error()) {
+@@ -19,6 +20,7 @@ import { ProjectService } from './project.service';
+       <p>Client: <span data-testid="project-detail-client">{{ p.clientName }}</span></p>
+       <app-project-tags [projectId]="projectId()" />
+       <app-project-tasks [projectId]="projectId()" />
++      <app-project-notes [projectId]="projectId()" />
+       <app-project-invoices [projectId]="projectId()" />
+     }
+   `,
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 6f0c679..be7cf6f 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.sql.Timestamp;
++import java.time.Instant;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
+@@ -42,6 +44,7 @@ public class TestSupportController {
+         // referential checks for the duration of the truncates.
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+         try {
++            jdbc.execute("TRUNCATE TABLE note RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE project_tag");
+             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+@@ -86,6 +89,12 @@ public class TestSupportController {
+                     ((Number) t.get("id")).longValue(), ((Number) t.get("projectId")).longValue(),
+                     t.get("title"), Boolean.TRUE.equals(t.get("done")));
+         }
++        for (Map<String, Object> n : rows(fixture, "notes")) {
++            Instant at = n.get("at") == null ? Instant.now() : Instant.parse(n.get("at").toString());
++            jdbc.update("INSERT INTO note (id, target_type, target_id, text, created_at) VALUES (?, ?, ?, ?, ?)",
++                    ((Number) n.get("id")).longValue(), n.get("targetType"),
++                    ((Number) n.get("targetId")).longValue(), n.get("text"), Timestamp.from(at));
++        }
+         for (Map<String, Object> i : rows(fixture, "invoices")) {
+             LocalDate issued = i.get("issuedDate") == null ? LocalDate.now()
+                     : LocalDate.parse(i.get("issuedDate").toString());
+@@ -131,6 +140,7 @@ public class TestSupportController {
+         restartIdentity("invoice_line_item");
+         restartIdentity("task");
+         restartIdentity("tag");
++        restartIdentity("note");
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/note/Note.java b/src/main/java/net/officefloor/hq/app/note/Note.java
+new file mode 100644
+index 0000000..08c559e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/Note.java
+@@ -0,0 +1,63 @@
++package net.officefloor.hq.app.note;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.Instant;
++
++/** A free-text note written against a record, such as a project. */
++@Entity
++@Table(name = "note")
++public class Note {
++
++    /** Target type for notes kept on a project. */
++    public static final String PROJECT = "project";
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "target_type", nullable = false)
++    private String targetType;
++
++    @Column(name = "target_id", nullable = false)
++    private Long targetId;
++
++    private String text;
++
++    @Column(name = "created_at", nullable = false)
++    private Instant createdAt;
++
++    protected Note() {
++    }
++
++    public Note(String targetType, Long targetId, String text, Instant createdAt) {
++        this.targetType = targetType;
++        this.targetId = targetId;
++        this.text = text;
++        this.createdAt = createdAt;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getTargetType() {
++        return targetType;
++    }
++
++    public Long getTargetId() {
++        return targetId;
++    }
++
++    public String getText() {
++        return text;
++    }
++
++    public Instant getCreatedAt() {
++        return createdAt;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteRepository.java b/src/main/java/net/officefloor/hq/app/note/NoteRepository.java
+new file mode 100644
+index 0000000..76f453f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.note;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface NoteRepository extends JpaRepository<Note, Long> {
++
++    /** A record's notes, newest first. */
++    List<Note> findByTargetTypeAndTargetIdOrderByCreatedAtDescIdDesc(String targetType, Long targetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteRequest.java b/src/main/java/net/officefloor/hq/app/note/NoteRequest.java
+new file mode 100644
+index 0000000..ab2b429
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteRequest.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.note;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++
++/** Payload to write a note. */
++public record NoteRequest(@NotBlank @Size(max = 2000) String text) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteResponse.java b/src/main/java/net/officefloor/hq/app/note/NoteResponse.java
+new file mode 100644
+index 0000000..406fb85
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteResponse.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.note;
++
++import java.time.Instant;
++
++public record NoteResponse(Long id, String targetType, Long targetId, String text, Instant at) {
++
++    static NoteResponse from(Note note) {
++        return new NoteResponse(note.getId(), note.getTargetType(), note.getTargetId(), note.getText(),
++                note.getCreatedAt());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteService.java b/src/main/java/net/officefloor/hq/app/note/NoteService.java
+new file mode 100644
+index 0000000..2cedc35
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteService.java
+@@ -0,0 +1,41 @@
++package net.officefloor.hq.app.note;
++
++import java.time.Instant;
++import java.util.List;
++import net.officefloor.hq.app.project.ProjectRepository;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class NoteService {
++
++    private final NoteRepository notes;
++    private final ProjectRepository projects;
++
++    public NoteService(NoteRepository notes, ProjectRepository projects) {
++        this.notes = notes;
++        this.projects = projects;
++    }
++
++    @Transactional(readOnly = true)
++    public List<NoteResponse> listForProject(Long projectId) {
++        requireProject(projectId);
++        return notes.findByTargetTypeAndTargetIdOrderByCreatedAtDescIdDesc(Note.PROJECT, projectId).stream()
++                .map(NoteResponse::from).toList();
++    }
++
++    @Transactional
++    public NoteResponse createForProject(Long projectId, NoteRequest request) {
++        requireProject(projectId);
++        Note saved = notes.save(new Note(Note.PROJECT, projectId, request.text().trim(), Instant.now()));
++        return NoteResponse.from(saved);
++    }
++
++    private void requireProject(Long projectId) {
++        if (!projects.existsById(projectId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/ProjectNoteController.java b/src/main/java/net/officefloor/hq/app/note/ProjectNoteController.java
+new file mode 100644
+index 0000000..2feb810
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/ProjectNoteController.java
+@@ -0,0 +1,35 @@
++package net.officefloor.hq.app.note;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The notes written on a project, newest first. */
++@RestController
++@RequestMapping("/api/projects/{projectId}/notes")
++public class ProjectNoteController {
++
++    private final NoteService service;
++
++    public ProjectNoteController(NoteService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<NoteResponse> list(@PathVariable Long projectId) {
++        return service.listForProject(projectId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public NoteResponse create(@PathVariable Long projectId, @Valid @RequestBody NoteRequest request) {
++        return service.createForProject(projectId, request);
++    }
++}
+diff --git a/src/main/resources/db/migration/V14__create_note.sql b/src/main/resources/db/migration/V14__create_note.sql
+new file mode 100644
+index 0000000..714300f
+--- /dev/null
++++ b/src/main/resources/db/migration/V14__create_note.sql
+@@ -0,0 +1,13 @@
++-- Free-text notes kept against a record in the app. A note names what it is about by type and id
++-- (only projects take notes so far) and is stamped with when it was written so the newest shows
++-- first.
++CREATE TABLE note (
++    id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    target_type VARCHAR(20)              NOT NULL,
++    target_id   BIGINT                   NOT NULL,
++    text        VARCHAR(2000)            NOT NULL,
++    created_at  TIMESTAMP WITH TIME ZONE NOT NULL,
++    CONSTRAINT note_target_type_ck CHECK (target_type IN ('project'))
++);
++
++CREATE INDEX note_target_idx ON note (target_type, target_id, created_at);

@@ -1,0 +1,551 @@
+{
+  "checkpoint": 28,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48"
+  },
+  "checkpoint_id": "cp28_project_notes",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "Let me write notes on a project. Show the newest one first.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nLet me write notes on a project. Show the newest one first.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "1dd719a51c378b5d148f582fe1441af9a5d3c263",
+  "reset_sha": "",
+  "preagent_sha": "03419f0f0505095b3af27605cb7ad9b5435f243a",
+  "prev_sha": "03419f0f0505095b3af27605cb7ad9b5435f243a",
+  "base_sha": "7b7aa7baccb6b9fc6ff4e2c3c0a4b62096cf3f48",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4610008,
+    "input_tokens": 16,
+    "output_tokens": 7770,
+    "cache_read_tokens": 236724,
+    "cache_creation_tokens": 32274,
+    "num_turns": 9,
+    "duration_ms": 88418,
+    "duration_api_ms": 63441,
+    "model": "claude-opus-5-5",
+    "session_id": "d6c8f357-548e-428c-8f8a-faa9ed7ce867",
+    "stop_reason": "success",
+    "result_text": "Projects now have notes: each project page has a Notes section with a form to write one, and the list shows the newest note first. `bin/e2e` passed; I reordered two import lines in `project-notes.ts` afterwards and didn't re-run it.\n\nOne thing differs from the brief: it asked for an OfficeFloor server, but this app is plain Spring Boot (only the package is named `net.officefloor`). So I followed `CLAUDE.md` and built the server part in the usual Spring way, modelled on the existing tasks feature.\n\n**Database** (`V14__create_note.sql`): a new `note` table. Each note records what kind of thing it's attached to and that thing's id, matching what the test data uses (`targetType`/`targetId`). It also stores the text and the time it was written. Only `'project'` is allowed for now.\n- Because a note isn't tied to the project table directly, deleting a project won't delete its notes. There's no project-delete endpoint today, but whoever adds one will need to remove the notes too.\n\n**Server** (`note/` package):\n- `GET` and `POST /api/projects/{projectId}/notes`. Both return 404 for a project that doesn't exist.\n- The list is sorted newest first, with the id breaking ties.\n- Note text is required, up to 2,000 characters, and trimmed before saving.\n- The test-data reset and seed endpoints now clear and load notes as well.\n\n**Front end** (`features/notes/`):\n- The Notes section sits on the project page between Tasks and Invoices, with a labelled text box and an \"Add note\" button.\n- Saving or loading errors and an empty-text message are shown to the user. A new note appears at the top of the list straight away.\n- Each note shows its date and its text, using the ids the test expects: `note-row-{id}`, `note-text`, `note-form-text` and `note-form-submit`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.4610008,
+        "num_turns": 9,
+        "duration_ms": 88418,
+        "duration_api_ms": 63441,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp28.agent.jsonl",
+  "agent_diff_file": "cp28.agent.diff",
+  "build_log_file": "cp28.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 38,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name, excluding archived": false,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adding a line item to a new invoice sets its amount": true,
+      "cp05_invoice_pay_audit.spec.ts::paying a sent invoice updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying a sent invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's projects, excluding archived": false,
+      "cp08_dashboard.spec.ts::shows counts and the outstanding total": true,
+      "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol": true,
+      "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount": true,
+      "cp10_invoice_amount_positive.spec.ts::accepts a positive amount": true,
+      "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates": true,
+      "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first": true,
+      "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it": true,
+      "cp13_invoice_lifecycle.spec.ts::a draft invoice cannot be paid until it is sent": true,
+      "cp14_all_invoices.spec.ts::lists invoices from every project with project and status": true,
+      "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage": true,
+      "cp16_client_contacts.spec.ts::lists a client's contacts": true,
+      "cp16_client_contacts.spec.ts::adds a contact to a client": true,
+      "cp17_outstanding_sent_only.spec.ts::the outstanding total excludes drafts": true,
+      "cp18_contact_email_validation.spec.ts::rejects a bad contact email": true,
+      "cp19_client_badges.spec.ts::shows project and contact counts": true,
+      "cp20_project_tasks.spec.ts::lists tasks and lets me tick one off": true,
+      "cp21_invoice_line_items.spec.ts::invoice amount is the sum of its line items": true,
+      "cp21_invoice_line_items.spec.ts::adding a line item increases the invoice total": true,
+      "cp22_line_items_edit.spec.ts::removing a line item lowers the total": true,
+      "cp23_task_filter.spec.ts::shows only open or only done tasks": true,
+      "cp24_project_delete_audit.spec.ts::removing archives the project and records it": true,
+      "cp25_project_archive.spec.ts::archiving hides the project but keeps it": true,
+      "cp26_project_tags.spec.ts::shows, adds and removes tags on a project": true,
+      "cp27_project_tag_filter.spec.ts::shows only projects with the chosen tag": true,
+      "cp28_project_notes.spec.ts::shows notes newest first and adds a new one on top": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 418,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 490,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 265,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 261,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 227,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name, excluding archived",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 5272,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId(/^project-row-/)\nExpected: \u001b[32m1\u001b[39m\nReceived: \u001b[31m2\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveCount with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId(/^project-row-/)\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\n\n  16 |\n  17 |     await expect(page.getByTestId('projects-table')).toBeVisible();\n> 18 |     await expect(page.getByTestId(/^project-row-/)).toHaveCount(1);\n     |                                                     ^\n  19 |     await expect(page.getByTestId('project-row-1').getByTestId('project-name')).toHaveText('Website Rebuild');\n  20 |     await expect(page.getByTestId('project-row-1').getByTestId('project-client')).toHaveText('Acme Ltd');\n  21 |     await expect(page.getByTestId('project-row-2')).toHaveCount(0);\n\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp03_projects.spec.ts:18:53 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId(/^project-row-/)\nExpected: \u001b[32m1\u001b[39m\nReceived: \u001b[31m2\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveCount with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting f"
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 453,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 432,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adding a line item to a new invoice sets its amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 677,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying a sent invoice updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 531,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying a sent invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 554,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 304,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's projects, excluding archived",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 5332,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('client-projects-table').getByTestId(/^project-row-/)\nExpected: \u001b[32m1\u001b[39m\nReceived: \u001b[31m2\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveCount with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('client-projects-table').getByTestId(/^project-row-/)\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\u001b[2m  -   locator resolved to 2 elements\u001b[22m\n\u001b[2m  -   unexpected value \"2\"\u001b[22m\n\n\n  22 |     const owned = page.getByTestId('client-projects-table');\n  23 |     await expect(owned).toBeVisible();\n> 24 |     await expect(owned.getByTestId(/^project-row-/)).toHaveCount(1);\n     |                                                      ^\n  25 |     await expect(owned.getByTestId('project-row-1').getByTestId('project-name')).toHaveText('Website Rebuild');\n  26 |     await expect(owned.getByTestId('project-row-2')).toHaveCount(0);\n  27 |     await expect(owned.getByTestId('project-row-3')).toHaveCount(0);\n\n    at /home/daniel/ui-work/202610100208/gated-chain1/e2e/specs/cp07_client_detail_projects.spec.ts:24:54 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('client-projects-table').getByTestId(/^project-row-/)"
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and the outstanding total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 369,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 409,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 394,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::accepts a positive amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 417,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 392,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 445,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 578,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::a draft invoice cannot be paid until it is sent",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 548,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_all_invoices.spec.ts::lists invoices from every project with project and status",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 320,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 408,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::lists a client's contacts",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 358,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::adds a contact to a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 419,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_outstanding_sent_only.spec.ts::the outstanding total excludes drafts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 271,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_contact_email_validation.spec.ts::rejects a bad contact email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 311,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_client_badges.spec.ts::shows project and contact counts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 339,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_project_tasks.spec.ts::lists tasks and lets me tick one off",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 580,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_invoice_line_items.spec.ts::invoice amount is the sum of its line items",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 557,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_invoice_line_items.spec.ts::adding a line item increases the invoice total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 865,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_line_items_edit.spec.ts::removing a line item lowers the total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 927,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_task_filter.spec.ts::shows only open or only done tasks",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 362,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_project_delete_audit.spec.ts::removing archives the project and records it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 422,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_project_archive.spec.ts::archiving hides the project but keeps it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 444,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_project_tags.spec.ts::shows, adds and removes tags on a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 721,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_project_tag_filter.spec.ts::shows only projects with the chosen tag",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 410,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_project_notes.spec.ts::shows notes newest first and adds a new one on top",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 573,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 0.75,
+            "impact": 69,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/src/app/features/notes/project-notes.ts",
+                "lang": "typescript",
+                "cost": 17,
+                "mutation": 0,
+                "godclass": 17,
+                "mut_fns": 0,
+                "new_fns": 5
+              },
+              {
+                "path": "src/main/frontend/src/app/features/notes/note.service.ts",
+                "lang": "typescript",
+                "cost": 6,
+                "mutation": 0,
+                "godclass": 6,
+                "mut_fns": 0,
+                "new_fns": 2
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/src/app/features/notes/project-notes.ts",
+                "name": "next",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 5,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/notes/project-notes.ts",
+                "name": "error",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/notes/note.service.ts",
+                "name": "listForProject",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/notes/note.service.ts",
+                "name": "createForProject",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/notes/project-notes.ts",
+                "name": "rxResource",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/notes/project-notes.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 3,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/src/app/features/notes/project-notes.ts",
+                "name": "stream",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 2,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 0,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 5.47,
+            "impact": 168,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/note/NoteService.java",
+                "lang": "java",
+                "cost": 24,
+                "mutation": 0,
+                "godclass": 24,
+                "mut_fns": 0,
+                "new_fns": 4
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/note/NoteService.java",
+                "name": "NoteService::requireProject",
+                "container": "NoteService",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 10,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/note/NoteService.java",
+                "name": "NoteService::listForProject",
+                "container": "NoteService",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 5,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/note/NoteService.java",
+                "name": "NoteService::createForProject",
+                "container": "NoteService",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 5,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/note/NoteService.java",
+                "name": "NoteService::NoteService",
+                "container": "NoteService",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 1,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
