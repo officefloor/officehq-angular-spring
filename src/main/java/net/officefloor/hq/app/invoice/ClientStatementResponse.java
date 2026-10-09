@@ -8,7 +8,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-import net.officefloor.hq.app.client.Currency;
 
 /**
  * A client's statement: all of their invoices, each with the project it is for and how much is left
@@ -20,10 +19,10 @@ import net.officefloor.hq.app.client.Currency;
  * is in the client's currency. Finally it gives the running account: every invoice, payment, credit note, deposit and
  * refund in date order, each with the balance owed once it is counted.
  */
-public record ClientStatementResponse(Long clientId, String clientName, Currency currency, List<Line> invoices, List<Job> jobs,
+public record ClientStatementResponse(Long clientId, String clientName, String currency, List<Line> invoices, List<Job> jobs,
         BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax, List<StatementEntry> entries) {
 
-    static ClientStatementResponse from(Long clientId, String clientName, Currency currency, List<Line> invoices,
+    static ClientStatementResponse from(Long clientId, String clientName, String currency, List<Line> invoices,
             List<StatementEntry> entries) {
         Map<Long, List<Line>> byProject = new LinkedHashMap<>();
         invoices.forEach(l -> byProject.computeIfAbsent(l.projectId(), id -> new ArrayList<>()).add(l));

@@ -1,5 +1,5 @@
-import { CurrencyPipe } from '@angular/common';
 import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { INVOICE_STATUSES, InvoicePage, InvoiceService, InvoiceStatus } from './invoice.service';
@@ -8,7 +8,7 @@ import { INVOICE_STATUSES, InvoicePage, InvoiceService, InvoiceStatus } from './
 // and the stage it is at. The list can be narrowed to a single stage.
 @Component({
   selector: 'app-invoices',
-  imports: [CurrencyPipe, RouterLink],
+  imports: [MoneyPipe, RouterLink],
   template: `
     <h1>Invoices</h1>
 
@@ -53,7 +53,7 @@ import { INVOICE_STATUSES, InvoicePage, InvoiceService, InvoiceStatus } from './
               <td data-testid="invoice-project">
                 <a [routerLink]="['/projects', i.projectId]">{{ i.projectName }}</a>
               </td>
-              <td data-testid="invoice-amount">{{ i.amount | currency: i.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-amount">{{ i.amount | money: i.currency }}</td>
               <td data-testid="invoice-status">{{ i.status }}</td>
               <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
               <td data-testid="invoice-due">{{ i.dueDate }}</td>

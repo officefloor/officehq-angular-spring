@@ -1,4 +1,5 @@
-import { CurrencyPipe, DecimalPipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { Component, Injector, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
 import { rxResource, toSignal } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -26,7 +27,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
-  imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, Notes],
+  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, Notes],
   template: `
     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
     @if (invoice.error()) {
@@ -160,7 +161,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                       (keydown.escape)="cancelEdit(l.id)"
                     />
                   </td>
-                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice, l.discountPct) / 100 | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="lineitem-amount">{{ lineCents(l.qty, l.unitPrice, l.discountPct) / 100 | money: inv.currency }}</td>
                   <td>
                     <button
                       type="button"
@@ -183,13 +184,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                   </td>
                   <td data-testid="lineitem-qty">{{ l.qty | number: '1.0-2' : 'en-US' }}</td>
                   <td data-testid="lineitem-unit">{{ l.unit ?? '' }}</td>
-                  <td data-testid="lineitem-unitprice">{{ l.unitPrice | currency: inv.currency : 'symbol' : '1.2-4' : 'en-US' }}</td>
+                  <td data-testid="lineitem-unitprice">{{ l.unitPrice | money: inv.currency : '1.2-4' : false }}</td>
                   <td data-testid="lineitem-discount">
                     @if (l.discountPct > 0) {
                       {{ l.discountPct | number: '1.0-2' : 'en-US' }}%
                     }
                   </td>
-                  <td data-testid="lineitem-amount">{{ l.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="lineitem-amount">{{ l.amount | money: inv.currency }}</td>
                   @if (inv.status === 'DRAFT') {
                     <td>
                       <button
@@ -220,7 +221,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
           <tfoot>
             <tr>
               <th scope="row" colspan="5">Subtotal</th>
-              <td data-testid="invoice-subtotal">{{ inv.subtotal | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-subtotal">{{ inv.subtotal | money: inv.currency }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
@@ -229,13 +230,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               <tr [attr.data-testid]="'discount-row-' + d.id">
                 <th scope="row" colspan="5" data-testid="discount-row-label">
                   @if (d.discountAmount > 0) {
-                    Discount {{ $index + 1 }} ({{ d.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }} off)
+                    Discount {{ $index + 1 }} ({{ d.discountAmount | money: inv.currency }} off)
                   } @else {
-                    Discount {{ $index + 1 }} ({{ d.discountPct | number: '1.0-2' : 'en-US' }}%@if (d.discountCap !== null) {, up to <span data-testid="discount-row-cap">{{ d.discountCap | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span>})
+                    Discount {{ $index + 1 }} ({{ d.discountPct | number: '1.0-2' : 'en-US' }}%@if (d.discountCap !== null) {, up to <span data-testid="discount-row-cap">{{ d.discountCap | money: inv.currency }}</span>})
                   }
                 </th>
                 <td>
-                  <span [attr.data-testid]="'breakdown-discount-row-' + d.id">-<span data-testid="discount-row-amount">{{ d.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span></span>
+                  <span [attr.data-testid]="'breakdown-discount-row-' + d.id">-<span data-testid="discount-row-amount">{{ d.amount | money: inv.currency }}</span></span>
                 </td>
                 @if (inv.status === 'DRAFT') {
                   <td>
@@ -255,21 +256,21 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
             <tr>
               <th scope="row" colspan="5">
                 @if (inv.discounts.length > 1) {
-                  Combined discount (@if (inv.discountPct > 0) {<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%}@if (inv.discountPct > 0 && inv.discountAmount > 0) { + }@if (inv.discountAmount > 0) {<span data-testid="invoice-discount-amount">{{ inv.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span> off})
+                  Combined discount (@if (inv.discountPct > 0) {<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%}@if (inv.discountPct > 0 && inv.discountAmount > 0) { + }@if (inv.discountAmount > 0) {<span data-testid="invoice-discount-amount">{{ inv.discountAmount | money: inv.currency }}</span> off})
                 } @else if (inv.discountAmount > 0) {
-                  Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span> off)
+                  Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | money: inv.currency }}</span> off)
                 } @else {
                   Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%)
                 }
               </th>
-              <td data-testid="invoice-discount">{{ inv.discount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-discount">{{ inv.discount | money: inv.currency }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
             </tr>
             <tr>
               <th scope="row" colspan="5">Taxable amount (excludes tax-free lines)</th>
-              <td data-testid="invoice-taxable-base">{{ inv.taxableBase | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-taxable-base">{{ inv.taxableBase | money: inv.currency }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
@@ -278,7 +279,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               <th scope="row" colspan="5" data-testid="invoice-tax-label">
                 Tax (<span data-testid="invoice-tax-pct">{{ inv.taxPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
               </th>
-              <td data-testid="invoice-tax">{{ inv.tax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-tax">{{ inv.tax | money: inv.currency }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
@@ -287,14 +288,14 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               <th scope="row" colspan="5" data-testid="invoice-tax-levy-label">
                 Levy (<span data-testid="invoice-tax-levy-pct">{{ inv.levyPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
               </th>
-              <td data-testid="invoice-tax-levy">{{ inv.levy | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-tax-levy">{{ inv.levy | money: inv.currency }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
             </tr>
             <tr>
               <th scope="row" colspan="5">Surcharge</th>
-              <td data-testid="invoice-surcharge">{{ inv.surcharge | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-surcharge">{{ inv.surcharge | money: inv.currency }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
@@ -308,7 +309,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
             </tr>
             <tr>
               <th scope="row" colspan="5">Total before tax</th>
-              <td data-testid="invoice-total-ex-tax">{{ inv.totalExTax | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-total-ex-tax">{{ inv.totalExTax | money: inv.currency }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
@@ -317,10 +318,10 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               <tr data-testid="invoice-minimum-applied">
                 <th scope="row" colspan="5">
                   Minimum charge applied (net total
-                  <span data-testid="invoice-net-total">{{ inv.netTotal | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</span>
+                  <span data-testid="invoice-net-total">{{ inv.netTotal | money: inv.currency }}</span>
                   is under the minimum)
                 </th>
-                <td data-testid="invoice-minimum-charge">{{ inv.minimumCharge | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                <td data-testid="invoice-minimum-charge">{{ inv.minimumCharge | money: inv.currency }}</td>
                 @if (inv.status === 'DRAFT') {
                   <td></td>
                 }
@@ -328,21 +329,21 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
             }
             <tr>
               <th scope="row" colspan="5">Total</th>
-              <td data-testid="invoice-amount">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-amount">{{ inv.amount | money: inv.currency }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
             </tr>
             <tr>
               <th scope="row" colspan="5">Total after tax</th>
-              <td data-testid="invoice-total-inc-tax">{{ inv.amount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-total-inc-tax">{{ inv.amount | money: inv.currency }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
             </tr>
             <tr>
               <th scope="row" colspan="5">Total savings (all discounts added together)</th>
-              <td data-testid="invoice-total-savings">{{ inv.totalSavings | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-total-savings">{{ inv.totalSavings | money: inv.currency }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
@@ -354,7 +355,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                   <span data-testid="invoice-early-pay-days">{{ inv.earlyPaymentDays }}</span> days) for
                   <span data-testid="invoice-early-pay-pct">{{ inv.earlyPaymentPct | number: '1.0-2' : 'en-US' }}</span>% off
                 </th>
-                <td data-testid="invoice-early-pay-amount">{{ inv.earlyPaymentAmount | currency: inv.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                <td data-testid="invoice-early-pay-amount">{{ inv.earlyPaymentAmount | money: inv.currency }}</td>
                 @if (inv.status === 'DRAFT') {
                   <td></td>
                 }

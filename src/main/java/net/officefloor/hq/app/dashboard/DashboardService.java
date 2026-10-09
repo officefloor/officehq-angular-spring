@@ -4,12 +4,12 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.client.ClientService;
-import net.officefloor.hq.app.client.Currency;
+import net.officefloor.hq.app.currency.Currency;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.project.ProjectRepository;
@@ -45,7 +45,7 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
         List<InvoiceStatus> owing = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL);
-        Map<Currency, BigDecimal> owed = new EnumMap<>(Currency.class);
+        Map<String, BigDecimal> owed = new TreeMap<>(Currency.ORDER);
         // A currency whose debts were written off stays listed, showing nothing owed, so the write-off is visible.
         clients.findAllById(invoices.sumAmountByStatusInPerClient(List.of(InvoiceStatus.WRITTEN_OFF)).stream()
                 .map(InvoiceRepository.ClientTotal::getClientId).toList())

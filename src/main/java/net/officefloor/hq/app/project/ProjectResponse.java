@@ -1,9 +1,8 @@
 package net.officefloor.hq.app.project;
 
-import net.officefloor.hq.app.client.Currency;
 
 public record ProjectResponse(Long id, String name, String code, Long clientId, String clientName, boolean archived,
-        ProjectStatus status, Currency currency, String description, boolean billable,
+        ProjectStatus status, String currency, String description, boolean billable,
         boolean closed) {
 
     public static ProjectResponse from(Project project) {

@@ -1,5 +1,5 @@
-import { CurrencyPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import {
@@ -24,7 +24,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
 // opens onto its line items and payments. Invoices with a credit put against them are flagged.
 @Component({
   selector: 'app-project-invoices',
-  imports: [ReactiveFormsModule, CurrencyPipe, RouterLink],
+  imports: [MoneyPipe, ReactiveFormsModule, RouterLink],
   template: `
     <section aria-labelledby="project-invoices-heading" data-testid="project-invoices">
       <h2 id="project-invoices-heading">Invoices</h2>
@@ -151,8 +151,8 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
                     >#{{ i.id }}</a
                   >
                 </td>
-                <td data-testid="invoice-amount">{{ i.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
-                <td data-testid="invoice-due-amount">{{ i.amountDue | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                <td data-testid="invoice-amount">{{ i.amount | money: currency() }}</td>
+                <td data-testid="invoice-due-amount">{{ i.amountDue | money: currency() }}</td>
                 <td data-testid="invoice-status">
                   {{ i.status }}
                   @if (i.creditApplied) {
@@ -190,7 +190,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
           <tfoot>
             <tr>
               <th scope="row">Total</th>
-              <td data-testid="project-invoices-total">{{ totalCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="project-invoices-total">{{ totalCents() / 100 | money: currency() }}</td>
               <td colspan="5"></td>
             </tr>
           </tfoot>

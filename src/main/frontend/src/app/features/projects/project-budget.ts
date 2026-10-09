@@ -1,5 +1,5 @@
-import { CurrencyPipe } from '@angular/common';
 import { Component, inject, input, signal } from '@angular/core';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ProjectService } from './project.service';
@@ -9,7 +9,7 @@ import { CurrencyCode } from '../clients/client.service';
 // and what is left. Set or change the budget, or clear it by leaving the amount blank.
 @Component({
   selector: 'app-project-budget',
-  imports: [ReactiveFormsModule, CurrencyPipe],
+  imports: [MoneyPipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="project-budget-heading" data-testid="project-budget-section">
       <h2 id="project-budget-heading">Budget</h2>
@@ -24,17 +24,17 @@ import { CurrencyCode } from '../clients/client.service';
             @if (b.budget === null) {
               No budget set
             } @else {
-              {{ b.budget | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}
+              {{ b.budget | money: currency() }}
             }
           </dd>
           <dt>Invoiced</dt>
-          <dd data-testid="project-invoiced">{{ b.invoiced | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+          <dd data-testid="project-invoiced">{{ b.invoiced | money: currency() }}</dd>
           <dt>Remaining</dt>
           <dd data-testid="project-remaining" [class.over]="b.remaining !== null && b.remaining < 0">
             @if (b.remaining === null) {
               —
             } @else {
-              {{ b.remaining | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}
+              {{ b.remaining | money: currency() }}
             }
           </dd>
         </dl>

@@ -1,5 +1,5 @@
-import { CurrencyPipe } from '@angular/common';
 import { Component, computed, inject, input, signal } from '@angular/core';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { InvoiceService } from './invoice.service';
@@ -13,7 +13,7 @@ import { InvoiceService } from './invoice.service';
 // with the app's navigation and the page's controls left off the printed copy.
 @Component({
   selector: 'app-client-statement',
-  imports: [CurrencyPipe, RouterLink],
+  imports: [MoneyPipe, RouterLink],
   styles: `
     .statement-actions {
       display: flex;
@@ -73,13 +73,13 @@ import { InvoiceService } from './invoice.service';
           <h2 id="statement-summary-heading">Summary</h2>
           <dl class="statement-summary">
             <dt>Total invoiced</dt>
-            <dd data-testid="statement-total-invoiced">{{ s.invoiced | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+            <dd data-testid="statement-total-invoiced">{{ s.invoiced | money: s.currency }}</dd>
             <dt>Tax</dt>
-            <dd data-testid="client-statement-tax-total">{{ s.tax | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+            <dd data-testid="client-statement-tax-total">{{ s.tax | money: s.currency }}</dd>
             <dt>Less paid</dt>
-            <dd data-testid="statement-total-paid">{{ s.paid | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+            <dd data-testid="statement-total-paid">{{ s.paid | money: s.currency }}</dd>
             <dt class="statement-grand-total">Grand total owed</dt>
-            <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+            <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | money: s.currency }}</dd>
           </dl>
         </section>
         <section aria-labelledby="statement-asof-heading" data-testid="statement-asof">
@@ -94,7 +94,7 @@ import { InvoiceService } from './invoice.service';
           } @else if (balanceAsOf.value(); as b) {
             <p aria-live="polite">
               Owed as at {{ b.asOf }}:
-              <strong data-testid="client-balance-asof">{{ b.balance | currency: b.currency : 'symbol' : '1.2-2' : 'en-US' }}</strong>
+              <strong data-testid="client-balance-asof">{{ b.balance | money: b.currency }}</strong>
             </p>
           }
         </section>
@@ -121,15 +121,15 @@ import { InvoiceService } from './invoice.service';
                     <td data-testid="statement-entry-description">{{ e.description }}</td>
                     <td class="statement-money" data-testid="statement-entry-charge">
                       @if (e.charge !== null) {
-                        {{ e.charge | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}
+                        {{ e.charge | money: s.currency }}
                       }
                     </td>
                     <td class="statement-money" data-testid="statement-entry-credit">
                       @if (e.credit !== null) {
-                        {{ e.credit | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}
+                        {{ e.credit | money: s.currency }}
                       }
                     </td>
-                    <td class="statement-money" data-testid="statement-running-balance">{{ e.balance | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                    <td class="statement-money" data-testid="statement-running-balance">{{ e.balance | money: s.currency }}</td>
                   </tr>
                 }
               </tbody>
@@ -172,19 +172,19 @@ import { InvoiceService } from './invoice.service';
                     <td data-testid="statement-invoice-status">{{ i.status }}</td>
                     <td data-testid="statement-invoice-issued">{{ i.issuedDate }}</td>
                     <td data-testid="statement-invoice-due">{{ i.dueDate }}</td>
-                    <td data-testid="statement-invoice-amount">{{ i.amount | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
-                    <td data-testid="statement-invoice-tax">{{ i.tax | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
-                    <td data-testid="statement-invoice-due-amount">{{ i.amountDue | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                    <td data-testid="statement-invoice-amount">{{ i.amount | money: s.currency }}</td>
+                    <td data-testid="statement-invoice-tax">{{ i.tax | money: s.currency }}</td>
+                    <td data-testid="statement-invoice-due-amount">{{ i.amountDue | money: s.currency }}</td>
                   </tr>
                 }
                 <tr>
                   <th scope="row" colspan="6">Tax on {{ job.projectName }}</th>
-                  <td data-testid="statement-project-tax">{{ job.tax | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="statement-project-tax">{{ job.tax | money: s.currency }}</td>
                   <td></td>
                 </tr>
                 <tr>
                   <th scope="row" colspan="7">Subtotal owed on {{ job.projectName }}</th>
-                  <td data-testid="statement-project-subtotal">{{ job.subtotal | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="statement-project-subtotal">{{ job.subtotal | money: s.currency }}</td>
                 </tr>
               </tbody>
             }
@@ -192,7 +192,7 @@ import { InvoiceService } from './invoice.service';
         }
         <p>
           Total owed:
-          <strong data-testid="client-outstanding-total">{{ s.outstanding | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</strong>
+          <strong data-testid="client-outstanding-total">{{ s.outstanding | money: s.currency }}</strong>
         </p>
       </article>
     }

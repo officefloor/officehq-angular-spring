@@ -2,11 +2,12 @@ import { Component, effect, inject, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { SettingsService } from './settings.service';
+import { CurrencyRounding } from '../currencies/currency-rounding';
 
-// The app-wide settings: the standard sales tax rate that every new invoice starts with.
+// The app-wide settings: the standard sales tax rate that every new invoice starts with, and how each currency rounds.
 @Component({
   selector: 'app-settings',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, CurrencyRounding],
   template: `
     <h1>Settings</h1>
     @if (settings.error()) {
@@ -41,6 +42,7 @@ import { SettingsService } from './settings.service';
         <p role="alert" data-testid="settings-save-error">{{ saveError() }}</p>
       }
     </form>
+    <app-currency-rounding />
   `,
 })
 export class SettingsPage {

@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import net.officefloor.hq.app.contact.Contact;
 
 public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, boolean taxInclusive, boolean taxExempt, boolean keyAccount, BigDecimal defaultDiscountPct, boolean archived, PrimaryContact primaryContact,
-        Currency currency, BigDecimal outstanding) {
+        String currency, BigDecimal outstanding) {
 
     /** Who the client's main contact is; null when none has been chosen. */
     public record PrimaryContact(Long id, String name) {

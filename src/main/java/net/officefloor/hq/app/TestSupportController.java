@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import net.officefloor.hq.app.client.Currency;
+import net.officefloor.hq.app.currency.Currency;
 import net.officefloor.hq.app.invoice.InvoiceRequest;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.project.ProjectStatus;
@@ -68,6 +68,10 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
+            // Back to the standard currencies, each rounding to the cent.
+            jdbc.execute("DELETE FROM currency");
+            jdbc.execute("INSERT INTO currency (code, symbol, rounding_step) VALUES ('USD', '$', 0.01), ('EUR', '€', 0.01),"
+                    + " ('GBP', '£', 0.01), ('CAD', 'CA$', 0.01), ('AUD', 'A$', 0.01)");
         } finally {
             jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
         }
@@ -82,6 +86,13 @@ public class TestSupportController {
         if (fixture.get("asOf") != null) {
             clock.setToday(LocalDate.parse(fixture.get("asOf").toString()));
         }
+        // A fixture currency is added, or replaces the standard one with the same code; its rounding step
+        // defaults to the cent and its symbol to its code.
+        for (Map<String, Object> c : rows(fixture, "currencies")) {
+            jdbc.update("MERGE INTO currency (code, symbol, rounding_step) KEY (code) VALUES (?, ?, ?)",
+                    c.get("code"), c.get("symbol") == null ? c.get("code") + " " : c.get("symbol"),
+                    c.get("roundingStep") == null ? new BigDecimal("0.01") : decimal(c.get("roundingStep")));
+        }
         for (Map<String, Object> c : rows(fixture, "clients")) {
             jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct)"
                     + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -89,7 +100,7 @@ public class TestSupportController {
                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
                     Boolean.TRUE.equals(c.get("keyAccount")),
                     Boolean.TRUE.equals(c.get("archived")),
-                    c.get("currency") == null ? Currency.USD.name() : c.get("currency").toString(),
+                    c.get("currency") == null ? Currency.DEFAULT : c.get("currency").toString(),
                     decimal(c.get("defaultDiscountPct")));
         }
         for (Map<String, Object> c : rows(fixture, "contacts")) {

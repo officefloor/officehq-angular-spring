@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { CurrencyPipe } from '@angular/common';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { Component, computed, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -12,7 +12,7 @@ import { Client, ClientService } from './client.service';
 // can be corrected in place from its row. Key accounts carry a marker beside their name. The list can be sorted by name or by how much each client owes.
 @Component({
   selector: 'app-clients',
-  imports: [CurrencyPipe, ReactiveFormsModule, RouterLink, ClientEditForm],
+  imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm],
   styles: `
     .key-account {
       margin-inline-start: 0.5em;
@@ -223,7 +223,7 @@ import { Client, ClientService } from './client.service';
                   }
                 </td>
                 <td data-testid="client-email">{{ c.email }}</td>
-                <td data-testid="client-outstanding">{{ c.outstanding | currency: c.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                <td data-testid="client-outstanding">{{ c.outstanding | money: c.currency }}</td>
                 <td>
                   <a
                     [routerLink]="['/clients', c.id]"

@@ -2,10 +2,8 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-/** The currencies a client can be billed in, by ISO 4217 code. */
-export const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD'] as const;
-
-export type CurrencyCode = (typeof CURRENCIES)[number];
+/** A currency a client can be billed in, by ISO 4217 code; the known ones come from the currency service. */
+export type CurrencyCode = string;
 
 export interface Client {
   id: number;

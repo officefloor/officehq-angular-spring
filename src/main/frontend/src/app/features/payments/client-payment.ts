@@ -1,4 +1,5 @@
-import { CurrencyPipe, formatCurrency, getCurrencySymbol } from '@angular/common';
+import { formatCurrency, getCurrencySymbol } from '@angular/common';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { Observable } from 'rxjs';
@@ -28,7 +29,7 @@ export type PaymentSource = 'payment' | 'deposit';
 // shares may not add up to more than is held.
 @Component({
   selector: 'app-client-payment',
-  imports: [ReactiveFormsModule, CurrencyPipe],
+  imports: [MoneyPipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="client-payment-heading" data-testid="client-payment">
       <h2 id="client-payment-heading">{{ fromDeposit() ? 'Put a deposit toward invoices' : 'Record a payment' }}</h2>
@@ -42,7 +43,7 @@ export type PaymentSource = 'payment' | 'deposit';
             @if (fromDeposit()) {
               <p>
                 Deposits held:
-                <span data-testid="payment-deposit-held">{{ heldCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
+                <span data-testid="payment-deposit-held">{{ heldCents() / 100 | money: currency() }}</span>
               </p>
             } @else {
               <div>
@@ -93,7 +94,7 @@ export type PaymentSource = 'payment' | 'deposit';
                 <p id="client-payment-credit-note">
                   @if (useCredit()) {
                     Credit available:
-                    <span data-testid="payment-credit-available">{{ creditCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>.
+                    <span data-testid="payment-credit-available">{{ creditCents() / 100 | money: currency() }}</span>.
                   }
                   Any of the payment not allocated is kept as credit for the client.
                 </p>
@@ -114,7 +115,7 @@ export type PaymentSource = 'payment' | 'deposit';
                   <tr [attr.data-testid]="'payment-alloc-row-' + i.id">
                     <td>#{{ i.id }}</td>
                     <td>{{ i.projectName }}</td>
-                    <td data-testid="payment-alloc-due">{{ i.amountDue | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                    <td data-testid="payment-alloc-due">{{ i.amountDue | money: currency() }}</td>
                     <td>
                       <input
                         type="number"
@@ -133,16 +134,16 @@ export type PaymentSource = 'payment' | 'deposit';
               <tfoot>
                 <tr>
                   <th scope="row" colspan="3">Allocated</th>
-                  <td data-testid="payment-alloc-total">{{ allocatedCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="payment-alloc-total">{{ allocatedCents() / 100 | money: currency() }}</td>
                 </tr>
                 @if (!fromDeposit()) {
                   <tr>
                     <th scope="row" colspan="3">From credit</th>
-                    <td data-testid="payment-from-credit">{{ fromCreditCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                    <td data-testid="payment-from-credit">{{ fromCreditCents() / 100 | money: currency() }}</td>
                   </tr>
                   <tr>
                     <th scope="row" colspan="3">Kept as credit</th>
-                    <td data-testid="payment-to-credit">{{ toCreditCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                    <td data-testid="payment-to-credit">{{ toCreditCents() / 100 | money: currency() }}</td>
                   </tr>
                 }
               </tfoot>

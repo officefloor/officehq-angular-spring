@@ -1,5 +1,6 @@
-import { Component, inject, input, linkedSignal, output, signal } from '@angular/core';
-import { CURRENCIES, Client, ClientService, CurrencyCode } from './client.service';
+import { Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
+import { Client, ClientService, CurrencyCode } from './client.service';
+import { CurrencyService } from '../currencies/currency.service';
 
 // The currency a client is billed in, with a picker to change it. All of the client's money is shown in it.
 @Component({
@@ -16,7 +17,7 @@ import { CURRENCIES, Client, ClientService, CurrencyCode } from './client.servic
         [value]="selected()"
         (change)="selected.set($any($event.target).value)"
       >
-        @for (code of currencies; track code) {
+        @for (code of currencies(); track code) {
           <option [value]="code" [selected]="code === selected()">{{ code }}</option>
         }
       </select>
@@ -34,7 +35,13 @@ export class ClientCurrency {
   /** Emits the client once their currency has been saved. */
   readonly changed = output<Client>();
 
-  protected readonly currencies = CURRENCIES;
+  private readonly currencyService = inject(CurrencyService);
+
+  // The known currencies, always including the client's own even before the list loads.
+  protected readonly currencies = computed(() => {
+    const codes = this.currencyService.list().map((c) => c.code);
+    return codes.includes(this.client().currency) ? codes : [this.client().currency, ...codes];
+  });
   protected readonly selected = linkedSignal<CurrencyCode>(() => this.client().currency);
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);

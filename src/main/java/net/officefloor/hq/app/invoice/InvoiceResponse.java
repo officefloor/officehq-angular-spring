@@ -2,13 +2,12 @@ package net.officefloor.hq.app.invoice;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import net.officefloor.hq.app.client.Currency;
 
 /**
  * An invoice, with how much of it is still left to pay after the payments made and credit notes raised against
  * it (nothing once void), and whether any credit has been put against it.
  */
-public record InvoiceResponse(Long id, Long projectId, Currency currency, BigDecimal amount, InvoiceStatus status,
+public record InvoiceResponse(Long id, Long projectId, String currency, BigDecimal amount, InvoiceStatus status,
         LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue,
         boolean creditApplied) {
 

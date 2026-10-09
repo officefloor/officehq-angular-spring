@@ -1,5 +1,5 @@
-import { CurrencyPipe } from '@angular/common';
 import { Component, inject, input, signal } from '@angular/core';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CurrencyCode } from '../clients/client.service';
@@ -10,7 +10,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 // The deposits a client has paid up front, before any invoice, with what is still held, how much has been put toward invoices or refunded, and a form to record another.
 @Component({
   selector: 'app-client-deposits',
-  imports: [ReactiveFormsModule, CurrencyPipe],
+  imports: [MoneyPipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="client-deposits-heading" data-testid="client-deposits">
       <h2 id="client-deposits-heading">Deposits</h2>
@@ -18,18 +18,18 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
         <p role="alert" data-testid="client-deposits-error">Could not load the client's deposits.</p>
       } @else if (deposits.hasValue()) {
         <p>
-          Held: <span data-testid="client-deposit-total">{{ deposits.value().total | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
+          Held: <span data-testid="client-deposit-total">{{ deposits.value().total | money: currency() }}</span>
         </p>
         @if (deposits.value().applied > 0) {
           <p>
             Put toward invoices:
-            <span data-testid="client-deposit-applied">{{ deposits.value().applied | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
+            <span data-testid="client-deposit-applied">{{ deposits.value().applied | money: currency() }}</span>
           </p>
         }
         @if (deposits.value().refunded > 0) {
           <p>
             Refunded:
-            <span data-testid="client-deposit-refunded">{{ deposits.value().refunded | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
+            <span data-testid="client-deposit-refunded">{{ deposits.value().refunded | money: currency() }}</span>
           </p>
         }
         @if (deposits.value().deposits.length > 0) {
@@ -37,7 +37,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             @for (d of deposits.value().deposits; track d.id) {
               <li [attr.data-testid]="'client-deposit-' + d.id">
                 <span data-testid="client-deposit-date">{{ d.date }}</span>:
-                <span data-testid="client-deposit-amount">{{ d.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
+                <span data-testid="client-deposit-amount">{{ d.amount | money: currency() }}</span>
               </li>
             }
           </ul>

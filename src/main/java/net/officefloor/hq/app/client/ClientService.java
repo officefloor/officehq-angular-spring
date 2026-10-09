@@ -2,13 +2,15 @@ package net.officefloor.hq.app.client;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.contact.ContactRepository;
 import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+import net.officefloor.hq.app.currency.Currency;
+import net.officefloor.hq.app.currency.CurrencyService;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.payment.PaymentRepository;
@@ -29,16 +31,18 @@ public class ClientService {
     private final InvoiceRepository invoices;
     private final PaymentRepository payments;
     private final CreditNoteRepository creditNotes;
+    private final CurrencyService currencies;
     private final Audit audit;
 
     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
-            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes, Audit audit) {
+            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes, CurrencyService currencies, Audit audit) {
         this.clients = clients;
         this.projects = projects;
         this.contacts = contacts;
         this.invoices = invoices;
         this.payments = payments;
         this.creditNotes = creditNotes;
+        this.currencies = currencies;
         this.audit = audit;
     }
 
@@ -138,9 +142,12 @@ public class ClientService {
 
     /** Changes the currency a client is billed in, recording the change in the audit log. */
     @Transactional
-    public ClientResponse changeCurrency(Long id, Currency currency) {
+    public ClientResponse changeCurrency(Long id, String currency) {
         Client client = find(id);
-        if (client.getCurrency() != currency) {
+        if (!currencies.exists(currency)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown currency");
+        }
+        if (!client.getCurrency().equals(currency)) {
             client.setCurrency(currency);
             clients.flush();
             audit.record("CLIENT_CURRENCY_CHANGED id=" + id + " currency=" + currency);
@@ -192,7 +199,7 @@ public class ClientService {
         }
         Client source = find(id);
         Client target = find(targetId);
-        if (source.getCurrency() != target.getCurrency()) {
+        if (!source.getCurrency().equals(target.getCurrency())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only clients billed in the same currency can be merged");
         }
@@ -250,9 +257,9 @@ public class ClientService {
      * in different currencies are never added together. Currencies nothing is owed in are left out.
      */
     @Transactional(readOnly = true)
-    public Map<Currency, BigDecimal> outstandingByCurrency() {
+    public Map<String, BigDecimal> outstandingByCurrency() {
         Map<Long, BigDecimal> owed = outstandingByClient();
-        Map<Currency, BigDecimal> totals = new EnumMap<>(Currency.class);
+        Map<String, BigDecimal> totals = new TreeMap<>(Currency.ORDER);
         clients.findAllById(owed.keySet())
                 .forEach(c -> totals.merge(c.getCurrency(), owed.get(c.getId()), BigDecimal::add));
         totals.values().removeIf(amount -> amount.signum() == 0);

@@ -1,5 +1,5 @@
-import { CurrencyPipe } from '@angular/common';
 import { Component, inject, signal } from '@angular/core';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { DashboardService, DashboardSummary } from './dashboard.service';
 
 // Dashboard page: how many clients and projects there are, and the total still owed in each currency
@@ -9,7 +9,7 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
 // each in their own currency.
 @Component({
   selector: 'app-dashboard',
-  imports: [CurrencyPipe],
+  imports: [MoneyPipe],
   template: `
     <h1>Dashboard</h1>
 
@@ -28,7 +28,7 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
         <div>
           <dt>Outstanding</dt>
           @for (t of s.outstanding; track t.currency) {
-            <dd [attr.data-testid]="'dashboard-outstanding-' + t.currency">{{ t.amount | currency: t.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+            <dd [attr.data-testid]="'dashboard-outstanding-' + t.currency">{{ t.amount | money: t.currency }}</dd>
           } @empty {
             <dd data-testid="dashboard-outstanding-none">Nothing owed</dd>
           }
@@ -46,7 +46,7 @@ import { DashboardService, DashboardSummary } from './dashboard.service';
             @for (c of s.topClients; track c.id) {
               <li [attr.data-testid]="'top-client-row-' + c.id">
                 <span data-testid="top-client-name">{{ c.name }}</span>:
-                <span data-testid="top-client-amount">{{ c.outstanding | currency: c.currency : 'symbol' : '1.2-2' : 'en-US' }}</span>
+                <span data-testid="top-client-amount">{{ c.outstanding | money: c.currency }}</span>
               </li>
             }
           </ol>

@@ -1,5 +1,5 @@
-import { CurrencyPipe } from '@angular/common';
 import { Component, inject, input, output, signal } from '@angular/core';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CurrencyCode } from '../clients/client.service';
@@ -10,14 +10,14 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 // How much credit a client has to spend: their unused deposits and credit notes added up, and a form to refund some of it back to them.
 @Component({
   selector: 'app-client-credit',
-  imports: [CurrencyPipe, ReactiveFormsModule],
+  imports: [MoneyPipe, ReactiveFormsModule],
   template: `
     @if (credit.error()) {
       <p role="alert" data-testid="client-available-credit-error">Could not load the client's available credit.</p>
     } @else if (credit.hasValue()) {
       <p>
         Available credit:
-        <span data-testid="client-available-credit">{{ credit.value().total | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>
+        <span data-testid="client-available-credit">{{ credit.value().total | money: currency() }}</span>
       </p>
     }
     <form [formGroup]="form" (ngSubmit)="submit()" data-testid="refund-form" aria-label="Refund credit" novalidate>

@@ -2,8 +2,6 @@ package net.officefloor.hq.app.client;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -14,6 +12,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import net.officefloor.hq.app.contact.Contact;
+import net.officefloor.hq.app.currency.Currency;
 
 /** A client of the office. */
 @Entity
@@ -53,8 +52,8 @@ public class Client {
     private BigDecimal defaultDiscountPct = BigDecimal.ZERO.setScale(2);
 
     /** The currency the client is billed in; all of their money is in it. */
-    @Enumerated(EnumType.STRING)
-    private Currency currency = Currency.USD;
+    @Column(nullable = false)
+    private String currency = Currency.DEFAULT;
 
     /** The client's main contact, one of its own contacts; none until one is chosen. */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -145,11 +144,11 @@ public class Client {
         this.archived = archived;
     }
 
-    public Currency getCurrency() {
+    public String getCurrency() {
         return currency;
     }
 
-    public void setCurrency(Currency currency) {
+    public void setCurrency(String currency) {
         this.currency = currency;
     }
 

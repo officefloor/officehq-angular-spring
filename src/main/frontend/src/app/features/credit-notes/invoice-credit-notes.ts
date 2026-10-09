@@ -1,4 +1,5 @@
-import { CurrencyPipe, DatePipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
@@ -12,7 +13,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 // another once the invoice has been sent and while it is not cancelled.
 @Component({
   selector: 'app-invoice-credit-notes',
-  imports: [ReactiveFormsModule, CurrencyPipe, DatePipe],
+  imports: [MoneyPipe, ReactiveFormsModule, DatePipe],
   template: `
     <section aria-labelledby="invoice-credit-notes-heading" data-testid="invoice-credit-notes">
       <h2 id="invoice-credit-notes-heading">Credit notes</h2>
@@ -34,14 +35,14 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
               @for (c of creditNotes.value(); track c.id) {
                 <tr [attr.data-testid]="'credit-note-row-' + c.id">
                   <td data-testid="credit-note-date">{{ c.issuedAt | date: 'yyyy-MM-dd' }}</td>
-                  <td data-testid="credit-note-amount">{{ c.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td data-testid="credit-note-amount">{{ c.amount | money: currency() }}</td>
                 </tr>
               }
             </tbody>
             <tfoot>
               <tr>
                 <th scope="row">Credited</th>
-                <td data-testid="invoice-credited-total">{{ creditedCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                <td data-testid="invoice-credited-total">{{ creditedCents() / 100 | money: currency() }}</td>
               </tr>
             </tfoot>
           </table>

@@ -1,5 +1,5 @@
-import { CurrencyPipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -12,7 +12,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 // another payment while the invoice is sent and not yet fully paid.
 @Component({
   selector: 'app-invoice-payments',
-  imports: [ReactiveFormsModule, CurrencyPipe],
+  imports: [MoneyPipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="invoice-payments-heading" data-testid="invoice-payments">
       <h2 id="invoice-payments-heading">Payments</h2>
@@ -34,18 +34,18 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             @for (p of payments.value(); track p.id) {
               <tr [attr.data-testid]="'payment-row-' + p.id">
                 <td data-testid="payment-date">{{ p.date }}</td>
-                <td data-testid="payment-amount">{{ p.amount | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                <td data-testid="payment-amount">{{ p.amount | money: currency() }}</td>
               </tr>
             }
           </tbody>
           <tfoot>
             <tr>
               <th scope="row">Paid</th>
-              <td data-testid="invoice-paid-total">{{ paidCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-paid-total">{{ paidCents() / 100 | money: currency() }}</td>
             </tr>
             <tr>
               <th scope="row">Balance due</th>
-              <td data-testid="invoice-balance-due">{{ balanceCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-balance-due">{{ balanceCents() / 100 | money: currency() }}</td>
             </tr>
           </tfoot>
         </table>

@@ -3,7 +3,6 @@ package net.officefloor.hq.app.invoice;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-import net.officefloor.hq.app.client.Currency;
 
 /**
  * A single invoice together with the line items it is built from: their subtotal, each discount on it
@@ -18,7 +17,7 @@ import net.officefloor.hq.app.client.Currency;
  * before it, whether the minimum was billed because the net total came out under it, and the total
  * savings (the line discounts and the invoice's discounts added together).
  */
-public record InvoiceDetailResponse(Long id, Long projectId, Currency currency, BigDecimal amount, BigDecimal totalExTax,
+public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
         BigDecimal subtotal,
         BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
         BigDecimal levyPct, BigDecimal levy, BigDecimal surcharge, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
