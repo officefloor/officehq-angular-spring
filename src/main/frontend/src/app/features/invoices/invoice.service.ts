@@ -60,8 +60,14 @@ export interface LineItem {
   amount: number;
 }
 
-/** A single invoice with the line items it is built from. */
+/**
+ * A single invoice with the line items it is built from: their subtotal, the percentage discount and
+ * what it takes off; its amount is the subtotal less the discount.
+ */
 export interface InvoiceDetail extends Invoice {
+  subtotal: number;
+  discountPct: number;
+  discount: number;
   lineItems: LineItem[];
 }
 
@@ -120,6 +126,11 @@ export class InvoiceService {
 
   removeLineItem(projectId: number, invoiceId: number, lineItemId: number): Observable<InvoiceDetail> {
     return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/line-items/${lineItemId}`);
+  }
+
+  /** Sets the percentage taken off a draft invoice; zero removes the discount. */
+  applyDiscount(projectId: number, invoiceId: number, discountPct: number): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discount`, { discountPct });
   }
 
   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {

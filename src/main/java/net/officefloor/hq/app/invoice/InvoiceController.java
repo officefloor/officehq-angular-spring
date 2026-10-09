@@ -58,6 +58,12 @@ public class InvoiceController {
         return service.removeLineItem(projectId, invoiceId, lineItemId);
     }
 
+    @PutMapping("/{invoiceId}/discount")
+    public InvoiceDetailResponse applyDiscount(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @Valid @RequestBody DiscountRequest request) {
+        return service.applyDiscount(projectId, invoiceId, request);
+    }
+
     @PostMapping("/{invoiceId}/send")
     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.send(projectId, invoiceId);

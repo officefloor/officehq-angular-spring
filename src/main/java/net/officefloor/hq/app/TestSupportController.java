@@ -133,10 +133,15 @@ public class TestSupportController {
                 amount = amount.add(new BigDecimal(l.get("qty").toString())
                         .multiply(new BigDecimal(l.get("unitPrice").toString())));
             }
-            jdbc.update("INSERT INTO invoice (id, project_id, amount, status, issued_date, due_date)"
-                    + " VALUES (?, ?, ?, ?, ?, ?)",
+            // A discount takes a percentage off the line items' subtotal; the amount is what is left.
+            BigDecimal subtotal = amount.setScale(2, RoundingMode.HALF_UP);
+            BigDecimal discountPct = i.get("discountPct") == null ? BigDecimal.ZERO
+                    : new BigDecimal(i.get("discountPct").toString());
+            BigDecimal discount = subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            jdbc.update("INSERT INTO invoice (id, project_id, amount, discount_pct, status, issued_date, due_date)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, ((Number) i.get("projectId")).longValue(),
-                    amount.setScale(2, RoundingMode.HALF_UP),
+                    subtotal.subtract(discount), discountPct,
                     seedStatus(i.get("status")), issued, due);
             for (Map<String, Object> l : lineItems) {
                 if (l.get("id") != null) {

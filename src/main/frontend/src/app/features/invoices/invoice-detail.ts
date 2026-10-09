@@ -1,5 +1,5 @@
 import { CurrencyPipe, DecimalPipe } from '@angular/common';
-import { Component, Injector, afterNextRender, computed, inject, input, signal } from '@angular/core';
+import { Component, Injector, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -10,7 +10,8 @@ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
 // A single invoice: the things it charges for (description, how many and of what, price each), each line's
-// amount, and the invoice total worked out from them. Lines can be added while it is a draft.
+// amount, their subtotal, any percentage discount, and the final total after it. Lines and the
+// discount can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
   imports: [ReactiveFormsModule, CurrencyPipe, DecimalPipe, RouterLink, InvoicePayments],
@@ -149,8 +150,24 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
           </tbody>
           <tfoot>
             <tr>
+              <th scope="row" colspan="4">Subtotal</th>
+              <td data-testid="invoice-subtotal">{{ inv.subtotal | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              @if (inv.status === 'DRAFT') {
+                <td></td>
+              }
+            </tr>
+            <tr>
+              <th scope="row" colspan="4">
+                Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%)
+              </th>
+              <td data-testid="invoice-discount">{{ inv.discount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              @if (inv.status === 'DRAFT') {
+                <td></td>
+              }
+            </tr>
+            <tr>
               <th scope="row" colspan="4">Total</th>
-              <td data-testid="invoice-amount">{{ totalCents() / 100 | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
+              <td data-testid="invoice-amount">{{ inv.amount | currency: 'USD' : 'symbol' : '1.2-2' : 'en-US' }}</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
@@ -163,6 +180,34 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
       </section>
 
       @if (inv.status === 'DRAFT') {
+        <form [formGroup]="discountForm" (ngSubmit)="applyDiscount()" data-testid="discount-form" novalidate>
+          <h2>Discount</h2>
+          <div>
+            <label for="discount-pct">Percentage off the subtotal</label>
+            <input
+              id="discount-pct"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              max="100"
+              step="0.01"
+              formControlName="discountPct"
+              data-testid="discount-form-pct"
+              [attr.aria-invalid]="discountInvalid()"
+              [attr.aria-describedby]="discountInvalid() ? 'discount-pct-error' : null"
+            />
+            @if (discountInvalid()) {
+              <p id="discount-pct-error" role="alert" data-testid="discount-form-pct-error">
+                Enter a percentage from 0 to 100 with at most two decimal places.
+              </p>
+            }
+          </div>
+          <button type="submit" data-testid="discount-form-submit" [disabled]="discountSaving()">Apply discount</button>
+          @if (discountError()) {
+            <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
+          }
+        </form>
+
         <form [formGroup]="form" (ngSubmit)="submit()" data-testid="lineitem-form" novalidate>
           <h2>Add a line item</h2>
           <div>
@@ -245,7 +290,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
       <app-invoice-payments
         [projectId]="projectIdNumber()"
         [invoiceId]="inv.id"
-        [invoiceAmount]="totalCents() / 100"
+        [invoiceAmount]="inv.amount"
         [canRecord]="inv.status === 'SENT' || inv.status === 'PARTIAL'"
         (recorded)="invoice.reload()"
       />
@@ -272,12 +317,45 @@ export class InvoiceDetailPage {
   protected lineCents(qty: number, unitPrice: number): number {
     return Math.round(Math.round(qty * 100) * Math.round(unitPrice * 100) / 100);
   }
-  protected readonly totalCents = computed(() =>
-    (this.invoice.hasValue() ? this.invoice.value().lineItems : []).reduce(
-      (sum, l) => sum + this.lineCents(l.qty, l.unitPrice),
-      0,
-    ),
-  );
+
+  protected readonly discountSaving = signal(false);
+  protected readonly discountError = signal<string | null>(null);
+
+  protected readonly discountForm = this.fb.group({
+    discountPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
+  });
+
+  // Starts the discount field from the invoice's current percentage whenever the invoice loads.
+  private readonly syncDiscount = effect(() => {
+    if (this.invoice.hasValue()) {
+      this.discountForm.setValue({ discountPct: String(this.invoice.value().discountPct) });
+    }
+  });
+
+  protected discountInvalid(): boolean {
+    const control = this.discountForm.controls.discountPct;
+    return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected applyDiscount(): void {
+    if (this.discountForm.invalid) {
+      this.discountForm.markAllAsTouched();
+      return;
+    }
+    this.discountSaving.set(true);
+    this.discountError.set(null);
+    const discountPct = Number(this.discountForm.getRawValue().discountPct);
+    this.service.applyDiscount(this.projectIdNumber(), Number(this.invoiceId()), discountPct).subscribe({
+      next: (updated) => {
+        this.invoice.set(updated);
+        this.discountSaving.set(false);
+      },
+      error: () => {
+        this.discountError.set('Could not apply the discount. Please try again.');
+        this.discountSaving.set(false);
+      },
+    });
+  }
 
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);

@@ -15,6 +15,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,8 +23,8 @@ import java.util.Optional;
 import net.officefloor.hq.app.project.Project;
 
 /**
- * An invoice raised against a project. It is built from line items, and its stored amount is always
- * the sum of what each line charges.
+ * An invoice raised against a project. It is built from line items, and can take a percentage off
+ * their sum as a discount; its stored amount is always that subtotal less the discount.
  */
 @Entity
 @Table(name = "invoice")
@@ -39,6 +40,9 @@ public class Invoice {
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount = BigDecimal.ZERO.setScale(2);
+
+    @Column(name = "discount_pct", nullable = false, precision = 5, scale = 2)
+    private BigDecimal discountPct = BigDecimal.ZERO.setScale(2);
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
@@ -73,6 +77,22 @@ public class Invoice {
 
     public BigDecimal getAmount() {
         return amount;
+    }
+
+    /** The percentage taken off the subtotal; zero when there is no discount. */
+    public BigDecimal getDiscountPct() {
+        return discountPct;
+    }
+
+    /** What the line items add up to, before any discount. */
+    public BigDecimal getSubtotal() {
+        return lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** How much the discount takes off the subtotal, to the cent. */
+    public BigDecimal getDiscount() {
+        return discountOn(getSubtotal());
     }
 
     public InvoiceStatus getStatus() {
@@ -117,9 +137,19 @@ public class Invoice {
         return lineItems.stream().filter(l -> l.getId().equals(lineItemId)).findFirst();
     }
 
+    /** Sets the percentage taken off this invoice and reworks its amount to match. */
+    public void applyDiscount(BigDecimal discountPct) {
+        this.discountPct = discountPct.setScale(2, RoundingMode.HALF_UP);
+        recalculateAmount();
+    }
+
+    private BigDecimal discountOn(BigDecimal subtotal) {
+        return subtotal.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    }
+
     private void recalculateAmount() {
-        this.amount = lineItems.stream().map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2);
+        BigDecimal subtotal = getSubtotal();
+        this.amount = subtotal.subtract(discountOn(subtotal));
     }
 
     /** Marks this invoice as sent to the client. */
