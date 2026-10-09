@@ -1,0 +1,290 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index b19df82..017bc2c 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ 
+-export type InvoiceStatus = 'UNPAID' | 'PAID';
++export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID';
+ 
+ export interface Invoice {
+   id: number;
+@@ -35,6 +35,10 @@ export class InvoiceService {
+     return this.http.post<Invoice>(`/api/projects/${projectId}/invoices`, invoice);
+   }
+ 
++  send(projectId: number, invoiceId: number): Observable<Invoice> {
++    return this.http.post<Invoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
++  }
++
+   pay(projectId: number, invoiceId: number): Observable<Invoice> {
+     return this.http.post<Invoice>(`/api/projects/${projectId}/invoices/${invoiceId}/pay`, null);
+   }
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index b01dc90..c452d86 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -8,7 +8,7 @@ import {
+   ValidationErrors,
+   Validators,
+ } from '@angular/forms';
+-import { InvoiceService } from './invoice.service';
++import { Invoice, InvoiceService } from './invoice.service';
+ 
+ // ISO yyyy-MM-dd strings compare correctly as plain strings.
+ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+@@ -17,7 +17,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+ }
+ 
+ // A project's invoices: lists them with their issue and due dates, shows what they add up to, adds a
+-// new one, and marks one as paid.
++// new draft, sends a draft, and marks a sent one as paid.
+ @Component({
+   selector: 'app-project-invoices',
+   imports: [ReactiveFormsModule, CurrencyPipe],
+@@ -108,12 +108,22 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+                 <td data-testid="invoice-issued">{{ i.issuedDate }}</td>
+                 <td data-testid="invoice-due">{{ i.dueDate }}</td>
+                 <td>
+-                  @if (i.status === 'UNPAID') {
++                  @if (i.status === 'DRAFT') {
++                    <button
++                      type="button"
++                      [attr.data-testid]="'invoice-send-' + i.id"
++                      [attr.aria-label]="'Send invoice #' + i.id"
++                      [disabled]="busy() === i.id"
++                      (click)="send(i.id)"
++                    >
++                      Send
++                    </button>
++                  } @else if (i.status === 'SENT') {
+                     <button
+                       type="button"
+                       [attr.data-testid]="'invoice-pay-' + i.id"
+                       [attr.aria-label]="'Mark invoice #' + i.id + ' as paid'"
+-                      [disabled]="paying() === i.id"
++                      [disabled]="busy() === i.id"
+                       (click)="pay(i.id)"
+                     >
+                       Mark paid
+@@ -134,6 +144,9 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+         @if (payError()) {
+           <p role="alert" data-testid="invoice-pay-error">{{ payError() }}</p>
+         }
++        @if (sendError()) {
++          <p role="alert" data-testid="invoice-send-error">{{ sendError() }}</p>
++        }
+       }
+     </section>
+   `,
+@@ -163,7 +176,9 @@ export class ProjectInvoices {
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+ 
+-  protected readonly paying = signal<number | null>(null);
++  // The invoice whose send or pay request is in flight.
++  protected readonly busy = signal<number | null>(null);
++  protected readonly sendError = signal<string | null>(null);
+   protected readonly payError = signal<string | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group(
+@@ -213,18 +228,37 @@ export class ProjectInvoices {
+     });
+   }
+ 
++  protected send(invoiceId: number): void {
++    this.busy.set(invoiceId);
++    this.sendError.set(null);
++    this.service.send(this.projectId(), invoiceId).subscribe({
++      next: (sent) => {
++        this.replace(sent);
++        this.busy.set(null);
++      },
++      error: () => {
++        this.sendError.set('Could not send the invoice. Please try again.');
++        this.busy.set(null);
++      },
++    });
++  }
++
+   protected pay(invoiceId: number): void {
+-    this.paying.set(invoiceId);
++    this.busy.set(invoiceId);
+     this.payError.set(null);
+     this.service.pay(this.projectId(), invoiceId).subscribe({
+       next: (paid) => {
+-        this.invoices.update((list) => (list ?? []).map((i) => (i.id === paid.id ? paid : i)));
+-        this.paying.set(null);
++        this.replace(paid);
++        this.busy.set(null);
+       },
+       error: () => {
+         this.payError.set('Could not mark the invoice as paid. Please try again.');
+-        this.paying.set(null);
++        this.busy.set(null);
+       },
+     });
+   }
++
++  private replace(updated: Invoice): void {
++    this.invoices.update((list) => (list ?? []).map((i) => (i.id === updated.id ? updated : i)));
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index deed919..a08b641 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -80,12 +80,15 @@ public class TestSupportController {
+     }
+ 
+     /**
+-     * Fixtures may describe an issued-but-unpaid invoice as "SENT"; this domain models that state
+-     * as UNPAID.
++     * Invoices without a status are seeded as new drafts. Older fixtures may describe an
++     * issued-but-unpaid invoice as "UNPAID"; this domain models that state as SENT.
+      */
+     private static String seedStatus(Object status) {
+-        if (status == null || "SENT".equals(status)) {
+-            return InvoiceStatus.UNPAID.name();
++        if (status == null) {
++            return InvoiceStatus.DRAFT.name();
++        }
++        if ("UNPAID".equals(status)) {
++            return InvoiceStatus.SENT.name();
+         }
+         return status.toString();
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 50f0a23..0cacc52 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -22,10 +22,10 @@ public class DashboardService {
+         this.invoices = invoices;
+     }
+ 
+-    /** Counts of clients and projects, and the total still owed (sum of unpaid invoices). */
++    /** Counts of clients and projects, and the total still owed (sum of sent, unpaid invoices). */
+     @Transactional(readOnly = true)
+     public DashboardResponse summary() {
+-        BigDecimal outstanding = invoices.sumAmountByStatus(InvoiceStatus.UNPAID).setScale(2, RoundingMode.HALF_UP);
++        BigDecimal outstanding = invoices.sumAmountByStatus(InvoiceStatus.SENT).setScale(2, RoundingMode.HALF_UP);
+         return new DashboardResponse(clients.count(), projects.count(), outstanding);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 3fcc97d..a3165c7 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -33,7 +33,7 @@ public class Invoice {
+ 
+     @Enumerated(EnumType.STRING)
+     @Column(nullable = false, length = 16)
+-    private InvoiceStatus status = InvoiceStatus.UNPAID;
++    private InvoiceStatus status = InvoiceStatus.DRAFT;
+ 
+     @Column(name = "issued_date", nullable = false)
+     private LocalDate issuedDate;
+@@ -75,6 +75,11 @@ public class Invoice {
+         return dueDate;
+     }
+ 
++    /** Marks this invoice as sent to the client. */
++    public void markSent() {
++        this.status = InvoiceStatus.SENT;
++    }
++
+     /** Marks this invoice as paid. */
+     public void markPaid() {
+         this.status = InvoiceStatus.PAID;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index 3b8c66b..77fa83e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -32,6 +32,11 @@ public class InvoiceController {
+         return service.create(projectId, request);
+     }
+ 
++    @PostMapping("/{invoiceId}/send")
++    public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
++        return service.send(projectId, invoiceId);
++    }
++
+     @PostMapping("/{invoiceId}/pay")
+     public InvoiceResponse pay(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.pay(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index a57e115..b2d67fd 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -44,18 +44,35 @@ public class InvoiceService {
+         return InvoiceResponse.from(saved);
+     }
+ 
+-    /** Marks the invoice paid and records the payment in the audit log. */
++    /** Sends a draft invoice and records the sending in the audit log. */
++    @Transactional
++    public InvoiceResponse send(Long projectId, Long invoiceId) {
++        Invoice invoice = find(projectId, invoiceId);
++        if (invoice.getStatus() != InvoiceStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft invoice can be sent");
++        }
++        invoice.markSent();
++        invoices.flush();
++        audit.record("INVOICE_SENT id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
++        return InvoiceResponse.from(invoice);
++    }
++
++    /** Marks a sent invoice paid and records the payment in the audit log. */
+     @Transactional
+     public InvoiceResponse pay(Long projectId, Long invoiceId) {
+-        Invoice invoice = invoices.findById(invoiceId)
+-                .filter(i -> i.getProject().getId().equals(projectId))
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown invoice"));
+-        if (invoice.getStatus() == InvoiceStatus.PAID) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Invoice is already paid");
++        Invoice invoice = find(projectId, invoiceId);
++        if (invoice.getStatus() != InvoiceStatus.SENT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a sent invoice can be paid");
+         }
+         invoice.markPaid();
+         invoices.flush();
+         audit.record("INVOICE_PAID id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
+         return InvoiceResponse.from(invoice);
+     }
++
++    private Invoice find(Long projectId, Long invoiceId) {
++        return invoices.findById(invoiceId)
++                .filter(i -> i.getProject().getId().equals(projectId))
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown invoice"));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java
+index 19a1dfa..734b186 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java
+@@ -1,7 +1,8 @@
+ package net.officefloor.hq.app.invoice;
+ 
+-/** Payment state of an invoice. */
++/** Lifecycle stage of an invoice: DRAFT -> SENT -> PAID. */
+ public enum InvoiceStatus {
+-    UNPAID,
++    DRAFT,
++    SENT,
+     PAID
+ }
+diff --git a/src/main/resources/db/migration/V7__invoice_lifecycle.sql b/src/main/resources/db/migration/V7__invoice_lifecycle.sql
+new file mode 100644
+index 0000000..1de6629
+--- /dev/null
++++ b/src/main/resources/db/migration/V7__invoice_lifecycle.sql
+@@ -0,0 +1,7 @@
++-- Invoices move through a lifecycle: DRAFT -> SENT -> PAID. New invoices start as drafts.
++-- Existing unpaid invoices had already been issued, so they become SENT.
++ALTER TABLE invoice DROP CONSTRAINT invoice_status_valid;
++UPDATE invoice SET status = 'SENT' WHERE status = 'UNPAID';
++ALTER TABLE invoice ALTER COLUMN status SET DEFAULT 'DRAFT';
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_status_valid CHECK (status IN ('DRAFT', 'SENT', 'PAID'));
