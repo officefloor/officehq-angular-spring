@@ -10,16 +10,16 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.ClientRepository;
+import net.officefloor.hq.app.credit.ClientCreditResponse;
+import net.officefloor.hq.app.credit.ClientCreditService;
 import net.officefloor.hq.app.creditnote.CreditNoteRepository;
 import net.officefloor.hq.app.deposit.DepositApplication;
 import net.officefloor.hq.app.deposit.DepositApplicationRepository;
 import net.officefloor.hq.app.deposit.DepositApplicationRequest;
 import net.officefloor.hq.app.deposit.DepositApplicationResponse;
-import net.officefloor.hq.app.deposit.DepositRepository;
 import net.officefloor.hq.app.invoice.Invoice;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
-import net.officefloor.hq.app.refund.RefundRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,24 +32,21 @@ public class PaymentService {
     private final CreditNoteRepository creditNotes;
     private final InvoiceRepository invoices;
     private final ClientPaymentRepository clientPayments;
-    private final DepositRepository deposits;
     private final DepositApplicationRepository depositApplications;
-    private final RefundRepository refunds;
+    private final ClientCreditService credit;
     private final ClientRepository clients;
     private final Clock clock;
     private final Audit audit;
 
     public PaymentService(PaymentRepository payments, CreditNoteRepository creditNotes, InvoiceRepository invoices,
-            ClientPaymentRepository clientPayments, DepositRepository deposits,
-            DepositApplicationRepository depositApplications, RefundRepository refunds, ClientRepository clients,
-            Clock clock, Audit audit) {
+            ClientPaymentRepository clientPayments, DepositApplicationRepository depositApplications,
+            ClientCreditService credit, ClientRepository clients, Clock clock, Audit audit) {
         this.payments = payments;
         this.creditNotes = creditNotes;
         this.invoices = invoices;
         this.clientPayments = clientPayments;
-        this.deposits = deposits;
         this.depositApplications = depositApplications;
-        this.refunds = refunds;
+        this.credit = credit;
         this.clients = clients;
         this.clock = clock;
         this.audit = audit;
@@ -73,24 +70,46 @@ public class PaymentService {
     }
 
     /**
-     * Records one lump payment from a client split across several of their owing invoices. The
-     * shares must add up to the whole lump, each invoice may appear once, and each share is recorded
-     * as a payment against its own invoice under the same rules as a payment made on its own.
+     * Records one lump payment from a client split across several of their owing invoices. With
+     * {@code useCredit} the client's credit is used up first (held deposits, then unused credit
+     * notes) and the money received covers the rest; otherwise the money received covers it all.
+     * The shares may not add up to more than the money received plus any credit used, and whatever
+     * of the money received is left over is kept as credit for the client, so the money received
+     * plus the credit used always equals the shares plus what is kept. Each invoice may appear
+     * once, and each share is recorded as a payment against its own invoice under the same rules
+     * as a payment made on its own.
      */
     @Transactional
     public ClientPaymentResponse recordForClient(Long clientId, ClientPaymentRequest request) {
         requireClient(clientId);
-        BigDecimal allocated = total(request.allocations(), ClientPaymentRequest.Allocation::amount);
-        if (allocated.compareTo(request.amount()) != 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "The shares must add up to the whole payment");
+        BigDecimal allocated = total(request.allocations(), ClientPaymentRequest.Allocation::amount).setScale(2);
+        BigDecimal received = request.amount().setScale(2);
+        BigDecimal fromDeposits = BigDecimal.ZERO.setScale(2);
+        BigDecimal fromCreditNotes = BigDecimal.ZERO.setScale(2);
+        if (request.usesCredit()) {
+            ClientCreditResponse available = credit.available(clientId);
+            fromDeposits = allocated.min(available.deposits());
+            fromCreditNotes = allocated.subtract(fromDeposits).min(available.creditNotes());
         }
+        BigDecimal fromReceived = allocated.subtract(fromDeposits).subtract(fromCreditNotes);
+        if (fromReceived.compareTo(received) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, request.usesCredit()
+                    ? "The shares add up to more than the payment and the credit available"
+                    : "The shares add up to more than the payment");
+        }
+        BigDecimal toCredit = received.subtract(fromReceived);
         requireDistinct(request.allocations(), ClientPaymentRequest.Allocation::invoiceId);
-        ClientPayment lump = clientPayments.saveAndFlush(new ClientPayment(clientId, request.amount(), request.date()));
+        ClientPayment lump = clientPayments.saveAndFlush(new ClientPayment(clientId, received, request.date(),
+                fromDeposits, fromCreditNotes, toCredit));
         List<PaymentResponse> shares = request.allocations().stream()
                 .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(),
                         () -> new Payment(a.invoiceId(), a.amount(), request.date(), lump.getId())))
                 .toList();
+        audit.record("CLIENT_PAYMENT_RECORDED id=" + lump.getId() + " client=" + clientId
+                + " amount=" + lump.getAmount().toPlainString()
+                + " fromDeposits=" + lump.getFromDeposits().toPlainString()
+                + " fromCreditNotes=" + lump.getFromCreditNotes().toPlainString()
+                + " toCredit=" + lump.getToCredit().toPlainString());
         return ClientPaymentResponse.from(lump, shares);
     }
 
@@ -103,9 +122,7 @@ public class PaymentService {
     public DepositApplicationResponse applyDeposits(Long clientId, DepositApplicationRequest request) {
         requireClient(clientId);
         BigDecimal allocated = total(request.allocations(), DepositApplicationRequest.Allocation::amount);
-        BigDecimal held = deposits.sumAmountByClientId(clientId)
-                .subtract(depositApplications.sumAmountByClientId(clientId))
-                .subtract(refunds.sumFromDepositsByClientId(clientId));
+        BigDecimal held = credit.heldDeposits(clientId);
         if (allocated.compareTo(held) > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "The shares add up to more than the deposits held");

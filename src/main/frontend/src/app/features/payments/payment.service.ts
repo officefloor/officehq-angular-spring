@@ -16,19 +16,26 @@ export interface NewPayment {
   date: string;
 }
 
-/** A lump payment from a client, split across several of their invoices; the shares add up to the amount. */
+/**
+ * A lump payment from a client, split across several of their invoices. With `useCredit` the client's credit is used
+ * up first; the shares may add up to no more than the amount plus any credit used, and the rest is kept as credit.
+ */
 export interface NewClientPayment {
   amount: number;
   date: string;
   allocations: { invoiceId: number; amount: number }[];
+  useCredit: boolean;
 }
 
-/** A recorded lump payment and the payment it made against each invoice. */
+/** A recorded lump payment, the credit it used up, what was kept as credit, and the payment it made against each invoice. */
 export interface ClientPayment {
   id: number;
   clientId: number;
   amount: number;
   date: string;
+  fromDeposits: number;
+  fromCreditNotes: number;
+  toCredit: number;
   allocations: Payment[];
 }
 

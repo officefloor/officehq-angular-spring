@@ -2,8 +2,9 @@ import { CurrencyPipe, formatCurrency, getCurrencySymbol } from '@angular/common
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { Observable } from 'rxjs';
-import { rxResource } from '@angular/core/rxjs-interop';
+import { rxResource, toSignal } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { CreditService } from '../credit/credit.service';
 import { DepositService } from '../deposits/deposit.service';
 import { InvoiceService } from '../invoices/invoice.service';
 import { PaymentService } from './payment.service';
@@ -20,7 +21,9 @@ function toCents(value: string | number): number | null {
 export type PaymentSource = 'payment' | 'deposit';
 
 // Records one lump payment from a client and splits it across their invoices that are still owed.
-// The shares must account for the whole payment before it is recorded. With the deposit source it
+// The client's credit (held deposits, then unused credit notes) can be used up first; the shares may
+// add up to no more than the payment plus that credit, and whatever of the payment is left over is
+// kept as credit for the client. With the deposit source it
 // instead puts part of the client's held deposits toward those invoices, split the same way; the
 // shares may not add up to more than is held.
 @Component({
@@ -29,7 +32,7 @@ export type PaymentSource = 'payment' | 'deposit';
   template: `
     <section aria-labelledby="client-payment-heading" data-testid="client-payment">
       <h2 id="client-payment-heading">{{ fromDeposit() ? 'Put a deposit toward invoices' : 'Record a payment' }}</h2>
-      @if (statement.error() || (fromDeposit() && deposits.error())) {
+      @if (statement.error() || (fromDeposit() && deposits.error()) || (useCredit() && credit.error())) {
         <p role="alert" data-testid="client-payment-load-error">Could not load the client's invoices.</p>
       } @else if (statement.hasValue() && (!fromDeposit() || deposits.hasValue())) {
         @if (owing().length === 0) {
@@ -77,6 +80,24 @@ export type PaymentSource = 'payment' | 'deposit';
                   </p>
                 }
               </div>
+              <div>
+                <input
+                  id="client-payment-use-credit"
+                  type="checkbox"
+                  data-testid="payment-use-credit"
+                  [checked]="useCredit()"
+                  (change)="useCredit.set($any($event.target).checked)"
+                  aria-describedby="client-payment-credit-note"
+                />
+                <label for="client-payment-use-credit">Use the client's deposits and credit first</label>
+                <p id="client-payment-credit-note">
+                  @if (useCredit()) {
+                    Credit available:
+                    <span data-testid="payment-credit-available">{{ creditCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</span>.
+                  }
+                  Any of the payment not allocated is kept as credit for the client.
+                </p>
+              </div>
             }
             <table data-testid="payment-alloc-table">
               <caption>Split the {{ fromDeposit() ? 'deposit' : 'payment' }} across the invoices still owed</caption>
@@ -114,6 +135,16 @@ export type PaymentSource = 'payment' | 'deposit';
                   <th scope="row" colspan="3">Allocated</th>
                   <td data-testid="payment-alloc-total">{{ allocatedCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
                 </tr>
+                @if (!fromDeposit()) {
+                  <tr>
+                    <th scope="row" colspan="3">From credit</th>
+                    <td data-testid="payment-from-credit">{{ fromCreditCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row" colspan="3">Kept as credit</th>
+                    <td data-testid="payment-to-credit">{{ toCreditCents() / 100 | currency: currency() : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  </tr>
+                }
               </tfoot>
             </table>
             <button type="submit" data-testid="payment-form-submit" [disabled]="saving()">
@@ -132,6 +163,7 @@ export class ClientPaymentForm {
   private readonly invoices = inject(InvoiceService);
   private readonly payments = inject(PaymentService);
   private readonly depositService = inject(DepositService);
+  private readonly creditService = inject(CreditService);
 
   readonly clientId = input.required<number>();
   readonly source = input<PaymentSource>('payment');
@@ -153,6 +185,28 @@ export class ClientPaymentForm {
   /** Whole cents of deposits still held for the client. */
   protected readonly heldCents = computed(() =>
     this.deposits.hasValue() ? Math.round(this.deposits.value().total * 100) : 0,
+  );
+
+  /** Whether the client's credit (held deposits, then unused credit notes) is used up before the payment. */
+  protected readonly useCredit = signal(false);
+
+  /** The client's credit, loaded only when a payment is to use it up. */
+  protected readonly credit = rxResource({
+    params: () => (!this.fromDeposit() && this.useCredit() ? this.clientId() : undefined),
+    stream: ({ params }) => this.creditService.available(params),
+  });
+
+  /** Whole cents of credit the client has to spend, or zero when it is not being used. */
+  protected readonly creditCents = computed(() =>
+    !this.fromDeposit() && this.useCredit() && this.credit.hasValue() ? Math.round(this.credit.value().total * 100) : 0,
+  );
+
+  /** Whole cents of the allocations covered by the client's credit; it is used up before the payment. */
+  protected readonly fromCreditCents = computed(() => Math.min(this.allocatedCents(), this.creditCents()));
+
+  /** Whole cents of the payment left over once the allocations not covered by credit are paid; kept as credit. */
+  protected readonly toCreditCents = computed(() =>
+    Math.max(0, (toCents(this.amount()) ?? 0) - (this.allocatedCents() - this.fromCreditCents())),
   );
 
   /** The client's currency; the payment and its allocations are in it. */
@@ -181,6 +235,9 @@ export class ClientPaymentForm {
     amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
     date: ['', [Validators.required]],
   });
+
+  /** The amount received as typed, as a signal so what is kept as credit follows it. */
+  private readonly amount = toSignal(this.form.controls.amount.valueChanges, { initialValue: '' });
 
   protected invalid(name: 'amount' | 'date'): boolean {
     const control = this.form.controls[name];
@@ -229,10 +286,15 @@ export class ClientPaymentForm {
       );
       return;
     }
-    if (!this.fromDeposit() && this.allocatedCents() !== totalCents) {
+    if (!this.fromDeposit() && this.useCredit() && !this.credit.hasValue()) {
+      this.saveError.set('The client’s credit is still loading. Please try again.');
+      return;
+    }
+    if (!this.fromDeposit() && this.allocatedCents() - this.fromCreditCents() > totalCents) {
       this.saveError.set(
         `The amounts allocated add up to ${this.format(this.allocatedCents())}, ` +
-          `but the payment is ${this.format(totalCents)}. Allocate the whole payment.`,
+          `but the payment is ${this.format(totalCents)}` +
+          (this.useCredit() ? ` and the credit available is ${this.format(this.creditCents())}.` : '.'),
       );
       return;
     }
@@ -245,13 +307,19 @@ export class ClientPaymentForm {
     };
     const request: Observable<unknown> = this.fromDeposit()
       ? this.depositService.apply(this.clientId(), { allocations: shares })
-      : this.payments.recordForClient(this.clientId(), { amount: totalCents / 100, date, allocations: shares });
+      : this.payments.recordForClient(this.clientId(), {
+          amount: totalCents / 100,
+          date,
+          allocations: shares,
+          useCredit: this.useCredit(),
+        });
     request.subscribe({
       next: () => {
         this.saving.set(false);
         done();
         this.form.reset();
         this.allocations.set({});
+        this.useCredit.set(false);
         this.statement.reload();
         if (this.fromDeposit()) {
           this.deposits.reload();
@@ -265,7 +333,7 @@ export class ClientPaymentForm {
             : err.status === 400
               ? this.fromDeposit()
                 ? 'The amounts allocated add up to more than the deposits held.'
-                : 'The amounts allocated must add up to the whole payment.'
+                : 'The amounts allocated add up to more than the payment and any credit used.'
               : `Could not ${this.fromDeposit() ? 'apply the deposit' : 'record the payment'}. Please try again.`,
         );
         this.saving.set(false);

@@ -11,6 +11,7 @@ import net.officefloor.hq.app.deposit.DepositRepository;
 import net.officefloor.hq.app.invoice.Invoice;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
+import net.officefloor.hq.app.payment.ClientPaymentRepository;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.refund.RefundRepository;
 import org.springframework.http.HttpStatus;
@@ -30,10 +31,11 @@ public class ClientCreditService {
     private final PaymentRepository payments;
     private final CreditNoteRepository creditNotes;
     private final RefundRepository refunds;
+    private final ClientPaymentRepository clientPayments;
 
     public ClientCreditService(ClientRepository clients, DepositRepository deposits,
             DepositApplicationRepository applications, InvoiceRepository invoices, PaymentRepository payments,
-            CreditNoteRepository creditNotes, RefundRepository refunds) {
+            CreditNoteRepository creditNotes, RefundRepository refunds, ClientPaymentRepository clientPayments) {
         this.clients = clients;
         this.deposits = deposits;
         this.applications = applications;
@@ -41,25 +43,39 @@ public class ClientCreditService {
         this.payments = payments;
         this.creditNotes = creditNotes;
         this.refunds = refunds;
+        this.clientPayments = clientPayments;
     }
 
     /**
      * Works out how much credit a client has to spend. A deposit is unused until it is put toward invoices. A credit
      * note is used only as far as it was needed to settle its invoice once payments are counted; anything beyond
      * that (say, a credit on an invoice already paid in full, or on one since cancelled) is still the client's to spend.
-     * Whatever has been refunded to the client is no longer theirs to spend.
+     * Whatever has been refunded to the client, or used up by a payment of theirs, is no longer theirs to spend; what
+     * a payment brought in beyond what its invoices needed is held for them alongside their deposits.
      */
     @Transactional(readOnly = true)
     public ClientCreditResponse available(Long clientId) {
         if (!clients.existsById(clientId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
         }
-        BigDecimal held = deposits.sumAmountByClientId(clientId)
-                .subtract(applications.sumAmountByClientId(clientId))
-                .subtract(refunds.sumFromDepositsByClientId(clientId)).setScale(2).max(ZERO);
+        BigDecimal held = heldDeposits(clientId);
         BigDecimal unusedCredit = unusedCreditNotes(clientId)
-                .subtract(refunds.sumFromCreditNotesByClientId(clientId)).setScale(2).max(ZERO);
+                .subtract(refunds.sumFromCreditNotesByClientId(clientId))
+                .subtract(clientPayments.sumFromCreditNotesByClientId(clientId)).setScale(2).max(ZERO);
         return new ClientCreditResponse(held, unusedCredit, held.add(unusedCredit));
+    }
+
+    /**
+     * What a client still has held in deposits: everything paid up front plus whatever their payments brought in
+     * beyond what their invoices needed, less what has been put toward invoices, used up by payments or refunded.
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal heldDeposits(Long clientId) {
+        return deposits.sumAmountByClientId(clientId)
+                .add(clientPayments.sumToCreditByClientId(clientId))
+                .subtract(applications.sumAmountByClientId(clientId))
+                .subtract(clientPayments.sumFromDepositsByClientId(clientId))
+                .subtract(refunds.sumFromDepositsByClientId(clientId)).setScale(2).max(ZERO);
     }
 
     private BigDecimal unusedCreditNotes(Long clientId) {

@@ -186,10 +186,9 @@ export class ClientDetail {
     this.recordingPayment.set(null);
     this.paymentSaved.set(source === 'payment');
     this.depositApplied.set(source === 'deposit');
-    if (source === 'deposit') {
-      this.depositsPanel()?.reload();
-      this.creditPanel()?.reload();
-    }
+    // A payment may use up the client's credit or leave some over as credit, so both panels can change.
+    this.depositsPanel()?.reload();
+    this.creditPanel()?.reload();
     this.client.reload();
   }
 
