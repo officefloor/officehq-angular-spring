@@ -42,6 +42,8 @@ export interface InvoicePage {
 /** An invoice as listed on a client's statement: its project's name and how much is left to pay. */
 export interface StatementInvoice extends ProjectInvoice {
   projectName: string;
+  /** The sales tax and levy on the invoice. */
+  tax: number;
 }
 
 /** One job on a client's statement: its invoices and what is still owed on them. */
@@ -50,6 +52,8 @@ export interface StatementJob {
   projectName: string;
   invoices: StatementInvoice[];
   subtotal: number;
+  /** The tax on the job's sent invoices (drafts and void ones are left out). */
+  tax: number;
 }
 
 /** A client's invoices across all their projects, also grouped by job, with the total they still owe. */
@@ -66,6 +70,8 @@ export interface ClientStatement {
   paid: number;
   /** The grand total still owed: what was invoiced less what was paid. */
   outstanding: number;
+  /** The tax across the client's sent invoices (drafts and void ones are left out). */
+  tax: number;
 }
 
 /** One thing an invoice charges for; its amount is quantity times unit price. */

@@ -5,7 +5,7 @@ import { RouterLink } from '@angular/router';
 import { InvoiceService } from './invoice.service';
 
 // A client's statement: every invoice across the client's projects grouped by job, how much is left to
-// pay on each, a subtotal still owed per job, and the total the client still owes. Drafts are listed but do not count towards what is owed.
+// pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
 // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
 // with the app's navigation and the page's controls left off the printed copy.
 @Component({
@@ -68,6 +68,8 @@ import { InvoiceService } from './invoice.service';
           <dl class="statement-summary">
             <dt>Total invoiced</dt>
             <dd data-testid="statement-total-invoiced">{{ s.invoiced | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
+            <dt>Tax</dt>
+            <dd data-testid="client-statement-tax-total">{{ s.tax | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
             <dt>Less paid</dt>
             <dd data-testid="statement-total-paid">{{ s.paid | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</dd>
             <dt class="statement-grand-total">Grand total owed</dt>
@@ -87,13 +89,14 @@ import { InvoiceService } from './invoice.service';
                 <th scope="col">Issued</th>
                 <th scope="col">Due</th>
                 <th scope="col">Amount</th>
+                <th scope="col">Tax</th>
                 <th scope="col">Left to pay</th>
               </tr>
             </thead>
             @for (job of s.jobs; track job.projectId) {
               <tbody [attr.data-testid]="'statement-project-' + job.projectId">
                 <tr>
-                  <th scope="colgroup" colspan="7" data-testid="statement-project-name">{{ job.projectName }}</th>
+                  <th scope="colgroup" colspan="8" data-testid="statement-project-name">{{ job.projectName }}</th>
                 </tr>
                 @for (i of job.invoices; track i.id) {
                   <tr [attr.data-testid]="'statement-invoice-row-' + i.id">
@@ -110,11 +113,17 @@ import { InvoiceService } from './invoice.service';
                     <td data-testid="statement-invoice-issued">{{ i.issuedDate }}</td>
                     <td data-testid="statement-invoice-due">{{ i.dueDate }}</td>
                     <td data-testid="statement-invoice-amount">{{ i.amount | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                    <td data-testid="statement-invoice-tax">{{ i.tax | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
                     <td data-testid="statement-invoice-due-amount">{{ i.amountDue | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
                   </tr>
                 }
                 <tr>
-                  <th scope="row" colspan="6">Subtotal owed on {{ job.projectName }}</th>
+                  <th scope="row" colspan="6">Tax on {{ job.projectName }}</th>
+                  <td data-testid="statement-project-tax">{{ job.tax | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <th scope="row" colspan="7">Subtotal owed on {{ job.projectName }}</th>
                   <td data-testid="statement-project-subtotal">{{ job.subtotal | currency: s.currency : 'symbol' : '1.2-2' : 'en-US' }}</td>
                 </tr>
               </tbody>
