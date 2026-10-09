@@ -55,6 +55,11 @@ export interface ClientStatement {
   clientName: string;
   invoices: StatementInvoice[];
   jobs: StatementJob[];
+  /** The total invoiced on the client's sent invoices (drafts and void ones are left out). */
+  invoiced: number;
+  /** How much of what was invoiced has been paid. */
+  paid: number;
+  /** The grand total still owed: what was invoiced less what was paid. */
   outstanding: number;
 }
 

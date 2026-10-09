@@ -9,3 +9,11 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* Printed pages carry only the page's own content, not the app's navigation and search. */
+@media print {
+  [data-testid='app-nav'],
+  app-global-search {
+    display: none;
+  }
+}
