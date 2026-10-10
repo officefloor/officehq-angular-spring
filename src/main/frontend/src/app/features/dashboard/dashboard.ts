@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { MoneyPipe } from '../currencies/money.pipe';
 import { DashboardService, DashboardSummary } from './dashboard.service';
 import { TaxSummaryReport } from './tax-summary';
+import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 
 // Dashboard page: how many clients and projects there are, and the total still owed in each currency
 // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
@@ -9,10 +10,10 @@ import { TaxSummaryReport } from './tax-summary';
 // exchange rate from its own issue date, and how many of those sent
 // invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees and
 // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe,
-// each in their own currency. A tax summary for a chosen date range can be opened from here.
+// each in their own currency, and the recurring invoices coming up with when each falls. A tax summary for a chosen date range can be opened from here.
 @Component({
   selector: 'app-dashboard',
-  imports: [MoneyPipe, TaxSummaryReport],
+  imports: [MoneyPipe, TaxSummaryReport, UpcomingRecurringInvoices],
   template: `
     <h1>Dashboard</h1>
 
@@ -80,6 +81,8 @@ import { TaxSummaryReport } from './tax-summary';
     } @else {
       <p data-testid="dashboard-loading">Loading…</p>
     }
+
+    <app-upcoming-recurring-invoices />
 
     <button
       type="button"

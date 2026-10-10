@@ -15,6 +15,14 @@ export interface RecurringInvoice {
   nextDate: string;
 }
 
+/** A recurring invoice that is coming up, with the project and client it bills and the currency it is in. */
+export interface UpcomingRecurringInvoice extends RecurringInvoice {
+  projectName: string;
+  clientId: number;
+  clientName: string;
+  currency: string;
+}
+
 export interface NewRecurringInvoice {
   amount: number;
   frequency: RecurringFrequency;
@@ -27,6 +35,11 @@ export class RecurringInvoiceService {
 
   list(projectId: number): Observable<RecurringInvoice[]> {
     return this.http.get<RecurringInvoice[]>(`/api/projects/${projectId}/recurring-invoices`);
+  }
+
+  /** The recurring invoices across all projects coming up from today, soonest first. */
+  upcoming(): Observable<UpcomingRecurringInvoice[]> {
+    return this.http.get<UpcomingRecurringInvoice[]>('/api/recurring-invoices/upcoming');
   }
 
   create(projectId: number, recurring: NewRecurringInvoice): Observable<RecurringInvoice> {
