@@ -5,6 +5,8 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -172,6 +174,36 @@ public class DashboardService {
                     .setScale(2, RoundingMode.HALF_UP));
         }
         return total;
+    }
+
+    /**
+     * The money expected in from scheduled instalments: every instalment not yet paid on an invoice that has been
+     * sent and is not yet fully paid, earliest due first, with the total in the home currency. A foreign instalment
+     * converts at the exchange rate from its invoice's issue date; one whose currency has no rate by then is still
+     * listed but left out of the total.
+     */
+    @Transactional(readOnly = true)
+    public ForecastResponse forecast() {
+        Map<Long, Invoice> open = invoices.findByStatusInWithClient(List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL))
+                .stream().collect(Collectors.toMap(Invoice::getId, i -> i));
+        String home = settings.homeCurrency();
+        List<Instalment> due = open.isEmpty() ? List.of()
+                : instalments.findByInvoiceIdIn(open.keySet()).stream().filter(i -> !i.isPaid())
+                        .sorted(Comparator.comparing(Instalment::getDueDate).thenComparing(Instalment::getId))
+                        .toList();
+        BigDecimal total = BigDecimal.ZERO;
+        List<ForecastResponse.Entry> entries = new ArrayList<>();
+        for (Instalment instalment : due) {
+            Invoice invoice = open.get(instalment.getInvoiceId());
+            String currency = invoice.getCurrency();
+            BigDecimal inHome = currency.equals(home) ? instalment.getAmount()
+                    : fxRates.toHome(currency, invoice.getIssuedDate(), instalment.getAmount()).orElse(BigDecimal.ZERO);
+            total = total.add(inHome);
+            entries.add(new ForecastResponse.Entry(instalment.getId(), instalment.getDueDate(), instalment.getAmount(),
+                    currency, invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
+                    invoice.getProject().getClient().getName()));
+        }
+        return new ForecastResponse(home, entries, total.setScale(2, RoundingMode.HALF_UP));
     }
 
     /**

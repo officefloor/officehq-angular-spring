@@ -57,6 +57,25 @@ export interface TaxSummary {
   total: number;
 }
 
+/** One instalment expected in, in its invoice's currency. */
+export interface ForecastEntry {
+  id: number;
+  date: string;
+  amount: number;
+  currency: CurrencyCode;
+  invoiceId: number;
+  projectId: number;
+  projectName: string;
+  clientName: string;
+}
+
+/** The money expected in from instalments still to be paid, earliest due first, with the total in the home currency. */
+export interface Forecast {
+  homeCurrency: CurrencyCode;
+  entries: ForecastEntry[];
+  total: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class DashboardService {
   private readonly http = inject(HttpClient);
@@ -67,5 +86,9 @@ export class DashboardService {
 
   taxSummary(from: string, to: string): Observable<TaxSummary> {
     return this.http.get<TaxSummary>('/api/dashboard/tax-summary', { params: new HttpParams().set('from', from).set('to', to) });
+  }
+
+  forecast(): Observable<Forecast> {
+    return this.http.get<Forecast>('/api/dashboard/forecast');
   }
 }

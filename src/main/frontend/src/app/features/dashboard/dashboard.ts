@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { MoneyPipe } from '../currencies/money.pipe';
 import { DashboardService, DashboardSummary } from './dashboard.service';
+import { CashFlowForecast } from './cash-flow-forecast';
 import { TaxSummaryReport } from './tax-summary';
 import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 
@@ -10,10 +11,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 // exchange rate from its own issue date, and how many of those sent
 // invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees and
 // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
-// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls. A tax summary for a chosen date range can be opened from here.
+// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. A tax summary for a chosen date range can be opened from here.
 @Component({
   selector: 'app-dashboard',
-  imports: [MoneyPipe, TaxSummaryReport, UpcomingRecurringInvoices],
+  imports: [MoneyPipe, CashFlowForecast, TaxSummaryReport, UpcomingRecurringInvoices],
   template: `
     <h1>Dashboard</h1>
 
@@ -86,6 +87,8 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
     }
 
     <app-upcoming-recurring-invoices />
+
+    <app-cash-flow-forecast />
 
     <button
       type="button"

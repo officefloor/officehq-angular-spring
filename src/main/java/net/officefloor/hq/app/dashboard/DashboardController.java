@@ -28,4 +28,10 @@ public class DashboardController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return service.taxSummary(from, to);
     }
+
+    /** The money expected in from the instalments still to be paid on sent invoices. */
+    @GetMapping("/forecast")
+    public ForecastResponse forecast() {
+        return service.forecast();
+    }
 }
