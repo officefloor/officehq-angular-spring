@@ -9,6 +9,7 @@ import { StatementEmailAction } from './statement-email';
 // pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
 // It can be run for a chosen date range, giving the opening balance, the entries within the range with the running
 // balance, the net movement within the range, and the closing balance (opening plus movements).
+// The payments received within the range are listed on their own, with their total.
 // The balance owed as at a chosen past date can be looked up, counting only entries up to that date.
 // Each invoice is shown in its own currency and every figure is rounded by the same currency rule as the invoice
 // (the server rounds each one before adding them up), so the totals match the invoices to the cent. At the foot the total owed is also given in the home currency.
@@ -165,6 +166,36 @@ import { StatementEmailAction } from './statement-email';
                   </tbody>
                 </table>
               }
+              <section aria-labelledby="statement-payments-heading" data-testid="statement-payments">
+                <h3 id="statement-payments-heading">Payments received</h3>
+                @if (r.payments.length === 0) {
+                  <p data-testid="statement-payments-empty">No payments received in this range.</p>
+                } @else {
+                  <table data-testid="statement-payments-table">
+                    <caption>Payments received from {{ r.from }} to {{ r.to }}</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Date</th>
+                        <th scope="col">Payment</th>
+                        <th scope="col" class="statement-money">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (p of r.payments; track p.sourceId; let n = $index) {
+                        <tr [attr.data-testid]="'statement-payment-row-' + (n + 1)">
+                          <td data-testid="statement-payment-date">{{ p.date }}</td>
+                          <td data-testid="statement-payment-description">{{ p.description }}</td>
+                          <td class="statement-money" data-testid="statement-payment-amount">{{ p.credit | money: r.currency }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                }
+                <p>
+                  Total received:
+                  <strong data-testid="statement-payments-total">{{ r.paymentsTotal | money: r.currency }}</strong>
+                </p>
+              </section>
             </div>
           }
         </section>

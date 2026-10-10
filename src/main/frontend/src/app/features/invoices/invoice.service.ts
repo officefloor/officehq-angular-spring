@@ -140,6 +140,10 @@ export interface ClientStatementRange {
   /** The charges less the credits dated within the range; opening plus movements is the closing balance. */
   movementsTotal: number;
   closingBalance: number;
+  /** The payments received within the range, in date order. */
+  payments: StatementEntry[];
+  /** The total of the payments received within the range. */
+  paymentsTotal: number;
 }
 
 /** How old a client's debt is as at today: what is current (up to 30 days overdue), 31 to 60 days, and more than 60 days overdue. */
