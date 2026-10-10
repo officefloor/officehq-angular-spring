@@ -1,0 +1,329 @@
+diff --git a/src/main/frontend/src/app/features/projects/project-dates.ts b/src/main/frontend/src/app/features/projects/project-dates.ts
+new file mode 100644
+index 0000000..8e02e43
+--- /dev/null
++++ b/src/main/frontend/src/app/features/projects/project-dates.ts
+@@ -0,0 +1,92 @@
++import { Component, effect, inject, input, output, signal } from '@angular/core';
++import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
++import { Project, ProjectService } from './project.service';
++
++// A job's start and end dates: shows them, and sets or clears them (leave a date blank to clear it).
++@Component({
++  selector: 'app-project-dates',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="job-dates-heading" data-testid="job-dates-section">
++      <h2 id="job-dates-heading">Dates</h2>
++      <dl>
++        <dt>Start date</dt>
++        <dd data-testid="job-start-date">{{ project().startDate ?? 'Not set' }}</dd>
++        <dt>End date</dt>
++        <dd data-testid="job-end-date">{{ project().endDate ?? 'Not set' }}</dd>
++      </dl>
++
++      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="job-dates-form" novalidate>
++        <label for="job-start-date-input">Start date</label>
++        <input id="job-start-date-input" type="date" formControlName="startDate" data-testid="job-start-date-input" />
++        <label for="job-end-date-input">End date</label>
++        <input
++          id="job-end-date-input"
++          type="date"
++          formControlName="endDate"
++          data-testid="job-end-date-input"
++          [attr.aria-invalid]="orderError()"
++          [attr.aria-describedby]="orderError() ? 'job-dates-order-error' : null"
++        />
++        <button type="submit" data-testid="job-dates-submit" [disabled]="saving()">Save dates</button>
++        @if (orderError()) {
++          <p id="job-dates-order-error" role="alert" data-testid="job-dates-order-error">
++            The end date may not be before the start date.
++          </p>
++        }
++        @if (saveError()) {
++          <p role="alert" data-testid="job-dates-save-error">{{ saveError() }}</p>
++        }
++      </form>
++    </section>
++  `,
++  styles: `
++    dl {
++      display: grid;
++      grid-template-columns: max-content auto;
++      gap: 0.25rem 1rem;
++    }
++    dd {
++      margin: 0;
++    }
++  `,
++})
++export class ProjectDates {
++  private readonly service = inject(ProjectService);
++
++  readonly project = input.required<Project>();
++  /** Emits the job once its dates have been saved. */
++  readonly changed = output<Project>();
++
++  protected readonly form = inject(NonNullableFormBuilder).group({ startDate: '', endDate: '' });
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++  protected readonly orderError = signal(false);
++
++  constructor() {
++    effect(() => {
++      const p = this.project();
++      this.form.setValue({ startDate: p.startDate ?? '', endDate: p.endDate ?? '' });
++    });
++  }
++
++  protected submit(): void {
++    const { startDate, endDate } = this.form.getRawValue();
++    this.orderError.set(startDate !== '' && endDate !== '' && endDate < startDate);
++    if (this.orderError()) {
++      return;
++    }
++    this.saving.set(true);
++    this.saveError.set(null);
++    this.service.setDates(this.project().id, startDate || null, endDate || null).subscribe({
++      next: (updated) => {
++        this.changed.emit(updated);
++        this.saving.set(false);
++      },
++      error: () => {
++        this.saveError.set('Could not save the dates.');
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index e2c3eae..c566efc 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -6,12 +6,13 @@ import { Notes } from '../notes/notes';
+ import { ProjectTags } from '../tags/project-tags';
+ import { ProjectTasks } from '../tasks/project-tasks';
+ import { ProjectBudgetPanel } from './project-budget';
++import { ProjectDates } from './project-dates';
+ import { ProjectService } from './project.service';
+ 
+-// A single project's page: its name, description, client and status, whether it is open or closed, whether it is billable, its budget, its tags, its tasks, its notes, and its invoices.
++// A single project's page: its name, description, client and status, whether it is open or closed, whether it is billable, its start and end dates, its budget, its tags, its tasks, its notes, and its invoices.
+ @Component({
+   selector: 'app-project-detail',
+-  imports: [RouterLink, ProjectBudgetPanel, ProjectInvoices, Notes, ProjectTags, ProjectTasks],
++  imports: [RouterLink, ProjectBudgetPanel, ProjectDates, ProjectInvoices, Notes, ProjectTags, ProjectTasks],
+   template: `
+     <a routerLink="/projects" data-testid="project-back">Back to jobs</a>
+     @if (project.error()) {
+@@ -52,6 +53,7 @@ import { ProjectService } from './project.service';
+       @if (billableError()) {
+         <p role="alert" data-testid="project-billable-error">{{ billableError() }}</p>
+       }
++      <app-project-dates [project]="p" (changed)="project.set($event)" />
+       <app-project-budget [projectId]="projectId()" [currency]="p.currency" />
+       <app-project-tags [projectId]="projectId()" />
+       <app-project-tasks [projectId]="projectId()" />
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index b2fa419..991b203 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -29,6 +29,10 @@ export interface Project {
+   billable: boolean;
+   /** Whether the job is closed; no new invoice can be raised on a closed job. */
+   closed: boolean;
++  /** The day work on the job starts (YYYY-MM-DD); null when not set. */
++  startDate: string | null;
++  /** The day work on the job ends (YYYY-MM-DD); null when not set. */
++  endDate: string | null;
+ }
+ 
+ /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
+@@ -87,6 +91,10 @@ export class ProjectService {
+     return this.http.put<Project>(`/api/projects/${id}/billable`, { billable });
+   }
+ 
++  setDates(id: number, startDate: string | null, endDate: string | null): Observable<Project> {
++    return this.http.put<Project>(`/api/projects/${id}/dates`, { startDate, endDate });
++  }
++
+   budget(id: number): Observable<ProjectBudget> {
+     return this.http.get<ProjectBudget>(`/api/projects/${id}/budget`);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 031e57b..d4435f7 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -125,14 +125,16 @@ public class TestSupportController {
+             }
+         }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+-            jdbc.update("INSERT INTO project (id, name, code, description, client_id, status, archived, budget, billable, closed)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO project (id, name, code, description, client_id, status, archived, budget, billable, closed,"
++                    + " start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) p.get("id")).longValue(), p.get("name"), p.get("code"), p.get("description"),
+                     ((Number) p.get("clientId")).longValue(),
+                     p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString(),
+                     Boolean.TRUE.equals(p.get("archived")),
+                     p.get("budget") == null ? null : new BigDecimal(p.get("budget").toString()),
+-                    !Boolean.FALSE.equals(p.get("billable")), Boolean.TRUE.equals(p.get("closed")));
++                    !Boolean.FALSE.equals(p.get("billable")), Boolean.TRUE.equals(p.get("closed")),
++                    p.get("startDate") == null ? null : LocalDate.parse(p.get("startDate").toString()),
++                    p.get("endDate") == null ? null : LocalDate.parse(p.get("endDate").toString()));
+         }
+         for (Map<String, Object> t : rows(fixture, "tags")) {
+             jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+index 18516f0..af1eabe 100644
+--- a/src/main/java/net/officefloor/hq/app/project/Project.java
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -13,6 +13,7 @@ import jakarta.persistence.ManyToMany;
+ import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import java.util.HashSet;
+ import java.util.Set;
+ import net.officefloor.hq.app.client.Client;
+@@ -48,6 +49,10 @@ public class Project {
+ 
+     private boolean billable = true;
+ 
++    private LocalDate startDate;
++
++    private LocalDate endDate;
++
+     @ManyToMany
+     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
+             inverseJoinColumns = @JoinColumn(name = "tag_id"))
+@@ -131,6 +136,21 @@ public class Project {
+         this.billable = billable;
+     }
+ 
++    /** The day work on the job starts, or null when not set. */
++    public LocalDate getStartDate() {
++        return startDate;
++    }
++
++    /** The day work on the job ends, or null when not set. */
++    public LocalDate getEndDate() {
++        return endDate;
++    }
++
++    public void setDates(LocalDate startDate, LocalDate endDate) {
++        this.startDate = startDate;
++        this.endDate = endDate;
++    }
++
+     /** The tags labelling this project; add or remove to tag or untag it. */
+     public Set<Tag> getTags() {
+         return tags;
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectController.java b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+index 653269b..a715537 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+@@ -50,6 +50,11 @@ public class ProjectController {
+         return service.setBillable(id, request.billable());
+     }
+ 
++    @PutMapping("/{id}/dates")
++    public ProjectResponse setDates(@PathVariable Long id, @RequestBody ProjectDatesRequest request) {
++        return service.setDates(id, request.startDate(), request.endDate());
++    }
++
+     @GetMapping("/{id}/budget")
+     public ProjectBudgetResponse budget(@PathVariable Long id) {
+         return service.budget(id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectDatesRequest.java b/src/main/java/net/officefloor/hq/app/project/ProjectDatesRequest.java
+new file mode 100644
+index 0000000..508ae2c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectDatesRequest.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.project;
++
++import java.time.LocalDate;
++
++/** Payload to set a job's start and end dates; leave either out to clear it. */
++public record ProjectDatesRequest(LocalDate startDate, LocalDate endDate) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+index 3567f47..b23315b 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+@@ -1,14 +1,16 @@
+ package net.officefloor.hq.app.project;
+ 
++import java.time.LocalDate;
+ 
+ public record ProjectResponse(Long id, String name, String code, Long clientId, String clientName, boolean archived,
+         ProjectStatus status, String currency, String description, boolean billable,
+-        boolean closed) {
++        boolean closed, LocalDate startDate, LocalDate endDate) {
+ 
+     public static ProjectResponse from(Project project) {
+         return new ProjectResponse(project.getId(), project.getName(), project.getCode(),
+                 project.getClient().getId(), project.getClient().getName(), project.isArchived(),
+                 project.getStatus(), project.getClient().getCurrency(), project.getDescription(),
+-                project.isBillable(), project.isClosed());
++                project.isBillable(), project.isClosed(),
++                project.getStartDate(), project.getEndDate());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index f6670e9..c510638 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -2,12 +2,14 @@ package net.officefloor.hq.app.project;
+ 
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.Client;
+ import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import java.util.Locale;
++import java.util.Objects;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -160,6 +162,26 @@ public class ProjectService {
+         return ProjectResponse.from(project);
+     }
+ 
++    /**
++     * Sets (or, given none, clears) a job's start and end dates, recording the change in the audit log.
++     * The end may not be before the start.
++     */
++    @Transactional
++    public ProjectResponse setDates(Long id, LocalDate startDate, LocalDate endDate) {
++        if (startDate != null && endDate != null && endDate.isBefore(startDate)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The end date may not be before the start date");
++        }
++        Project project = projects.findByIdWithClient(id)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
++        if (!Objects.equals(project.getStartDate(), startDate) || !Objects.equals(project.getEndDate(), endDate)) {
++            project.setDates(startDate, endDate);
++            projects.flush();
++            audit.record("PROJECT_DATES_SET id=" + id + " start=" + (startDate == null ? "none" : startDate)
++                    + " end=" + (endDate == null ? "none" : endDate));
++        }
++        return ProjectResponse.from(project);
++    }
++
+     /** Closes a job so no new invoice can be raised on it, recording the closing in the audit log. */
+     @Transactional
+     public ProjectResponse close(Long id) {
+diff --git a/src/main/resources/db/migration/V73__project_dates.sql b/src/main/resources/db/migration/V73__project_dates.sql
+new file mode 100644
+index 0000000..ce888e3
+--- /dev/null
++++ b/src/main/resources/db/migration/V73__project_dates.sql
+@@ -0,0 +1,4 @@
++-- A job can have a start date and an end date; either may be unset. The end may not be before the start.
++ALTER TABLE project ADD COLUMN start_date DATE;
++ALTER TABLE project ADD COLUMN end_date DATE;
++ALTER TABLE project ADD CONSTRAINT project_dates_ordered CHECK (end_date IS NULL OR start_date IS NULL OR end_date >= start_date);
