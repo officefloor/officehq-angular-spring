@@ -486,7 +486,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
             }
             <tr data-testid="invoice-due-amount-row">
               <th scope="row" colspan="5">Owed now (after payments and credits)</th>
-              <td data-testid="invoice-due-amount">{{ inv.amountDue | money: inv.currency }}</td>
+              <td data-testid="invoice-due-amount"><span data-testid="invoice-outstanding">{{ inv.amountDue | money: inv.currency }}</span></td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
               }
