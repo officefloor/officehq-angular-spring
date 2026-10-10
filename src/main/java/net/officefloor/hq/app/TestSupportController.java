@@ -87,7 +87,7 @@ public class TestSupportController {
             jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
         }
         jdbc.update("UPDATE app_settings SET default_tax_pct = 0, home_currency = 'USD',"
-                + " revenue_recognition_basis = 'sent', billing_target = NULL,"
+                + " revenue_recognition_basis = 'sent', billing_target = NULL, dashboard_base_currency = NULL,"
                 + " revenue_band_medium_from = 1000, revenue_band_high_from = 5000 WHERE id = 1");
     }
 
@@ -114,6 +114,10 @@ public class TestSupportController {
         if (fixture.get("settings") instanceof Map<?, ?> s && s.get("recognitionBasis") != null) {
             jdbc.update("UPDATE app_settings SET revenue_recognition_basis = ? WHERE id = 1",
                     s.get("recognitionBasis").toString());
+        }
+        // App settings: "baseCurrency" is the currency the dashboard's totals are shown in.
+        if (fixture.get("settings") instanceof Map<?, ?> s && s.get("baseCurrency") != null) {
+            jdbc.update("UPDATE app_settings SET dashboard_base_currency = ? WHERE id = 1", s.get("baseCurrency").toString());
         }
         // App settings: "billingTarget" is what the business aims to bill over the year, in the home currency.
         if (fixture.get("settings") instanceof Map<?, ?> s && s.get("billingTarget") != null) {

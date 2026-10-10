@@ -1,5 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { MoneyPipe } from '../currencies/money.pipe';
+import { CurrencyService } from '../currencies/currency.service';
+import { SettingsService } from '../settings/settings.service';
 import { DashboardService, DashboardSummary } from './dashboard.service';
 import { AgingReportPanel } from './aging-report';
 import { OverdueTrendPanel } from './overdue-trend';
@@ -15,7 +17,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 // exchange rate from its own issue date (leaving out disputed and written-off invoices), and how many of those sent
 // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
 // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
-// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, what share of all tasks are done, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected, and how what was billed this year tracks against the yearly billings target set in the settings, including how far ahead of or behind it billing is. An aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
+// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, what share of all tasks are done, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected, and how what was billed this year tracks against the yearly billings target set in the settings, including how far ahead of or behind it billing is. An aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here. The currency the totals are shown in can be chosen here.
 @Component({
   selector: 'app-dashboard',
   imports: [MoneyPipe, AgingReportPanel, OverdueTrendPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
@@ -25,6 +27,26 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
     @if (loadError()) {
       <p role="alert" data-testid="dashboard-error">{{ loadError() }}</p>
     } @else if (summary(); as s) {
+      <p>
+        <label for="dashboard-base-currency">Show totals in</label>
+        <select
+          #baseCurrencySelect
+          id="dashboard-base-currency"
+          data-testid="dashboard-base-currency-select"
+          [disabled]="savingBaseCurrency()"
+          (change)="chooseBaseCurrency(baseCurrencySelect.value)"
+        >
+          @for (c of currencies.list(); track c.code) {
+            <option [value]="c.code" [selected]="c.code === s.baseCurrency">{{ c.code }}</option>
+          }
+        </select>
+        @if (s.baseCurrency !== s.homeCurrency) {
+          <span data-testid="dashboard-base-currency-no-rate">No exchange rate for {{ s.baseCurrency }} yet, so totals are shown in {{ s.homeCurrency }}.</span>
+        }
+        @if (baseCurrencyError()) {
+          <span role="alert" data-testid="dashboard-base-currency-error">{{ baseCurrencyError() }}</span>
+        }
+      </p>
       <dl data-testid="dashboard-summary">
         <div>
           <dt>Clients</dt>
@@ -240,8 +262,13 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
   `,
 })
 export class Dashboard {
+  private readonly dashboard = inject(DashboardService);
+  private readonly settings = inject(SettingsService);
+  protected readonly currencies = inject(CurrencyService);
   protected readonly summary = signal<DashboardSummary | null>(null);
   protected readonly loadError = signal<string | null>(null);
+  protected readonly savingBaseCurrency = signal(false);
+  protected readonly baseCurrencyError = signal<string | null>(null);
   protected readonly agingReportOpen = signal(false);
   protected readonly overdueTrendOpen = signal(false);
   protected readonly taxSummaryOpen = signal(false);
@@ -254,11 +281,34 @@ export class Dashboard {
   }
 
   constructor() {
-    inject(DashboardService)
-      .summary()
-      .subscribe({
-        next: (s) => this.summary.set(s),
-        error: () => this.loadError.set('Could not load the dashboard. Please try again.'),
-      });
+    this.load();
+  }
+
+  /** Shows the totals in the chosen currency, then reloads them converted into it. */
+  protected chooseBaseCurrency(code: string): void {
+    const current = this.summary();
+    if (current) {
+      this.summary.set({ ...current, baseCurrency: code });
+    }
+    this.savingBaseCurrency.set(true);
+    this.baseCurrencyError.set(null);
+    this.settings.updateDashboardBaseCurrency(code).subscribe({
+      next: () => {
+        this.savingBaseCurrency.set(false);
+        this.load();
+      },
+      error: () => {
+        this.savingBaseCurrency.set(false);
+        this.baseCurrencyError.set('Could not change the currency. Please try again.');
+        this.load();
+      },
+    });
+  }
+
+  private load(): void {
+    this.dashboard.summary().subscribe({
+      next: (s) => this.summary.set(s),
+      error: () => this.loadError.set('Could not load the dashboard. Please try again.'),
+    });
   }
 }

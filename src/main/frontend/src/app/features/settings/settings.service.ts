@@ -12,6 +12,8 @@ export interface Settings {
   revenueRecognitionBasis?: RecognitionBasis;
   /** What the business aims to bill over the year, in the home currency; null when no target is set (read-only here). */
   billingTarget?: number | null;
+  /** The currency the dashboard's totals are shown in (read-only here). */
+  dashboardBaseCurrency?: string;
 }
 
 /** When revenue counts: when an invoice is sent, or once it is paid. */
@@ -33,5 +35,10 @@ export class SettingsService {
   /** Sets the yearly billings target, or clears it when null. */
   updateBillingTarget(billingTarget: number | null): Observable<Settings> {
     return this.http.put<Settings>('/api/settings/billing-target', { billingTarget }, { keepalive: true });
+  }
+
+  /** Chooses the currency the dashboard's totals are shown in. */
+  updateDashboardBaseCurrency(baseCurrency: string): Observable<Settings> {
+    return this.http.put<Settings>('/api/settings/dashboard-base-currency', { baseCurrency }, { keepalive: true });
   }
 }

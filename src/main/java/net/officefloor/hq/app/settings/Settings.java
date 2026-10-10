@@ -26,6 +26,10 @@ public class Settings {
     @Column(name = "home_currency", nullable = false, length = 3)
     private String homeCurrency = "USD";
 
+    /** The currency the dashboard's totals are shown in; null shows them in the home currency. */
+    @Column(name = "dashboard_base_currency", length = 3)
+    private String dashboardBaseCurrency;
+
     /** When revenue counts: when an invoice is sent ("sent") or once it is paid ("paid"). */
     @Column(name = "revenue_recognition_basis", nullable = false, length = 10)
     private String revenueRecognitionBasis = RecognitionBasis.SENT;
@@ -51,6 +55,15 @@ public class Settings {
 
     public String getHomeCurrency() {
         return homeCurrency;
+    }
+
+    /** The currency the dashboard's totals are shown in: the chosen one, or else the home currency. */
+    public String getDashboardBaseCurrency() {
+        return dashboardBaseCurrency == null ? homeCurrency : dashboardBaseCurrency;
+    }
+
+    public void setDashboardBaseCurrency(String dashboardBaseCurrency) {
+        this.dashboardBaseCurrency = dashboardBaseCurrency;
     }
 
     public String getRevenueRecognitionBasis() {

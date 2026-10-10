@@ -34,7 +34,7 @@ export interface DashboardSummary {
   /** Everything outstanding as one total in the home currency, each invoice converted at its issue date's rate; disputed and written-off invoices are left out. */
   outstandingHome: number;
   overdue: number;
-  /** The currency the overdue amount is given in. */
+  /** The currency the dashboard's totals are given in: the chosen base currency, or the home currency while the base currency has no exchange rate. */
   homeCurrency: CurrencyCode;
   /** What is left to pay on overdue invoices plus the late fees and instalment interest they have built up, in the home currency. */
   overdueAmount: number;
@@ -67,6 +67,8 @@ export interface DashboardSummary {
   billingTargetProgress: number | null;
   /** How far what was billed this year is ahead of (positive) or behind (negative) the target; null when no target is set. */
   billingTargetVariance: number | null;
+  /** The currency chosen for the dashboard's totals to be shown in. */
+  baseCurrency: CurrencyCode;
 }
 
 /** The tax charged on invoices issued on or between two dates, in the home currency. */

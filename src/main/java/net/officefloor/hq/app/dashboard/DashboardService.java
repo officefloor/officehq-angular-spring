@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.client.ClientService;
@@ -117,13 +118,25 @@ public class DashboardService {
                         .longValue();
         BigDecimal billingTargetVariance = billingTarget == null ? null
                 : billingsYearToDate.subtract(billingTarget).setScale(2, RoundingMode.HALF_UP);
-        return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
-                overdueBuckets, top, tasks.countByDoneFalse(), tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
-                clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home),
-                collectionRate(home), billingsYearToDate,
-                collected(today.withDayOfYear(1), today, home),
-                collected(today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)), today, home), taskCompletionRate(), billingTarget, billingTargetProgress,
-                billingTargetVariance);
+        // The totals are shown in the chosen base currency, converted from the home currency at today's rate; when
+        // that is not possible (no rate for it yet) they stay in the home currency.
+        String base = settings.dashboardBaseCurrency();
+        String shownIn = fxRates.convert(home, base, today, BigDecimal.ONE).isPresent() ? base : home;
+        UnaryOperator<BigDecimal> shown = amount -> amount == null ? null
+                : fxRates.convert(home, shownIn, today, amount).orElseThrow();
+        top = top.stream().map(c -> new DashboardResponse.TopClient(c.id(), c.name(), c.currency(), c.outstanding(),
+                shown.apply(c.outstandingHome()))).toList();
+        overdueBuckets = new DashboardResponse.OverdueBuckets(shown.apply(overdueBuckets.days0To30()),
+                shown.apply(overdueBuckets.days31To60()), shown.apply(overdueBuckets.days60Plus()));
+        return new DashboardResponse(clients.count(), projects.count(), outstanding, shown.apply(outstandingHome), overdue,
+                shownIn, shown.apply(overdueAmount), overdueBuckets, top, tasks.countByDoneFalse(),
+                tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
+                clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)),
+                shown.apply(billings(today.withDayOfMonth(1), today, home)), collectionRate(home),
+                shown.apply(billingsYearToDate), shown.apply(collected(today.withDayOfYear(1), today, home)),
+                shown.apply(collected(today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)), today, home)),
+                taskCompletionRate(), shown.apply(billingTarget), billingTargetProgress,
+                shown.apply(billingTargetVariance), base);
     }
 
     /** The share of all tasks that are done, as a whole percentage. Null when there are no tasks. */

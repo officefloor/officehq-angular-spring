@@ -31,4 +31,9 @@ public class SettingsController {
     public SettingsResponse updateBillingTarget(@Valid @RequestBody BillingTargetRequest request) {
         return service.updateBillingTarget(request);
     }
+
+    @PutMapping("/dashboard-base-currency")
+    public SettingsResponse updateDashboardBaseCurrency(@Valid @RequestBody BaseCurrencyRequest request) {
+        return service.updateDashboardBaseCurrency(request);
+    }
 }
