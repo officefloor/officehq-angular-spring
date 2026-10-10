@@ -1,0 +1,131 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 9b9fd25..6ec760e 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -41,6 +41,8 @@ export interface DashboardSummary {
+   /** The overdue amount split by how many days past due each invoice is. */
+   overdueBuckets: OverdueBuckets;
+   topClients: TopClient[];
++  /** How many tasks not yet done are past their due date. */
++  overdueTasks: number;
+ }
+ 
+ /** The tax charged on invoices issued on or between two dates, in the home currency. */
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index d2f9eeb..0c45517 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -11,7 +11,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // exchange rate from its own issue date, and how many of those sent
+ // invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+-// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. A tax summary for a chosen date range can be opened from here.
++// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. A tax summary for a chosen date range can be opened from here.
+ @Component({
+   selector: 'app-dashboard',
+   imports: [MoneyPipe, CashFlowForecast, TaxSummaryReport, UpcomingRecurringInvoices],
+@@ -62,6 +62,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+           <dt>Overdue more than 60 days</dt>
+           <dd data-testid="dashboard-overdue-60-plus">{{ s.overdueBuckets.days60Plus | money: s.homeCurrency }}</dd>
+         </div>
++        <div>
++          <dt>Overdue tasks</dt>
++          <dd data-testid="dashboard-overdue-tasks-count">{{ s.overdueTasks }}</dd>
++        </div>
+       </dl>
+ 
+       <section data-testid="dashboard-top-clients" aria-labelledby="dashboard-top-clients-heading">
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+index f30dffc..dd49003 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+@@ -9,11 +9,12 @@ import java.util.List;
+  * (left to pay on overdue invoices plus the late fees and instalment interest they have built up) is one total in
+  * the home currency, and is also split by how many days overdue each invoice is.
+  * What is outstanding is also given as one grand total in the home currency, each invoice converted at the
+- * exchange rate from its own issue date.
++ * exchange rate from its own issue date. Also how many tasks not yet done are past their due date.
+  */
+ public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
+         BigDecimal outstandingHome, long overdue,
+-        String homeCurrency, BigDecimal overdueAmount, OverdueBuckets overdueBuckets, List<TopClient> topClients) {
++        String homeCurrency, BigDecimal overdueAmount, OverdueBuckets overdueBuckets, List<TopClient> topClients,
++        long overdueTasks) {
+ 
+     /** What is still owed in one currency. */
+     public record CurrencyTotal(String currency, BigDecimal amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 72db87a..fcdebae 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -26,6 +26,7 @@ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.project.ProjectRepository;
+ import net.officefloor.hq.app.settings.SettingsService;
++import net.officefloor.hq.app.task.TaskRepository;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -43,6 +44,7 @@ public class DashboardService {
+     private final SettingsService settings;
+     private final FxRateService fxRates;
+     private final InstalmentRepository instalments;
++    private final TaskRepository tasks;
+     private final Clock clock;
+ 
+     /** How many of the biggest debtors the dashboard lists. */
+@@ -50,7 +52,8 @@ public class DashboardService {
+ 
+     public DashboardService(ClientRepository clients, ProjectRepository projects, InvoiceRepository invoices,
+             ClientService clientService, PaymentRepository payments, CreditNoteRepository creditNotes,
+-            SettingsService settings, FxRateService fxRates, InstalmentRepository instalments, Clock clock) {
++            SettingsService settings, FxRateService fxRates, InstalmentRepository instalments, TaskRepository tasks,
++            Clock clock) {
+         this.clients = clients;
+         this.projects = projects;
+         this.invoices = invoices;
+@@ -60,13 +63,14 @@ public class DashboardService {
+         this.settings = settings;
+         this.fxRates = fxRates;
+         this.instalments = instalments;
++        this.tasks = tasks;
+         this.clock = clock;
+     }
+ 
+     /**
+      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
+      * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices are past their due date and
+-     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out).
++     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date.
+      */
+     @Transactional(readOnly = true)
+     public DashboardResponse summary() {
+@@ -96,7 +100,7 @@ public class DashboardService {
+                         clientsInHome.get(c.id()).setScale(2, RoundingMode.HALF_UP)))
+                 .toList();
+         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
+-                overdueBuckets, top);
++                overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskRepository.java b/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
+index 6bf0e7b..ab29a46 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.task;
+ 
++import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+@@ -9,5 +10,8 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
+     /** A project's tasks in the order they were added. */
+     List<Task> findByProjectIdOrderById(Long projectId);
+ 
++    /** How many tasks not yet done were due before the given date. */
++    long countByDoneFalseAndDueDateBefore(LocalDate date);
++
+     Optional<Task> findByIdAndProjectId(Long id, Long projectId);
+ }
