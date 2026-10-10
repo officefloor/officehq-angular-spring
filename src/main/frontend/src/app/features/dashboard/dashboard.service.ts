@@ -47,6 +47,8 @@ export interface DashboardSummary {
   averageDaysToPay: number | null;
   /** How many clients were taken on in the current month. */
   newClientsThisMonth: number;
+  /** What was billed (invoices issued and sent, not drafts or cancelled) in the current month, in the home currency. */
+  billingsThisMonth: number;
 }
 
 /** The tax charged on invoices issued on or between two dates, in the home currency. */

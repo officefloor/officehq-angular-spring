@@ -8,7 +8,7 @@ import { TaxReport } from './tax-report';
 import { TaxSummaryReport } from './tax-summary';
 import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 
-// Dashboard page: how many clients and projects there are (and how many clients were taken on this month), and the total still owed in each currency
+// Dashboard page: how many clients and projects there are (and how many clients were taken on this month), what was billed this month in the home currency,, and the total still owed in each currency
 // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
 // counted), plus one grand total of it in the home currency with each invoice converted at the
 // exchange rate from its own issue date (leaving out disputed and written-off invoices), and how many of those sent
@@ -48,6 +48,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
         <div>
           <dt>Outstanding in {{ s.homeCurrency }} (converted at each invoice's date, excluding disputed and written-off)</dt>
           <dd data-testid="dashboard-outstanding-home"><span data-testid="kpi-outstanding">{{ s.outstandingHome | money: s.homeCurrency }}</span></dd>
+        </div>
+        <div>
+          <dt>Billed this month (in {{ s.homeCurrency }})</dt>
+          <dd data-testid="kpi-billings-month">{{ s.billingsThisMonth | money: s.homeCurrency }}</dd>
         </div>
         <div>
           <dt>Overdue invoices</dt>

@@ -73,7 +73,7 @@ public class DashboardService {
     /**
      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
      * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices (not disputed) are past their due date and
-     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}; disputed and written-off invoices left out), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date, and how many clients were taken on this month.
+     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}; disputed and written-off invoices left out), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date, and how many clients were taken on this month, and what was billed this month in the home currency.
      */
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
@@ -106,7 +106,21 @@ public class DashboardService {
                 .toList();
         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
                 overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
-                clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)));
+                clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home));
+    }
+
+    /**
+     * What was billed on or between the given dates, in the home currency: the amounts of the invoices issued in the
+     * range that were sent (drafts and cancelled invoices are left out), each converted at its issue date's rate (an
+     * invoice that cannot be converted is left out).
+     */
+    private BigDecimal billings(LocalDate from, LocalDate to, String home) {
+        List<InvoiceStatus> billed = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID,
+                InvoiceStatus.WRITTEN_OFF);
+        return invoices.findByStatusInAndIssuedDateBetween(billed, from, to).stream()
+                .map(i -> i.getCurrency().equals(home) ? Optional.of(i.getAmount())
+                        : fxRates.toHome(i.getCurrency(), i.getIssuedDate(), i.getAmount()))
+                .flatMap(Optional::stream).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**
