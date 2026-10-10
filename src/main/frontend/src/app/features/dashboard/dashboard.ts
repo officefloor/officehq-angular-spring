@@ -79,6 +79,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
           <dd data-testid="kpi-ytd-collected">{{ s.collectedYearToDate | money: s.homeCurrency }}</dd>
         </div>
         <div>
+          <dt>Collected this week (in {{ s.homeCurrency }})</dt>
+          <dd data-testid="dashboard-cash-week">{{ s.collectedThisWeek | money: s.homeCurrency }}</dd>
+        </div>
+        <div>
           <dt>Collection rate (collected of what was billed)</dt>
           @if (s.collectionRate !== null) {
             <dd data-testid="kpi-collection-rate">{{ s.collectionRate }}%</dd>

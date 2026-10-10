@@ -3,9 +3,11 @@ package net.officefloor.hq.app.dashboard;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -119,7 +121,8 @@ public class DashboardService {
                 overdueBuckets, top, tasks.countByDoneFalse(), tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
                 clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home),
                 collectionRate(home), billingsYearToDate,
-                collected(today.withDayOfYear(1), today, home), taskCompletionRate(), billingTarget, billingTargetProgress,
+                collected(today.withDayOfYear(1), today, home),
+                collected(today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)), today, home), taskCompletionRate(), billingTarget, billingTargetProgress,
                 billingTargetVariance);
     }
 

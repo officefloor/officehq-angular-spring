@@ -57,6 +57,8 @@ export interface DashboardSummary {
   billingsYearToDate: number;
   /** What was collected (payments received) from the start of the year to today, in the home currency. */
   collectedYearToDate: number;
+  /** What was collected (payments received) from Monday of the current week to today, in the home currency. */
+  collectedThisWeek: number;
   /** The share of all tasks that are done, as a whole percentage; null when there are no tasks. */
   taskCompletionRate: number | null;
   /** What the business aims to bill over the year, in the home currency; null when no target is set. */
