@@ -1,0 +1,55 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index dc430eb..1ed3414 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -716,8 +716,9 @@ public class Invoice {
+     }
+ 
+     /**
+-     * Works out this sent invoice's status from the totals paid and credited against it: PAID once the
+-     * payments and credit notes cover the amount, PARTIAL once something has been settled, otherwise still SENT.
++     * Works out this sent invoice's status from what is still owed on it after the totals paid and credited against
++     * it and any part written off: PAID once nothing is left, PARTIAL once something has been settled, otherwise
++     * still SENT.
+      */
+     public void applySettledTotals(BigDecimal paid, BigDecimal credited) {
+         if (status == InvoiceStatus.DRAFT || status.isClosedUnpaid()) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 93c152e..c265ef0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -494,8 +494,9 @@ public class InvoiceService {
+ 
+     /**
+      * Writes off part of a sent or part-paid invoice as bad debt, so that part no longer counts toward what is
+-     * owed while the rest still does, and records the part given up in the audit log. Writing off everything
+-     * still owed writes off the whole invoice.
++     * owed while the rest still does, and records the part given up in the audit log. The invoice's status is then
++     * worked out from what is still owed after the write-off. Writing off everything still owed writes off the
++     * whole invoice.
+      */
+     @Transactional
+     public InvoiceDetailResponse writeOffPart(Long projectId, Long invoiceId, PartialWriteOffRequest request) {
+@@ -516,10 +517,11 @@ public class InvoiceService {
+             return writeOff(projectId, invoiceId);
+         }
+         invoice.writeOffPart(request.amount());
++        invoice.applySettledTotals(paid, credited);
+         invoices.flush();
+         audit.record("INVOICE_PART_WRITTEN_OFF id=" + invoice.getId() + " amount="
+                 + request.amount().setScale(2).toPlainString());
+-        return detail(invoice, invoice.statusFor(paid, credited));
++        return detail(invoice);
+     }
+ 
+     private InvoiceResponse toResponse(Invoice invoice) {
+diff --git a/src/main/resources/db/migration/V82__status_after_partial_write_off.sql b/src/main/resources/db/migration/V82__status_after_partial_write_off.sql
+new file mode 100644
+index 0000000..36aae61
+--- /dev/null
++++ b/src/main/resources/db/migration/V82__status_after_partial_write_off.sql
+@@ -0,0 +1,4 @@
++-- An invoice's status is worked out from what is genuinely still owed after any part written off. A part
++-- write-off never clears the whole balance (that writes off the invoice), so a sent invoice with a part
++-- written off has had something settled and is part-paid.
++UPDATE invoice SET status = 'PARTIAL' WHERE status = 'SENT' AND write_off_amount > 0;
