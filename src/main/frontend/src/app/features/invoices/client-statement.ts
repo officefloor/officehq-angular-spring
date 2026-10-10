@@ -8,7 +8,7 @@ import { StatementEmailAction } from './statement-email';
 // A client's statement: every invoice across the client's projects grouped by job, how much is left to
 // pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
 // It can be run for a chosen date range, giving the opening balance, the entries within the range with the running
-// balance, and the closing balance.
+// balance, the net movement within the range, and the closing balance (opening plus movements).
 // The balance owed as at a chosen past date can be looked up, counting only entries up to that date.
 // Each invoice is shown in its own currency and every figure is rounded by the same currency rule as the invoice
 // (the server rounds each one before adding them up), so the totals match the invoices to the cent. At the foot the total owed is also given in the home currency.
@@ -125,6 +125,8 @@ import { StatementEmailAction } from './statement-email';
               <dl class="statement-summary">
                 <dt>Opening balance at {{ r.from }}</dt>
                 <dd data-testid="statement-opening-balance">{{ r.openingBalance | money: r.currency }}</dd>
+                <dt>Movements in the range</dt>
+                <dd data-testid="statement-movements-total">{{ r.movementsTotal | money: r.currency }}</dd>
                 <dt>Closing balance at {{ r.to }}</dt>
                 <dd data-testid="statement-closing-balance">{{ r.closingBalance | money: r.currency }}</dd>
               </dl>

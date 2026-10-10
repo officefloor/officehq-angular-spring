@@ -137,6 +137,8 @@ export interface ClientStatementRange {
   to: string;
   openingBalance: number;
   entries: StatementEntry[];
+  /** The charges less the credits dated within the range; opening plus movements is the closing balance. */
+  movementsTotal: number;
   closingBalance: number;
 }
 

@@ -156,7 +156,8 @@ public class InvoiceService {
 
     /**
      * A client's statement for the given date range (both ends included): the balance owed at the start of it, the
-     * entries dated within it in date order each carrying the running balance, and the balance owed at its end.
+     * entries dated within it in date order each carrying the running balance, the net movement within it, and the
+     * balance owed at its end (always the opening balance plus the movements).
      */
     @Transactional(readOnly = true)
     public ClientStatementRangeResponse statementForRange(Long clientId, LocalDate from, LocalDate to) {
@@ -173,15 +174,16 @@ public class InvoiceService {
                 .filter(e -> e.date().isBefore(from))
                 .map(StatementEntry::change)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        BigDecimal balance = opening;
+        BigDecimal movements = BigDecimal.ZERO.setScale(2);
         List<StatementEntry> within = new ArrayList<>();
         for (StatementEntry entry : dated) {
             if (!entry.date().isBefore(from) && !entry.date().isAfter(to)) {
-                balance = balance.add(entry.change());
-                within.add(entry.withBalance(balance));
+                movements = movements.add(entry.change());
+                within.add(entry.withBalance(opening.add(movements)));
             }
         }
-        return new ClientStatementRangeResponse(client.getId(), client.getCurrency(), from, to, opening, within, balance);
+        return new ClientStatementRangeResponse(client.getId(), client.getCurrency(), from, to, opening, within,
+                movements, opening.add(movements));
     }
 
     /**
