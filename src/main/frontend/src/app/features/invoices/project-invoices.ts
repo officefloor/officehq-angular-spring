@@ -129,6 +129,12 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
             Send all drafts ({{ draftCount() }})
           </button>
         }
+        @if (bulkSentCount() !== null) {
+          <p role="status" data-testid="job-bulk-send-result">
+            Sent <span data-testid="bulk-send-count">{{ bulkSentCount() }}</span>
+            {{ bulkSentCount() === 1 ? 'invoice' : 'invoices' }}.
+          </p>
+        }
         @if (bulkSendError()) {
           <p role="alert" data-testid="job-bulk-send-error">{{ bulkSendError() }}</p>
         }
@@ -269,6 +275,8 @@ export class ProjectInvoices {
   protected readonly draftCount = computed(() => this.list().filter((i) => i.status === 'DRAFT').length);
   protected readonly bulkSending = signal(false);
   protected readonly bulkSendError = signal<string | null>(null);
+  /** How many invoices the last bulk send sent; null until one succeeds. */
+  protected readonly bulkSentCount = signal<number | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group(
     {
@@ -383,11 +391,13 @@ export class ProjectInvoices {
   protected sendAllDrafts(): void {
     this.bulkSending.set(true);
     this.bulkSendError.set(null);
+    this.bulkSentCount.set(null);
     this.sendError.set(null);
     this.creditWarning.set(null);
     this.service.sendDrafts(this.projectId()).subscribe({
       next: (sent) => {
         sent.forEach((i) => this.replace(i));
+        this.bulkSentCount.set(sent.length);
         this.bulkSending.set(false);
         this.invoiced.emit();
       },
