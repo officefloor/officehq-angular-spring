@@ -1,0 +1,418 @@
+diff --git a/src/main/frontend/src/app/features/instalments/instalment.service.ts b/src/main/frontend/src/app/features/instalments/instalment.service.ts
+index f4c0dc5..6ee01a0 100644
+--- a/src/main/frontend/src/app/features/instalments/instalment.service.ts
++++ b/src/main/frontend/src/app/features/instalments/instalment.service.ts
+@@ -11,6 +11,15 @@ export interface Instalment {
+   date: string;
+   /** Whether the instalment has been paid. */
+   paid: boolean;
++  /** Days past its due date while still unpaid. */
++  daysLate: number;
++  /** Interest accrued for the days it is late. */
++  interest: number;
++}
++
++/** The interest charged for each day an instalment of an invoice is paid late. */
++export interface InstalmentInterest {
++  interestPerDay: number;
+ }
+ 
+ /** The earliest instalment of an invoice still to be paid. */
+@@ -42,6 +51,17 @@ export class InstalmentService {
+     return this.http.get<NextInstalment | null>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments/next`);
+   }
+ 
++  /** The interest charged for each day an instalment of an invoice is paid late. */
++  interest(projectId: number, invoiceId: number): Observable<InstalmentInterest> {
++    return this.http.get<InstalmentInterest>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments/interest`);
++  }
++
++  applyInterest(projectId: number, invoiceId: number, interestPerDay: number): Observable<InstalmentInterest> {
++    return this.http.put<InstalmentInterest>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments/interest`, {
++      interestPerDay,
++    });
++  }
++
+   schedule(projectId: number, invoiceId: number, instalment: NewInstalment): Observable<Instalment> {
+     return this.http.post<Instalment>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments`, instalment);
+   }
+diff --git a/src/main/frontend/src/app/features/instalments/invoice-instalments.ts b/src/main/frontend/src/app/features/instalments/invoice-instalments.ts
+index b9bc756..5111cd9 100644
+--- a/src/main/frontend/src/app/features/instalments/invoice-instalments.ts
++++ b/src/main/frontend/src/app/features/instalments/invoice-instalments.ts
+@@ -1,6 +1,6 @@
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { HttpErrorResponse } from '@angular/common/http';
+-import { Component, computed, inject, input, signal } from '@angular/core';
++import { Component, computed, effect, inject, input, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Instalment, InstalmentService } from './instalment.service';
+@@ -34,6 +34,13 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+           } @else if (next.hasValue()) {
+             <p data-testid="instalment-next-none">No further instalments are due.</p>
+           }
++          @if (interest.hasValue() && interest.value().interestPerDay > 0) {
++            <p data-testid="instalment-interest-rate">
++              Interest on late instalments:
++              <strong data-testid="instalment-interest-per-day">{{ interest.value().interestPerDay | money: currency() }}</strong>
++              per day
++            </p>
++          }
+           <table data-testid="invoice-instalments-table">
+             <caption>When each part of this invoice is due</caption>
+             <thead>
+@@ -41,6 +48,8 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                 <th scope="col">Due</th>
+                 <th scope="col">Amount</th>
+                 <th scope="col">Status</th>
++                <th scope="col">Days late</th>
++                <th scope="col">Interest</th>
+                 @if (canEdit()) {
+                   <th scope="col"><span class="visually-hidden">Actions</span></th>
+                 }
+@@ -52,6 +61,8 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                   <td data-testid="instalment-date">{{ n.date }}</td>
+                   <td data-testid="instalment-amount">{{ n.amount | money: currency() }}</td>
+                   <td data-testid="instalment-status">{{ n.paid ? 'Paid' : 'Unpaid' }}</td>
++                  <td data-testid="instalment-days-late">{{ n.daysLate }}</td>
++                  <td data-testid="instalment-interest">{{ n.interest | money: currency() }}</td>
+                   @if (canEdit()) {
+                     <td>
+                       <button
+@@ -73,6 +84,10 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                 <th scope="row">Scheduled</th>
+                 <td data-testid="invoice-instalments-total">{{ scheduledCents() / 100 | money: currency() }}</td>
+               </tr>
++              <tr>
++                <th scope="row">Interest</th>
++                <td data-testid="invoice-instalments-interest">{{ interestCents() / 100 | money: currency() }}</td>
++              </tr>
+               <tr>
+                 <th scope="row">Unscheduled</th>
+                 <td data-testid="invoice-instalments-unscheduled">
+@@ -88,6 +103,33 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+       }
+ 
+       @if (canEdit()) {
++        <form [formGroup]="interestForm" (ngSubmit)="applyInterest()" data-testid="instalment-interest-form" novalidate>
++          <h3>Interest on late instalments</h3>
++          <div>
++            <label for="instalment-interest-per-day">Interest per day late</label>
++            <input
++              id="instalment-interest-per-day"
++              type="number"
++              inputmode="decimal"
++              min="0"
++              step="0.01"
++              formControlName="interestPerDay"
++              data-testid="instalment-interest-form-per-day"
++              [attr.aria-invalid]="interestInvalid()"
++              [attr.aria-describedby]="interestInvalid() ? 'instalment-interest-per-day-error' : null"
++            />
++            @if (interestInvalid()) {
++              <p id="instalment-interest-per-day-error" role="alert" data-testid="instalment-interest-form-per-day-error">
++                Enter an amount of zero or more with at most two decimal places.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="instalment-interest-form-submit" [disabled]="interestSaving()">Apply interest</button>
++          @if (interestError()) {
++            <p role="alert" data-testid="instalment-interest-form-error">{{ interestError() }}</p>
++          }
++        </form>
++
+         <form [formGroup]="form" (ngSubmit)="submit()" data-testid="instalment-form" novalidate>
+           <h3>Schedule an instalment</h3>
+           <div>
+@@ -154,10 +196,18 @@ export class InvoiceInstalments {
+     stream: ({ params }) => this.service.next(params.projectId, params.invoiceId),
+   });
+ 
++  protected readonly interest = rxResource({
++    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
++    stream: ({ params }) => this.service.interest(params.projectId, params.invoiceId),
++  });
++
+   // Work in whole cents so the totals are exact.
+   protected readonly scheduledCents = computed(() =>
+     (this.instalments.hasValue() ? this.instalments.value() : []).reduce((sum, n) => sum + Math.round(n.amount * 100), 0),
+   );
++  protected readonly interestCents = computed(() =>
++    (this.instalments.hasValue() ? this.instalments.value() : []).reduce((sum, n) => sum + Math.round(n.interest * 100), 0),
++  );
+   protected readonly invoiceCents = computed(() => Math.round(this.invoiceAmount() * 100));
+ 
+   protected readonly saving = signal(false);
+@@ -170,6 +220,47 @@ export class InvoiceInstalments {
+     date: ['', Validators.required],
+   });
+ 
++  protected readonly interestSaving = signal(false);
++  protected readonly interestError = signal<string | null>(null);
++
++  protected readonly interestForm = inject(NonNullableFormBuilder).group({
++    interestPerDay: ['', [Validators.required, Validators.min(0), Validators.pattern(TWO_DECIMALS)]],
++  });
++
++  // Show the current rate in the form once it has loaded.
++  private readonly syncInterest = effect(() => {
++    if (this.interest.hasValue()) {
++      this.interestForm.setValue({ interestPerDay: String(this.interest.value().interestPerDay) });
++    }
++  });
++
++  protected interestInvalid(): boolean {
++    const control = this.interestForm.controls.interestPerDay;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected applyInterest(): void {
++    if (this.interestForm.invalid) {
++      this.interestForm.markAllAsTouched();
++      return;
++    }
++    this.interestSaving.set(true);
++    this.interestError.set(null);
++    const interestPerDay = Number(this.interestForm.getRawValue().interestPerDay);
++    this.service.applyInterest(this.projectId(), this.invoiceId(), interestPerDay).subscribe({
++      next: (saved) => {
++        this.interest.set(saved);
++        // The interest on each instalment is worked out from the new rate.
++        this.instalments.reload();
++        this.interestSaving.set(false);
++      },
++      error: () => {
++        this.interestError.set('Could not apply the interest. Please try again.');
++        this.interestSaving.set(false);
++      },
++    });
++  }
++
+   protected invalid(name: 'amount' | 'date'): boolean {
+     const control = this.form.controls[name];
+     return control.invalid && (control.touched || control.dirty);
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index d4435f7..c7ecf28 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -283,17 +283,19 @@ public class TestSupportController {
+             // An invoice may be billed in its own currency ("currency"); without one it is in its client's.
+             // A late fee per day accrues once the invoice is overdue; it does not change the amount invoiced.
+             BigDecimal lateFeePerDay = decimal(i.get("lateFeePerDay"));
++            // Interest per day accrues on each instalment still unpaid past its due date.
++            BigDecimal interestPerDay = decimal(i.get("interestPerDay"));
+             // A percentage may be held back as retention; it is not due yet but does not change the amount invoiced.
+             BigDecimal retentionPct = decimal(i.get("retentionPct"));
+             // The retention may already have been released ("retentionReleased"), making it due.
+             boolean retentionReleased = Boolean.TRUE.equals(i.get("retentionReleased"));
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, retention_pct, retention_released, currency)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, currency)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
+                     surcharge, taxInclusive, taxExempt,
+-                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, retentionPct,
++                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
+                     retentionReleased,
+                     i.get("currency") == null ? null : i.get("currency").toString());
+             for (Map<String, Object> d : discounts) {
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentInterestRequest.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentInterestRequest.java
+new file mode 100644
+index 0000000..9d07af5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentInterestRequest.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.instalment;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/** Payload to set the interest charged for each day an instalment is paid late; zero charges none. */
++public record InstalmentInterestRequest(
++        @NotNull @DecimalMin("0") @Digits(integer = 10, fraction = 2) BigDecimal interestPerDay) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentInterestResponse.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentInterestResponse.java
+new file mode 100644
+index 0000000..6a0b1c8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentInterestResponse.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.instalment;
++
++import java.math.BigDecimal;
++
++/** The interest charged for each day an instalment of an invoice is paid late. */
++public record InstalmentInterestResponse(BigDecimal interestPerDay) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentResponse.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentResponse.java
+index b8b06b5..2fb566f 100644
+--- a/src/main/java/net/officefloor/hq/app/instalment/InstalmentResponse.java
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentResponse.java
+@@ -1,12 +1,19 @@
+ package net.officefloor.hq.app.instalment;
+ 
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ 
+-public record InstalmentResponse(Long id, Long invoiceId, BigDecimal amount, LocalDate date, boolean paid) {
++/**
++ * An instalment of an invoice, with the days it is late (past due and still unpaid) and the interest
++ * that has accrued on it for those days.
++ */
++public record InstalmentResponse(Long id, Long invoiceId, BigDecimal amount, LocalDate date, boolean paid,
++        long daysLate, BigDecimal interest) {
+ 
+-    static InstalmentResponse from(Instalment instalment) {
++    static InstalmentResponse from(Instalment instalment, long daysLate, BigDecimal interestPerDay) {
+         return new InstalmentResponse(instalment.getId(), instalment.getInvoiceId(), instalment.getAmount(),
+-                instalment.getDueDate(), instalment.isPaid());
++                instalment.getDueDate(), instalment.isPaid(), daysLate,
++                interestPerDay.multiply(BigDecimal.valueOf(daysLate)).setScale(2, RoundingMode.HALF_UP));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java
+index 830345c..8e6cc1f 100644
+--- a/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.instalment;
+ import java.math.BigDecimal;
+ import java.time.Clock;
+ import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
+ import java.util.List;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+@@ -31,9 +32,44 @@ public class InstalmentService {
+ 
+     @Transactional(readOnly = true)
+     public List<InstalmentResponse> list(Long projectId, Long invoiceId) {
+-        find(projectId, invoiceId);
++        Invoice invoice = find(projectId, invoiceId);
++        LocalDate today = LocalDate.now(clock);
+         return instalments.findByInvoiceIdOrderByDueDateAscIdAsc(invoiceId).stream()
+-                .map(InstalmentResponse::from).toList();
++                .map(i -> from(invoice, i, today)).toList();
++    }
++
++    /** The interest charged for each day an instalment of the invoice is paid late. */
++    @Transactional(readOnly = true)
++    public InstalmentInterestResponse interest(Long projectId, Long invoiceId) {
++        return new InstalmentInterestResponse(find(projectId, invoiceId).getInstalmentInterestPerDay());
++    }
++
++    /** Sets the interest charged for each day an instalment of an invoice still to be paid is paid late. */
++    @Transactional
++    public InstalmentInterestResponse applyInterest(Long projectId, Long invoiceId, InstalmentInterestRequest request) {
++        Invoice invoice = find(projectId, invoiceId);
++        requireOpen(invoice);
++        invoice.applyInstalmentInterest(request.interestPerDay());
++        invoices.flush();
++        audit.record("INSTALMENT_INTEREST_SET invoice=" + invoiceId + " perDay="
++                + invoice.getInstalmentInterestPerDay().toPlainString());
++        return new InstalmentInterestResponse(invoice.getInstalmentInterestPerDay());
++    }
++
++    /**
++     * How many days an instalment is late on the given day: the days past its due date while it is still
++     * unpaid on an invoice still to be paid; otherwise none.
++     */
++    private static long daysLate(Invoice invoice, Instalment instalment, LocalDate today) {
++        if (instalment.isPaid() || !isOpen(invoice)) {
++            return 0;
++        }
++        return Math.max(0, ChronoUnit.DAYS.between(instalment.getDueDate(), today));
++    }
++
++    private static InstalmentResponse from(Invoice invoice, Instalment instalment, LocalDate today) {
++        return InstalmentResponse.from(instalment, daysLate(invoice, instalment, today),
++                invoice.getInstalmentInterestPerDay());
+     }
+ 
+     /**
+@@ -67,7 +103,7 @@ public class InstalmentService {
+         Instalment saved = instalments.saveAndFlush(new Instalment(invoiceId, request.amount(), request.date()));
+         audit.record("INSTALMENT_SCHEDULED invoice=" + invoiceId + " amount=" + saved.getAmount().toPlainString()
+                 + " date=" + saved.getDueDate());
+-        return InstalmentResponse.from(saved);
++        return from(invoice, saved, LocalDate.now(clock));
+     }
+ 
+     /** Takes an instalment off an invoice's schedule. */
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InvoiceInstalmentController.java b/src/main/java/net/officefloor/hq/app/instalment/InvoiceInstalmentController.java
+index 2569abb..33a9fbb 100644
+--- a/src/main/java/net/officefloor/hq/app/instalment/InvoiceInstalmentController.java
++++ b/src/main/java/net/officefloor/hq/app/instalment/InvoiceInstalmentController.java
+@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+@@ -36,6 +37,18 @@ public class InvoiceInstalmentController {
+                 .orElseGet(() -> ResponseEntity.noContent().build());
+     }
+ 
++    /** The interest charged for each day an instalment is paid late. */
++    @GetMapping("/interest")
++    public InstalmentInterestResponse interest(@PathVariable Long projectId, @PathVariable Long invoiceId) {
++        return service.interest(projectId, invoiceId);
++    }
++
++    @PutMapping("/interest")
++    public InstalmentInterestResponse applyInterest(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody InstalmentInterestRequest request) {
++        return service.applyInterest(projectId, invoiceId, request);
++    }
++
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public InstalmentResponse schedule(@PathVariable Long projectId, @PathVariable Long invoiceId,
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 345bc90..b379acc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -100,6 +100,9 @@ public class Invoice {
+     @Column(name = "late_fee_per_day", nullable = false, precision = 12, scale = 2)
+     private BigDecimal lateFeePerDay = BigDecimal.ZERO.setScale(2);
+ 
++    @Column(name = "instalment_interest_per_day", nullable = false, precision = 12, scale = 2)
++    private BigDecimal instalmentInterestPerDay = BigDecimal.ZERO.setScale(2);
++
+     /** The percentage of the amount held back as retention, not due yet; zero when none is held back. */
+     @Column(name = "retention_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal retentionPct = BigDecimal.ZERO.setScale(2);
+@@ -534,6 +537,15 @@ public class Invoice {
+         return lateFeePerDay;
+     }
+ 
++    /** Sets the interest charged for each day an instalment of this invoice is paid late. */
++    public void applyInstalmentInterest(BigDecimal interestPerDay) {
++        this.instalmentInterestPerDay = interestPerDay.setScale(2, RoundingMode.HALF_UP);
++    }
++
++    public BigDecimal getInstalmentInterestPerDay() {
++        return instalmentInterestPerDay;
++    }
++
+     /** Sets the percentage of this invoice held back as retention. It does not change the amount invoiced. */
+     public void applyRetention(BigDecimal retentionPct) {
+         this.retentionPct = retentionPct.setScale(2, RoundingMode.HALF_UP);
+diff --git a/src/main/resources/db/migration/V74__instalment_interest.sql b/src/main/resources/db/migration/V74__instalment_interest.sql
+new file mode 100644
+index 0000000..cd20db7
+--- /dev/null
++++ b/src/main/resources/db/migration/V74__instalment_interest.sql
+@@ -0,0 +1,5 @@
++-- An instalment paid late accrues interest: a flat amount for each day it is past its due date while
++-- still unpaid. The rate is set per invoice; existing invoices charge none.
++ALTER TABLE invoice ADD COLUMN instalment_interest_per_day DECIMAL(12, 2) DEFAULT 0 NOT NULL;
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_instalment_interest_per_day_non_negative CHECK (instalment_interest_per_day >= 0);
