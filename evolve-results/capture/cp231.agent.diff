@@ -1,0 +1,378 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 9338e3c..b6bfac0 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -4,6 +4,7 @@ import { rxResource } from '@angular/core/rxjs-interop';
+ import { Router, RouterLink } from '@angular/router';
+ import { ClientContacts } from '../contacts/client-contacts';
+ import { ClientContactHistory } from '../contact-history/client-contact-history';
++import { Notes } from '../notes/notes';
+ import { Contact } from '../contacts/contact.service';
+ import { ClientCredit } from '../credit/client-credit';
+ import { ClientAging } from '../invoices/client-aging';
+@@ -22,7 +23,7 @@ import { Client, ClientService } from './client.service';
+ // A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them (net of credits and write-offs), their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
++  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, Notes, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -179,6 +180,7 @@ import { Client, ClientService } from './client.service';
+         (contactArchived)="contactArchived($event)"
+       />
+       <app-client-contact-history [clientId]="clientId()" />
++      <app-notes [clientId]="clientId()" />
+       <app-client-projects [clientId]="clientId()" />
+       <app-client-merge [client]="c" (merged)="clientMerged($event)" />
+     }
+diff --git a/src/main/frontend/src/app/features/notes/note.service.ts b/src/main/frontend/src/app/features/notes/note.service.ts
+index 32e5878..30cc28a 100644
+--- a/src/main/frontend/src/app/features/notes/note.service.ts
++++ b/src/main/frontend/src/app/features/notes/note.service.ts
+@@ -32,4 +32,13 @@ export class NoteService {
+   createForInvoice(projectId: number, invoiceId: number, text: string): Observable<Note> {
+     return this.http.post<Note>(`/api/projects/${projectId}/invoices/${invoiceId}/notes`, { text });
+   }
++
++  /** A client's notes, newest first. */
++  listForClient(clientId: number): Observable<Note[]> {
++    return this.http.get<Note[]>(`/api/clients/${clientId}/notes`);
++  }
++
++  createForClient(clientId: number, text: string): Observable<Note> {
++    return this.http.post<Note>(`/api/clients/${clientId}/notes`, { text });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/notes/notes.ts b/src/main/frontend/src/app/features/notes/notes.ts
+index 3bc3bde..1116521 100644
+--- a/src/main/frontend/src/app/features/notes/notes.ts
++++ b/src/main/frontend/src/app/features/notes/notes.ts
+@@ -2,10 +2,11 @@ import { DatePipe } from '@angular/common';
+ import { Component, computed, inject, input, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+-import { NoteService } from './note.service';
++import { Observable, throwError } from 'rxjs';
++import { Note, NoteService } from './note.service';
+ 
+-// The notes kept on a job, or on one of its invoices when an invoice is given: write a note and read
+-// them back, newest first.
++// The notes kept on a job, on one of its invoices when an invoice is given, or on a client when a
++// client is given: write a note and read them back as a timeline, newest first.
+ @Component({
+   selector: 'app-notes',
+   imports: [ReactiveFormsModule, DatePipe],
+@@ -45,7 +46,7 @@ import { NoteService } from './note.service';
+         } @else {
+           <ol
+             class="notes"
+-            [attr.aria-label]="(kind() === 'invoice' ? 'Invoice' : 'Job') + ' notes, newest first'"
++            [attr.aria-label]="listLabel()"
+             [attr.data-testid]="kind() + '-note-list'"
+           >
+             @for (n of notes.value(); track n.id) {
+@@ -73,19 +74,25 @@ import { NoteService } from './note.service';
+ export class Notes {
+   private readonly service = inject(NoteService);
+ 
+-  readonly projectId = input.required<number>();
++  /** The job whose notes these are (or whose invoice's notes, when an invoice is given). */
++  readonly projectId = input<number>();
+   /** When given, the notes are the invoice's rather than the job's. */
+   readonly invoiceId = input<number>();
++  /** When given, the notes are the client's. */
++  readonly clientId = input<number>();
+ 
+-  protected readonly kind = computed(() => (this.invoiceId() === undefined ? 'project' : 'invoice'));
+-  protected readonly label = computed(() => (this.kind() === 'invoice' ? 'invoice' : 'job'));
++  protected readonly kind = computed(() =>
++    this.clientId() !== undefined ? 'client' : this.invoiceId() === undefined ? 'project' : 'invoice',
++  );
++  protected readonly label = computed(() => (this.kind() === 'project' ? 'job' : this.kind()));
++  protected readonly listLabel = computed(() => {
++    const label = this.label();
++    return `${label.charAt(0).toUpperCase()}${label.slice(1)} notes, newest first`;
++  });
+ 
+   protected readonly notes = rxResource({
+-    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
+-    stream: ({ params }) =>
+-      params.invoiceId === undefined
+-        ? this.service.listForProject(params.projectId)
+-        : this.service.listForInvoice(params.projectId, params.invoiceId),
++    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId(), clientId: this.clientId() }),
++    stream: ({ params }) => this.list(params.projectId, params.invoiceId, params.clientId),
+   });
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+@@ -108,12 +115,7 @@ export class Notes {
+     }
+     this.saving.set(true);
+     this.saveError.set(null);
+-    const invoiceId = this.invoiceId();
+-    const request =
+-      invoiceId === undefined
+-        ? this.service.createForProject(this.projectId(), text)
+-        : this.service.createForInvoice(this.projectId(), invoiceId, text);
+-    request.subscribe({
++    this.create(text).subscribe({
+       next: (created) => {
+         this.notes.update((list) => [created, ...(list ?? [])]);
+         this.form.reset();
+@@ -125,4 +127,31 @@ export class Notes {
+       },
+     });
+   }
++
++  private list(projectId?: number, invoiceId?: number, clientId?: number): Observable<Note[]> {
++    if (clientId !== undefined) {
++      return this.service.listForClient(clientId);
++    }
++    if (projectId === undefined) {
++      return throwError(() => new Error('Notes need a job or a client'));
++    }
++    return invoiceId === undefined
++      ? this.service.listForProject(projectId)
++      : this.service.listForInvoice(projectId, invoiceId);
++  }
++
++  private create(text: string): Observable<Note> {
++    const clientId = this.clientId();
++    const projectId = this.projectId();
++    const invoiceId = this.invoiceId();
++    if (clientId !== undefined) {
++      return this.service.createForClient(clientId, text);
++    }
++    if (projectId === undefined) {
++      return throwError(() => new Error('Notes need a job or a client'));
++    }
++    return invoiceId === undefined
++      ? this.service.createForProject(projectId, text)
++      : this.service.createForInvoice(projectId, invoiceId, text);
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 9ee9f54..cf6ea6c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -200,6 +200,14 @@ public class TestSupportController {
+                     ((Number) n.get("id")).longValue(), n.get("targetType"),
+                     ((Number) n.get("targetId")).longValue(), n.get("text"), Timestamp.from(at));
+         }
++        // Notes written on a client, stamped with the day they were written.
++        for (Map<String, Object> n : rows(fixture, "clientNotes")) {
++            Object when = n.get("at") != null ? n.get("at") : n.get("date");
++            Instant at = when == null ? clock.instant() : seedInstant(when.toString());
++            jdbc.update("INSERT INTO note (id, target_type, target_id, text, created_at) VALUES (?, ?, ?, ?, ?)",
++                    ((Number) n.get("id")).longValue(), "client",
++                    ((Number) n.get("clientId")).longValue(), n.get("text"), Timestamp.from(at));
++        }
+         // An invoice repeating for a fixed amount on a project, monthly unless it says otherwise.
+         for (Map<String, Object> r : rows(fixture, "recurring")) {
+             jdbc.update("INSERT INTO recurring_invoice (id, project_id, amount, frequency, next_date, status, period_days, prorate_first)"
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index fa9bc49..399e152 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -20,6 +20,8 @@ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.deposit.DepositRepository;
+ import net.officefloor.hq.app.fx.FxRateService;
++import net.officefloor.hq.app.note.Note;
++import net.officefloor.hq.app.note.NoteRepository;
+ import net.officefloor.hq.app.payment.ClientPaymentRepository;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.refund.RefundRepository;
+@@ -45,6 +47,7 @@ public class ClientService {
+     private final ClientPaymentRepository clientPayments;
+     private final DepositRepository deposits;
+     private final RefundRepository refunds;
++    private final NoteRepository notes;
+     private final FxRateService fxRates;
+     private final CurrencyService currencies;
+     private final SettingsService settings;
+@@ -54,7 +57,7 @@ public class ClientService {
+     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
+             InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes,
+             ClientPaymentRepository clientPayments, DepositRepository deposits, RefundRepository refunds,
+-            FxRateService fxRates, CurrencyService currencies, SettingsService settings, Audit audit, Clock clock) {
++            NoteRepository notes, FxRateService fxRates, CurrencyService currencies, SettingsService settings, Audit audit, Clock clock) {
+         this.clients = clients;
+         this.projects = projects;
+         this.contacts = contacts;
+@@ -64,6 +67,7 @@ public class ClientService {
+         this.clientPayments = clientPayments;
+         this.deposits = deposits;
+         this.refunds = refunds;
++        this.notes = notes;
+         this.fxRates = fxRates;
+         this.currencies = currencies;
+         this.settings = settings;
+@@ -392,7 +396,7 @@ public class ClientService {
+ 
+     /**
+      * Merges a duplicate client into the client it duplicates: the duplicate's projects (and so their
+-     * invoices), contacts, contact history, emailed statements, payments, deposits and refunds all move to the kept client, which takes the
++     * invoices), contacts, contact history, notes, emailed statements, payments, deposits and refunds all move to the kept client, which takes the
+      * duplicate's main contact if it has none of its own, and the duplicate is then removed. Both must
+      * be billed in the same currency, so no money changes currency. Recorded in the audit log.
+      */
+@@ -415,6 +419,7 @@ public class ClientService {
+         clients.moveProjects(id, targetId);
+         clients.moveContacts(id, targetId);
+         clients.moveContactHistory(id, targetId);
++        notes.moveNotes(Note.CLIENT, id, targetId);
+         clients.moveStatementEmails(id, targetId);
+         clients.moveClientPayments(id, targetId);
+         clients.moveDeposits(id, targetId);
+diff --git a/src/main/java/net/officefloor/hq/app/note/ClientNoteController.java b/src/main/java/net/officefloor/hq/app/note/ClientNoteController.java
+new file mode 100644
+index 0000000..e257966
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/ClientNoteController.java
+@@ -0,0 +1,35 @@
++package net.officefloor.hq.app.note;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The notes written on a client, newest first. */
++@RestController
++@RequestMapping("/api/clients/{clientId}/notes")
++public class ClientNoteController {
++
++    private final NoteService service;
++
++    public ClientNoteController(NoteService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<NoteResponse> list(@PathVariable Long clientId) {
++        return service.listForClient(clientId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public NoteResponse create(@PathVariable Long clientId, @Valid @RequestBody NoteRequest request) {
++        return service.createForClient(clientId, request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/Note.java b/src/main/java/net/officefloor/hq/app/note/Note.java
+index a31697c..5299f1a 100644
+--- a/src/main/java/net/officefloor/hq/app/note/Note.java
++++ b/src/main/java/net/officefloor/hq/app/note/Note.java
+@@ -8,7 +8,7 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.time.Instant;
+ 
+-/** A free-text note written against a record, such as a project or an invoice. */
++/** A free-text note written against a record, such as a project, an invoice or a client. */
+ @Entity
+ @Table(name = "note")
+ public class Note {
+@@ -19,6 +19,9 @@ public class Note {
+     /** Target type for notes kept on an invoice. */
+     public static final String INVOICE = "invoice";
+ 
++    /** Target type for notes kept on a client. */
++    public static final String CLIENT = "client";
++
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+     private Long id;
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteRepository.java b/src/main/java/net/officefloor/hq/app/note/NoteRepository.java
+index 76f453f..757c038 100644
+--- a/src/main/java/net/officefloor/hq/app/note/NoteRepository.java
++++ b/src/main/java/net/officefloor/hq/app/note/NoteRepository.java
+@@ -2,9 +2,16 @@ package net.officefloor.hq.app.note;
+ 
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Modifying;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface NoteRepository extends JpaRepository<Note, Long> {
+ 
+     /** A record's notes, newest first. */
+     List<Note> findByTargetTypeAndTargetIdOrderByCreatedAtDescIdDesc(String targetType, Long targetId);
++
++    /** Moves every note of one record over to another record of the same type. */
++    @Modifying(flushAutomatically = true, clearAutomatically = true)
++    @Query("UPDATE Note n SET n.targetId = :to WHERE n.targetType = :targetType AND n.targetId = :from")
++    int moveNotes(String targetType, Long from, Long to);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteService.java b/src/main/java/net/officefloor/hq/app/note/NoteService.java
+index eadcab2..a5191bd 100644
+--- a/src/main/java/net/officefloor/hq/app/note/NoteService.java
++++ b/src/main/java/net/officefloor/hq/app/note/NoteService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.note;
+ 
+ import java.time.Instant;
+ import java.util.List;
++import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.project.ProjectRepository;
+ import org.springframework.http.HttpStatus;
+@@ -15,11 +16,14 @@ public class NoteService {
+     private final NoteRepository notes;
+     private final ProjectRepository projects;
+     private final InvoiceRepository invoices;
++    private final ClientRepository clients;
+ 
+-    public NoteService(NoteRepository notes, ProjectRepository projects, InvoiceRepository invoices) {
++    public NoteService(NoteRepository notes, ProjectRepository projects, InvoiceRepository invoices,
++            ClientRepository clients) {
+         this.notes = notes;
+         this.projects = projects;
+         this.invoices = invoices;
++        this.clients = clients;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -50,6 +54,26 @@ public class NoteService {
+         return NoteResponse.from(saved);
+     }
+ 
++    @Transactional(readOnly = true)
++    public List<NoteResponse> listForClient(Long clientId) {
++        requireClient(clientId);
++        return notes.findByTargetTypeAndTargetIdOrderByCreatedAtDescIdDesc(Note.CLIENT, clientId).stream()
++                .map(NoteResponse::from).toList();
++    }
++
++    @Transactional
++    public NoteResponse createForClient(Long clientId, NoteRequest request) {
++        requireClient(clientId);
++        Note saved = notes.save(new Note(Note.CLIENT, clientId, request.text().trim(), Instant.now()));
++        return NoteResponse.from(saved);
++    }
++
++    private void requireClient(Long clientId) {
++        if (!clients.existsById(clientId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
++        }
++    }
++
+     private void requireInvoice(Long projectId, Long invoiceId) {
+         boolean onProject = invoices.findById(invoiceId)
+                 .filter(i -> i.getProject().getId().equals(projectId))
+diff --git a/src/main/resources/db/migration/V106__client_notes.sql b/src/main/resources/db/migration/V106__client_notes.sql
+new file mode 100644
+index 0000000..8e3675b
+--- /dev/null
++++ b/src/main/resources/db/migration/V106__client_notes.sql
+@@ -0,0 +1,3 @@
++-- Clients take notes as well as jobs (projects) and invoices, read back as a timeline, newest first.
++ALTER TABLE note DROP CONSTRAINT note_target_type_ck;
++ALTER TABLE note ADD CONSTRAINT note_target_type_ck CHECK (target_type IN ('project', 'invoice', 'client'));
