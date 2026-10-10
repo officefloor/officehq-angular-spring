@@ -1,0 +1,470 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 2813ce1..c6528c6 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -46,6 +46,8 @@ export interface Client {
+   outstanding: number;
+   /** Whether the client is pinned to the top of the client list. */
+   pinned: boolean;
++  /** The names of the tags the client is labelled with, in name order. */
++  tags: string[];
+ }
+ 
+ /** At-a-glance counts of what one client has. */
+@@ -58,7 +60,7 @@ export interface ClientSummary {
+   lifetimeValue: number;
+ }
+ 
+-export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding' | 'pinned'>;
++export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding' | 'pinned' | 'tags'>;
+ 
+ /** A segment clients are grouped into, and how many clients are in it. */
+ export interface ClientSegment {
+@@ -169,6 +171,11 @@ export class ClientService {
+     return this.http.post<Client>(`/api/clients/${id}/restore`, null);
+   }
+ 
++  /** Puts one tag, by name, on each of the given clients (creating the tag if need be); returns those clients. */
++  bulkTag(clientIds: number[], tag: string): Observable<Client[]> {
++    return this.http.post<Client[]>('/api/clients/tags', { clientIds, tag });
++  }
++
+   /** Pins the client to the top of the client list. */
+   pin(id: number): Observable<Client> {
+     return this.http.post<Client>(`/api/clients/${id}/pin`, null);
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index eb0707a..29c4e34 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -13,11 +13,20 @@ import { Client, ClientService } from './client.service';
+ // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
+ // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
+ // list and search unless the archived toggle is on, where it can be restored. A client's name or email
+-// can be corrected in place from its row. Favourite clients can be pinned, which keeps them in a group at the top of the list. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment, and a revenue bands panel counts the clients in each band of revenue they bring in. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first.
++// can be corrected in place from its row. Favourite clients can be pinned, which keeps them in a group at the top of the list. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment, and a revenue bands panel counts the clients in each band of revenue they bring in. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first. Several clients can be selected and given a tag all at once; each client shows its tags.
+ @Component({
+   selector: 'app-clients',
+   imports: [MoneyPipe, NgTemplateOutlet, ReactiveFormsModule, RouterLink, ClientEditForm, ClientListExport, ClientRevenueBands, ClientSegments],
+   styles: `
++    .client-tags {
++      margin-inline-start: 0.5em;
++      padding: 0 0.4em;
++      border: 1px solid #1f4e79;
++      border-radius: 0.25em;
++      color: #1f4e79;
++      background: #e8f1fa;
++      font-size: 0.85em;
++    }
+     .key-account {
+       margin-inline-start: 0.5em;
+       padding: 0 0.4em;
+@@ -309,10 +318,37 @@ import { Client, ClientService } from './client.service';
+       @if (filteredClients().length === 0) {
+         <p role="status" data-testid="clients-no-match">No clients match your search.</p>
+       } @else {
++        <form class="bulk-tag" data-testid="clients-bulk-tag" (submit)="applyBulkTag($event)" aria-label="Tag selected clients">
++          <label for="clients-bulk-tag-input">Tag selected clients</label>
++          <input
++            id="clients-bulk-tag-input"
++            type="text"
++            maxlength="50"
++            autocomplete="off"
++            data-testid="clients-bulk-tag-input"
++            [value]="bulkTag()"
++            (input)="onBulkTagInput($event)"
++          />
++          <button
++            type="submit"
++            data-testid="clients-bulk-tag-apply"
++            [disabled]="tagging() || selected().size === 0 || !bulkTag().trim()"
++          >
++            Apply tag
++          </button>
++          <span data-testid="clients-selected-count">{{ selected().size }} selected</span>
++          @if (bulkTagMessage()) {
++            <p role="status" data-testid="clients-bulk-tag-status">{{ bulkTagMessage() }}</p>
++          }
++          @if (bulkTagError()) {
++            <p role="alert" data-testid="clients-bulk-tag-error">{{ bulkTagError() }}</p>
++          }
++        </form>
+         <table data-testid="clients-table">
+           <caption>All clients</caption>
+           <thead>
+             <tr>
++              <th scope="col"><span class="visually-hidden">Select</span></th>
+               <th scope="col">Name</th>
+               <th scope="col">Email</th>
+               <th scope="col">Owed</th>
+@@ -322,7 +358,7 @@ import { Client, ClientService } from './client.service';
+           @if (pinnedClients().length > 0) {
+             <tbody data-testid="pinned-clients" aria-label="Pinned clients">
+               <tr>
+-                <th scope="colgroup" colspan="4">Pinned</th>
++                <th scope="colgroup" colspan="5">Pinned</th>
+               </tr>
+               @for (c of pinnedClients(); track c.id) {
+                 <ng-container *ngTemplateOutlet="clientRow; context: { $implicit: c }" />
+@@ -340,6 +376,15 @@ import { Client, ClientService } from './client.service';
+ 
+     <ng-template #clientRow let-c>
+       <tr [attr.data-testid]="'client-row-' + c.id">
++        <td>
++          <input
++            type="checkbox"
++            [attr.data-testid]="'clients-select-' + c.id"
++            [attr.aria-label]="'Select ' + c.name"
++            [checked]="selected().has(c.id)"
++            (change)="toggleSelected(c.id)"
++          />
++        </td>
+         <td>
+           <span data-testid="client-name">{{ c.name }}</span>
+           @if (c.keyAccount) {
+@@ -348,6 +393,9 @@ import { Client, ClientService } from './client.service';
+           @if (c.segment) {
+             <span data-testid="client-segment">({{ c.segment }})</span>
+           }
++          @if (c.tags.length > 0) {
++            <span class="client-tags" [attr.data-testid]="'client-tag-' + c.id">{{ c.tags.join(', ') }}</span>
++          }
+           @if (c.archived) {
+             <span [attr.data-testid]="'client-archived-' + c.id">(archived)</span>
+           }
+@@ -405,7 +453,7 @@ import { Client, ClientService } from './client.service';
+       </tr>
+       @if (editing() === c.id) {
+         <tr [attr.data-testid]="'client-edit-row-' + c.id">
+-          <td colspan="4">
++          <td colspan="5">
+             <app-client-edit-form [client]="c" (saved)="onSaved($event)" (cancelled)="closeEdit(c)" />
+           </td>
+         </tr>
+@@ -437,6 +485,11 @@ export class Clients {
+   protected readonly editing = signal<number | null>(null);
+   protected readonly segmentsOpen = signal(false);
+   protected readonly revenueBandsOpen = signal(false);
++  protected readonly selected = signal<ReadonlySet<number>>(new Set());
++  protected readonly bulkTag = signal('');
++  protected readonly tagging = signal(false);
++  protected readonly bulkTagMessage = signal<string | null>(null);
++  protected readonly bulkTagError = signal<string | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+@@ -523,6 +576,46 @@ export class Clients {
+     setTimeout(() => document.querySelector<HTMLElement>(`[data-testid="client-edit-${client.id}"]`)?.focus());
+   }
+ 
++  protected toggleSelected(id: number): void {
++    this.selected.update((current) => {
++      const next = new Set(current);
++      if (!next.delete(id)) {
++        next.add(id);
++      }
++      return next;
++    });
++  }
++
++  protected onBulkTagInput(event: Event): void {
++    this.bulkTag.set((event.target as HTMLInputElement).value);
++  }
++
++  protected applyBulkTag(event: Event): void {
++    event.preventDefault();
++    const tag = this.bulkTag().trim();
++    const ids = [...this.selected()];
++    if (!tag || ids.length === 0) {
++      return;
++    }
++    this.tagging.set(true);
++    this.bulkTagMessage.set(null);
++    this.bulkTagError.set(null);
++    this.service.bulkTag(ids, tag).subscribe({
++      next: (tagged) => {
++        const byId = new Map(tagged.map((c) => [c.id, c]));
++        this.clients.update((list) => list.map((c) => byId.get(c.id) ?? c));
++        this.selected.set(new Set());
++        this.bulkTag.set('');
++        this.bulkTagMessage.set(`Tagged ${tagged.length} ${tagged.length === 1 ? 'client' : 'clients'} with ${tag}.`);
++        this.tagging.set(false);
++      },
++      error: () => {
++        this.bulkTagError.set('Could not tag the selected clients. Please try again.');
++        this.tagging.set(false);
++      },
++    });
++  }
++
+   protected toggleArchived(): void {
+     this.showArchived.update((show) => !show);
+     this.load();
+@@ -584,6 +677,7 @@ export class Clients {
+   }
+ 
+   private load(): void {
++    this.selected.set(new Set());
+     this.service.list(this.showArchived()).subscribe((list) => this.clients.set(list));
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index aa5d094..b6912f3 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -58,6 +58,7 @@ public class TestSupportController {
+         try {
+             jdbc.execute("TRUNCATE TABLE note RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE project_tag");
++            jdbc.execute("TRUNCATE TABLE client_tag");
+             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE task_checklist_item RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+@@ -199,6 +200,10 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO project_tag (project_id, tag_id) VALUES (?, ?)",
+                     ((Number) pt.get("projectId")).longValue(), ((Number) pt.get("tagId")).longValue());
+         }
++        for (Map<String, Object> ct : rows(fixture, "clientTags")) {
++            jdbc.update("INSERT INTO client_tag (client_id, tag_id) VALUES (?, ?)",
++                    ((Number) ct.get("clientId")).longValue(), ((Number) ct.get("tagId")).longValue());
++        }
+         // Tasks are given at the top level (with a projectId) or nested inside their project.
+         for (Map<String, Object> t : rows(fixture, "tasks")) {
+             seedTask(t, ((Number) t.get("projectId")).longValue());
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index 1611d96..641b6c6 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -7,13 +7,18 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
++import jakarta.persistence.JoinTable;
++import jakarta.persistence.ManyToMany;
+ import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.HashSet;
++import java.util.Set;
+ import net.officefloor.hq.app.contact.Contact;
+ import net.officefloor.hq.app.currency.Currency;
++import net.officefloor.hq.app.tag.Tag;
+ 
+ /** A client of the office. */
+ @Entity
+@@ -63,6 +68,12 @@ public class Client {
+     /** Whether the client is pinned to the top of the client list. */
+     private boolean pinned;
+ 
++    /** The tags the client is labelled with. */
++    @ManyToMany
++    @JoinTable(name = "client_tag", joinColumns = @JoinColumn(name = "client_id"),
++            inverseJoinColumns = @JoinColumn(name = "tag_id"))
++    private Set<Tag> tags = new HashSet<>();
++
+     /** The client's standard discount, a percentage each new invoice for them starts with; zero when none. */
+     @Column(name = "default_discount_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal defaultDiscountPct = BigDecimal.ZERO.setScale(2);
+@@ -209,6 +220,10 @@ public class Client {
+         this.pinned = pinned;
+     }
+ 
++    public Set<Tag> getTags() {
++        return tags;
++    }
++
+     public BigDecimal getDefaultDiscountPct() {
+         return defaultDiscountPct;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientBulkTagRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientBulkTagRequest.java
+new file mode 100644
+index 0000000..4e87511
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientBulkTagRequest.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.client;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotEmpty;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++
++/** Payload to put one tag, by name, on several clients at once; the tag is created if it does not exist yet. */
++public record ClientBulkTagRequest(@NotEmpty List<@NotNull Long> clientIds, @NotBlank @Size(max = 50) String tag) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index 74e6d63..d43be4b 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -116,6 +116,12 @@ public class ClientController {
+         return service.restore(id);
+     }
+ 
++    /** Puts one tag on several clients at once. */
++    @PostMapping("/tags")
++    public List<ClientResponse> bulkTag(@Valid @RequestBody ClientBulkTagRequest request) {
++        return service.bulkTag(request);
++    }
++
+     @PostMapping("/{id}/pin")
+     public ClientResponse pin(@PathVariable Long id) {
+         return service.pin(id);
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index 8d2508c..8a45ba6 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -1,10 +1,12 @@
+ package net.officefloor.hq.app.client;
+ 
+ import java.math.BigDecimal;
++import java.util.List;
+ import net.officefloor.hq.app.contact.Contact;
++import net.officefloor.hq.app.tag.Tag;
+ 
+ public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, String language, String accountManager, String billingContact, String segment, boolean taxInclusive, boolean taxExempt, boolean keyAccount, BigDecimal defaultDiscountPct, boolean archived, PrimaryContact primaryContact,
+-        String currency, BigDecimal creditLimit, Integer paymentTermsDays, Integer earlyPaymentWindowDays, BigDecimal outstanding, boolean pinned) {
++        String currency, BigDecimal creditLimit, Integer paymentTermsDays, Integer earlyPaymentWindowDays, BigDecimal outstanding, boolean pinned, List<String> tags) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+     public record PrimaryContact(Long id, String name) {
+@@ -15,6 +17,7 @@ public record ClientResponse(Long id, String name, String email, String phone, S
+         Contact primary = client.getPrimaryContact();
+         return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.getLanguage(), client.getAccountManager(), client.getBillingContact(), client.getSegment(), client.isTaxInclusive(), client.isTaxExempt(), client.isKeyAccount(), client.getDefaultDiscountPct(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
+-                client.getCurrency(), client.getCreditLimit(), client.getPaymentTermsDays(), client.getEarlyPaymentWindowDays(), outstanding, client.isPinned());
++                client.getCurrency(), client.getCreditLimit(), client.getPaymentTermsDays(), client.getEarlyPaymentWindowDays(), outstanding, client.isPinned(),
++                client.getTags().stream().map(Tag::getName).sorted(String.CASE_INSENSITIVE_ORDER).toList());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 399e152..1a9044c 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -28,6 +28,8 @@ import net.officefloor.hq.app.refund.RefundRepository;
+ import net.officefloor.hq.app.project.ProjectRepository;
+ import net.officefloor.hq.app.settings.RecognitionBasis;
+ import net.officefloor.hq.app.settings.SettingsService;
++import net.officefloor.hq.app.tag.Tag;
++import net.officefloor.hq.app.tag.TagRepository;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.data.domain.Sort;
+ import org.springframework.http.HttpStatus;
+@@ -48,6 +50,7 @@ public class ClientService {
+     private final DepositRepository deposits;
+     private final RefundRepository refunds;
+     private final NoteRepository notes;
++    private final TagRepository tags;
+     private final FxRateService fxRates;
+     private final CurrencyService currencies;
+     private final SettingsService settings;
+@@ -57,7 +60,7 @@ public class ClientService {
+     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
+             InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes,
+             ClientPaymentRepository clientPayments, DepositRepository deposits, RefundRepository refunds,
+-            NoteRepository notes, FxRateService fxRates, CurrencyService currencies, SettingsService settings, Audit audit, Clock clock) {
++            NoteRepository notes, TagRepository tags, FxRateService fxRates, CurrencyService currencies, SettingsService settings, Audit audit, Clock clock) {
+         this.clients = clients;
+         this.projects = projects;
+         this.contacts = contacts;
+@@ -68,6 +71,7 @@ public class ClientService {
+         this.deposits = deposits;
+         this.refunds = refunds;
+         this.notes = notes;
++        this.tags = tags;
+         this.fxRates = fxRates;
+         this.currencies = currencies;
+         this.settings = settings;
+@@ -372,6 +376,30 @@ public class ClientService {
+         return respond(client);
+     }
+ 
++    /**
++     * Puts one tag on each of the given clients, creating the tag (by name, ignoring case) if it does not exist
++     * yet. Each client newly tagged is recorded in the audit log; clients already carrying the tag are left as
++     * they are. Returns the clients tagged, in id order.
++     */
++    @Transactional
++    public List<ClientResponse> bulkTag(ClientBulkTagRequest request) {
++        String name = request.tag().trim();
++        if (name.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A tag name is required");
++        }
++        List<Long> ids = request.clientIds().stream().distinct().sorted().toList();
++        List<Client> found = clients.findAllById(ids);
++        if (found.size() != ids.size()) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
++        }
++        Tag tag = tags.findByNameIgnoreCase(name).orElseGet(() -> tags.save(new Tag(name)));
++        List<Client> tagged = found.stream().filter(c -> c.getTags().add(tag)).toList();
++        clients.flush();
++        tagged.stream().sorted(Comparator.comparing(Client::getId))
++                .forEach(c -> audit.record("CLIENT_TAGGED id=" + c.getId() + " tag=" + tag.getId()));
++        return respond(found.stream().sorted(Comparator.comparing(Client::getId)).toList());
++    }
++
+     /** Pins a client to the top of the client list, recording it in the audit log. */
+     @Transactional
+     public ClientResponse pin(Long id) {
+@@ -397,7 +425,7 @@ public class ClientService {
+     /**
+      * Merges a duplicate client into the client it duplicates: the duplicate's projects (and so their
+      * invoices), contacts, contact history, notes, emailed statements, payments, deposits and refunds all move to the kept client, which takes the
+-     * duplicate's main contact if it has none of its own, and the duplicate is then removed. Both must
++     * duplicate's main contact if it has none of its own and its tags, and the duplicate is then removed. Both must
+      * be billed in the same currency, so no money changes currency. Recorded in the audit log.
+      */
+     @Transactional
+@@ -414,6 +442,7 @@ public class ClientService {
+         Long adoptedPrimary = target.getPrimaryContact() == null && source.getPrimaryContact() != null
+                 ? source.getPrimaryContact().getId()
+                 : null;
++        List<Long> sourceTags = source.getTags().stream().map(Tag::getId).toList();
+         // The main contact must belong to its client, so let it go before the contacts move.
+         source.setPrimaryContact(null);
+         clients.moveProjects(id, targetId);
+@@ -430,6 +459,7 @@ public class ClientService {
+         if (adoptedPrimary != null) {
+             kept.setPrimaryContact(contacts.getReferenceById(adoptedPrimary));
+         }
++        sourceTags.forEach(tagId -> kept.getTags().add(tags.getReferenceById(tagId)));
+         clients.flush();
+         audit.record("CLIENT_MERGED id=" + id + " into=" + targetId);
+         return respond(kept);
+diff --git a/src/main/java/net/officefloor/hq/app/tag/TagRepository.java b/src/main/java/net/officefloor/hq/app/tag/TagRepository.java
+index d8b3ef2..81c758e 100644
+--- a/src/main/java/net/officefloor/hq/app/tag/TagRepository.java
++++ b/src/main/java/net/officefloor/hq/app/tag/TagRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.tag;
+ 
+ import java.util.List;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface TagRepository extends JpaRepository<Tag, Long> {
+@@ -9,4 +10,6 @@ public interface TagRepository extends JpaRepository<Tag, Long> {
+     List<Tag> findAllByOrderByNameAsc();
+ 
+     boolean existsByNameIgnoreCase(String name);
++
++    Optional<Tag> findByNameIgnoreCase(String name);
+ }
+diff --git a/src/main/resources/db/migration/V108__client_tags.sql b/src/main/resources/db/migration/V108__client_tags.sql
+new file mode 100644
+index 0000000..cc91368
+--- /dev/null
++++ b/src/main/resources/db/migration/V108__client_tags.sql
+@@ -0,0 +1,11 @@
++-- Clients can be labelled with the same shared tags as projects, so they can be grouped; several
++-- clients can be tagged at once. Tagging belongs to the client and goes with it if it is deleted.
++CREATE TABLE client_tag (
++    client_id BIGINT NOT NULL,
++    tag_id    BIGINT NOT NULL,
++    CONSTRAINT client_tag_pk PRIMARY KEY (client_id, tag_id),
++    CONSTRAINT client_tag_client_fk FOREIGN KEY (client_id) REFERENCES client (id) ON DELETE CASCADE,
++    CONSTRAINT client_tag_tag_fk FOREIGN KEY (tag_id) REFERENCES tag (id) ON DELETE CASCADE
++);
++
++CREATE INDEX client_tag_tag_idx ON client_tag (tag_id);
