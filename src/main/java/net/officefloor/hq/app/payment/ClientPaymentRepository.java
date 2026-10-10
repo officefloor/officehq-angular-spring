@@ -10,6 +10,10 @@ public interface ClientPaymentRepository extends JpaRepository<ClientPayment, Lo
     /** A client's lump payments, newest first. */
     List<ClientPayment> findByClientIdOrderByDateDescIdDesc(Long clientId);
 
+    /** Total money a client has paid in lump payments, including any kept as credit (zero when none). */
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM ClientPayment p WHERE p.clientId = :clientId")
+    BigDecimal sumAmountByClientId(Long clientId);
+
     /** Total of a client's held deposits used up by their lump payments (zero when none). */
     @Query("SELECT COALESCE(SUM(p.fromDeposits), 0) FROM ClientPayment p WHERE p.clientId = :clientId")
     BigDecimal sumFromDepositsByClientId(Long clientId);

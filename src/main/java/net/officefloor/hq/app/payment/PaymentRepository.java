@@ -46,6 +46,24 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             + " WHERE p.invoiceId IN :invoiceIds GROUP BY p.invoiceId")
     List<InvoicePaidTotal> sumAmountByInvoiceIds(Collection<Long> invoiceIds);
 
+    /**
+     * A client's payments made against an invoice on their own (not split from a lump payment nor put toward it from
+     * held deposits), each as the money received in the currency it was received in.
+     */
+    @Query("SELECT COALESCE(p.paidCurrency, i.currency, c.currency) AS currency, COALESCE(p.paidAmount, p.amount) AS amount,"
+            + " p.date AS date FROM Payment p, Invoice i JOIN i.project pr JOIN pr.client c"
+            + " WHERE p.invoiceId = i.id AND c.id = :clientId AND p.clientPaymentId IS NULL AND p.depositApplicationId IS NULL")
+    List<MoneyReceived> findReceivedOnItsOwnByClientId(Long clientId);
+
+    /** Money received on a day, in the currency it was received in. */
+    interface MoneyReceived {
+        String getCurrency();
+
+        BigDecimal getAmount();
+
+        LocalDate getDate();
+    }
+
     /** How much has been paid against one invoice. */
     interface InvoicePaidTotal {
         Long getInvoiceId();

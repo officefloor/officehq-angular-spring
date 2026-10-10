@@ -53,6 +53,8 @@ export interface ClientSummary {
   projectCount: number;
   contactCount: number;
   lifetimeBilled: number;
+  /** What the client has actually paid, less refunds, in their currency. */
+  lifetimeValue: number;
 }
 
 export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding' | 'pinned'>;

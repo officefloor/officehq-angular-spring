@@ -16,7 +16,11 @@ import net.officefloor.hq.app.currency.Currency;
 import net.officefloor.hq.app.currency.CurrencyService;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
+import net.officefloor.hq.app.deposit.DepositRepository;
+import net.officefloor.hq.app.fx.FxRateService;
+import net.officefloor.hq.app.payment.ClientPaymentRepository;
 import net.officefloor.hq.app.payment.PaymentRepository;
+import net.officefloor.hq.app.refund.RefundRepository;
 import net.officefloor.hq.app.project.ProjectRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
@@ -34,19 +38,28 @@ public class ClientService {
     private final InvoiceRepository invoices;
     private final PaymentRepository payments;
     private final CreditNoteRepository creditNotes;
+    private final ClientPaymentRepository clientPayments;
+    private final DepositRepository deposits;
+    private final RefundRepository refunds;
+    private final FxRateService fxRates;
     private final CurrencyService currencies;
     private final Audit audit;
     private final Clock clock;
 
     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
-            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes, CurrencyService currencies, Audit audit,
-            Clock clock) {
+            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes,
+            ClientPaymentRepository clientPayments, DepositRepository deposits, RefundRepository refunds,
+            FxRateService fxRates, CurrencyService currencies, Audit audit, Clock clock) {
         this.clients = clients;
         this.projects = projects;
         this.contacts = contacts;
         this.invoices = invoices;
         this.payments = payments;
         this.creditNotes = creditNotes;
+        this.clientPayments = clientPayments;
+        this.deposits = deposits;
+        this.refunds = refunds;
+        this.fxRates = fxRates;
         this.currencies = currencies;
         this.audit = audit;
         this.clock = clock;
@@ -74,14 +87,34 @@ public class ClientService {
     private static final List<InvoiceStatus> BILLED = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL,
             InvoiceStatus.PAID, InvoiceStatus.WRITTEN_OFF);
 
-    /** At-a-glance counts of what one client has, and the total ever billed to them. */
+    /** At-a-glance counts of what one client has, the total ever billed to them, and their lifetime value. */
     @Transactional(readOnly = true)
     public ClientSummaryResponse summary(Long id) {
-        if (!clients.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
-        }
+        Client client = clients.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
         BigDecimal billed = invoices.sumAmountByClientIdAndStatusIn(id, BILLED).setScale(2, RoundingMode.HALF_UP);
-        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientIdAndArchivedFalse(id), billed);
+        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientIdAndArchivedFalse(id), billed,
+                lifetimeValue(client));
+    }
+
+    /**
+     * What a client has actually paid, in their currency: the money received in payments made against an invoice on
+     * their own, in lump payments (including any kept as credit) and as deposits, less what has been refunded to them.
+     * Payments put toward invoices from held deposits are already counted as the deposits, and credit notes are not
+     * money received. A payment received in another currency is converted at the rates in effect on its date; one
+     * with no rate to convert it by is left out.
+     */
+    private BigDecimal lifetimeValue(Client client) {
+        Long id = client.getId();
+        BigDecimal onTheirOwn = payments.findReceivedOnItsOwnByClientId(id).stream()
+                .map(p -> fxRates.convert(p.getCurrency(), client.getCurrency(), p.getDate(), p.getAmount())
+                        .orElse(BigDecimal.ZERO))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return onTheirOwn
+                .add(clientPayments.sumAmountByClientId(id))
+                .add(deposits.sumAmountByClientId(id))
+                .subtract(refunds.sumAmountByClientId(id))
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
     /** Adds a client; its email, once trimmed, must not already belong to another client. */
