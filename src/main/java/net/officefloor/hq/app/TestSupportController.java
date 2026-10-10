@@ -376,10 +376,10 @@ public class TestSupportController {
     /** A task and the sub-items on its checklist. */
     private void seedTask(Map<String, Object> t, long projectId) {
         long taskId = ((Number) t.get("id")).longValue();
-        jdbc.update("INSERT INTO task (id, project_id, title, done, due_date, assignee) VALUES (?, ?, ?, ?, ?, ?)",
+        jdbc.update("INSERT INTO task (id, project_id, title, done, due_date, assignee, priority) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 taskId, projectId, t.get("title"), Boolean.TRUE.equals(t.get("done")),
                 t.get("dueDate") == null ? null : LocalDate.parse(t.get("dueDate").toString()),
-                t.get("assignee"));
+                t.get("assignee"), t.get("priority"));
         for (Map<String, Object> c : rows(t, "checklist")) {
             jdbc.update("INSERT INTO task_checklist_item (id, task_id, text, done) VALUES (?, ?, ?, ?)",
                     ((Number) c.get("id")).longValue(), taskId, c.get("text"), Boolean.TRUE.equals(c.get("done")));

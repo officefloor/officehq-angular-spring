@@ -1,20 +1,32 @@
-import { Component, computed, inject, input, signal } from '@angular/core';
-import { rxResource } from '@angular/core/rxjs-interop';
-import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { TaskChecklist } from './task-checklist';
-import { Task, TaskService } from './task.service';
+import { Component, computed, inject, input, signal } from "@angular/core";
+import { rxResource } from "@angular/core/rxjs-interop";
+import {
+  NonNullableFormBuilder,
+  ReactiveFormsModule,
+  Validators,
+} from "@angular/forms";
+import { TaskChecklist } from "./task-checklist";
+import { Task, TaskPriority, TaskService } from "./task.service";
 
-export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+export type TaskFilter = "ALL" | "OPEN" | "DONE";
 
 // A project's task list: add tasks and tick them off (OPEN <-> DONE) as they are finished.
 @Component({
-  selector: 'app-project-tasks',
+  selector: "app-project-tasks",
   imports: [ReactiveFormsModule, TaskChecklist],
   template: `
-    <section aria-labelledby="project-tasks-heading" data-testid="project-tasks">
+    <section
+      aria-labelledby="project-tasks-heading"
+      data-testid="project-tasks"
+    >
       <h2 id="project-tasks-heading">Tasks</h2>
 
-      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="task-form" novalidate>
+      <form
+        [formGroup]="form"
+        (ngSubmit)="submit()"
+        data-testid="task-form"
+        novalidate
+      >
         <div>
           <label for="task-title">Task</label>
           <input
@@ -23,10 +35,16 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
             formControlName="title"
             data-testid="task-form-title"
             [attr.aria-invalid]="showTitleError()"
-            [attr.aria-describedby]="showTitleError() ? 'task-title-error' : null"
+            [attr.aria-describedby]="
+              showTitleError() ? 'task-title-error' : null
+            "
           />
           @if (showTitleError()) {
-            <p id="task-title-error" role="alert" data-testid="task-form-title-error">
+            <p
+              id="task-title-error"
+              role="alert"
+              data-testid="task-form-title-error"
+            >
               Task is required.
             </p>
           }
@@ -50,7 +68,26 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
             data-testid="task-form-assignee"
           />
         </div>
-        <button type="submit" data-testid="task-form-submit" [disabled]="saving()">Add task</button>
+        <div>
+          <label for="task-priority">Priority (optional)</label>
+          <select
+            id="task-priority"
+            formControlName="priority"
+            data-testid="task-form-priority"
+          >
+            <option value="">None</option>
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+          </select>
+        </div>
+        <button
+          type="submit"
+          data-testid="task-form-submit"
+          [disabled]="saving()"
+        >
+          Add task
+        </button>
         @if (saveError()) {
           <p role="alert" data-testid="task-form-error">{{ saveError() }}</p>
         }
@@ -61,10 +98,14 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
       }
 
       @if (tasks.error()) {
-        <p role="alert" data-testid="project-tasks-error">Could not load the tasks.</p>
+        <p role="alert" data-testid="project-tasks-error">
+          Could not load the tasks.
+        </p>
       } @else if (tasks.hasValue()) {
         @if (tasks.value().length === 0) {
-          <p data-testid="project-tasks-empty">No tasks for this project yet.</p>
+          <p data-testid="project-tasks-empty">
+            No tasks for this project yet.
+          </p>
         } @else {
           <div>
             <label for="task-filter">Show</label>
@@ -81,16 +122,19 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
           </div>
           @if (visibleTasks().length === 0) {
             <p data-testid="project-tasks-filter-empty">
-              {{ filter() === 'OPEN' ? 'No open tasks.' : 'No done tasks.' }}
+              {{ filter() === "OPEN" ? "No open tasks." : "No done tasks." }}
             </p>
           } @else {
             <table data-testid="project-tasks-table">
-              <caption>Tasks for this job</caption>
+              <caption>
+                Tasks for this job
+              </caption>
               <thead>
                 <tr>
                   <th scope="col">Task</th>
                   <th scope="col">Due date</th>
                   <th scope="col">Assignee</th>
+                  <th scope="col">Priority</th>
                   <th scope="col">Checklist</th>
                   <th scope="col">Status</th>
                   <th scope="col">Action</th>
@@ -100,8 +144,9 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
                 @for (t of visibleTasks(); track t.id) {
                   <tr [attr.data-testid]="'task-row-' + t.id">
                     <td data-testid="task-title">{{ t.title }}</td>
-                    <td data-testid="task-due-date">{{ t.dueDate ?? '' }}</td>
-                    <td data-testid="task-assignee">{{ t.assignee ?? '' }}</td>
+                    <td data-testid="task-due-date">{{ t.dueDate ?? "" }}</td>
+                    <td data-testid="task-assignee">{{ t.assignee ?? "" }}</td>
+                    <td data-testid="task-priority">{{ t.priority ?? "" }}</td>
                     <td>
                       <app-task-checklist
                         [projectId]="projectId()"
@@ -110,17 +155,21 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
                         [items]="t.checklist"
                       />
                     </td>
-                    <td data-testid="task-status">{{ t.done ? 'DONE' : 'OPEN' }}</td>
+                    <td data-testid="task-status">
+                      {{ t.done ? "DONE" : "OPEN" }}
+                    </td>
                     <td>
                       <button
                         type="button"
                         [attr.data-testid]="'task-toggle-' + t.id"
                         [attr.aria-pressed]="t.done"
-                        [attr.aria-label]="(t.done ? 'Reopen ' : 'Tick off ') + t.title"
+                        [attr.aria-label]="
+                          (t.done ? 'Reopen ' : 'Tick off ') + t.title
+                        "
                         [disabled]="toggling() === t.id"
                         (click)="toggle(t)"
                       >
-                        {{ t.done ? 'Reopen' : 'Tick off' }}
+                        {{ t.done ? "Reopen" : "Tick off" }}
                       </button>
                     </td>
                   </tr>
@@ -142,13 +191,13 @@ export class ProjectTasks {
     params: () => this.projectId(),
     stream: ({ params }) => this.service.listForProject(params),
   });
-  protected readonly filter = signal<TaskFilter>('ALL');
+  protected readonly filter = signal<TaskFilter>("ALL");
   protected readonly visibleTasks = computed(() => {
     const list = this.tasks.value() ?? [];
     switch (this.filter()) {
-      case 'OPEN':
+      case "OPEN":
         return list.filter((t) => !t.done);
-      case 'DONE':
+      case "DONE":
         return list.filter((t) => t.done);
       default:
         return list;
@@ -160,9 +209,10 @@ export class ProjectTasks {
   protected readonly toggleError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
-    title: ['', [Validators.required, Validators.maxLength(255)]],
-    dueDate: [''],
-    assignee: ['', Validators.maxLength(255)],
+    title: ["", [Validators.required, Validators.maxLength(255)]],
+    dueDate: [""],
+    assignee: ["", Validators.maxLength(255)],
+    priority: ["" as TaskPriority | ""],
   });
 
   protected setFilter(event: Event): void {
@@ -175,26 +225,39 @@ export class ProjectTasks {
   }
 
   protected submit(): void {
-    const { title: rawTitle, dueDate, assignee } = this.form.getRawValue();
+    const {
+      title: rawTitle,
+      dueDate,
+      assignee,
+      priority,
+    } = this.form.getRawValue();
     const title = rawTitle.trim();
     if (this.form.invalid || !title) {
-      this.form.controls.title.setValue('');
+      this.form.controls.title.setValue("");
       this.form.markAllAsTouched();
       return;
     }
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create(this.projectId(), title, dueDate || null, assignee.trim() || null).subscribe({
-      next: (created) => {
-        this.tasks.update((list) => [...(list ?? []), created]);
-        this.form.reset();
-        this.saving.set(false);
-      },
-      error: () => {
-        this.saveError.set('Could not save the task. Please try again.');
-        this.saving.set(false);
-      },
-    });
+    this.service
+      .create(
+        this.projectId(),
+        title,
+        dueDate || null,
+        assignee.trim() || null,
+        priority || null,
+      )
+      .subscribe({
+        next: (created) => {
+          this.tasks.update((list) => [...(list ?? []), created]);
+          this.form.reset();
+          this.saving.set(false);
+        },
+        error: () => {
+          this.saveError.set("Could not save the task. Please try again.");
+          this.saving.set(false);
+        },
+      });
   }
 
   protected toggle(task: Task): void {
@@ -202,11 +265,13 @@ export class ProjectTasks {
     this.toggleError.set(null);
     this.service.toggle(this.projectId(), task.id).subscribe({
       next: (updated) => {
-        this.tasks.update((list) => (list ?? []).map((t) => (t.id === updated.id ? updated : t)));
+        this.tasks.update((list) =>
+          (list ?? []).map((t) => (t.id === updated.id ? updated : t)),
+        );
         this.toggling.set(null);
       },
       error: () => {
-        this.toggleError.set('Could not update the task. Please try again.');
+        this.toggleError.set("Could not update the task. Please try again.");
         this.toggling.set(null);
       },
     });

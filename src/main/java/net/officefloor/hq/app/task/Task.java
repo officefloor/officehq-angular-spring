@@ -34,14 +34,18 @@ public class Task {
     /** The name of the person the task is for; optional. */
     private String assignee;
 
+    /** How pressing the task is: Low, Medium or High; optional. */
+    private String priority;
+
     protected Task() {
     }
 
-    public Task(Project project, String title, LocalDate dueDate, String assignee) {
+    public Task(Project project, String title, LocalDate dueDate, String assignee, String priority) {
         this.project = project;
         this.title = title;
         this.dueDate = dueDate;
         this.assignee = assignee;
+        this.priority = priority;
     }
 
     public Long getId() {
@@ -66,6 +70,10 @@ public class Task {
 
     public String getAssignee() {
         return assignee;
+    }
+
+    public String getPriority() {
+        return priority;
     }
 
     /** Flips the task between open and done. */
