@@ -2,6 +2,7 @@ package net.officefloor.hq.app.client;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -302,18 +303,19 @@ public class ClientService {
     }
 
     /**
-     * The clients who owe the most, largest debt first (ties by id), at most {@code limit} of them.
-     * Clients owing nothing are left out.
+     * The clients who owe the most, ranked by what each owes converted into the home currency (given by
+     * client id), largest first (ties by id), at most {@code limit} of them, each with what they owe in
+     * their own currency. Clients owing nothing are left out.
      */
     @Transactional(readOnly = true)
-    public List<ClientResponse> topByOutstanding(int limit) {
+    public List<ClientResponse> topByOutstanding(int limit, Map<Long, BigDecimal> owedInHome) {
         Map<Long, BigDecimal> owed = outstandingByClient();
         owed.values().removeIf(amount -> amount.signum() <= 0);
-        List<Long> top = owed.entrySet().stream()
-                .sorted(Map.Entry.<Long, BigDecimal>comparingByValue().reversed()
-                        .thenComparing(Map.Entry.comparingByKey()))
+        List<Long> top = owed.keySet().stream()
+                .filter(owedInHome::containsKey)
+                .sorted(Comparator.<Long, BigDecimal>comparing(owedInHome::get).reversed()
+                        .thenComparing(Comparator.naturalOrder()))
                 .limit(limit)
-                .map(Map.Entry::getKey)
                 .toList();
         Map<Long, Client> found = new HashMap<>();
         clients.findAllById(top).forEach(c -> found.put(c.getId(), c));

@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,7 +64,7 @@ public class DashboardService {
     /**
      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
      * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices are past their due date and
-     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe.
+     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out).
      */
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
@@ -80,12 +81,17 @@ public class DashboardService {
         LocalDate today = LocalDate.now(clock);
         long overdue = invoices.countByStatusInAndDueDateBefore(owing, today);
         String home = settings.homeCurrency();
-        BigDecimal outstandingHome = sum(inHome(invoices.findByStatusInWithClient(owing), home, today, false));
+        Map<Invoice, BigDecimal> owedInHome = inHome(invoices.findByStatusInWithClient(owing), home, today, false);
+        BigDecimal outstandingHome = sum(owedInHome);
         Map<Invoice, BigDecimal> overdueInHome = inHome(invoices.findByStatusInAndDueDateBefore(owing, today), home, today, true);
         BigDecimal overdueAmount = sum(overdueInHome);
         DashboardResponse.OverdueBuckets overdueBuckets = buckets(overdueInHome, today);
-        List<DashboardResponse.TopClient> top = clientService.topByOutstanding(TOP_CLIENTS).stream()
-                .map(c -> new DashboardResponse.TopClient(c.id(), c.name(), c.currency(), c.outstanding()))
+        Map<Long, BigDecimal> clientsInHome = new HashMap<>();
+        owedInHome.forEach((invoice, amount) -> clientsInHome.merge(invoice.getProject().getClient().getId(), amount,
+                BigDecimal::add));
+        List<DashboardResponse.TopClient> top = clientService.topByOutstanding(TOP_CLIENTS, clientsInHome).stream()
+                .map(c -> new DashboardResponse.TopClient(c.id(), c.name(), c.currency(), c.outstanding(),
+                        clientsInHome.get(c.id()).setScale(2, RoundingMode.HALF_UP)))
                 .toList();
         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
                 overdueBuckets, top);

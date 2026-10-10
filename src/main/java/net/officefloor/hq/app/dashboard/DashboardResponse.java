@@ -23,7 +23,7 @@ public record DashboardResponse(long clients, long projects, List<CurrencyTotal>
     public record OverdueBuckets(BigDecimal days0To30, BigDecimal days31To60, BigDecimal days60Plus) {
     }
 
-    /** A client and what they still owe, in their currency. */
-    public record TopClient(Long id, String name, String currency, BigDecimal outstanding) {
+    /** A client and what they still owe, in their currency and converted into the home currency. */
+    public record TopClient(Long id, String name, String currency, BigDecimal outstanding, BigDecimal outstandingHome) {
     }
 }

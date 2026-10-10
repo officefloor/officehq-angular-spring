@@ -9,8 +9,8 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 // counted), plus one grand total of it in the home currency with each invoice converted at the
 // exchange rate from its own issue date, and how many of those sent
 // invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees and
-// instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe,
-// each in their own currency, and the recurring invoices coming up with when each falls. A tax summary for a chosen date range can be opened from here.
+// instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls. A tax summary for a chosen date range can be opened from here.
 @Component({
   selector: 'app-dashboard',
   imports: [MoneyPipe, TaxSummaryReport, UpcomingRecurringInvoices],
@@ -64,13 +64,16 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
       </dl>
 
       <section data-testid="dashboard-top-clients" aria-labelledby="dashboard-top-clients-heading">
-        <h2 id="dashboard-top-clients-heading">Top clients by amount owed</h2>
+        <h2 id="dashboard-top-clients-heading">Top clients by amount owed (in {{ s.homeCurrency }})</h2>
         @if (s.topClients.length) {
           <ol>
             @for (c of s.topClients; track c.id) {
               <li [attr.data-testid]="'top-client-row-' + c.id">
                 <span data-testid="top-client-name">{{ c.name }}</span>:
                 <span data-testid="top-client-amount">{{ c.outstanding | money: c.currency }}</span>
+                @if (c.currency !== s.homeCurrency) {
+                  (<span data-testid="top-client-amount-home">{{ c.outstandingHome | money: s.homeCurrency }}</span>)
+                }
               </li>
             }
           </ol>

@@ -9,6 +9,8 @@ export interface TopClient {
   /** The client's currency; what they owe is in it. */
   currency: CurrencyCode;
   outstanding: number;
+  /** What they owe converted into the home currency; the clients are ranked by it. */
+  outstandingHome: number;
 }
 
 /** What is still owed in one currency; different currencies are never added together. */
