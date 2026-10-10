@@ -134,6 +134,11 @@ export class ProjectService {
     return this.http.post<Project>(`/api/projects/${id}/archive`, null);
   }
 
+  /** Archives every finished job not already archived, giving back the jobs archived. */
+  archiveCompleted(): Observable<Project[]> {
+    return this.http.post<Project[]>('/api/projects/archive-completed', null);
+  }
+
   restore(id: number): Observable<Project> {
     return this.http.post<Project>(`/api/projects/${id}/restore`, null);
   }

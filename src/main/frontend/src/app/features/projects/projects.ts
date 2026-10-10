@@ -16,7 +16,8 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
 // given tag. Each project carries a short reference code, given when it is added, that no other
 // project may share, and may carry an optional short description of the work. Jobs can be dragged
 // into the order wanted, or moved up and down with buttons, and that order is kept. Each job shows what
-// is still outstanding on it: what is left to pay on its sent invoices.
+// is still outstanding on it: what is left to pay on its sent invoices. All finished jobs can be
+// archived at once.
 @Component({
   selector: 'app-projects',
   imports: [ReactiveFormsModule, RouterLink, MoneyPipe],
@@ -127,6 +128,21 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
     @if (deleteError()) {
       <p role="alert" data-testid="project-delete-error">{{ deleteError() }}</p>
     }
+
+    <div>
+      <button
+        type="button"
+        data-testid="jobs-archive-completed"
+        [disabled]="archivingCompleted()"
+        (click)="archiveCompleted()"
+      >
+        Archive all finished jobs
+      </button>
+      <p aria-live="polite" data-testid="jobs-archive-completed-status">{{ archiveCompletedStatus() }}</p>
+      @if (archiveCompletedError()) {
+        <p role="alert" data-testid="jobs-archive-completed-error">{{ archiveCompletedError() }}</p>
+      }
+    </div>
 
     <div>
       <input
@@ -315,6 +331,9 @@ export class Projects {
   protected readonly reorderStatus = signal('');
   protected readonly dragIndex = signal<number | null>(null);
   protected readonly dropIndex = signal<number | null>(null);
+  protected readonly archivingCompleted = signal(false);
+  protected readonly archiveCompletedStatus = signal('');
+  protected readonly archiveCompletedError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -424,6 +443,32 @@ export class Projects {
       error: () => {
         this.deleteError.set(`Could not archive ${project.name}. Please try again.`);
         this.deleting.set(null);
+      },
+    });
+  }
+
+  protected archiveCompleted(): void {
+    this.archivingCompleted.set(true);
+    this.archiveCompletedStatus.set('');
+    this.archiveCompletedError.set(null);
+    this.service.archiveCompleted().subscribe({
+      next: (archived) => {
+        const ids = new Set(archived.map((a) => a.id));
+        this.projects.update((list) =>
+          this.showArchived()
+            ? list.map((p) => archived.find((a) => a.id === p.id) ?? p)
+            : list.filter((p) => !ids.has(p.id)),
+        );
+        this.archiveCompletedStatus.set(
+          archived.length === 0
+            ? 'No finished jobs to archive.'
+            : `Archived ${archived.length} finished ${archived.length === 1 ? 'job' : 'jobs'}.`,
+        );
+        this.archivingCompleted.set(false);
+      },
+      error: () => {
+        this.archiveCompletedError.set('Could not archive the finished jobs. Please try again.');
+        this.archivingCompleted.set(false);
       },
     });
   }

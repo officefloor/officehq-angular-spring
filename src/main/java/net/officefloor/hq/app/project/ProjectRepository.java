@@ -41,6 +41,11 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
             + " AND LOWER(p.name) LIKE LOWER(CONCAT('%', :text, '%')) ESCAPE '\\' ORDER BY p.sortOrder, p.id")
     List<Project> searchActiveByNameWithClient(String text);
 
+    /** The projects not archived at the given status, with their client loaded in the same query. */
+    @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.archived = false AND p.status = :status"
+            + " ORDER BY p.sortOrder, p.id")
+    List<Project> findActiveByStatusWithClient(ProjectStatus status);
+
     /** One project with its client loaded in the same query. */
     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
     Optional<Project> findByIdWithClient(Long id);

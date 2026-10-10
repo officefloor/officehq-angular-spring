@@ -35,6 +35,11 @@ public class ProjectController {
         service.reorder(request.ids());
     }
 
+    @PostMapping("/archive-completed")
+    public List<ProjectResponse> archiveCompleted() {
+        return service.archiveCompleted();
+    }
+
     @GetMapping("/{id}")
     public ProjectResponse get(@PathVariable Long id) {
         return service.get(id);

@@ -330,6 +330,19 @@ public class ProjectService {
         return respond(project);
     }
 
+    /**
+     * Archives every finished project not already archived in one go, recording each archiving in the
+     * audit log, and gives back the projects archived.
+     */
+    @Transactional
+    public List<ProjectResponse> archiveCompleted() {
+        List<Project> finished = projects.findActiveByStatusWithClient(ProjectStatus.FINISHED);
+        finished.forEach(p -> p.setArchived(true));
+        projects.flush();
+        finished.forEach(p -> audit.record("PROJECT_ARCHIVED id=" + p.getId()));
+        return respond(finished);
+    }
+
     /** Brings an archived project back onto the project lists, recording it in the audit log. */
     @Transactional
     public ProjectResponse restore(Long id) {
