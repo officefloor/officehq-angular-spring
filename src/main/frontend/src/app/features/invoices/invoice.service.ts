@@ -119,6 +119,14 @@ export interface ClientBalanceAsOf {
   balance: number;
 }
 
+/** A note that a client's statement was emailed: the address it went to and when. */
+export interface StatementEmail {
+  id: number;
+  clientId: number;
+  email: string;
+  sentAt: string;
+}
+
 /** A client's statement for a date range: the balance owed at its start, the entries within it, and the balance owed at its end. */
 export interface ClientStatementRange {
   clientId: number;
@@ -303,6 +311,14 @@ export class InvoiceService {
 
   statementForRange(clientId: number, from: string, to: string): Observable<ClientStatementRange> {
     return this.http.get<ClientStatementRange>(`/api/clients/${clientId}/statement/range`, { params: { from, to } });
+  }
+
+  statementEmails(clientId: number): Observable<StatementEmail[]> {
+    return this.http.get<StatementEmail[]>(`/api/clients/${clientId}/statement/emails`);
+  }
+
+  emailStatement(clientId: number): Observable<StatementEmail> {
+    return this.http.post<StatementEmail>(`/api/clients/${clientId}/statement/emails`, {});
   }
 
   agingForClient(clientId: number): Observable<ClientAging> {

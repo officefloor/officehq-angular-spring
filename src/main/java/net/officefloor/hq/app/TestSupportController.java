@@ -61,6 +61,7 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE task_checklist_item RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE statement_email RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE contact_history RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");

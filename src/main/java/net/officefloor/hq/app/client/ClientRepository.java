@@ -36,6 +36,11 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     @Query("UPDATE ContactHistoryEntry h SET h.clientId = :to WHERE h.clientId = :from")
     int moveContactHistory(Long from, Long to);
 
+    /** Moves the notes of every statement emailed to one client over to another. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("UPDATE StatementEmail s SET s.clientId = :to WHERE s.clientId = :from")
+    int moveStatementEmails(Long from, Long to);
+
     /** Moves every lump payment of one client over to another. */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("UPDATE ClientPayment p SET p.clientId = :to WHERE p.clientId = :from")

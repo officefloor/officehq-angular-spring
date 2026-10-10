@@ -3,6 +3,7 @@ import { MoneyPipe } from '../currencies/money.pipe';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { InvoiceService } from './invoice.service';
+import { StatementEmailAction } from './statement-email';
 
 // A client's statement: every invoice across the client's projects grouped by job, how much is left to
 // pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
@@ -14,11 +15,12 @@ import { InvoiceService } from './invoice.service';
 // balance owed after each.
 // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
 // with the app's navigation and the page's controls left off the printed copy.
-// Under the summary, the balance owed is broken down by age as at today: current (up to 30 days overdue), 31 to 60
+// Under the summary, the statement can be emailed to the client, with a note kept of each time it was sent.
+// Below that, the balance owed is broken down by age as at today: current (up to 30 days overdue), 31 to 60
 // days, and more than 60 days overdue.
 @Component({
   selector: 'app-client-statement',
-  imports: [MoneyPipe, RouterLink],
+  imports: [MoneyPipe, RouterLink, StatementEmailAction],
   styles: `
     .statement-actions {
       display: flex;
@@ -87,6 +89,7 @@ import { InvoiceService } from './invoice.service';
             <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | money: s.currency }}</dd>
           </dl>
         </section>
+        <app-statement-email [clientId]="clientId()" />
         <section aria-labelledby="statement-aging-heading" data-testid="statement-aging">
           <h2 id="statement-aging-heading">Balance by age</h2>
           @if (aging.error()) {
