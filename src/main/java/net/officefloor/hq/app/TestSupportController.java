@@ -180,15 +180,19 @@ public class TestSupportController {
                     Boolean.TRUE.equals(r.get("prorateFirst")));
         }
         for (Map<String, Object> i : rows(fixture, "invoices")) {
-            // A missing date is filled in from the other one using the standard payment term; with
-            // neither given the invoice is issued today.
+            // A missing date is filled in from the other one using the client's payment terms (the
+            // standard term when they have none); with neither given the invoice is issued today.
             // The issue date may be given as "issuedDate" or "issueDate".
+            Integer paymentTermsDays = jdbc.queryForObject(
+                    "SELECT c.payment_terms_days FROM project p JOIN client c ON c.id = p.client_id WHERE p.id = ?",
+                    Integer.class, ((Number) i.get("projectId")).longValue());
+            int termDays = InvoiceRequest.termDays(paymentTermsDays);
             Object issuedValue = i.get("issuedDate") != null ? i.get("issuedDate") : i.get("issueDate");
             LocalDate issued = issuedValue != null ? LocalDate.parse(issuedValue.toString())
                     : i.get("dueDate") != null
-                            ? LocalDate.parse(i.get("dueDate").toString()).minusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
+                            ? LocalDate.parse(i.get("dueDate").toString()).minusDays(termDays)
                             : LocalDate.now(clock);
-            LocalDate due = i.get("dueDate") == null ? issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
+            LocalDate due = i.get("dueDate") == null ? issued.plusDays(termDays)
                     : LocalDate.parse(i.get("dueDate").toString());
             long invoiceId = ((Number) i.get("id")).longValue();
             List<Map<String, Object>> lineItems = rows(i, "lineItems");

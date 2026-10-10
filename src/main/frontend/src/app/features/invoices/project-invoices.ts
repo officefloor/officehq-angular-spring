@@ -70,7 +70,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
           <input id="invoice-issued" type="date" formControlName="issuedDate" data-testid="invoice-form-issued" />
         </div>
         <div>
-          <label for="invoice-due">Due (optional, defaults to 30 days after issue)</label>
+          <label for="invoice-due">Due (optional, defaults to the client's payment terms after issue)</label>
           <input
             id="invoice-due"
             type="date"

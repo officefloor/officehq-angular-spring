@@ -252,7 +252,7 @@ export interface NewInvoice {
   amount?: number;
   /** Defaults to today on the server when omitted. */
   issuedDate?: string;
-  /** Defaults to 30 days after the issue date on the server when omitted. */
+  /** Defaults to the client's payment terms (30 days when none) after the issue date on the server when omitted. */
   dueDate?: string;
   /** The sales tax percentage; defaults to the default tax rate in the settings on the server when omitted. */
   taxPct?: number;

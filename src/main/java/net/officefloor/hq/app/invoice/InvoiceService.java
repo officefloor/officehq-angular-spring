@@ -262,7 +262,9 @@ public class InvoiceService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The job is closed; no new invoice can be raised on it");
         }
         LocalDate issued = request.issuedDate() != null ? request.issuedDate() : LocalDate.now();
-        LocalDate due = request.dueDate() != null ? request.dueDate() : issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS);
+        // Without a due date the invoice falls due after the client's payment terms (net N days).
+        LocalDate due = request.dueDate() != null ? request.dueDate()
+                : issued.plusDays(InvoiceRequest.termDays(project.getClient().getPaymentTermsDays()));
         if (due.isBefore(issued)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Due date must not be before the issue date");
         }
