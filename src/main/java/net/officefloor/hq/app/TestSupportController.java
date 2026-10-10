@@ -61,6 +61,7 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE task_checklist_item RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE contact_history RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
@@ -121,6 +122,12 @@ public class TestSupportController {
                     decimal(c.get("defaultDiscountPct")),
                     c.get("creditLimit") == null ? null : decimal(c.get("creditLimit")),
                     c.get("paymentTermsDays") == null ? null : ((Number) c.get("paymentTermsDays")).intValue());
+            // When the client was contacted, each with a date and a note.
+            for (Map<String, Object> h : rows(c, "contactHistory")) {
+                jdbc.update("INSERT INTO contact_history (id, client_id, contact_date, note) VALUES (?, ?, ?, ?)",
+                        ((Number) h.get("id")).longValue(), ((Number) c.get("id")).longValue(),
+                        LocalDate.parse(h.get("date").toString()), h.get("note"));
+            }
         }
         for (Map<String, Object> c : rows(fixture, "contacts")) {
             jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
@@ -390,6 +397,7 @@ public class TestSupportController {
         // Continue generated ids after the explicitly seeded ones.
         restartIdentity("client");
         restartIdentity("contact");
+        restartIdentity("contact_history");
         restartIdentity("project");
         restartIdentity("invoice");
         restartIdentity("invoice_line_item");

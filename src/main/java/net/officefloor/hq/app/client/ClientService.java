@@ -216,7 +216,7 @@ public class ClientService {
 
     /**
      * Merges a duplicate client into the client it duplicates: the duplicate's projects (and so their
-     * invoices), contacts, payments, deposits and refunds all move to the kept client, which takes the
+     * invoices), contacts, contact history, payments, deposits and refunds all move to the kept client, which takes the
      * duplicate's main contact if it has none of its own, and the duplicate is then removed. Both must
      * be billed in the same currency, so no money changes currency. Recorded in the audit log.
      */
@@ -238,6 +238,7 @@ public class ClientService {
         source.setPrimaryContact(null);
         clients.moveProjects(id, targetId);
         clients.moveContacts(id, targetId);
+        clients.moveContactHistory(id, targetId);
         clients.moveClientPayments(id, targetId);
         clients.moveDeposits(id, targetId);
         clients.moveDepositApplications(id, targetId);
