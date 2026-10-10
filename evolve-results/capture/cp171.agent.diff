@@ -1,0 +1,258 @@
+diff --git a/src/main/frontend/src/app/features/projects/project-category.ts b/src/main/frontend/src/app/features/projects/project-category.ts
+new file mode 100644
+index 0000000..7965c23
+--- /dev/null
++++ b/src/main/frontend/src/app/features/projects/project-category.ts
+@@ -0,0 +1,67 @@
++import { Component, effect, inject, input, output, signal } from '@angular/core';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { Project, ProjectService } from './project.service';
++
++// A job's category: shows it, and puts the job into one or takes it out (leave it blank to clear it).
++@Component({
++  selector: 'app-project-category',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="job-category-heading" data-testid="job-category-section">
++      <h2 id="job-category-heading">Category</h2>
++      @if (project().category; as category) {
++        <p data-testid="job-category">{{ category }}</p>
++      } @else {
++        <p data-testid="job-category-none">Not in a category.</p>
++      }
++
++      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="job-category-form" novalidate>
++        <label for="job-category-input">Category</label>
++        <input
++          id="job-category-input"
++          type="text"
++          maxlength="50"
++          formControlName="category"
++          data-testid="job-category-input"
++        />
++        <button type="submit" data-testid="job-category-submit" [disabled]="saving()">Save category</button>
++        @if (saveError()) {
++          <p role="alert" data-testid="job-category-save-error">{{ saveError() }}</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class ProjectCategory {
++  private readonly service = inject(ProjectService);
++
++  readonly project = input.required<Project>();
++  /** Emits the job once its category has been saved. */
++  readonly changed = output<Project>();
++
++  protected readonly form = inject(NonNullableFormBuilder).group({ category: ['', Validators.maxLength(50)] });
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  constructor() {
++    effect(() => {
++      this.form.setValue({ category: this.project().category ?? '' });
++    });
++  }
++
++  protected submit(): void {
++    const category = this.form.getRawValue().category.trim();
++    this.saving.set(true);
++    this.saveError.set(null);
++    this.service.setCategory(this.project().id, category || null).subscribe({
++      next: (updated) => {
++        this.changed.emit(updated);
++        this.saving.set(false);
++      },
++      error: () => {
++        this.saveError.set('Could not save the category.');
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index cd926d3..db8bab3 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -8,13 +8,14 @@ import { ProjectTags } from '../tags/project-tags';
+ import { ProjectTasks } from '../tasks/project-tasks';
+ import { ProjectBudgetPanel } from './project-budget';
+ import { ProjectDates } from './project-dates';
++import { ProjectCategory } from './project-category';
+ import { ProjectFileRef } from './project-file-ref';
+ import { ProjectService } from './project.service';
+ 
+ // A single project's page: its name, description, client and status, whether it is open or closed, whether it is billable, its start and end dates, its file reference, its budget, its tags, its tasks, its notes, its invoices, and the invoices that recur every month.
+ @Component({
+   selector: 'app-project-detail',
+-  imports: [RouterLink, ProjectBudgetPanel, ProjectDates, ProjectFileRef, ProjectInvoices, ProjectRecurringInvoices, Notes, ProjectTags, ProjectTasks],
++  imports: [RouterLink, ProjectBudgetPanel, ProjectCategory, ProjectDates, ProjectFileRef, ProjectInvoices, ProjectRecurringInvoices, Notes, ProjectTags, ProjectTasks],
+   template: `
+     <a routerLink="/projects" data-testid="project-back">Back to jobs</a>
+     @if (project.error()) {
+@@ -56,6 +57,7 @@ import { ProjectService } from './project.service';
+         <p role="alert" data-testid="project-billable-error">{{ billableError() }}</p>
+       }
+       <app-project-dates [project]="p" (changed)="project.set($event)" />
++      <app-project-category [project]="p" (changed)="project.set($event)" />
+       <app-project-file-ref [project]="p" (changed)="project.set($event)" />
+       <app-project-budget [projectId]="projectId()" [currency]="p.currency" />
+       <app-project-tags [projectId]="projectId()" />
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index f5d6c7a..f54e7a6 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -35,6 +35,8 @@ export interface Project {
+   endDate: string | null;
+   /** A reference to a file kept elsewhere for the job (e.g. a document number); null when none was noted. */
+   fileRef: string | null;
++  /** The category the job is put into (e.g. "Web"); null when it has none. */
++  category: string | null;
+ }
+ 
+ /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
+@@ -101,6 +103,10 @@ export class ProjectService {
+     return this.http.put<Project>(`/api/projects/${id}/file-ref`, { fileRef });
+   }
+ 
++  setCategory(id: number, category: string | null): Observable<Project> {
++    return this.http.put<Project>(`/api/projects/${id}/category`, { category });
++  }
++
+   budget(id: number): Observable<ProjectBudget> {
+     return this.http.get<ProjectBudget>(`/api/projects/${id}/budget`);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index ed9f05b..4495937 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -142,7 +142,7 @@ public class TestSupportController {
+         }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+             jdbc.update("INSERT INTO project (id, name, code, description, client_id, status, archived, budget, billable, closed,"
+-                    + " start_date, end_date, file_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " start_date, end_date, file_ref, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) p.get("id")).longValue(), p.get("name"), p.get("code"), p.get("description"),
+                     ((Number) p.get("clientId")).longValue(),
+                     p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString(),
+@@ -151,7 +151,7 @@ public class TestSupportController {
+                     !Boolean.FALSE.equals(p.get("billable")), Boolean.TRUE.equals(p.get("closed")),
+                     p.get("startDate") == null ? null : LocalDate.parse(p.get("startDate").toString()),
+                     p.get("endDate") == null ? null : LocalDate.parse(p.get("endDate").toString()),
+-                    p.get("fileRef"));
++                    p.get("fileRef"), p.get("category"));
+         }
+         for (Map<String, Object> t : rows(fixture, "tags")) {
+             jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+index 63007d2..c1b1944 100644
+--- a/src/main/java/net/officefloor/hq/app/project/Project.java
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -55,6 +55,8 @@ public class Project {
+ 
+     private String fileRef;
+ 
++    private String category;
++
+     @ManyToMany
+     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
+             inverseJoinColumns = @JoinColumn(name = "tag_id"))
+@@ -162,6 +164,15 @@ public class Project {
+         this.fileRef = fileRef;
+     }
+ 
++    /** The category the job is put into (e.g. "Web"), or null when it has none. */
++    public String getCategory() {
++        return category;
++    }
++
++    public void setCategory(String category) {
++        this.category = category;
++    }
++
+     /** The tags labelling this project; add or remove to tag or untag it. */
+     public Set<Tag> getTags() {
+         return tags;
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectCategoryRequest.java b/src/main/java/net/officefloor/hq/app/project/ProjectCategoryRequest.java
+new file mode 100644
+index 0000000..f098ac2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectCategoryRequest.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.project;
++
++import jakarta.validation.constraints.Size;
++
++/** Payload to put a job into a category; leave it out or blank to take it out of its category. */
++public record ProjectCategoryRequest(@Size(max = 50) String category) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectController.java b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+index cae6155..85c7783 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+@@ -60,6 +60,11 @@ public class ProjectController {
+         return service.setFileRef(id, request.fileRef());
+     }
+ 
++    @PutMapping("/{id}/category")
++    public ProjectResponse setCategory(@PathVariable Long id, @Valid @RequestBody ProjectCategoryRequest request) {
++        return service.setCategory(id, request.category());
++    }
++
+     @GetMapping("/{id}/budget")
+     public ProjectBudgetResponse budget(@PathVariable Long id) {
+         return service.budget(id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+index e994fba..a1ed279 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+@@ -4,13 +4,13 @@ import java.time.LocalDate;
+ 
+ public record ProjectResponse(Long id, String name, String code, Long clientId, String clientName, boolean archived,
+         ProjectStatus status, String currency, String description, boolean billable,
+-        boolean closed, LocalDate startDate, LocalDate endDate, String fileRef) {
++        boolean closed, LocalDate startDate, LocalDate endDate, String fileRef, String category) {
+ 
+     public static ProjectResponse from(Project project) {
+         return new ProjectResponse(project.getId(), project.getName(), project.getCode(),
+                 project.getClient().getId(), project.getClient().getName(), project.isArchived(),
+                 project.getStatus(), project.getClient().getCurrency(), project.getDescription(),
+                 project.isBillable(), project.isClosed(),
+-                project.getStartDate(), project.getEndDate(), project.getFileRef());
++                project.getStartDate(), project.getEndDate(), project.getFileRef(), project.getCategory());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index 1411b33..d596da6 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -196,6 +196,20 @@ public class ProjectService {
+         return ProjectResponse.from(project);
+     }
+ 
++    /** Puts a job into (or, given none, takes it out of) a category, recording the change in the audit log. */
++    @Transactional
++    public ProjectResponse setCategory(Long id, String category) {
++        String value = category == null || category.isBlank() ? null : category.trim();
++        Project project = projects.findByIdWithClient(id)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
++        if (!Objects.equals(project.getCategory(), value)) {
++            project.setCategory(value);
++            projects.flush();
++            audit.record("PROJECT_CATEGORY_SET id=" + id + " category=" + (value == null ? "none" : value));
++        }
++        return ProjectResponse.from(project);
++    }
++
+     /** Closes a job so no new invoice can be raised on it, recording the closing in the audit log. */
+     @Transactional
+     public ProjectResponse close(Long id) {
+diff --git a/src/main/resources/db/migration/V92__project_category.sql b/src/main/resources/db/migration/V92__project_category.sql
+new file mode 100644
+index 0000000..894c2f2
+--- /dev/null
++++ b/src/main/resources/db/migration/V92__project_category.sql
+@@ -0,0 +1,2 @@
++-- A job can be put into a category (e.g. "Web"); unset when it has none.
++ALTER TABLE project ADD COLUMN category VARCHAR(50);
