@@ -1,0 +1,182 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 5032657..cffe6dd 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -258,6 +258,12 @@ export class DashboardService {
+     return this.http.get<RevenueReport>('/api/dashboard/revenue-report', { params });
+   }
+ 
++  /** The revenue report over the given range (or over all time) as the CSV file the export downloads. */
++  exportRevenueReport(range?: { from: string; to: string }): Observable<string> {
++    const params = range ? new HttpParams().set('from', range.from).set('to', range.to) : new HttpParams();
++    return this.http.get('/api/dashboard/revenue-report/export', { params, responseType: 'text' });
++  }
++
+   /** The revenue of two periods, A and B, side by side. */
+   revenueComparison(a: { from: string; to: string }, b: { from: string; to: string }): Observable<RevenueComparison> {
+     const params = new HttpParams().set('aFrom', a.from).set('aTo', a.to).set('bFrom', b.from).set('bTo', b.to);
+diff --git a/src/main/frontend/src/app/features/dashboard/revenue-report.ts b/src/main/frontend/src/app/features/dashboard/revenue-report.ts
+index 0a169d9..f144e89 100644
+--- a/src/main/frontend/src/app/features/dashboard/revenue-report.ts
++++ b/src/main/frontend/src/app/features/dashboard/revenue-report.ts
+@@ -6,8 +6,8 @@ import { RevenueCompare } from './revenue-compare';
+ 
+ // The revenue billed over a chosen date range (over all time until a range is chosen): the total of the invoices
+ // issued within it that were sent (drafts and cancelled invoices are left out), in the home currency, broken down
+-// by job so the highest-earning jobs show first, and month by month so the trend shows. Two periods can also be
+-// compared side by side.
++// by job so the highest-earning jobs show first, and month by month so the trend shows. The report on show can be
++// exported to a CSV file. Two periods can also be compared side by side.
+ @Component({
+   selector: 'app-revenue-report',
+   imports: [MoneyPipe, RevenueCompare],
+@@ -61,6 +61,18 @@ import { RevenueCompare } from './revenue-compare';
+             All time
+           }
+         </p>
++        <p>
++          <button type="button" data-testid="revenue-export" [disabled]="exporting()" (click)="export()">
++            Export revenue report
++          </button>
++        </p>
++        <div role="status">
++          @if (exportError()) {
++            <p data-testid="revenue-export-error">Could not export the revenue report.</p>
++          } @else if (exported()) {
++            <p data-testid="export-confirm">Exported the revenue report to {{ exportFilename }}.</p>
++          }
++        </div>
+         <dl class="revenue-report-figures" aria-live="polite">
+           <dt>Invoices</dt>
+           <dd data-testid="revenue-report-invoices">{{ r.invoices }}</dd>
+@@ -141,6 +153,29 @@ export class RevenueReport {
+     return `${RevenueReport.MONTHS[Number(m) - 1]} ${year}`;
+   }
+ 
++  protected readonly exportFilename = 'revenue-report.csv';
++  protected readonly exporting = signal(false);
++  protected readonly exported = signal(false);
++  protected readonly exportError = signal(false);
++
++  /** Downloads the report on show (over the chosen range, or all time) as a CSV file and confirms it. */
++  protected export(): void {
++    this.exporting.set(true);
++    this.exported.set(false);
++    this.exportError.set(false);
++    this.service.exportRevenueReport(this.range() ?? undefined).subscribe({
++      next: (csv) => {
++        download(csv, this.exportFilename);
++        this.exported.set(true);
++        this.exporting.set(false);
++      },
++      error: () => {
++        this.exportError.set(true);
++        this.exporting.set(false);
++      },
++    });
++  }
++
+   protected apply(event: Event, from: string, to: string): void {
+     event.preventDefault();
+     if (!from || !to) {
+@@ -151,6 +186,17 @@ export class RevenueReport {
+       return;
+     }
+     this.rangeError.set(null);
++    this.exported.set(false);
+     this.range.set({ from, to });
+   }
+ }
++
++/** Saves the text as a file through the browser. */
++function download(text: string, filename: string): void {
++  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
++  const link = document.createElement('a');
++  link.href = url;
++  link.download = filename;
++  link.click();
++  setTimeout(() => URL.revokeObjectURL(url));
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index 09975b1..7f46192 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -1,6 +1,11 @@
+ package net.officefloor.hq.app.dashboard;
+ 
++import java.nio.charset.StandardCharsets;
+ import java.time.LocalDate;
++import org.springframework.http.ContentDisposition;
++import org.springframework.http.HttpHeaders;
++import org.springframework.http.MediaType;
++import org.springframework.http.ResponseEntity;
+ import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -47,6 +52,18 @@ public class DashboardController {
+         return service.revenueReport(from, to);
+     }
+ 
++    /** Downloads the revenue report (over the given dates, or all time without both) as a CSV file. */
++    @GetMapping(value = "/revenue-report/export", produces = "text/csv")
++    public ResponseEntity<String> exportRevenueReport(
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
++        return ResponseEntity.ok()
++                .header(HttpHeaders.CONTENT_DISPOSITION,
++                        ContentDisposition.attachment().filename("revenue-report.csv").build().toString())
++                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
++                .body(service.revenueReportCsv(from, to));
++    }
++
+     /** The revenue billed in two periods (each on or between its dates), side by side. */
+     @GetMapping("/revenue-compare")
+     public RevenueComparisonResponse revenueComparison(
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 1ce807d..7e2d9fc 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -636,6 +636,43 @@ public class DashboardService {
+                 total.setScale(2, RoundingMode.HALF_UP), jobs, months);
+     }
+ 
++    /**
++     * The revenue report as a small CSV file: a header row, one row of job, client, invoices and revenue per job (in
++     * the report's order), then a total row. Amounts are in the home currency.
++     */
++    @Transactional(readOnly = true)
++    public String revenueReportCsv(LocalDate from, LocalDate to) {
++        RevenueReportResponse report = revenueReport(from, to);
++        StringBuilder text = new StringBuilder("job,client,invoices,revenue\r\n");
++        for (RevenueReportResponse.JobRevenue job : report.jobs()) {
++            text.append(csv(neutralise(job.projectName()))).append(',').append(csv(neutralise(job.clientName())))
++                    .append(',').append(job.invoices()).append(',').append(job.amount().toPlainString())
++                    .append("\r\n");
++        }
++        text.append("Total,,").append(report.invoices()).append(',').append(report.total().toPlainString())
++                .append("\r\n");
++        return text.toString();
++    }
++
++    /** Stops a value a spreadsheet would read as a formula from being run when the file is opened. */
++    private static String neutralise(String value) {
++        if (value != null && !value.isEmpty() && "=+-@\t\r".indexOf(value.charAt(0)) >= 0) {
++            return "'" + value;
++        }
++        return value;
++    }
++
++    /** One CSV field, quoted when it holds a comma, quote or line break; a missing value is left empty. */
++    private static String csv(String value) {
++        if (value == null) {
++            return "";
++        }
++        if (value.matches("(?s).*[\",\r\n].*")) {
++            return "\"" + value.replace("\"", "\"\"") + "\"";
++        }
++        return value;
++    }
++
+     /**
+      * The revenue billed in two periods side by side, each worked out as the revenue report over its dates, with the
+      * change from the first period to the second.
