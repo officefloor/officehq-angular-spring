@@ -30,6 +30,10 @@ public class Settings {
     @Column(name = "revenue_recognition_basis", nullable = false, length = 10)
     private String revenueRecognitionBasis = RecognitionBasis.SENT;
 
+    /** What the business aims to bill over the year, in the home currency; null when no target is set. */
+    @Column(name = "billing_target", precision = 15, scale = 2)
+    private BigDecimal billingTarget;
+
     protected Settings() {
     }
 
@@ -47,6 +51,14 @@ public class Settings {
 
     public void setRevenueRecognitionBasis(String revenueRecognitionBasis) {
         this.revenueRecognitionBasis = revenueRecognitionBasis;
+    }
+
+    public BigDecimal getBillingTarget() {
+        return billingTarget;
+    }
+
+    public void setBillingTarget(BigDecimal billingTarget) {
+        this.billingTarget = billingTarget == null ? null : billingTarget.setScale(2, RoundingMode.HALF_UP);
     }
 
     public void setDefaultTaxPct(BigDecimal defaultTaxPct) {

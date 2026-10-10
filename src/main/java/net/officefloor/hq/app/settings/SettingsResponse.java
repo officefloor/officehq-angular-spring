@@ -2,10 +2,11 @@ package net.officefloor.hq.app.settings;
 
 import java.math.BigDecimal;
 
-public record SettingsResponse(BigDecimal defaultTaxPct, String homeCurrency, String revenueRecognitionBasis) {
+public record SettingsResponse(BigDecimal defaultTaxPct, String homeCurrency, String revenueRecognitionBasis,
+        BigDecimal billingTarget) {
 
     public static SettingsResponse from(Settings settings) {
         return new SettingsResponse(settings.getDefaultTaxPct(), settings.getHomeCurrency(),
-                settings.getRevenueRecognitionBasis());
+                settings.getRevenueRecognitionBasis(), settings.getBillingTarget());
     }
 }

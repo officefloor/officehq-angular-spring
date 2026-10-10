@@ -15,14 +15,16 @@ import java.util.List;
  * currency, and the share of everything billed that has been collected as a whole percentage (null when nothing
  * has been billed), and what was billed and what was collected (payments received) from the start of the year to
  * today, in the home currency, and the share of all tasks that are done as a whole percentage (null when there are
- * no tasks).
+ * no tasks), and the yearly billings target in the home currency with what has been billed this year as a whole
+ * percentage of it (both null when no target is set).
  */
 public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
         BigDecimal outstandingHome, long overdue,
         String homeCurrency, BigDecimal overdueAmount, OverdueBuckets overdueBuckets, List<TopClient> topClients,
         long openTasks, long overdueTasks, Long averageDaysToPay, long newClientsThisMonth,
         BigDecimal billingsThisMonth, Long collectionRate, BigDecimal billingsYearToDate,
-        BigDecimal collectedYearToDate, Long taskCompletionRate) {
+        BigDecimal collectedYearToDate, Long taskCompletionRate,
+        BigDecimal billingTarget, Long billingTargetProgress) {
 
     /** What is still owed in one currency. */
     public record CurrencyTotal(String currency, BigDecimal amount) {

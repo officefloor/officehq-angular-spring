@@ -4,11 +4,12 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
 import { RecognitionBasis, SettingsService } from './settings.service';
 import { CurrencyRounding } from '../currencies/currency-rounding';
 import { FxRates } from '../fx-rates/fx-rates';
+import { BillingTarget } from './billing-target';
 
-// The app-wide settings: the standard sales tax rate that every new invoice starts with, whether revenue counts when an invoice is sent or when it is paid, how each currency rounds, and the exchange rate history.
+// The app-wide settings: the standard sales tax rate that every new invoice starts with, whether revenue counts when an invoice is sent or when it is paid, the yearly billings target, how each currency rounds, and the exchange rate history.
 @Component({
   selector: 'app-settings',
-  imports: [ReactiveFormsModule, CurrencyRounding, FxRates],
+  imports: [ReactiveFormsModule, CurrencyRounding, FxRates, BillingTarget],
   template: `
     <h1>Settings</h1>
     @if (settings.error()) {
@@ -54,6 +55,7 @@ import { FxRates } from '../fx-rates/fx-rates';
         <p role="alert" data-testid="settings-save-error">{{ saveError() }}</p>
       }
     </form>
+    <app-billing-target />
     <app-currency-rounding />
     <app-fx-rates />
   `,

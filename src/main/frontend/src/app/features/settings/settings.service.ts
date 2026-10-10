@@ -10,6 +10,8 @@ export interface Settings {
   homeCurrency?: string;
   /** When revenue counts: when an invoice is sent, or once it is paid. */
   revenueRecognitionBasis?: RecognitionBasis;
+  /** What the business aims to bill over the year, in the home currency; null when no target is set (read-only here). */
+  billingTarget?: number | null;
 }
 
 /** When revenue counts: when an invoice is sent, or once it is paid. */
@@ -26,5 +28,10 @@ export class SettingsService {
   update(settings: Settings): Observable<Settings> {
     // Kept alive so a save finishes even when the page is left or reloaded straight after.
     return this.http.put<Settings>('/api/settings', settings, { keepalive: true });
+  }
+
+  /** Sets the yearly billings target, or clears it when null. */
+  updateBillingTarget(billingTarget: number | null): Observable<Settings> {
+    return this.http.put<Settings>('/api/settings/billing-target', { billingTarget }, { keepalive: true });
   }
 }

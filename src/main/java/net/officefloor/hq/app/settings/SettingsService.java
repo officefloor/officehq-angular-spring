@@ -29,6 +29,21 @@ public class SettingsService {
         return SettingsResponse.from(current);
     }
 
+    /** Sets the yearly billings target, or clears it when none is given. */
+    @Transactional
+    public SettingsResponse updateBillingTarget(BillingTargetRequest request) {
+        Settings current = find();
+        current.setBillingTarget(request.billingTarget());
+        settings.flush();
+        return SettingsResponse.from(current);
+    }
+
+    /** What the business aims to bill over the year, in the home currency; null when no target is set. */
+    @Transactional(readOnly = true)
+    public BigDecimal billingTarget() {
+        return find().getBillingTarget();
+    }
+
     /** The sales tax percentage a new invoice starts with when none is given for it. */
     @Transactional(readOnly = true)
     public BigDecimal defaultTaxPct() {

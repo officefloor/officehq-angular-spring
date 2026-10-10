@@ -59,6 +59,10 @@ export interface DashboardSummary {
   collectedYearToDate: number;
   /** The share of all tasks that are done, as a whole percentage; null when there are no tasks. */
   taskCompletionRate: number | null;
+  /** What the business aims to bill over the year, in the home currency; null when no target is set. */
+  billingTarget: number | null;
+  /** What has been billed this year as a whole percentage of the target; null when no target is set. */
+  billingTargetProgress: number | null;
 }
 
 /** The tax charged on invoices issued on or between two dates, in the home currency. */

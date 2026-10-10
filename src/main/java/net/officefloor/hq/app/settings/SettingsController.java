@@ -26,4 +26,9 @@ public class SettingsController {
     public SettingsResponse update(@Valid @RequestBody SettingsRequest request) {
         return service.update(request);
     }
+
+    @PutMapping("/billing-target")
+    public SettingsResponse updateBillingTarget(@Valid @RequestBody BillingTargetRequest request) {
+        return service.updateBillingTarget(request);
+    }
 }
