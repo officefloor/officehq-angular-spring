@@ -1,0 +1,320 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 89d4914..0ddcfa5 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -59,6 +59,30 @@ export interface TaxSummary {
+   total: number;
+ }
+ 
++/** The sales tax charged at one rate, in the home currency. */
++export interface RateTax {
++  /** The tax rate as a percentage. */
++  rate: number;
++  /** How many invoices were taxed at the rate. */
++  invoices: number;
++  /** What the tax at the rate was charged on. */
++  taxableBase: number;
++  tax: number;
++}
++
++/** The sales tax charged on invoices issued on or between two dates, in the home currency, broken down by rate. */
++export interface TaxReport {
++  from: string;
++  to: string;
++  homeCurrency: CurrencyCode;
++  /** How many invoices the tax came from. */
++  invoices: number;
++  taxableBase: number;
++  tax: number;
++  /** The lowest rate first; only the rates something was taxed at. */
++  rates: RateTax[];
++}
++
+ /** The revenue billed for one job (project), in the home currency. */
+ export interface JobRevenue {
+   projectId: number;
+@@ -125,6 +149,10 @@ export class DashboardService {
+     return this.http.get<TaxSummary>('/api/dashboard/tax-summary', { params: new HttpParams().set('from', from).set('to', to) });
+   }
+ 
++  taxReport(from: string, to: string): Observable<TaxReport> {
++    return this.http.get<TaxReport>('/api/dashboard/tax-report', { params: new HttpParams().set('from', from).set('to', to) });
++  }
++
+   /** The revenue report over the given range, or over all time when no range is given. */
+   revenueReport(range?: { from: string; to: string }): Observable<RevenueReport> {
+     const params = range ? new HttpParams().set('from', range.from).set('to', range.to) : new HttpParams();
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 67058c2..13bbd4f 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -3,6 +3,7 @@ import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService, DashboardSummary } from './dashboard.service';
+ import { CashFlowForecast } from './cash-flow-forecast';
+ import { RevenueReport } from './revenue-report';
++import { TaxReport } from './tax-report';
+ import { TaxSummaryReport } from './tax-summary';
+ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ 
+@@ -12,10 +13,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // exchange rate from its own issue date, and how many of those sent
+ // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+-// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. A tax summary and a revenue report for a chosen date range can be opened from here.
++// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. A tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
+ @Component({
+   selector: 'app-dashboard',
+-  imports: [MoneyPipe, CashFlowForecast, RevenueReport, TaxSummaryReport, UpcomingRecurringInvoices],
++  imports: [MoneyPipe, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
+   template: `
+     <h1>Dashboard</h1>
+ 
+@@ -108,6 +109,19 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+       <app-tax-summary id="tax-summary" />
+     }
+ 
++    <button
++      type="button"
++      data-testid="tax-report-open"
++      aria-controls="tax-report"
++      [attr.aria-expanded]="taxReportOpen()"
++      (click)="taxReportOpen.set(!taxReportOpen())"
++    >
++      {{ taxReportOpen() ? 'Hide tax report' : 'Tax report by rate' }}
++    </button>
++    @if (taxReportOpen()) {
++      <app-tax-report id="tax-report" />
++    }
++
+     <button
+       type="button"
+       data-testid="revenue-report-open"
+@@ -126,6 +140,7 @@ export class Dashboard {
+   protected readonly summary = signal<DashboardSummary | null>(null);
+   protected readonly loadError = signal<string | null>(null);
+   protected readonly taxSummaryOpen = signal(false);
++  protected readonly taxReportOpen = signal(false);
+   protected readonly revenueReportOpen = signal(false);
+ 
+   constructor() {
+diff --git a/src/main/frontend/src/app/features/dashboard/tax-report.ts b/src/main/frontend/src/app/features/dashboard/tax-report.ts
+new file mode 100644
+index 0000000..4121f18
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/tax-report.ts
+@@ -0,0 +1,100 @@
++import { Component, inject, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { DashboardService } from './dashboard.service';
++
++// The sales tax charged over a chosen date range broken down by tax rate: for each rate, the taxable base and the tax
++// on invoices issued within it that were sent (drafts and cancelled invoices are left out), in the home currency.
++@Component({
++  selector: 'app-tax-report',
++  imports: [MoneyPipe],
++  styles: `
++    .tax-report-range {
++      display: flex;
++      flex-wrap: wrap;
++      align-items: center;
++      gap: 0.5rem;
++    }
++    .tax-report-table td.num,
++    .tax-report-table th.num {
++      text-align: right;
++    }
++  `,
++  template: `
++    <section aria-labelledby="tax-report-heading" data-testid="tax-report">
++      <h2 id="tax-report-heading">Tax report by rate</h2>
++      <form class="tax-report-range" (submit)="apply($event, fromInput.value, toInput.value)">
++        <label for="tax-report-from">From</label>
++        <input #fromInput id="tax-report-from" type="date" required data-testid="tax-report-from" />
++        <label for="tax-report-to">To</label>
++        <input #toInput id="tax-report-to" type="date" required data-testid="tax-report-to" />
++        <button type="submit" data-testid="tax-report-apply">Show report</button>
++      </form>
++      @if (rangeError()) {
++        <p role="alert" data-testid="tax-report-range-error">{{ rangeError() }}</p>
++      } @else if (report.error()) {
++        <p role="alert" data-testid="tax-report-error">Could not load the tax report.</p>
++      } @else if (report.value(); as r) {
++        <div aria-live="polite">
++          @if (r.rates.length === 0) {
++            <p data-testid="tax-report-empty">No tax was charged in this period.</p>
++          } @else {
++            <table class="tax-report-table" data-testid="tax-report-table">
++              <caption>Tax by rate, {{ r.from }} to {{ r.to }}</caption>
++              <thead>
++                <tr>
++                  <th scope="col">Rate</th>
++                  <th scope="col" class="num">Invoices</th>
++                  <th scope="col" class="num">Taxable base</th>
++                  <th scope="col" class="num">Tax</th>
++                </tr>
++              </thead>
++              <tbody>
++                @for (rate of r.rates; track rate.rate) {
++                  <tr [attr.data-testid]="'tax-report-row-' + rate.rate">
++                    <th scope="row" data-testid="tax-report-rate">{{ rate.rate }}%</th>
++                    <td class="num" data-testid="tax-report-invoices">{{ rate.invoices }}</td>
++                    <td class="num" data-testid="tax-report-base">{{ rate.taxableBase | money: r.homeCurrency }}</td>
++                    <td class="num" data-testid="tax-report-tax">{{ rate.tax | money: r.homeCurrency }}</td>
++                  </tr>
++                }
++              </tbody>
++              <tfoot>
++                <tr>
++                  <th scope="row">Total</th>
++                  <td class="num" data-testid="tax-report-total-invoices">{{ r.invoices }}</td>
++                  <td class="num" data-testid="tax-report-total-base">{{ r.taxableBase | money: r.homeCurrency }}</td>
++                  <td class="num" data-testid="tax-report-total-tax">{{ r.tax | money: r.homeCurrency }}</td>
++                </tr>
++              </tfoot>
++            </table>
++          }
++        </div>
++      }
++    </section>
++  `,
++})
++export class TaxReport {
++  private readonly service = inject(DashboardService);
++
++  private readonly range = signal<{ from: string; to: string } | undefined>(undefined);
++  protected readonly rangeError = signal<string | null>(null);
++
++  protected readonly report = rxResource({
++    params: () => this.range(),
++    stream: ({ params }) => this.service.taxReport(params.from, params.to),
++  });
++
++  protected apply(event: Event, from: string, to: string): void {
++    event.preventDefault();
++    if (!from || !to) {
++      return;
++    }
++    if (from > to) {
++      this.rangeError.set('The start date must not be after the end date.');
++      return;
++    }
++    this.rangeError.set(null);
++    this.range.set({ from, to });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index 5427e85..699abf9 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -29,6 +29,13 @@ public class DashboardController {
+         return service.taxSummary(from, to);
+     }
+ 
++    /** The sales tax charged on invoices issued on or between the given dates, broken down by tax rate. */
++    @GetMapping("/tax-report")
++    public TaxReportResponse taxReport(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
++            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
++        return service.taxReport(from, to);
++    }
++
+     /**
+      * The revenue billed on invoices issued on or between the given dates, broken down by job. Without both dates the
+      * revenue is over all time.
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index f1c9007..cb6c4e0 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -251,6 +251,69 @@ public class DashboardService {
+         return new TaxSummaryResponse(from, to, home, count, tax, levy, tax.add(levy));
+     }
+ 
++    /**
++     * The sales tax charged on invoices issued on or between the given dates that were sent (drafts and cancelled
++     * invoices are left out), broken down by the invoice's tax rate: the taxable base and the tax at each rate, each
++     * converted into the home currency at its issue date's rate (an invoice that cannot be converted is left out).
++     * Invoices with nothing taxable on them are left out.
++     */
++    @Transactional(readOnly = true)
++    public TaxReportResponse taxReport(LocalDate from, LocalDate to) {
++        if (from.isAfter(to)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The start date must not be after the end date");
++        }
++        List<InvoiceStatus> charged = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID,
++                InvoiceStatus.WRITTEN_OFF);
++        String home = settings.homeCurrency();
++        Map<BigDecimal, RateTally> byRate = new TreeMap<>();
++        for (Invoice invoice : invoices.findByStatusInAndIssuedDateBetween(charged, from, to)) {
++            BigDecimal base = invoice.getTaxableBase();
++            if (base.signum() == 0) {
++                continue;
++            }
++            String currency = invoice.getCurrency();
++            BigDecimal tax = invoice.getTax();
++            if (!currency.equals(home)) {
++                var inHomeBase = fxRates.toHome(currency, invoice.getIssuedDate(), base);
++                var inHomeTax = fxRates.toHome(currency, invoice.getIssuedDate(), tax);
++                if (inHomeBase.isEmpty() || inHomeTax.isEmpty()) {
++                    continue;
++                }
++                base = inHomeBase.get();
++                tax = inHomeTax.get();
++            }
++            byRate.computeIfAbsent(invoice.getTaxPct().stripTrailingZeros(), r -> new RateTally()).add(base, tax);
++        }
++        List<TaxReportResponse.RateTax> rates = new ArrayList<>();
++        BigDecimal totalBase = BigDecimal.ZERO.setScale(2);
++        BigDecimal totalTax = BigDecimal.ZERO.setScale(2);
++        long count = 0;
++        for (var entry : byRate.entrySet()) {
++            RateTally tally = entry.getValue();
++            BigDecimal base = tally.base.setScale(2, RoundingMode.HALF_UP);
++            BigDecimal tax = tally.tax.setScale(2, RoundingMode.HALF_UP);
++            rates.add(new TaxReportResponse.RateTax(entry.getKey().setScale(Math.max(0, entry.getKey().scale())),
++                    tally.invoices, base, tax));
++            totalBase = totalBase.add(base);
++            totalTax = totalTax.add(tax);
++            count += tally.invoices;
++        }
++        return new TaxReportResponse(from, to, home, count, totalBase, totalTax, rates);
++    }
++
++    /** The taxable base and tax added up at one tax rate. */
++    private static final class RateTally {
++        private BigDecimal base = BigDecimal.ZERO;
++        private BigDecimal tax = BigDecimal.ZERO;
++        private long invoices;
++
++        void add(BigDecimal base, BigDecimal tax) {
++            this.base = this.base.add(base);
++            this.tax = this.tax.add(tax);
++            invoices++;
++        }
++    }
++
+     /**
+      * The revenue billed on or between the given dates (over all time when either date is missing): the amounts of
+      * the invoices issued in the range that were sent (drafts and cancelled invoices are left out) or, when the
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/TaxReportResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/TaxReportResponse.java
+new file mode 100644
+index 0000000..e8a8684
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/TaxReportResponse.java
+@@ -0,0 +1,17 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++
++/**
++ * The sales tax charged on invoices issued on or between two dates, in the home currency, broken down by tax rate
++ * (lowest rate first): for each rate, the taxable base it was charged on and the tax, with the totals over all rates.
++ */
++public record TaxReportResponse(LocalDate from, LocalDate to, String homeCurrency, long invoices,
++        BigDecimal taxableBase, BigDecimal tax, List<RateTax> rates) {
++
++    /** The sales tax charged at one rate (a percentage), in the home currency. */
++    public record RateTax(BigDecimal rate, long invoices, BigDecimal taxableBase, BigDecimal tax) {
++    }
++}
