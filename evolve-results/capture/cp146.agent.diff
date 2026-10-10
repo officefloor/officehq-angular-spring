@@ -1,0 +1,355 @@
+diff --git a/src/main/frontend/src/app/features/recurring/project-recurring-invoices.ts b/src/main/frontend/src/app/features/recurring/project-recurring-invoices.ts
+index 198772c..7925eae 100644
+--- a/src/main/frontend/src/app/features/recurring/project-recurring-invoices.ts
++++ b/src/main/frontend/src/app/features/recurring/project-recurring-invoices.ts
+@@ -24,6 +24,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+             <thead>
+               <tr>
+                 <th scope="col">Amount</th>
++                <th scope="col">First invoice (pro-rated)</th>
+                 <th scope="col">Repeats</th>
+                 <th scope="col">Next invoice</th>
+                 <th scope="col">Status</th>
+@@ -34,6 +35,13 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+               @for (r of recurring.value(); track r.id) {
+                 <tr [attr.data-testid]="'recurring-row-' + r.id">
+                   <td data-testid="recurring-amount">{{ r.amount | money: currency() }}</td>
++                  <td data-testid="recurring-prorated-amount">
++                    @if (r.proratedAmount !== null) {
++                      {{ r.proratedAmount | money: currency() }}
++                    } @else {
++                      <span aria-hidden="true">—</span><span class="visually-hidden">Not pro-rated</span>
++                    }
++                  </td>
+                   <td data-testid="recurring-frequency">{{ r.frequency }}</td>
+                   <td data-testid="recurring-next-date">{{ r.nextDate }}</td>
+                   <td data-testid="recurring-status">{{ r.status }}</td>
+@@ -122,6 +130,32 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+             </p>
+           }
+         </div>
++        <div>
++          <input id="recurring-prorate-first" type="checkbox" formControlName="prorateFirst" data-testid="recurring-form-prorate-first" />
++          <label for="recurring-prorate-first">Pro-rate the first invoice by the days left in the period</label>
++        </div>
++        @if (form.controls.prorateFirst.value) {
++          <div>
++            <label for="recurring-period-days">Days in the billing period</label>
++            <input
++              id="recurring-period-days"
++              type="number"
++              inputmode="numeric"
++              min="1"
++              max="366"
++              step="1"
++              formControlName="periodDays"
++              data-testid="recurring-form-period-days"
++              [attr.aria-invalid]="invalid('periodDays')"
++              [attr.aria-describedby]="invalid('periodDays') ? 'recurring-period-days-error' : null"
++            />
++            @if (invalid('periodDays')) {
++              <p id="recurring-period-days-error" role="alert" data-testid="recurring-form-period-days-error">
++                Enter a whole number of days from 1 to 366.
++              </p>
++            }
++          </div>
++        }
+         <button type="submit" data-testid="recurring-form-submit" [disabled]="saving()">
+           Set up monthly invoice
+         </button>
+@@ -163,9 +197,11 @@ export class ProjectRecurringInvoices {
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+     nextDate: ['', [Validators.required]],
++    prorateFirst: [false],
++    periodDays: [30, [Validators.required, Validators.min(1), Validators.max(366), Validators.pattern(/^\d+$/)]],
+   });
+ 
+-  protected invalid(name: 'amount' | 'nextDate'): boolean {
++  protected invalid(name: 'amount' | 'nextDate' | 'periodDays'): boolean {
+     const control = this.form.controls[name];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -214,13 +250,19 @@ export class ProjectRecurringInvoices {
+   protected submit(): void {
+     this.saveError.set(null);
+     this.saved.set(false);
+-    if (this.form.invalid) {
++    const controls = this.form.controls;
++    const invalid = controls.amount.invalid || controls.nextDate.invalid
++      || (controls.prorateFirst.value && controls.periodDays.invalid);
++    if (invalid) {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { amount, nextDate } = this.form.getRawValue();
++    const { amount, nextDate, prorateFirst, periodDays } = this.form.getRawValue();
+     this.saving.set(true);
+-    this.service.create(this.projectId(), { amount: Number(amount), frequency: 'MONTHLY', nextDate }).subscribe({
++    const recurring = prorateFirst
++      ? { amount: Number(amount), frequency: 'MONTHLY' as const, nextDate, prorateFirst, periodDays: Number(periodDays) }
++      : { amount: Number(amount), frequency: 'MONTHLY' as const, nextDate };
++    this.service.create(this.projectId(), recurring).subscribe({
+       next: () => {
+         this.saving.set(false);
+         this.saved.set(true);
+diff --git a/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts b/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts
+index 174897b..7a53753 100644
+--- a/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts
++++ b/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts
+@@ -20,10 +20,19 @@ export interface RecurringInvoice {
+   status: RecurringStatus;
+   /** Whether the next invoice has fallen due, so it can be raised now. */
+   due: boolean;
++  /** The length in days of the billing period the first invoice is pro-rated over. */
++  periodDays: number;
++  /** Whether the next invoice is the first, pro-rated by the days left in its period. */
++  prorateFirst: boolean;
++  /** What the pro-rated first invoice bills, or null when the next invoice is for the full amount. */
++  proratedAmount: number | null;
+ }
+ 
+ /** A recurring invoice that is coming up, with the project and client it bills and the currency it is in. */
+-export interface UpcomingRecurringInvoice extends Omit<RecurringInvoice, 'due' | 'status'> {
++export interface UpcomingRecurringInvoice extends Omit<
++    RecurringInvoice,
++    'due' | 'status' | 'periodDays' | 'prorateFirst' | 'proratedAmount'
++  > {
+   projectName: string;
+   clientId: number;
+   clientName: string;
+@@ -34,6 +43,8 @@ export interface NewRecurringInvoice {
+   amount: number;
+   frequency: RecurringFrequency;
+   nextDate: string;
++  periodDays?: number;
++  prorateFirst?: boolean;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index dace8d7..cbeb988 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -14,6 +14,7 @@ import net.officefloor.hq.app.currency.Currency;
+ import net.officefloor.hq.app.invoice.InvoiceRequest;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.project.ProjectStatus;
++import net.officefloor.hq.app.recurring.RecurringInvoice;
+ import org.springframework.context.annotation.Profile;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -162,13 +163,15 @@ public class TestSupportController {
+         }
+         // An invoice repeating for a fixed amount on a project, monthly unless it says otherwise.
+         for (Map<String, Object> r : rows(fixture, "recurring")) {
+-            jdbc.update("INSERT INTO recurring_invoice (id, project_id, amount, frequency, next_date, status)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO recurring_invoice (id, project_id, amount, frequency, next_date, status, period_days, prorate_first)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) r.get("id")).longValue(), ((Number) r.get("projectId")).longValue(),
+                     new BigDecimal(r.get("amount").toString()),
+                     r.get("frequency") == null ? "MONTHLY" : r.get("frequency").toString(),
+                     LocalDate.parse(r.get("nextDate").toString()),
+-                    r.get("status") == null ? "ACTIVE" : r.get("status").toString());
++                    r.get("status") == null ? "ACTIVE" : r.get("status").toString(),
++                    r.get("periodDays") == null ? RecurringInvoice.DEFAULT_PERIOD_DAYS : ((Number) r.get("periodDays")).intValue(),
++                    Boolean.TRUE.equals(r.get("prorateFirst")));
+         }
+         for (Map<String, Object> i : rows(fixture, "invoices")) {
+             // A missing date is filled in from the other one using the standard payment term; with
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoice.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoice.java
+index 6752da8..c1e6b40 100644
+--- a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoice.java
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoice.java
+@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ 
+ /** An invoice on a project that repeats on a schedule for a fixed amount, next falling on a given day. */
+@@ -16,6 +17,9 @@ import java.time.LocalDate;
+ @Table(name = "recurring_invoice")
+ public class RecurringInvoice {
+ 
++    /** The billing period a schedule's first invoice is pro-rated over when none is given. */
++    public static final int DEFAULT_PERIOD_DAYS = 30;
++
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+     private Long id;
+@@ -37,6 +41,13 @@ public class RecurringInvoice {
+     @Column(nullable = false, length = 10)
+     private RecurringStatus status = RecurringStatus.ACTIVE;
+ 
++    @Column(name = "period_days", nullable = false)
++    private int periodDays = DEFAULT_PERIOD_DAYS;
++
++    /** Whether the next invoice is the first, to be pro-rated by the days left in its period. */
++    @Column(name = "prorate_first", nullable = false)
++    private boolean prorateFirst;
++
+     protected RecurringInvoice() {
+     }
+ 
+@@ -47,6 +58,13 @@ public class RecurringInvoice {
+         this.nextDate = nextDate;
+     }
+ 
++    public RecurringInvoice(Long projectId, BigDecimal amount, RecurringFrequency frequency, LocalDate nextDate,
++            int periodDays, boolean prorateFirst) {
++        this(projectId, amount, frequency, nextDate);
++        this.periodDays = periodDays;
++        this.prorateFirst = prorateFirst;
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -71,6 +89,34 @@ public class RecurringInvoice {
+         return status;
+     }
+ 
++    public int getPeriodDays() {
++        return periodDays;
++    }
++
++    public boolean isProrateFirst() {
++        return prorateFirst;
++    }
++
++    /**
++     * The days of the billing period left from the next invoice date, counting that day: the period starts on
++     * the first of the month and runs for {@code periodDays} days. At least one day is always billed.
++     */
++    public int daysLeftInPeriod() {
++        return Math.max(1, Math.min(periodDays, periodDays - (nextDate.getDayOfMonth() - 1)));
++    }
++
++    /**
++     * The amount the next invoice is raised for: the first of a pro-rated schedule bills only the share of the
++     * amount for the days left in its period, rounded to the cent; every other invoice bills the full amount.
++     */
++    public BigDecimal nextAmount() {
++        if (!prorateFirst) {
++            return amount;
++        }
++        return amount.multiply(BigDecimal.valueOf(daysLeftInPeriod()))
++                .divide(BigDecimal.valueOf(periodDays), 2, RoundingMode.HALF_UP);
++    }
++
+     public boolean isPaused() {
+         return status == RecurringStatus.PAUSED;
+     }
+@@ -87,6 +133,7 @@ public class RecurringInvoice {
+ 
+     /** Moves the schedule on to the date the invoice after this one falls on. */
+     public void advance() {
++        this.prorateFirst = false;
+         this.nextDate = switch (frequency) {
+             case MONTHLY -> nextDate.plusMonths(1);
+         };
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRequest.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRequest.java
+index f6058e7..8824a52 100644
+--- a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRequest.java
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRequest.java
+@@ -1,14 +1,22 @@
+ package net.officefloor.hq.app.recurring;
+ 
+ import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Max;
++import jakarta.validation.constraints.Min;
+ import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotNull;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
+-/** Payload to set up an invoice that repeats for a fixed amount, starting on the given day. */
++/**
++ * Payload to set up an invoice that repeats for a fixed amount, starting on the given day. When
++ * {@code prorateFirst} is set the first invoice bills only the days left in its {@code periodDays}-day period
++ * (30 when not given).
++ */
+ public record RecurringInvoiceRequest(
+         @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
+         @NotNull RecurringFrequency frequency,
+-        @NotNull LocalDate nextDate) {
++        @NotNull LocalDate nextDate,
++        @Min(1) @Max(366) Integer periodDays,
++        Boolean prorateFirst) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceResponse.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceResponse.java
+index 31a83e8..6b8bceb 100644
+--- a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceResponse.java
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceResponse.java
+@@ -4,12 +4,18 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
+ public record RecurringInvoiceResponse(Long id, Long projectId, BigDecimal amount, RecurringFrequency frequency,
+-        LocalDate nextDate, RecurringStatus status, boolean due) {
++        LocalDate nextDate, RecurringStatus status, boolean due, int periodDays,
++        boolean prorateFirst, BigDecimal proratedAmount) {
+ 
+-    /** {@code due} is whether an active schedule's next invoice has fallen due by the given day, so it can be raised now. */
++    /**
++     * {@code proratedAmount} is what the schedule's pro-rated first invoice bills, or null when its next
++     * invoice is for the full amount.
++     * {@code due} is whether an active schedule's next invoice has fallen due by the given day, so it can be raised now. */
+     static RecurringInvoiceResponse from(RecurringInvoice recurring, LocalDate today) {
+         return new RecurringInvoiceResponse(recurring.getId(), recurring.getProjectId(), recurring.getAmount(),
+                 recurring.getFrequency(), recurring.getNextDate(), recurring.getStatus(),
+-                !recurring.isPaused() && !recurring.getNextDate().isAfter(today));
++                !recurring.isPaused() && !recurring.getNextDate().isAfter(today),
++                recurring.getPeriodDays(), recurring.isProrateFirst(),
++                recurring.isProrateFirst() ? recurring.nextAmount() : null);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java
+index 73ffdf4..88b7278 100644
+--- a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java
+@@ -59,15 +59,19 @@ public class RecurringInvoiceService {
+     public RecurringInvoiceResponse create(Long projectId, RecurringInvoiceRequest request) {
+         requireProject(projectId);
+         RecurringInvoice saved = recurring.saveAndFlush(
+-                new RecurringInvoice(projectId, request.amount(), request.frequency(), request.nextDate()));
++                new RecurringInvoice(projectId, request.amount(), request.frequency(), request.nextDate(),
++                        request.periodDays() == null ? RecurringInvoice.DEFAULT_PERIOD_DAYS : request.periodDays(),
++                        Boolean.TRUE.equals(request.prorateFirst())));
+         audit.record("RECURRING_INVOICE_CREATED id=" + saved.getId() + " project=" + projectId
+-                + " amount=" + saved.getAmount().toPlainString() + " frequency=" + saved.getFrequency());
++                + " amount=" + saved.getAmount().toPlainString() + " frequency=" + saved.getFrequency()
++                + " prorateFirst=" + saved.isProrateFirst() + " periodDays=" + saved.getPeriodDays());
+         return RecurringInvoiceResponse.from(saved, LocalDate.now(clock));
+     }
+ 
+     /**
+      * Raises the invoice a recurring schedule has fallen due for, dated the day it fell due, and moves the
+-     * schedule on to the next one. The invoice is raised as a DRAFT so it can be reviewed before it is sent.
++     * schedule on to the next one. The first invoice of a pro-rated schedule bills only the days left in its
++     * period; every later one bills the full amount. The invoice is raised as a DRAFT so it can be reviewed before it is sent.
+      */
+     @Transactional
+     public InvoiceResponse generate(Long projectId, Long recurringId) {
+@@ -79,7 +83,7 @@ public class RecurringInvoiceService {
+         if (due.isAfter(LocalDate.now(clock))) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The recurring invoice is not due yet");
+         }
+-        InvoiceResponse invoice = invoices.create(projectId, new InvoiceRequest(schedule.getAmount(), due, null, null));
++        InvoiceResponse invoice = invoices.create(projectId, new InvoiceRequest(schedule.nextAmount(), due, null, null));
+         schedule.advance();
+         recurring.saveAndFlush(schedule);
+         audit.record("RECURRING_INVOICE_GENERATED id=" + recurringId + " project=" + projectId
+diff --git a/src/main/resources/db/migration/V79__recurring_prorate_first.sql b/src/main/resources/db/migration/V79__recurring_prorate_first.sql
+new file mode 100644
+index 0000000..68c6063
+--- /dev/null
++++ b/src/main/resources/db/migration/V79__recurring_prorate_first.sql
+@@ -0,0 +1,5 @@
++-- The first invoice of a recurring schedule may be pro-rated by the days left in its billing period.
++-- prorate_first stays set until that first invoice has been raised.
++ALTER TABLE recurring_invoice ADD COLUMN period_days INT DEFAULT 30 NOT NULL;
++ALTER TABLE recurring_invoice ADD COLUMN prorate_first BOOLEAN DEFAULT FALSE NOT NULL;
++ALTER TABLE recurring_invoice ADD CONSTRAINT recurring_invoice_period_days_positive CHECK (period_days > 0);
