@@ -150,7 +150,10 @@ public class DashboardService {
                 : billingsYearToDateShown.subtract(billingTargetShown);
         return new DashboardResponse(clients.count(), projects.count(), outstanding, shown.apply(outstandingHome), overdue,
                 shownIn, overdueShown, overdueBuckets, top, tasks.countByDoneFalse(),
-                tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
+                tasks.countByDoneFalseAndDueDateBefore(today),
+                tasks.countByDoneFalseAndDueDateBetween(today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)),
+                        today.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY))),
+                averageDaysToPay(),
                 clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)),
                 shown.apply(billings(today.withDayOfMonth(1), today, home)), collectionRate(home),
                 billingsYearToDateShown, shown.apply(collected(today.withDayOfYear(1), today, home)),

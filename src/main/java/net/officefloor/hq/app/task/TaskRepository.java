@@ -19,5 +19,8 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
     /** How many tasks not yet done were due before the given date. */
     long countByDoneFalseAndDueDateBefore(LocalDate date);
 
+    /** How many tasks not yet done are due on or between the given dates. */
+    long countByDoneFalseAndDueDateBetween(LocalDate from, LocalDate to);
+
     Optional<Task> findByIdAndProjectId(Long id, Long projectId);
 }

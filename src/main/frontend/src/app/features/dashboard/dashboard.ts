@@ -145,6 +145,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
           <dd data-testid="dashboard-overdue-tasks-count">{{ s.overdueTasks }}</dd>
         </div>
         <div>
+          <dt>Tasks due this week</dt>
+          <dd data-testid="dashboard-tasks-week">{{ s.tasksDueThisWeek }}</dd>
+        </div>
+        <div>
           <dt>Tasks completed</dt>
           @if (s.taskCompletionRate !== null) {
             <dd data-testid="dashboard-task-completion">{{ s.taskCompletionRate }}%</dd>

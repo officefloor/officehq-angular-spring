@@ -52,6 +52,8 @@ export interface DashboardSummary {
   openTasks: number;
   /** How many tasks not yet done are past their due date. */
   overdueTasks: number;
+  /** How many tasks not yet done are due in the current week (Monday to Sunday). */
+  tasksDueThisWeek: number;
   /** Average days from issue to final payment on paid invoices, rounded; null when no invoice has been paid. */
   averageDaysToPay: number | null;
   /** How many clients were taken on in the current month. */
