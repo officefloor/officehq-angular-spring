@@ -378,6 +378,15 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                   <td></td>
                 }
               </tr>
+              @if (inv.fxGainLoss !== null) {
+                <tr>
+                  <th scope="row" colspan="5">Exchange {{ inv.fxGainLoss < 0 ? 'loss' : 'gain' }} on payments</th>
+                  <td data-testid="invoice-fx-gain-loss">{{ inv.fxGainLoss | money: inv.homeCurrency }}</td>
+                  @if (inv.status === 'DRAFT') {
+                    <td></td>
+                  }
+                </tr>
+              }
             }
             <tr>
               <th scope="row" colspan="5">Total after tax</th>

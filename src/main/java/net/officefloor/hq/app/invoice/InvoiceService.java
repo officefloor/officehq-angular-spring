@@ -9,6 +9,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.Client;
@@ -563,6 +564,29 @@ public class InvoiceService {
                 : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount()).orElse(null);
         BigDecimal amountDue = invoice.dueNow(payments.sumAmountByInvoiceId(invoice.getId()),
                 creditNotes.sumAmountByInvoiceId(invoice.getId()));
-        return InvoiceDetailResponse.from(invoice, status, home, homeAmount, LocalDate.now(clock), amountDue);
+        BigDecimal fxGainLoss = currency.equals(home) ? null : fxGainLoss(invoice, currency);
+        return InvoiceDetailResponse.from(invoice, status, home, homeAmount, LocalDate.now(clock), amountDue, fxGainLoss);
+    }
+
+    /**
+     * The exchange gain (positive) or loss (negative) in the home currency realised by the payments on a foreign
+     * invoice: each payment's amount is worth its value at the rate on the payment's date less its value at the
+     * rate on the invoice's issue date. Null when there are no payments or a rate is missing.
+     */
+    private BigDecimal fxGainLoss(Invoice invoice, String currency) {
+        List<Payment> paid = payments.findByInvoiceIdOrderByDateAscIdAsc(invoice.getId());
+        if (paid.isEmpty() || invoice.getIssuedDate() == null) {
+            return null;
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        for (Payment payment : paid) {
+            Optional<BigDecimal> atIssue = fxRates.toHome(currency, invoice.getIssuedDate(), payment.getAmount());
+            Optional<BigDecimal> atPayment = fxRates.toHome(currency, payment.getDate(), payment.getAmount());
+            if (atIssue.isEmpty() || atPayment.isEmpty()) {
+                return null;
+            }
+            total = total.add(atPayment.get().subtract(atIssue.get()));
+        }
+        return total;
     }
 }

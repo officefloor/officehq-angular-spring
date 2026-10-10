@@ -209,6 +209,11 @@ export interface InvoiceDetail extends Invoice {
    * null when it is already in the home currency or there is no rate for that date.
    */
   homeAmount: number | null;
+  /**
+   * The exchange gain (positive) or loss (negative) in the home currency realised by the payments on a foreign
+   * invoice, from the rate moving between its issue date and each payment's date; null when there is none.
+   */
+  fxGainLoss: number | null;
   /** The late fee charged for each day the invoice is overdue once sent; zero when none is charged. */
   lateFeePerDay: number;
   /** How many days past due the invoice is today; zero unless it is sent and still owed. */

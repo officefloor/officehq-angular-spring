@@ -22,7 +22,9 @@ import java.util.List;
  * owed), and the late fee that has accrued over them. The percentage held back as retention, the amount
  * it holds back (not due yet, nothing once released), whether it has been released, and what is due now
  * without it. The part written off as bad debt. What the client owes right now after the payments and credit notes against it, less any
- * part written off and any retention still held back.
+ * part written off and any retention still held back. The exchange gain (positive) or loss (negative) realised
+ * in the home currency by payments on a foreign invoice, from the rate moving between the invoice's issue date
+ * and each payment's date (null when the invoice is in the home currency, has no payments, or a rate is missing).
  */
 public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
         BigDecimal subtotal,
@@ -34,14 +36,15 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
         String homeCurrency, BigDecimal homeAmount,
         BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee,
-        BigDecimal retentionPct, BigDecimal retention, boolean retentionReleased, BigDecimal dueNow, BigDecimal writeOffAmount, BigDecimal amountDue) {
+        BigDecimal retentionPct, BigDecimal retention, boolean retentionReleased, BigDecimal dueNow, BigDecimal writeOffAmount, BigDecimal amountDue,
+        BigDecimal fxGainLoss) {
 
     /**
      * The invoice with the given status, as worked out from what has been paid and credited against it, and
      * its amount in the home currency, with any late fee accrued by today.
      */
     static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status, String homeCurrency, BigDecimal homeAmount,
-            LocalDate today, BigDecimal amountDue) {
+            LocalDate today, BigDecimal amountDue, BigDecimal fxGainLoss) {
         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
                 invoice.getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
@@ -59,6 +62,6 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
                 invoice.getTotalSavings(), homeCurrency, homeAmount,
                 invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today),
                 invoice.getRetentionPct(), invoice.getRetention(), invoice.isRetentionReleased(), invoice.getDueNow(),
-                invoice.getWriteOffAmount(), amountDue);
+                invoice.getWriteOffAmount(), amountDue, fxGainLoss);
     }
 }
