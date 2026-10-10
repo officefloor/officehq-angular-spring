@@ -1,0 +1,213 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 0b017e4..caaf208 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -19,7 +19,7 @@ import { ClientExport } from './client-export';
+ import { ClientMerge } from './client-merge';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
++// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+   imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+@@ -128,6 +128,10 @@ import { Client, ClientService } from './client.service';
+               summary.value().lifetimeBilled | money: c.currency
+             }}</span>
+           </li>
++          <li>
++            Lifetime value:
++            <span data-testid="client-lifetime-value">{{ summary.value().lifetimeValue | money: c.currency }}</span>
++          </li>
+         </ul>
+       }
+       <p>
+@@ -232,11 +236,13 @@ export class ClientDetail {
+     this.creditPanel()?.reload();
+     this.agingPanel()?.reload();
+     this.remittancesPanel()?.reload();
++    this.summary.reload();
+     this.client.reload();
+   }
+ 
+   protected creditRefunded(): void {
+     this.depositsPanel()?.reload();
++    this.summary.reload();
+   }
+ 
+   protected contactAdded(): void {
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 9c39ed2..1877041 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -53,6 +53,8 @@ export interface ClientSummary {
+   projectCount: number;
+   contactCount: number;
+   lifetimeBilled: number;
++  /** What the client has actually paid, less refunds, in their currency. */
++  lifetimeValue: number;
+ }
+ 
+ export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding' | 'pinned'>;
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 4ca3e7a..4f08752 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -16,7 +16,11 @@ import net.officefloor.hq.app.currency.Currency;
+ import net.officefloor.hq.app.currency.CurrencyService;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
++import net.officefloor.hq.app.deposit.DepositRepository;
++import net.officefloor.hq.app.fx.FxRateService;
++import net.officefloor.hq.app.payment.ClientPaymentRepository;
+ import net.officefloor.hq.app.payment.PaymentRepository;
++import net.officefloor.hq.app.refund.RefundRepository;
+ import net.officefloor.hq.app.project.ProjectRepository;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.data.domain.Sort;
+@@ -34,19 +38,28 @@ public class ClientService {
+     private final InvoiceRepository invoices;
+     private final PaymentRepository payments;
+     private final CreditNoteRepository creditNotes;
++    private final ClientPaymentRepository clientPayments;
++    private final DepositRepository deposits;
++    private final RefundRepository refunds;
++    private final FxRateService fxRates;
+     private final CurrencyService currencies;
+     private final Audit audit;
+     private final Clock clock;
+ 
+     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
+-            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes, CurrencyService currencies, Audit audit,
+-            Clock clock) {
++            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes,
++            ClientPaymentRepository clientPayments, DepositRepository deposits, RefundRepository refunds,
++            FxRateService fxRates, CurrencyService currencies, Audit audit, Clock clock) {
+         this.clients = clients;
+         this.projects = projects;
+         this.contacts = contacts;
+         this.invoices = invoices;
+         this.payments = payments;
+         this.creditNotes = creditNotes;
++        this.clientPayments = clientPayments;
++        this.deposits = deposits;
++        this.refunds = refunds;
++        this.fxRates = fxRates;
+         this.currencies = currencies;
+         this.audit = audit;
+         this.clock = clock;
+@@ -74,14 +87,34 @@ public class ClientService {
+     private static final List<InvoiceStatus> BILLED = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL,
+             InvoiceStatus.PAID, InvoiceStatus.WRITTEN_OFF);
+ 
+-    /** At-a-glance counts of what one client has, and the total ever billed to them. */
++    /** At-a-glance counts of what one client has, the total ever billed to them, and their lifetime value. */
+     @Transactional(readOnly = true)
+     public ClientSummaryResponse summary(Long id) {
+-        if (!clients.existsById(id)) {
+-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+-        }
++        Client client = clients.findById(id)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+         BigDecimal billed = invoices.sumAmountByClientIdAndStatusIn(id, BILLED).setScale(2, RoundingMode.HALF_UP);
+-        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientIdAndArchivedFalse(id), billed);
++        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientIdAndArchivedFalse(id), billed,
++                lifetimeValue(client));
++    }
++
++    /**
++     * What a client has actually paid, in their currency: the money received in payments made against an invoice on
++     * their own, in lump payments (including any kept as credit) and as deposits, less what has been refunded to them.
++     * Payments put toward invoices from held deposits are already counted as the deposits, and credit notes are not
++     * money received. A payment received in another currency is converted at the rates in effect on its date; one
++     * with no rate to convert it by is left out.
++     */
++    private BigDecimal lifetimeValue(Client client) {
++        Long id = client.getId();
++        BigDecimal onTheirOwn = payments.findReceivedOnItsOwnByClientId(id).stream()
++                .map(p -> fxRates.convert(p.getCurrency(), client.getCurrency(), p.getDate(), p.getAmount())
++                        .orElse(BigDecimal.ZERO))
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++        return onTheirOwn
++                .add(clientPayments.sumAmountByClientId(id))
++                .add(deposits.sumAmountByClientId(id))
++                .subtract(refunds.sumAmountByClientId(id))
++                .setScale(2, RoundingMode.HALF_UP);
+     }
+ 
+     /** Adds a client; its email, once trimmed, must not already belong to another client. */
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java
+index d86b150..87486b7 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java
+@@ -4,7 +4,9 @@ import java.math.BigDecimal;
+ 
+ /**
+  * At-a-glance counts of a client's projects and contacts, and the total ever billed to them in their currency: the
+- * sum of every invoice issued to them (drafts, not yet issued, and cancelled invoices are left out).
++ * sum of every invoice issued to them (drafts, not yet issued, and cancelled invoices are left out). Also their
++ * lifetime value in their currency: the money they have actually paid, less what has been refunded to them.
+  */
+-public record ClientSummaryResponse(long projectCount, long contactCount, BigDecimal lifetimeBilled) {
++public record ClientSummaryResponse(long projectCount, long contactCount, BigDecimal lifetimeBilled,
++        BigDecimal lifetimeValue) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java
+index 976c489..c810b6d 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java
+@@ -10,6 +10,10 @@ public interface ClientPaymentRepository extends JpaRepository<ClientPayment, Lo
+     /** A client's lump payments, newest first. */
+     List<ClientPayment> findByClientIdOrderByDateDescIdDesc(Long clientId);
+ 
++    /** Total money a client has paid in lump payments, including any kept as credit (zero when none). */
++    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM ClientPayment p WHERE p.clientId = :clientId")
++    BigDecimal sumAmountByClientId(Long clientId);
++
+     /** Total of a client's held deposits used up by their lump payments (zero when none). */
+     @Query("SELECT COALESCE(SUM(p.fromDeposits), 0) FROM ClientPayment p WHERE p.clientId = :clientId")
+     BigDecimal sumFromDepositsByClientId(Long clientId);
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+index f23d18d..6ef3dff 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+@@ -46,6 +46,24 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
+             + " WHERE p.invoiceId IN :invoiceIds GROUP BY p.invoiceId")
+     List<InvoicePaidTotal> sumAmountByInvoiceIds(Collection<Long> invoiceIds);
+ 
++    /**
++     * A client's payments made against an invoice on their own (not split from a lump payment nor put toward it from
++     * held deposits), each as the money received in the currency it was received in.
++     */
++    @Query("SELECT COALESCE(p.paidCurrency, i.currency, c.currency) AS currency, COALESCE(p.paidAmount, p.amount) AS amount,"
++            + " p.date AS date FROM Payment p, Invoice i JOIN i.project pr JOIN pr.client c"
++            + " WHERE p.invoiceId = i.id AND c.id = :clientId AND p.clientPaymentId IS NULL AND p.depositApplicationId IS NULL")
++    List<MoneyReceived> findReceivedOnItsOwnByClientId(Long clientId);
++
++    /** Money received on a day, in the currency it was received in. */
++    interface MoneyReceived {
++        String getCurrency();
++
++        BigDecimal getAmount();
++
++        LocalDate getDate();
++    }
++
+     /** How much has been paid against one invoice. */
+     interface InvoicePaidTotal {
+         Long getInvoiceId();
+diff --git a/src/main/java/net/officefloor/hq/app/refund/RefundRepository.java b/src/main/java/net/officefloor/hq/app/refund/RefundRepository.java
+index ab19555..9228874 100644
+--- a/src/main/java/net/officefloor/hq/app/refund/RefundRepository.java
++++ b/src/main/java/net/officefloor/hq/app/refund/RefundRepository.java
+@@ -10,6 +10,10 @@ public interface RefundRepository extends JpaRepository<Refund, Long> {
+     /** A client's refunds, newest first. */
+     List<Refund> findByClientIdOrderByDateDescIdDesc(Long clientId);
+ 
++    /** Total refunded to a client (zero when none). */
++    @Query("SELECT COALESCE(SUM(r.amount), 0) FROM Refund r WHERE r.clientId = :clientId")
++    BigDecimal sumAmountByClientId(Long clientId);
++
+     /** Total refunded to a client out of their held deposits (zero when none). */
+     @Query("SELECT COALESCE(SUM(r.fromDeposits), 0) FROM Refund r WHERE r.clientId = :clientId")
+     BigDecimal sumFromDepositsByClientId(Long clientId);
