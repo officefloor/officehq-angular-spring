@@ -22,7 +22,8 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
 
 // A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each the client owes right now (with any retention held back shown separately), adds a
 // new draft (starting from the default tax rate in the settings), sends a draft (or all of the job's drafts at once) and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
-// opens onto its line items and payments. Invoices with a credit put against them are flagged.
+// opens onto its line items and payments. Invoices with a credit put against them are flagged. An owing invoice can be
+// marked as disputed: it still counts as owed but reads DISPUTED.
 @Component({
   selector: 'app-project-invoices',
   imports: [MoneyPipe, ReactiveFormsModule, RouterLink],
@@ -176,7 +177,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
                 <td data-testid="invoice-due-amount">{{ i.amountDue | money: i.currency }}</td>
                 <td data-testid="invoice-retained-amount">{{ i.retention | money: i.currency }}</td>
                 <td data-testid="invoice-status">
-                  {{ i.schedule ?? i.status }}
+                  {{ statusLabel(i) }}
                   @if (i.creditApplied) {
                     <span class="credit-flag" data-testid="invoice-credit-flag">Credited</span>
                   }
@@ -205,6 +206,17 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
                       Cancel
                     </button>
                   }
+                  @if ((i.status === 'SENT' || i.status === 'PARTIAL') && !i.disputed) {
+                    <button
+                      type="button"
+                      [attr.data-testid]="'invoice-dispute-' + i.id"
+                      [attr.aria-label]="'Mark invoice #' + i.id + ' as disputed'"
+                      [disabled]="busy() === i.id"
+                      (click)="dispute(i.id)"
+                    >
+                      Dispute
+                    </button>
+                  }
                 </td>
               </tr>
             }
@@ -219,6 +231,9 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
         </table>
         @if (cancelError()) {
           <p role="alert" data-testid="invoice-cancel-error">{{ cancelError() }}</p>
+        }
+        @if (disputeError()) {
+          <p role="alert" data-testid="invoice-dispute-error">{{ disputeError() }}</p>
         }
         @if (creditWarning()) {
           <p role="alert" data-testid="invoice-credit-warning">{{ creditWarning() }}</p>
@@ -271,6 +286,7 @@ export class ProjectInvoices {
   /** Shown when sending was refused because it would take the client over their credit limit. */
   protected readonly creditWarning = signal<string | null>(null);
   protected readonly cancelError = signal<string | null>(null);
+  protected readonly disputeError = signal<string | null>(null);
 
   protected readonly draftCount = computed(() => this.list().filter((i) => i.status === 'DRAFT').length);
   protected readonly bulkSending = signal(false);
@@ -428,6 +444,27 @@ export class ProjectInvoices {
         this.busy.set(null);
       },
     });
+  }
+
+  protected dispute(invoiceId: number): void {
+    this.busy.set(invoiceId);
+    this.disputeError.set(null);
+    this.service.dispute(this.projectId(), invoiceId).subscribe({
+      next: (disputed) => {
+        this.replace(disputed);
+        this.busy.set(null);
+      },
+      error: () => {
+        this.disputeError.set('Could not mark the invoice as disputed. Please try again.');
+        this.busy.set(null);
+      },
+    });
+  }
+
+  /** A disputed invoice still owed reads DISPUTED; otherwise its schedule on an instalment plan, else its status. */
+  protected statusLabel(i: ProjectInvoice): string {
+    const owing = i.status === 'SENT' || i.status === 'PARTIAL';
+    return i.disputed && owing ? 'DISPUTED' : (i.schedule ?? i.status);
   }
 
   private replace(updated: ProjectInvoice): void {

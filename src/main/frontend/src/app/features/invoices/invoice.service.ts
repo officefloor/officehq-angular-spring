@@ -30,6 +30,8 @@ export interface ProjectInvoice extends Invoice {
   creditApplied: boolean;
   /** How an owing invoice on an instalment plan is keeping to its schedule; null when it has none. */
   schedule: ScheduleStatus | null;
+  /** Whether the client disputes the invoice; it still counts as owed, it is only flagged. */
+  disputed: boolean;
 }
 
 /** ON_TRACK while every instalment fallen due is paid, BEHIND once an unpaid one is overdue. */
@@ -445,6 +447,11 @@ export class InvoiceService {
   }
 
   /** Cancels a sent invoice so it is no longer owed; it then reads VOID. */
+  /** Flags a sent or part-paid invoice as disputed by the client; it still counts as owed. */
+  dispute(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
+    return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/dispute`, null);
+  }
+
   cancel(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/cancel`, null);
   }

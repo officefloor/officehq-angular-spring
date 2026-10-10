@@ -574,6 +574,24 @@ public class InvoiceService {
     }
 
     /**
+     * Flags a sent or part-paid invoice as disputed by the client and records it in the audit log. The invoice still
+     * counts as owed; the flag only marks it.
+     */
+    @Transactional
+    public InvoiceResponse dispute(Long projectId, Long invoiceId) {
+        Invoice invoice = find(projectId, invoiceId);
+        if (!invoice.getStatus().isOwing()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only an owing invoice can be disputed");
+        }
+        if (!invoice.isDisputed()) {
+            invoice.markDisputed();
+            invoices.flush();
+            audit.record("INVOICE_DISPUTED id=" + invoice.getId());
+        }
+        return toResponse(invoice);
+    }
+
+    /**
      * Writes off a sent or part-paid invoice as bad debt, so what is left on it no longer counts toward what is
      * owed while the invoice stays on record, and records the write-off (the balance given up) in the audit log.
      */

@@ -157,6 +157,11 @@ public class InvoiceController {
         return service.writeOffPart(projectId, invoiceId, request);
     }
 
+    @PostMapping("/{invoiceId}/dispute")
+    public InvoiceResponse dispute(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+        return service.dispute(projectId, invoiceId);
+    }
+
     @PostMapping("/{invoiceId}/cancel")
     public InvoiceResponse cancel(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.cancel(projectId, invoiceId);

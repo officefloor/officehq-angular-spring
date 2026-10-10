@@ -123,6 +123,10 @@ public class Invoice {
     @Column(name = "po_number", length = 50)
     private String poNumber;
 
+    /** Whether the client disputes the invoice; it still counts as owed, the flag only marks it. */
+    @Column(nullable = false)
+    private boolean disputed;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private InvoiceStatus status = InvoiceStatus.DRAFT;
@@ -723,6 +727,15 @@ public class Invoice {
     /** Cancels this invoice, so it is no longer owed. */
     public void markVoid() {
         this.status = InvoiceStatus.VOID;
+    }
+
+    /** Flags this invoice as disputed by the client; it still counts as owed. */
+    public void markDisputed() {
+        this.disputed = true;
+    }
+
+    public boolean isDisputed() {
+        return disputed;
     }
 
     /** Writes this invoice off as bad debt, so it is no longer owed. */
