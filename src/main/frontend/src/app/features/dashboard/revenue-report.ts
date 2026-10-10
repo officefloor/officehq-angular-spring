@@ -6,8 +6,8 @@ import { RevenueCompare } from './revenue-compare';
 
 // The revenue billed over a chosen date range (over all time until a range is chosen): the total of the invoices
 // issued within it that were sent (drafts and cancelled invoices are left out), in the home currency, broken down
-// by job so the highest-earning jobs show first, and month by month so the trend shows. Two periods can also be
-// compared side by side.
+// by job so the highest-earning jobs show first, and month by month so the trend shows. The report on show can be
+// exported to a CSV file. Two periods can also be compared side by side.
 @Component({
   selector: 'app-revenue-report',
   imports: [MoneyPipe, RevenueCompare],
@@ -61,6 +61,18 @@ import { RevenueCompare } from './revenue-compare';
             All time
           }
         </p>
+        <p>
+          <button type="button" data-testid="revenue-export" [disabled]="exporting()" (click)="export()">
+            Export revenue report
+          </button>
+        </p>
+        <div role="status">
+          @if (exportError()) {
+            <p data-testid="revenue-export-error">Could not export the revenue report.</p>
+          } @else if (exported()) {
+            <p data-testid="export-confirm">Exported the revenue report to {{ exportFilename }}.</p>
+          }
+        </div>
         <dl class="revenue-report-figures" aria-live="polite">
           <dt>Invoices</dt>
           <dd data-testid="revenue-report-invoices">{{ r.invoices }}</dd>
@@ -141,6 +153,29 @@ export class RevenueReport {
     return `${RevenueReport.MONTHS[Number(m) - 1]} ${year}`;
   }
 
+  protected readonly exportFilename = 'revenue-report.csv';
+  protected readonly exporting = signal(false);
+  protected readonly exported = signal(false);
+  protected readonly exportError = signal(false);
+
+  /** Downloads the report on show (over the chosen range, or all time) as a CSV file and confirms it. */
+  protected export(): void {
+    this.exporting.set(true);
+    this.exported.set(false);
+    this.exportError.set(false);
+    this.service.exportRevenueReport(this.range() ?? undefined).subscribe({
+      next: (csv) => {
+        download(csv, this.exportFilename);
+        this.exported.set(true);
+        this.exporting.set(false);
+      },
+      error: () => {
+        this.exportError.set(true);
+        this.exporting.set(false);
+      },
+    });
+  }
+
   protected apply(event: Event, from: string, to: string): void {
     event.preventDefault();
     if (!from || !to) {
@@ -151,6 +186,17 @@ export class RevenueReport {
       return;
     }
     this.rangeError.set(null);
+    this.exported.set(false);
     this.range.set({ from, to });
   }
+}
+
+/** Saves the text as a file through the browser. */
+function download(text: string, filename: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url));
 }

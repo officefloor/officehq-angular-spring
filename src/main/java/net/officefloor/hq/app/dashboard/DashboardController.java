@@ -1,6 +1,11 @@
 package net.officefloor.hq.app.dashboard;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -45,6 +50,18 @@ public class DashboardController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return service.revenueReport(from, to);
+    }
+
+    /** Downloads the revenue report (over the given dates, or all time without both) as a CSV file. */
+    @GetMapping(value = "/revenue-report/export", produces = "text/csv")
+    public ResponseEntity<String> exportRevenueReport(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename("revenue-report.csv").build().toString())
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .body(service.revenueReportCsv(from, to));
     }
 
     /** The revenue billed in two periods (each on or between its dates), side by side. */

@@ -258,6 +258,12 @@ export class DashboardService {
     return this.http.get<RevenueReport>('/api/dashboard/revenue-report', { params });
   }
 
+  /** The revenue report over the given range (or over all time) as the CSV file the export downloads. */
+  exportRevenueReport(range?: { from: string; to: string }): Observable<string> {
+    const params = range ? new HttpParams().set('from', range.from).set('to', range.to) : new HttpParams();
+    return this.http.get('/api/dashboard/revenue-report/export', { params, responseType: 'text' });
+  }
+
   /** The revenue of two periods, A and B, side by side. */
   revenueComparison(a: { from: string; to: string }, b: { from: string; to: string }): Observable<RevenueComparison> {
     const params = new HttpParams().set('aFrom', a.from).set('aTo', a.to).set('bFrom', b.from).set('bTo', b.to);

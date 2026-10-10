@@ -637,6 +637,43 @@ public class DashboardService {
     }
 
     /**
+     * The revenue report as a small CSV file: a header row, one row of job, client, invoices and revenue per job (in
+     * the report's order), then a total row. Amounts are in the home currency.
+     */
+    @Transactional(readOnly = true)
+    public String revenueReportCsv(LocalDate from, LocalDate to) {
+        RevenueReportResponse report = revenueReport(from, to);
+        StringBuilder text = new StringBuilder("job,client,invoices,revenue\r\n");
+        for (RevenueReportResponse.JobRevenue job : report.jobs()) {
+            text.append(csv(neutralise(job.projectName()))).append(',').append(csv(neutralise(job.clientName())))
+                    .append(',').append(job.invoices()).append(',').append(job.amount().toPlainString())
+                    .append("\r\n");
+        }
+        text.append("Total,,").append(report.invoices()).append(',').append(report.total().toPlainString())
+                .append("\r\n");
+        return text.toString();
+    }
+
+    /** Stops a value a spreadsheet would read as a formula from being run when the file is opened. */
+    private static String neutralise(String value) {
+        if (value != null && !value.isEmpty() && "=+-@\t\r".indexOf(value.charAt(0)) >= 0) {
+            return "'" + value;
+        }
+        return value;
+    }
+
+    /** One CSV field, quoted when it holds a comma, quote or line break; a missing value is left empty. */
+    private static String csv(String value) {
+        if (value == null) {
+            return "";
+        }
+        if (value.matches("(?s).*[\",\r\n].*")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
+
+    /**
      * The revenue billed in two periods side by side, each worked out as the revenue report over its dates, with the
      * change from the first period to the second.
      */
