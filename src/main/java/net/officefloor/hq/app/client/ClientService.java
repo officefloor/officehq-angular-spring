@@ -163,6 +163,16 @@ public class ClientService {
         return respond(client);
     }
 
+    /** Sets the most a client may owe, in their currency, or removes the limit; recorded in the audit log. */
+    @Transactional
+    public ClientResponse changeCreditLimit(Long id, BigDecimal creditLimit) {
+        Client client = find(id);
+        client.setCreditLimit(creditLimit);
+        clients.flush();
+        audit.record("CLIENT_CREDIT_LIMIT_SET id=" + id + " limit=" + (creditLimit == null ? "none" : client.getCreditLimit().toPlainString()));
+        return respond(client);
+    }
+
     private static ResponseStatusException emailTaken() {
         return new ResponseStatusException(HttpStatus.CONFLICT, "A client with this email already exists");
     }

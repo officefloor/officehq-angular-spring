@@ -108,14 +108,15 @@ public class TestSupportController {
                     r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
         }
         for (Map<String, Object> c : rows(fixture, "clients")) {
-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"), c.get("language"), c.get("accountManager"),
                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
                     Boolean.TRUE.equals(c.get("keyAccount")),
                     Boolean.TRUE.equals(c.get("archived")),
                     c.get("currency") == null ? Currency.DEFAULT : c.get("currency").toString(),
-                    decimal(c.get("defaultDiscountPct")));
+                    decimal(c.get("defaultDiscountPct")),
+                    c.get("creditLimit") == null ? null : decimal(c.get("creditLimit")));
         }
         for (Map<String, Object> c : rows(fixture, "contacts")) {
             jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",

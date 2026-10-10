@@ -57,6 +57,10 @@ public class Client {
     @Column(name = "default_discount_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal defaultDiscountPct = BigDecimal.ZERO.setScale(2);
 
+    /** The most the client may owe, in their currency; none when no limit is set. */
+    @Column(precision = 12, scale = 2)
+    private BigDecimal creditLimit;
+
     /** The currency the client is billed in; all of their money is in it. */
     @Column(nullable = false)
     private String currency = Currency.DEFAULT;
@@ -164,6 +168,14 @@ public class Client {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public BigDecimal getCreditLimit() {
+        return creditLimit;
+    }
+
+    public void setCreditLimit(BigDecimal creditLimit) {
+        this.creditLimit = creditLimit == null ? null : creditLimit.setScale(2, RoundingMode.HALF_UP);
     }
 
     public String getCurrency() {

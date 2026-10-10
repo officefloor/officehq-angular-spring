@@ -68,6 +68,11 @@ public class ClientController {
         return service.changeCurrency(id, request.currency());
     }
 
+    @PutMapping("/{id}/credit-limit")
+    public ClientResponse changeCreditLimit(@PathVariable Long id, @Valid @RequestBody ClientCreditLimitRequest request) {
+        return service.changeCreditLimit(id, request.creditLimit());
+    }
+
     @PostMapping("/{id}/archive")
     public ClientResponse archive(@PathVariable Long id) {
         return service.archive(id);
