@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { MoneyPipe } from '../currencies/money.pipe';
 import { Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
@@ -200,6 +201,9 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
         @if (cancelError()) {
           <p role="alert" data-testid="invoice-cancel-error">{{ cancelError() }}</p>
         }
+        @if (creditWarning()) {
+          <p role="alert" data-testid="invoice-credit-warning">{{ creditWarning() }}</p>
+        }
         @if (sendError()) {
           <p role="alert" data-testid="invoice-send-error">{{ sendError() }}</p>
         }
@@ -245,6 +249,8 @@ export class ProjectInvoices {
   // The invoice whose send or cancel request is in flight.
   protected readonly busy = signal<number | null>(null);
   protected readonly sendError = signal<string | null>(null);
+  /** Shown when sending was refused because it would take the client over their credit limit. */
+  protected readonly creditWarning = signal<string | null>(null);
   protected readonly cancelError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group(
@@ -337,14 +343,21 @@ export class ProjectInvoices {
   protected send(invoiceId: number): void {
     this.busy.set(invoiceId);
     this.sendError.set(null);
+    this.creditWarning.set(null);
     this.service.send(this.projectId(), invoiceId).subscribe({
       next: (sent) => {
         this.replace(sent);
         this.busy.set(null);
         this.invoiced.emit();
       },
-      error: () => {
-        this.sendError.set('Could not send the invoice. Please try again.');
+      error: (err: HttpErrorResponse) => {
+        if (err.status === 422) {
+          this.creditWarning.set(
+            'This invoice was not sent: it would take the client over their credit limit.',
+          );
+        } else {
+          this.sendError.set('Could not send the invoice. Please try again.');
+        }
         this.busy.set(null);
       },
     });

@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.Client;
 import net.officefloor.hq.app.client.ClientRepository;
+import net.officefloor.hq.app.client.ClientService;
 import net.officefloor.hq.app.creditnote.CreditNote;
 import net.officefloor.hq.app.creditnote.CreditNoteRepository;
 import net.officefloor.hq.app.deposit.Deposit;
@@ -47,13 +48,15 @@ public class InvoiceService {
     private final SettingsService settings;
     private final FxRateService fxRates;
     private final InstalmentRepository instalments;
+    private final ClientService clientService;
     private final Audit audit;
     private final Clock clock;
 
     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
             CreditNoteRepository creditNotes, ClientRepository clients, DepositRepository deposits,
-            RefundRepository refunds, SettingsService settings, FxRateService fxRates, InstalmentRepository instalments, Audit audit,
-            Clock clock) {
+            RefundRepository refunds, SettingsService settings, FxRateService fxRates, InstalmentRepository instalments,
+            ClientService clientService, Audit audit, Clock clock) {
+        this.clientService = clientService;
         this.invoices = invoices;
         this.projects = projects;
         this.clients = clients;
@@ -427,7 +430,10 @@ public class InvoiceService {
         return detail(invoice);
     }
 
-    /** Sends a draft invoice and records the sending in the audit log. */
+    /**
+     * Sends a draft invoice and records the sending in the audit log. An invoice that would take the
+     * client over their credit limit is refused and stays a draft.
+     */
     @Transactional
     public InvoiceResponse send(Long projectId, Long invoiceId) {
         Invoice invoice = find(projectId, invoiceId);
@@ -436,6 +442,12 @@ public class InvoiceService {
         }
         if (invoice.getAmount().signum() == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Add a line item before sending the invoice");
+        }
+        Client client = invoice.getProject().getClient();
+        BigDecimal limit = client.getCreditLimit();
+        if (limit != null && clientService.outstanding(client.getId()).add(invoice.getAmount()).compareTo(limit) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "Sending this invoice would take the client over their credit limit");
         }
         invoice.markSent();
         invoices.flush();

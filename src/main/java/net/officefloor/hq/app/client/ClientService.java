@@ -284,6 +284,12 @@ public class ClientService {
         return totals;
     }
 
+    /** What the client still owes on their sent invoices, after payments and credit notes. */
+    @Transactional(readOnly = true)
+    public BigDecimal outstanding(Long clientId) {
+        return outstandingByClient().getOrDefault(clientId, ZERO);
+    }
+
     private ClientResponse respond(Client client) {
         return ClientResponse.from(client, outstandingByClient().getOrDefault(client.getId(), ZERO));
     }
