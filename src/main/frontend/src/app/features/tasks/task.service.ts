@@ -22,12 +22,23 @@ export interface Task {
   checklist: ChecklistItem[];
 }
 
+export interface TaskGroup {
+  projectId: number;
+  projectName: string;
+  projectCode: string;
+  tasks: Task[];
+}
+
 @Injectable({ providedIn: "root" })
 export class TaskService {
   private readonly http = inject(HttpClient);
 
   listForProject(projectId: number): Observable<Task[]> {
     return this.http.get<Task[]>(`/api/projects/${projectId}/tasks`);
+  }
+
+  listByJob(): Observable<TaskGroup[]> {
+    return this.http.get<TaskGroup[]>("/api/tasks/by-job");
   }
 
   create(

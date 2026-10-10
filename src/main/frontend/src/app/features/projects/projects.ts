@@ -20,6 +20,10 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
   template: `
     <h1>Jobs</h1>
 
+    <p>
+      <a routerLink="/projects/tasks-by-job" data-testid="tasks-by-job-open">Tasks by job</a>
+    </p>
+
     <form [formGroup]="form" (ngSubmit)="submit()" data-testid="project-form" novalidate>
       <div>
         <label for="project-name">Name</label>

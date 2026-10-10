@@ -9,6 +9,9 @@ public interface ChecklistItemRepository extends JpaRepository<ChecklistItem, Lo
     /** The checklist items of all a project's tasks, in the order they were added. */
     List<ChecklistItem> findByTaskProjectIdOrderById(Long projectId);
 
+    /** Every checklist item, in the order they were added. */
+    List<ChecklistItem> findAllByOrderById();
+
     /** A task's checklist items, in the order they were added. */
     List<ChecklistItem> findByTaskIdOrderById(Long taskId);
 

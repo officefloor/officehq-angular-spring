@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.task;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -37,6 +38,23 @@ public class TaskService {
                 .collect(Collectors.groupingBy(ChecklistItemResponse::taskId));
         return tasks.findByProjectIdOrderById(projectId).stream()
                 .map(t -> TaskResponse.from(t, checklists.getOrDefault(t.getId(), List.of()))).toList();
+    }
+
+    /** The tasks of every job still in use, grouped under the job they belong to. */
+    @Transactional(readOnly = true)
+    public List<TaskGroupResponse> listByJob() {
+        Map<Long, List<ChecklistItemResponse>> checklists = checklistItems.findAllByOrderById().stream()
+                .map(ChecklistItemResponse::from)
+                .collect(Collectors.groupingBy(ChecklistItemResponse::taskId));
+        Map<Project, List<TaskResponse>> grouped = tasks.findAllByOrderByProjectIdAscIdAsc().stream()
+                .filter(t -> !t.getProject().isArchived())
+                .collect(Collectors.groupingBy(Task::getProject, LinkedHashMap::new, Collectors.mapping(
+                        t -> TaskResponse.from(t, checklists.getOrDefault(t.getId(), List.of())),
+                        Collectors.toList())));
+        return grouped.entrySet().stream()
+                .map(e -> new TaskGroupResponse(e.getKey().getId(), e.getKey().getName(), e.getKey().getCode(),
+                        e.getValue()))
+                .toList();
     }
 
     @Transactional

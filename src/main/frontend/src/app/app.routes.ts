@@ -35,6 +35,10 @@ export const routes: Routes = [
     loadComponent: () => import('./features/projects/projects').then((m) => m.Projects),
   },
   {
+    path: 'projects/tasks-by-job',
+    loadComponent: () => import('./features/tasks/tasks-by-job').then((m) => m.TasksByJob),
+  },
+  {
     path: 'invoices',
     data: { section: 'invoices', label: 'Invoices', order: 3 },
     loadComponent: () => import('./features/invoices/invoices').then((m) => m.Invoices),
