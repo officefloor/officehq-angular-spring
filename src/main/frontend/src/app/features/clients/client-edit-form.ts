@@ -3,7 +3,7 @@ import { Component, ElementRef, OnInit, afterNextRender, inject, input, output, 
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Client, ClientService } from './client.service';
 
-// Form to correct one client's name, email, phone number, preferred language, tax number, whether their prices include tax or whether they are tax exempt, whether they are a key account and their standard discount. Emits the saved client, or cancelled when abandoned.
+// Form to correct one client's name, email, phone number, preferred language, account manager, tax number, whether their prices include tax or whether they are tax exempt, whether they are a key account and their standard discount. Emits the saved client, or cancelled when abandoned.
 @Component({
   selector: 'app-client-edit-form',
   imports: [ReactiveFormsModule],
@@ -85,6 +85,23 @@ import { Client, ClientService } from './client.service';
         @if (showError('language')) {
           <p id="client-edit-language-error" role="alert" data-testid="client-edit-form-language-error">
             Preferred language must be 50 characters or fewer.
+          </p>
+        }
+      </div>
+      <div>
+        <label for="client-edit-account-manager">Account manager (optional)</label>
+        <input
+          id="client-edit-account-manager"
+          type="text"
+          formControlName="accountManager"
+          autocomplete="off"
+          data-testid="client-edit-form-account-manager"
+          [attr.aria-invalid]="showError('accountManager')"
+          [attr.aria-describedby]="showError('accountManager') ? 'client-edit-account-manager-error' : null"
+        />
+        @if (showError('accountManager')) {
+          <p id="client-edit-account-manager-error" role="alert" data-testid="client-edit-form-account-manager-error">
+            Account manager must be 255 characters or fewer.
           </p>
         }
       </div>
@@ -192,6 +209,7 @@ export class ClientEditForm implements OnInit {
     ],
     phone: ['', Validators.maxLength(50)],
     language: ['', Validators.maxLength(50)],
+    accountManager: ['', Validators.maxLength(255)],
     taxNumber: ['', Validators.maxLength(50)],
     billingAddress: ['', Validators.maxLength(500)],
     taxInclusive: false,
@@ -205,11 +223,11 @@ export class ClientEditForm implements OnInit {
   }
 
   ngOnInit(): void {
-    const { name, email, phone, language, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.client();
-    this.form.setValue({ name, email, phone: phone ?? '', language: language ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt, keyAccount, defaultDiscountPct });
+    const { name, email, phone, language, accountManager, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.client();
+    this.form.setValue({ name, email, phone: phone ?? '', language: language ?? '', accountManager: accountManager ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt, keyAccount, defaultDiscountPct });
   }
 
-  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
+  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'accountManager' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -219,10 +237,10 @@ export class ClientEditForm implements OnInit {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, language, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
+    const { name, email, phone, language, accountManager, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
+    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, accountManager: accountManager.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
       next: (updated) => {
         this.saving.set(false);
         this.saved.emit(updated);

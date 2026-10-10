@@ -82,6 +82,7 @@ public class ClientService {
         try {
             Client client = new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber(), request.trimmedBillingAddress());
             client.setLanguage(request.trimmedLanguage());
+            client.setAccountManager(request.trimmedAccountManager());
             client.setTaxInclusive(Boolean.TRUE.equals(request.taxInclusive()));
             client.setTaxExempt(Boolean.TRUE.equals(request.taxExempt()));
             client.setKeyAccount(Boolean.TRUE.equals(request.keyAccount()));
@@ -99,7 +100,7 @@ public class ClientService {
     }
 
     /**
-     * Corrects a client's name, email, phone number, tax number, billing address and preferred language (left as it is when not given, cleared when blank); the email, once trimmed, must not belong to another client.
+     * Corrects a client's name, email, phone number, tax number, billing address, preferred language and account manager (each left as it is when not given, cleared when blank); the email, once trimmed, must not belong to another client.
      * When whether their prices include tax, or whether they are tax exempt, changes, their draft invoices are reworked to match; sent ones keep the
      * figures they were issued with. The change is recorded in the audit log.
      */
@@ -113,6 +114,9 @@ public class ClientService {
         client.rename(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber(), request.trimmedBillingAddress());
         if (request.language() != null) {
             client.setLanguage(request.trimmedLanguage());
+        }
+        if (request.accountManager() != null) {
+            client.setAccountManager(request.trimmedAccountManager());
         }
         if (request.taxInclusive() != null && request.taxInclusive() != client.isTaxInclusive()) {
             client.setTaxInclusive(request.taxInclusive());

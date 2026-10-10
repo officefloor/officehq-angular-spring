@@ -17,6 +17,8 @@ export interface Client {
   billingAddress: string | null;
   /** The language the client prefers to be dealt with in; null when not known. */
   language: string | null;
+  /** The person in the office who looks after the client; null when not recorded. */
+  accountManager: string | null;
   /** Whether the client's prices already include tax, so it is worked back out of them rather than added on. */
   taxInclusive: boolean;
   /** Whether the client is tax exempt, so none of their invoices carry any tax whatever the lines say. */

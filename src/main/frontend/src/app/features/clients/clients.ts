@@ -101,6 +101,23 @@ import { Client, ClientService } from './client.service';
         }
       </div>
       <div>
+        <label for="client-account-manager">Account manager (optional)</label>
+        <input
+          id="client-account-manager"
+          type="text"
+          formControlName="accountManager"
+          autocomplete="off"
+          data-testid="client-form-account-manager"
+          [attr.aria-invalid]="showError('accountManager')"
+          [attr.aria-describedby]="showError('accountManager') ? 'client-account-manager-error' : null"
+        />
+        @if (showError('accountManager')) {
+          <p id="client-account-manager-error" role="alert" data-testid="client-form-account-manager-error">
+            Account manager must be 255 characters or fewer.
+          </p>
+        }
+      </div>
+      <div>
         <label for="client-tax-number">Tax number (optional)</label>
         <input
           id="client-tax-number"
@@ -329,6 +346,7 @@ export class Clients {
     ],
     phone: ['', Validators.maxLength(50)],
     language: ['', Validators.maxLength(50)],
+    accountManager: ['', Validators.maxLength(255)],
     taxNumber: ['', Validators.maxLength(50)],
     billingAddress: ['', Validators.maxLength(500)],
     taxInclusive: false,
@@ -349,7 +367,7 @@ export class Clients {
     this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
   }
 
-  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
+  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'accountManager' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -359,10 +377,10 @@ export class Clients {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, language, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
+    const { name, email, phone, language, accountManager, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
+    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, accountManager: accountManager.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created]);
         this.form.reset();

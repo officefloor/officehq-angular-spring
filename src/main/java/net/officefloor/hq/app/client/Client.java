@@ -39,6 +39,9 @@ public class Client {
     /** The language the client prefers to be dealt with in; none when not known. */
     private String language;
 
+    /** The person in the office who looks after the client; none when not recorded. */
+    private String accountManager;
+
     private boolean archived;
 
     /** Whether the client's prices already include tax, so tax is worked back out of them rather than added on. */
@@ -96,6 +99,14 @@ public class Client {
 
     public void setLanguage(String language) {
         this.language = language;
+    }
+
+    public String getAccountManager() {
+        return accountManager;
+    }
+
+    public void setAccountManager(String accountManager) {
+        this.accountManager = accountManager;
     }
 
     public String getTaxNumber() {
