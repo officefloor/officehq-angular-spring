@@ -1,0 +1,171 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index c1676e6..cbc0890 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -28,8 +28,13 @@ export interface ProjectInvoice extends Invoice {
+   retention: number;
+   /** Whether a credit note has been put against the invoice. */
+   creditApplied: boolean;
++  /** How an owing invoice on an instalment plan is keeping to its schedule; null when it has none. */
++  schedule: ScheduleStatus | null;
+ }
+ 
++/** ON_TRACK while every instalment fallen due is paid, BEHIND once an unpaid one is overdue. */
++export type ScheduleStatus = 'ON_TRACK' | 'BEHIND';
++
+ /** An invoice as listed across all projects, with the name of the project it is for. */
+ export interface InvoiceSummary extends Invoice {
+   projectName: string;
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index 2e210bd..a6d4ccb 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -156,7 +156,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+                 <td data-testid="invoice-due-amount">{{ i.amountDue | money: i.currency }}</td>
+                 <td data-testid="invoice-retained-amount">{{ i.retention | money: i.currency }}</td>
+                 <td data-testid="invoice-status">
+-                  {{ i.status }}
++                  {{ i.schedule ?? i.status }}
+                   @if (i.creditApplied) {
+                     <span class="credit-flag" data-testid="invoice-credit-flag">Credited</span>
+                   }
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentRepository.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentRepository.java
+index 6861b90..370ec62 100644
+--- a/src/main/java/net/officefloor/hq/app/instalment/InstalmentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.instalment;
+ 
+ import java.math.BigDecimal;
++import java.util.Collection;
+ import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+@@ -11,6 +12,9 @@ public interface InstalmentRepository extends JpaRepository<Instalment, Long> {
+     /** An invoice's instalments, earliest due first. */
+     List<Instalment> findByInvoiceIdOrderByDueDateAscIdAsc(Long invoiceId);
+ 
++    /** The instalments of the given invoices. */
++    List<Instalment> findByInvoiceIdIn(Collection<Long> invoiceIds);
++
+     /** The earliest-due instalment of an invoice that is still to be paid, if any. */
+     Optional<Instalment> findFirstByInvoiceIdAndPaidFalseOrderByDueDateAscIdAsc(Long invoiceId);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+index fd32673..3438213 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+@@ -6,16 +6,21 @@ import java.time.LocalDate;
+ /**
+  * An invoice, with how much of it the client owes right now after the payments made and credit notes raised
+  * against it (nothing once void), the amount held back as retention and not due yet (shown separately), and
+- * whether any credit has been put against it.
++ * whether any credit has been put against it. An owing invoice on an instalment plan also carries how it is keeping
++ * to its schedule (null otherwise).
+  */
+ public record InvoiceResponse(Long id, Long projectId, String currency, BigDecimal amount, InvoiceStatus status,
+         LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue,
+-        BigDecimal retention, boolean creditApplied) {
++        BigDecimal retention, boolean creditApplied, ScheduleStatus schedule) {
+ 
+     static InvoiceResponse from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
++        return from(invoice, paid, credited, null);
++    }
++
++    static InvoiceResponse from(Invoice invoice, BigDecimal paid, BigDecimal credited, ScheduleStatus schedule) {
+         return new InvoiceResponse(invoice.getId(), invoice.getProject().getId(),
+                 invoice.getCurrency(), invoice.getAmount(),
+                 invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
+-                invoice.dueNow(paid, credited), invoice.getRetention(), credited.signum() > 0);
++                invoice.dueNow(paid, credited), invoice.getRetention(), credited.signum() > 0, schedule);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 6d73f27..2bcd46f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -18,6 +18,8 @@ import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+ import net.officefloor.hq.app.deposit.Deposit;
+ import net.officefloor.hq.app.deposit.DepositRepository;
+ import net.officefloor.hq.app.fx.FxRateService;
++import net.officefloor.hq.app.instalment.Instalment;
++import net.officefloor.hq.app.instalment.InstalmentRepository;
+ import net.officefloor.hq.app.payment.Payment;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.project.Project;
+@@ -44,12 +46,14 @@ public class InvoiceService {
+     private final RefundRepository refunds;
+     private final SettingsService settings;
+     private final FxRateService fxRates;
++    private final InstalmentRepository instalments;
+     private final Audit audit;
+     private final Clock clock;
+ 
+     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
+             CreditNoteRepository creditNotes, ClientRepository clients, DepositRepository deposits,
+-            RefundRepository refunds, SettingsService settings, FxRateService fxRates, Audit audit, Clock clock) {
++            RefundRepository refunds, SettingsService settings, FxRateService fxRates, InstalmentRepository instalments, Audit audit,
++            Clock clock) {
+         this.invoices = invoices;
+         this.projects = projects;
+         this.clients = clients;
+@@ -59,6 +63,7 @@ public class InvoiceService {
+         this.creditNotes = creditNotes;
+         this.settings = settings;
+         this.fxRates = fxRates;
++        this.instalments = instalments;
+         this.audit = audit;
+         this.clock = clock;
+     }
+@@ -71,12 +76,33 @@ public class InvoiceService {
+         List<Invoice> found = invoices.findByProjectIdOrderById(projectId);
+         Map<Long, BigDecimal> paid = paidByInvoice(found);
+         Map<Long, BigDecimal> credited = creditedByInvoice(found);
++        Map<Long, List<Instalment>> schedules = instalments
++                .findByInvoiceIdIn(found.stream().map(Invoice::getId).toList()).stream()
++                .collect(Collectors.groupingBy(Instalment::getInvoiceId));
++        LocalDate today = LocalDate.now(clock);
+         return found.stream()
+-                .map(i -> InvoiceResponse.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO),
+-                        credited.getOrDefault(i.getId(), BigDecimal.ZERO)))
++                .map(i -> {
++                    BigDecimal invoicePaid = paid.getOrDefault(i.getId(), BigDecimal.ZERO);
++                    BigDecimal invoiceCredited = credited.getOrDefault(i.getId(), BigDecimal.ZERO);
++                    ScheduleStatus schedule = scheduleStatus(i.statusFor(invoicePaid, invoiceCredited),
++                            schedules.getOrDefault(i.getId(), List.of()), today);
++                    return InvoiceResponse.from(i, invoicePaid, invoiceCredited, schedule);
++                })
+                 .toList();
+     }
+ 
++    /**
++     * How an invoice is keeping to its instalment plan: only an owing invoice with instalments has one. It is BEHIND
++     * once an unpaid instalment is past its due date, otherwise ON_TRACK.
++     */
++    private static ScheduleStatus scheduleStatus(InvoiceStatus status, List<Instalment> schedule, LocalDate today) {
++        if (!status.isOwing() || schedule.isEmpty()) {
++            return null;
++        }
++        boolean overdue = schedule.stream().anyMatch(n -> !n.isPaid() && n.getDueDate().isBefore(today));
++        return overdue ? ScheduleStatus.BEHIND : ScheduleStatus.ON_TRACK;
++    }
++
+     /**
+      * A client's statement: every invoice across their projects with what is left to pay on each, and
+      * the total they still owe, also grouped by job with a subtotal per job. Drafts are listed but not owed, as they have not been sent, nor are
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ScheduleStatus.java b/src/main/java/net/officefloor/hq/app/invoice/ScheduleStatus.java
+new file mode 100644
+index 0000000..07b0ff6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/ScheduleStatus.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.invoice;
++
++/**
++ * How an owing invoice on an instalment plan is keeping to its schedule: ON_TRACK while every instalment that has
++ * fallen due is paid, BEHIND once an unpaid instalment is past its due date.
++ */
++public enum ScheduleStatus {
++    ON_TRACK,
++    BEHIND
++}
