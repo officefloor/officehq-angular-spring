@@ -1,0 +1,228 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/cash-flow-forecast.ts b/src/main/frontend/src/app/features/dashboard/cash-flow-forecast.ts
+new file mode 100644
+index 0000000..82b40d3
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/cash-flow-forecast.ts
+@@ -0,0 +1,60 @@
++import { Component, inject } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { RouterLink } from '@angular/router';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { DashboardService } from './dashboard.service';
++
++// A simple cash-flow forecast: the money expected in from instalments still to be paid on sent invoices,
++// earliest due first, with the total in the home currency.
++@Component({
++  selector: 'app-cash-flow-forecast',
++  imports: [MoneyPipe, RouterLink],
++  template: `
++    <section aria-labelledby="forecast-heading" data-testid="forecast">
++      <h2 id="forecast-heading">Cash-flow forecast</h2>
++      @if (forecast.error()) {
++        <p role="alert" data-testid="forecast-error">Could not load the forecast.</p>
++      } @else if (forecast.value(); as f) {
++        @if (f.entries.length === 0) {
++          <p data-testid="forecast-empty">No instalments expected in.</p>
++        } @else {
++          <table>
++            <thead>
++              <tr>
++                <th scope="col">Due</th>
++                <th scope="col">Job</th>
++                <th scope="col">Client</th>
++                <th scope="col">Amount</th>
++              </tr>
++            </thead>
++            <tbody>
++              @for (e of f.entries; track e.id) {
++                <tr [attr.data-testid]="'forecast-row-' + e.id">
++                  <td data-testid="forecast-date">{{ e.date }}</td>
++                  <td data-testid="forecast-project">
++                    <a [routerLink]="['/projects', e.projectId]">{{ e.projectName }}</a>
++                  </td>
++                  <td data-testid="forecast-client">{{ e.clientName }}</td>
++                  <td data-testid="forecast-amount">{{ e.amount | money: e.currency }}</td>
++                </tr>
++              }
++            </tbody>
++            <tfoot>
++              <tr>
++                <th scope="row" colspan="3">Total expected (in {{ f.homeCurrency }})</th>
++                <td data-testid="forecast-total">{{ f.total | money: f.homeCurrency }}</td>
++              </tr>
++            </tfoot>
++          </table>
++        }
++      } @else {
++        <p data-testid="forecast-loading">Loading…</p>
++      }
++    </section>
++  `,
++})
++export class CashFlowForecast {
++  private readonly service = inject(DashboardService);
++
++  protected readonly forecast = rxResource({ stream: () => this.service.forecast() });
++}
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index bd59f26..9b9fd25 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -57,6 +57,25 @@ export interface TaxSummary {
+   total: number;
+ }
+ 
++/** One instalment expected in, in its invoice's currency. */
++export interface ForecastEntry {
++  id: number;
++  date: string;
++  amount: number;
++  currency: CurrencyCode;
++  invoiceId: number;
++  projectId: number;
++  projectName: string;
++  clientName: string;
++}
++
++/** The money expected in from instalments still to be paid, earliest due first, with the total in the home currency. */
++export interface Forecast {
++  homeCurrency: CurrencyCode;
++  entries: ForecastEntry[];
++  total: number;
++}
++
+ @Injectable({ providedIn: 'root' })
+ export class DashboardService {
+   private readonly http = inject(HttpClient);
+@@ -68,4 +87,8 @@ export class DashboardService {
+   taxSummary(from: string, to: string): Observable<TaxSummary> {
+     return this.http.get<TaxSummary>('/api/dashboard/tax-summary', { params: new HttpParams().set('from', from).set('to', to) });
+   }
++
++  forecast(): Observable<Forecast> {
++    return this.http.get<Forecast>('/api/dashboard/forecast');
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index ce2d7ad..d2f9eeb 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -1,6 +1,7 @@
+ import { Component, inject, signal } from '@angular/core';
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService, DashboardSummary } from './dashboard.service';
++import { CashFlowForecast } from './cash-flow-forecast';
+ import { TaxSummaryReport } from './tax-summary';
+ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ 
+@@ -10,10 +11,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // exchange rate from its own issue date, and how many of those sent
+ // invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+-// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls. A tax summary for a chosen date range can be opened from here.
++// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. A tax summary for a chosen date range can be opened from here.
+ @Component({
+   selector: 'app-dashboard',
+-  imports: [MoneyPipe, TaxSummaryReport, UpcomingRecurringInvoices],
++  imports: [MoneyPipe, CashFlowForecast, TaxSummaryReport, UpcomingRecurringInvoices],
+   template: `
+     <h1>Dashboard</h1>
+ 
+@@ -87,6 +88,8 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ 
+     <app-upcoming-recurring-invoices />
+ 
++    <app-cash-flow-forecast />
++
+     <button
+       type="button"
+       data-testid="tax-summary-open"
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index 80b0ab3..06d15af 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -28,4 +28,10 @@ public class DashboardController {
+             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+         return service.taxSummary(from, to);
+     }
++
++    /** The money expected in from the instalments still to be paid on sent invoices. */
++    @GetMapping("/forecast")
++    public ForecastResponse forecast() {
++        return service.forecast();
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 4a107c1..72db87a 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -5,6 +5,8 @@ import java.math.RoundingMode;
+ import java.time.Clock;
+ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
++import java.util.ArrayList;
++import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+@@ -174,6 +176,36 @@ public class DashboardService {
+         return total;
+     }
+ 
++    /**
++     * The money expected in from scheduled instalments: every instalment not yet paid on an invoice that has been
++     * sent and is not yet fully paid, earliest due first, with the total in the home currency. A foreign instalment
++     * converts at the exchange rate from its invoice's issue date; one whose currency has no rate by then is still
++     * listed but left out of the total.
++     */
++    @Transactional(readOnly = true)
++    public ForecastResponse forecast() {
++        Map<Long, Invoice> open = invoices.findByStatusInWithClient(List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL))
++                .stream().collect(Collectors.toMap(Invoice::getId, i -> i));
++        String home = settings.homeCurrency();
++        List<Instalment> due = open.isEmpty() ? List.of()
++                : instalments.findByInvoiceIdIn(open.keySet()).stream().filter(i -> !i.isPaid())
++                        .sorted(Comparator.comparing(Instalment::getDueDate).thenComparing(Instalment::getId))
++                        .toList();
++        BigDecimal total = BigDecimal.ZERO;
++        List<ForecastResponse.Entry> entries = new ArrayList<>();
++        for (Instalment instalment : due) {
++            Invoice invoice = open.get(instalment.getInvoiceId());
++            String currency = invoice.getCurrency();
++            BigDecimal inHome = currency.equals(home) ? instalment.getAmount()
++                    : fxRates.toHome(currency, invoice.getIssuedDate(), instalment.getAmount()).orElse(BigDecimal.ZERO);
++            total = total.add(inHome);
++            entries.add(new ForecastResponse.Entry(instalment.getId(), instalment.getDueDate(), instalment.getAmount(),
++                    currency, invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
++                    invoice.getProject().getClient().getName()));
++        }
++        return new ForecastResponse(home, entries, total.setScale(2, RoundingMode.HALF_UP));
++    }
++
+     /**
+      * The tax charged over a period, in the home currency: the sales tax and levy on every invoice issued on or
+      * between the given dates that was actually charged (sent, whether paid or not, or later written off; drafts
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/ForecastResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/ForecastResponse.java
+new file mode 100644
+index 0000000..b986df8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/ForecastResponse.java
+@@ -0,0 +1,18 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++
++/**
++ * A simple cash-flow forecast: the money expected in from instalments still to be paid on invoices that have been
++ * sent, earliest due first, each in its invoice's currency, and all of them together as one total in the home
++ * currency (each converted at the exchange rate from its invoice's issue date).
++ */
++public record ForecastResponse(String homeCurrency, List<Entry> entries, BigDecimal total) {
++
++    /** One instalment expected in: when it is due, how much, and which invoice, job and client it is from. */
++    public record Entry(Long id, LocalDate date, BigDecimal amount, String currency, Long invoiceId, Long projectId,
++            String projectName, String clientName) {
++    }
++}
