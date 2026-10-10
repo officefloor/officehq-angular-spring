@@ -247,4 +247,35 @@ public class DashboardService {
         levy = levy.setScale(2, RoundingMode.HALF_UP);
         return new TaxSummaryResponse(from, to, home, count, tax, levy, tax.add(levy));
     }
+
+    /**
+     * The revenue billed on or between the given dates: the amounts of the invoices issued in the range that were
+     * sent (drafts and cancelled invoices are left out), each converted into the home currency at its issue date's
+     * rate (an invoice that cannot be converted is left out).
+     */
+    @Transactional(readOnly = true)
+    public RevenueReportResponse revenueReport(LocalDate from, LocalDate to) {
+        if (from.isAfter(to)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The start date must not be after the end date");
+        }
+        List<InvoiceStatus> billed = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID,
+                InvoiceStatus.WRITTEN_OFF);
+        String home = settings.homeCurrency();
+        BigDecimal total = BigDecimal.ZERO;
+        long count = 0;
+        for (Invoice invoice : invoices.findByStatusInAndIssuedDateBetween(billed, from, to)) {
+            String currency = invoice.getCurrency();
+            if (currency.equals(home)) {
+                total = total.add(invoice.getAmount());
+                count++;
+                continue;
+            }
+            var inHome = fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount());
+            if (inHome.isPresent()) {
+                total = total.add(inHome.get());
+                count++;
+            }
+        }
+        return new RevenueReportResponse(from, to, home, count, total.setScale(2, RoundingMode.HALF_UP));
+    }
 }

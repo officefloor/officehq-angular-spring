@@ -29,6 +29,14 @@ public class DashboardController {
         return service.taxSummary(from, to);
     }
 
+    /** The revenue billed on invoices issued on or between the given dates. */
+    @GetMapping("/revenue-report")
+    public RevenueReportResponse revenueReport(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return service.revenueReport(from, to);
+    }
+
     /** The money expected in from the instalments still to be paid on sent invoices. */
     @GetMapping("/forecast")
     public ForecastResponse forecast() {

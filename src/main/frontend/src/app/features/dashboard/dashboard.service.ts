@@ -59,6 +59,16 @@ export interface TaxSummary {
   total: number;
 }
 
+/** The revenue billed on invoices issued on or between two dates, in the home currency. */
+export interface RevenueReport {
+  from: string;
+  to: string;
+  homeCurrency: CurrencyCode;
+  /** How many invoices the revenue came from. */
+  invoices: number;
+  total: number;
+}
+
 /** One instalment expected in, in its invoice's currency. */
 export interface ForecastEntry {
   id: number;
@@ -88,6 +98,10 @@ export class DashboardService {
 
   taxSummary(from: string, to: string): Observable<TaxSummary> {
     return this.http.get<TaxSummary>('/api/dashboard/tax-summary', { params: new HttpParams().set('from', from).set('to', to) });
+  }
+
+  revenueReport(from: string, to: string): Observable<RevenueReport> {
+    return this.http.get<RevenueReport>('/api/dashboard/revenue-report', { params: new HttpParams().set('from', from).set('to', to) });
   }
 
   forecast(): Observable<Forecast> {
