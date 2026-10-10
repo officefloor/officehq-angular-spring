@@ -39,6 +39,12 @@ public class ClientController {
         return service.segments();
     }
 
+    /** How many clients are in each revenue band, by how much revenue they bring in. */
+    @GetMapping("/revenue-bands")
+    public RevenueBandsResponse revenueBands() {
+        return service.revenueBands();
+    }
+
     /** Downloads the client list as a CSV file; the X-Export-Count header says how many clients it holds. */
     @GetMapping(value = "/export", produces = "text/csv")
     public ResponseEntity<String> exportList(@RequestParam(defaultValue = "false") boolean includeArchived) {

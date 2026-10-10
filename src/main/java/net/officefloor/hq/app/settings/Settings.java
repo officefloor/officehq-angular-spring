@@ -34,6 +34,14 @@ public class Settings {
     @Column(name = "billing_target", precision = 15, scale = 2)
     private BigDecimal billingTarget;
 
+    /** The revenue, in the home currency, from which a client is in the "medium" revenue band. */
+    @Column(name = "revenue_band_medium_from", nullable = false, precision = 15, scale = 2)
+    private BigDecimal revenueBandMediumFrom = new BigDecimal("1000.00");
+
+    /** The revenue, in the home currency, from which a client is in the "high" revenue band. */
+    @Column(name = "revenue_band_high_from", nullable = false, precision = 15, scale = 2)
+    private BigDecimal revenueBandHighFrom = new BigDecimal("5000.00");
+
     protected Settings() {
     }
 
@@ -59,6 +67,14 @@ public class Settings {
 
     public void setBillingTarget(BigDecimal billingTarget) {
         this.billingTarget = billingTarget == null ? null : billingTarget.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public BigDecimal getRevenueBandMediumFrom() {
+        return revenueBandMediumFrom;
+    }
+
+    public BigDecimal getRevenueBandHighFrom() {
+        return revenueBandHighFrom;
     }
 
     public void setDefaultTaxPct(BigDecimal defaultTaxPct) {

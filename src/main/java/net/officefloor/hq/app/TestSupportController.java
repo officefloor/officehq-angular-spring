@@ -86,7 +86,8 @@ public class TestSupportController {
             jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
         }
         jdbc.update("UPDATE app_settings SET default_tax_pct = 0, home_currency = 'USD',"
-                + " revenue_recognition_basis = 'sent', billing_target = NULL WHERE id = 1");
+                + " revenue_recognition_basis = 'sent', billing_target = NULL,"
+                + " revenue_band_medium_from = 1000, revenue_band_high_from = 5000 WHERE id = 1");
     }
 
     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
@@ -116,6 +117,13 @@ public class TestSupportController {
         // App settings: "billingTarget" is what the business aims to bill over the year, in the home currency.
         if (fixture.get("settings") instanceof Map<?, ?> s && s.get("billingTarget") != null) {
             jdbc.update("UPDATE app_settings SET billing_target = ? WHERE id = 1", decimal(s.get("billingTarget")));
+        }
+        // App settings: "revenueBandMediumFrom" and "revenueBandHighFrom" are where the revenue bands start.
+        if (fixture.get("settings") instanceof Map<?, ?> s && s.get("revenueBandMediumFrom") != null) {
+            jdbc.update("UPDATE app_settings SET revenue_band_medium_from = ? WHERE id = 1", decimal(s.get("revenueBandMediumFrom")));
+        }
+        if (fixture.get("settings") instanceof Map<?, ?> s && s.get("revenueBandHighFrom") != null) {
+            jdbc.update("UPDATE app_settings SET revenue_band_high_from = ? WHERE id = 1", decimal(s.get("revenueBandHighFrom")));
         }
         // An exchange rate: from its date, one unit of the currency is worth "rate" units of the home currency.
         for (Map<String, Object> r : rows(fixture, "fxRates")) {

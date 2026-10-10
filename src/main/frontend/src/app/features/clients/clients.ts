@@ -6,16 +6,17 @@ import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { ClientEditForm } from './client-edit-form';
 import { ClientListExport } from './client-list-export';
+import { ClientRevenueBands } from './client-revenue-bands';
 import { ClientSegments } from './client-segments';
 import { Client, ClientService } from './client.service';
 
 // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
 // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
 // list and search unless the archived toggle is on, where it can be restored. A client's name or email
-// can be corrected in place from its row. Favourite clients can be pinned, which keeps them in a group at the top of the list. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first.
+// can be corrected in place from its row. Favourite clients can be pinned, which keeps them in a group at the top of the list. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment, and a revenue bands panel counts the clients in each band of revenue they bring in. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first.
 @Component({
   selector: 'app-clients',
-  imports: [MoneyPipe, NgTemplateOutlet, ReactiveFormsModule, RouterLink, ClientEditForm, ClientListExport, ClientSegments],
+  imports: [MoneyPipe, NgTemplateOutlet, ReactiveFormsModule, RouterLink, ClientEditForm, ClientListExport, ClientRevenueBands, ClientSegments],
   styles: `
     .key-account {
       margin-inline-start: 0.5em;
@@ -248,6 +249,23 @@ import { Client, ClientService } from './client.service';
       }
     </div>
 
+    <div>
+      <button
+        type="button"
+        data-testid="revenue-bands-open"
+        aria-controls="client-revenue-bands"
+        [attr.aria-expanded]="revenueBandsOpen()"
+        (click)="revenueBandsOpen.set(!revenueBandsOpen())"
+      >
+        Revenue bands
+      </button>
+      @if (revenueBandsOpen()) {
+        <section id="client-revenue-bands" aria-label="Client revenue bands" data-testid="revenue-bands">
+          <app-client-revenue-bands />
+        </section>
+      }
+    </div>
+
     <app-client-list-export [includeArchived]="showArchived()" />
 
     @if (actionError()) {
@@ -418,6 +436,7 @@ export class Clients {
   protected readonly actionError = signal<string | null>(null);
   protected readonly editing = signal<number | null>(null);
   protected readonly segmentsOpen = signal(false);
+  protected readonly revenueBandsOpen = signal(false);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],

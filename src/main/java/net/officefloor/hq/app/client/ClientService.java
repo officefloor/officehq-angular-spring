@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.contact.ContactRepository;
@@ -23,6 +24,8 @@ import net.officefloor.hq.app.payment.ClientPaymentRepository;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.refund.RefundRepository;
 import net.officefloor.hq.app.project.ProjectRepository;
+import net.officefloor.hq.app.settings.RecognitionBasis;
+import net.officefloor.hq.app.settings.SettingsService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -44,13 +47,14 @@ public class ClientService {
     private final RefundRepository refunds;
     private final FxRateService fxRates;
     private final CurrencyService currencies;
+    private final SettingsService settings;
     private final Audit audit;
     private final Clock clock;
 
     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
             InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes,
             ClientPaymentRepository clientPayments, DepositRepository deposits, RefundRepository refunds,
-            FxRateService fxRates, CurrencyService currencies, Audit audit, Clock clock) {
+            FxRateService fxRates, CurrencyService currencies, SettingsService settings, Audit audit, Clock clock) {
         this.clients = clients;
         this.projects = projects;
         this.contacts = contacts;
@@ -62,6 +66,7 @@ public class ClientService {
         this.refunds = refunds;
         this.fxRates = fxRates;
         this.currencies = currencies;
+        this.settings = settings;
         this.audit = audit;
         this.clock = clock;
     }
@@ -77,6 +82,40 @@ public class ClientService {
     @Transactional(readOnly = true)
     public List<ClientSegmentResponse> segments() {
         return clients.countActiveBySegment();
+    }
+
+    /**
+     * How many clients, not archived, are in each revenue band, highest band first. A client's revenue is counted as the
+     * revenue report counts it: the amounts of their invoices that were sent (or, when the settings count revenue once
+     * paid, only those fully paid), each converted into the home currency at its issue date's rate (an invoice that
+     * cannot be converted is left out). A client with no revenue is in the low band.
+     */
+    @Transactional(readOnly = true)
+    public RevenueBandsResponse revenueBands() {
+        List<InvoiceStatus> recognised = RecognitionBasis.PAID.equals(settings.revenueRecognitionBasis())
+                ? List.of(InvoiceStatus.PAID)
+                : BILLED;
+        String home = settings.homeCurrency();
+        Map<Long, BigDecimal> revenue = new HashMap<>();
+        clients.findByArchivedFalseOrderById().forEach(c -> revenue.put(c.getId(), BigDecimal.ZERO));
+        for (Invoice invoice : invoices.findByStatusInWithClient(recognised)) {
+            Long clientId = invoice.getProject().getClient().getId();
+            if (!revenue.containsKey(clientId)) {
+                continue;
+            }
+            String currency = invoice.getCurrency();
+            (currency.equals(home) ? Optional.of(invoice.getAmount())
+                    : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount()))
+                    .ifPresent(amount -> revenue.merge(clientId, amount, BigDecimal::add));
+        }
+        BigDecimal mediumFrom = settings.revenueBandMediumFrom();
+        BigDecimal highFrom = settings.revenueBandHighFrom();
+        long high = revenue.values().stream().filter(r -> r.compareTo(highFrom) >= 0).count();
+        long low = revenue.values().stream().filter(r -> r.compareTo(mediumFrom) < 0).count();
+        return new RevenueBandsResponse(home, List.of(
+                new RevenueBandsResponse.Band("high", highFrom, null, high),
+                new RevenueBandsResponse.Band("medium", mediumFrom, highFrom, revenue.size() - high - low),
+                new RevenueBandsResponse.Band("low", BigDecimal.ZERO.setScale(2), mediumFrom, low)));
     }
 
     @Transactional(readOnly = true)

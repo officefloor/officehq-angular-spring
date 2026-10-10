@@ -44,6 +44,18 @@ public class SettingsService {
         return find().getBillingTarget();
     }
 
+    /** The revenue, in the home currency, from which a client is in the "medium" revenue band. */
+    @Transactional(readOnly = true)
+    public BigDecimal revenueBandMediumFrom() {
+        return find().getRevenueBandMediumFrom();
+    }
+
+    /** The revenue, in the home currency, from which a client is in the "high" revenue band. */
+    @Transactional(readOnly = true)
+    public BigDecimal revenueBandHighFrom() {
+        return find().getRevenueBandHighFrom();
+    }
+
     /** The sales tax percentage a new invoice starts with when none is given for it. */
     @Transactional(readOnly = true)
     public BigDecimal defaultTaxPct() {

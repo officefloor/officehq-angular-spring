@@ -66,6 +66,20 @@ export interface ClientSegment {
   count: number;
 }
 
+/** One revenue band: the revenue it starts from, the revenue it runs up to (null for the top band), and how many clients are in it. */
+export interface RevenueBand {
+  band: 'high' | 'medium' | 'low';
+  from: number;
+  to: number | null;
+  count: number;
+}
+
+/** Clients grouped into revenue bands, in the home currency, highest band first. */
+export interface RevenueBands {
+  homeCurrency: string;
+  bands: RevenueBand[];
+}
+
 /** The exported client list file and how many clients it holds. */
 export interface ClientListExport {
   count: number;
@@ -88,6 +102,11 @@ export class ClientService {
   /** How many clients, not archived, are in each segment. */
   segments(): Observable<ClientSegment[]> {
     return this.http.get<ClientSegment[]>('/api/clients/segments');
+  }
+
+  /** How many clients, not archived, are in each revenue band. */
+  revenueBands(): Observable<RevenueBands> {
+    return this.http.get<RevenueBands>('/api/clients/revenue-bands');
   }
 
   get(id: number): Observable<Client> {
