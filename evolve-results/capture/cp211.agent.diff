@@ -1,0 +1,381 @@
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index f54e7a6..6cce6fc 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -79,6 +79,11 @@ export class ProjectService {
+     });
+   }
+ 
++  /** Puts the jobs into the given order (ids first to last) and keeps it. */
++  reorder(ids: number[]): Observable<void> {
++    return this.http.put<void>('/api/projects/order', { ids });
++  }
++
+   get(id: number): Observable<Project> {
+     return this.http.get<Project>(`/api/projects/${id}`);
+   }
+diff --git a/src/main/frontend/src/app/features/projects/projects.ts b/src/main/frontend/src/app/features/projects/projects.ts
+index 02d44df..d7e9d48 100644
+--- a/src/main/frontend/src/app/features/projects/projects.ts
++++ b/src/main/frontend/src/app/features/projects/projects.ts
+@@ -13,7 +13,8 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+ // or finished, chosen when it is added and changeable from its row, and the list can be narrowed to
+ // the projects at a chosen status. The tag and status filters combine, e.g. active projects with a
+ // given tag. Each project carries a short reference code, given when it is added, that no other
+-// project may share, and may carry an optional short description of the work.
++// project may share, and may carry an optional short description of the work. Jobs can be dragged
++// into the order wanted, or moved up and down with buttons, and that order is kept.
+ @Component({
+   selector: 'app-projects',
+   imports: [ReactiveFormsModule, RouterLink],
+@@ -116,6 +117,11 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+       }
+     </form>
+ 
++    @if (reorderError()) {
++      <p role="alert" data-testid="project-reorder-error">{{ reorderError() }}</p>
++    }
++    <p class="visually-hidden" aria-live="polite" data-testid="project-reorder-status">{{ reorderStatus() }}</p>
++
+     @if (deleteError()) {
+       <p role="alert" data-testid="project-delete-error">{{ deleteError() }}</p>
+     }
+@@ -178,6 +184,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+         <caption>All jobs</caption>
+         <thead>
+           <tr>
++            <th scope="col"><span class="visually-hidden">Order</span></th>
+             <th scope="col">Code</th>
+             <th scope="col">Name</th>
+             <th scope="col">Client</th>
+@@ -186,8 +193,38 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+           </tr>
+         </thead>
+         <tbody>
+-          @for (p of projects(); track p.id) {
+-            <tr [attr.data-testid]="'project-row-' + p.id">
++          @for (p of projects(); track p.id; let first = $first, last = $last, i = $index) {
++            <tr
++              [attr.data-testid]="'project-row-' + p.id"
++              draggable="true"
++              [class.drop-target]="dropIndex() === i && dragIndex() !== i"
++              [class.dragging]="dragIndex() === i"
++              (dragstart)="dragStart($event, i)"
++              (dragover)="dragOver($event, i)"
++              (drop)="drop($event, i)"
++              (dragend)="dragEnd()"
++            >
++              <td>
++                <span aria-hidden="true" class="drag-handle" title="Drag to reorder">&#x2630;</span>
++                <button
++                  type="button"
++                  [attr.data-testid]="'project-move-up-' + p.id"
++                  [attr.aria-label]="'Move ' + p.name + ' up'"
++                  [disabled]="first || reordering()"
++                  (click)="move(i, i - 1)"
++                >
++                  &#x2191;
++                </button>
++                <button
++                  type="button"
++                  [attr.data-testid]="'project-move-down-' + p.id"
++                  [attr.aria-label]="'Move ' + p.name + ' down'"
++                  [disabled]="last || reordering()"
++                  (click)="move(i, i + 1)"
++                >
++                  &#x2193;
++                </button>
++              </td>
+               <td data-testid="project-code">{{ p.code }}</td>
+               <td data-testid="project-name">
+                 {{ p.name }}
+@@ -269,6 +306,11 @@ export class Projects {
+   protected readonly tagFilter = signal<number | null>(null);
+   protected readonly statusFilter = signal<ProjectStatus | null>(null);
+   protected readonly statuses = PROJECT_STATUSES;
++  protected readonly reordering = signal(false);
++  protected readonly reorderError = signal<string | null>(null);
++  protected readonly reorderStatus = signal('');
++  protected readonly dragIndex = signal<number | null>(null);
++  protected readonly dropIndex = signal<number | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+@@ -397,6 +439,64 @@ export class Projects {
+     });
+   }
+ 
++  protected dragStart(event: DragEvent, index: number): void {
++    this.dragIndex.set(index);
++    if (event.dataTransfer) {
++      event.dataTransfer.effectAllowed = 'move';
++      event.dataTransfer.setData('text/plain', String(index));
++    }
++  }
++
++  protected dragOver(event: DragEvent, index: number): void {
++    if (this.dragIndex() === null) {
++      return;
++    }
++    event.preventDefault();
++    if (event.dataTransfer) {
++      event.dataTransfer.dropEffect = 'move';
++    }
++    this.dropIndex.set(index);
++  }
++
++  protected drop(event: DragEvent, index: number): void {
++    event.preventDefault();
++    const from = this.dragIndex();
++    this.dragEnd();
++    if (from !== null) {
++      this.move(from, index);
++    }
++  }
++
++  protected dragEnd(): void {
++    this.dragIndex.set(null);
++    this.dropIndex.set(null);
++  }
++
++  /** Moves the job at one place in the list to another and keeps the new order. */
++  protected move(from: number, to: number): void {
++    const before = this.projects();
++    if (from === to || to < 0 || to >= before.length || this.reordering()) {
++      return;
++    }
++    const after = [...before];
++    const [moved] = after.splice(from, 1);
++    after.splice(to, 0, moved);
++    this.projects.set(after);
++    this.reordering.set(true);
++    this.reorderError.set(null);
++    this.service.reorder(after.map((p) => p.id)).subscribe({
++      next: () => {
++        this.reorderStatus.set(`${moved.name} moved to position ${to + 1} of ${after.length}.`);
++        this.reordering.set(false);
++      },
++      error: () => {
++        this.projects.set(before);
++        this.reorderError.set(`Could not move ${moved.name}. Please try again.`);
++        this.reordering.set(false);
++      },
++    });
++  }
++
+   private matchesStatusFilter(project: Project): boolean {
+     const status = this.statusFilter();
+     return status === null || project.status === status;
+diff --git a/src/main/frontend/src/styles.css b/src/main/frontend/src/styles.css
+index 1cfe9cc..8a15f06 100644
+--- a/src/main/frontend/src/styles.css
++++ b/src/main/frontend/src/styles.css
+@@ -29,3 +29,15 @@
+   background: #fff;
+   font-size: 0.85em;
+ }
++
++/* Jobs can be dragged into order: the handle shows where to grab, the drop target where it lands. */
++.drag-handle {
++  cursor: grab;
++  margin-right: 0.25em;
++}
++tr.dragging {
++  opacity: 0.5;
++}
++tr.drop-target {
++  outline: 2px dashed #1a4e8a;
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+index c1b1944..9560fdf 100644
+--- a/src/main/java/net/officefloor/hq/app/project/Project.java
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -57,6 +57,8 @@ public class Project {
+ 
+     private String category;
+ 
++    private int sortOrder;
++
+     @ManyToMany
+     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
+             inverseJoinColumns = @JoinColumn(name = "tag_id"))
+@@ -173,6 +175,15 @@ public class Project {
+         this.category = category;
+     }
+ 
++    /** Where the job sits in the kept order of jobs; lower comes first, ties fall back to id. */
++    public int getSortOrder() {
++        return sortOrder;
++    }
++
++    public void setSortOrder(int sortOrder) {
++        this.sortOrder = sortOrder;
++    }
++
+     /** The tags labelling this project; add or remove to tag or untag it. */
+     public Set<Tag> getTags() {
+         return tags;
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectController.java b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+index 85c7783..a5486a3 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+@@ -29,6 +29,12 @@ public class ProjectController {
+         return service.list(includeArchived, tagId, status);
+     }
+ 
++    @PutMapping("/order")
++    @ResponseStatus(HttpStatus.NO_CONTENT)
++    public void reorder(@Valid @RequestBody ProjectOrderRequest request) {
++        service.reorder(request.ids());
++    }
++
+     @GetMapping("/{id}")
+     public ProjectResponse get(@PathVariable Long id) {
+         return service.get(id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectOrderRequest.java b/src/main/java/net/officefloor/hq/app/project/ProjectOrderRequest.java
+new file mode 100644
+index 0000000..111f960
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectOrderRequest.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.project;
++
++import jakarta.validation.constraints.NotEmpty;
++import jakarta.validation.constraints.NotNull;
++import java.util.List;
++
++/** Payload to put jobs into an order: their ids, first to last, as the list shows them. */
++public record ProjectOrderRequest(@NotEmpty List<@NotNull Long> ids) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index 4e86667..7b401a6 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -8,29 +8,29 @@ import org.springframework.data.jpa.repository.Query;
+ public interface ProjectRepository extends JpaRepository<Project, Long> {
+ 
+     /** All projects with their client loaded in the same query. */
+-    @Query("SELECT p FROM Project p JOIN FETCH p.client ORDER BY p.id")
++    @Query("SELECT p FROM Project p JOIN FETCH p.client ORDER BY p.sortOrder, p.id")
+     List<Project> findAllWithClient();
+ 
+     /** All projects not archived, with their client loaded in the same query. */
+-    @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.archived = false ORDER BY p.id")
++    @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.archived = false ORDER BY p.sortOrder, p.id")
+     List<Project> findActiveWithClient();
+ 
+     /** All projects carrying a tag, with their client loaded in the same query. */
+-    @Query("SELECT p FROM Project p JOIN FETCH p.client JOIN p.tags t WHERE t.id = :tagId ORDER BY p.id")
++    @Query("SELECT p FROM Project p JOIN FETCH p.client JOIN p.tags t WHERE t.id = :tagId ORDER BY p.sortOrder, p.id")
+     List<Project> findAllByTagIdWithClient(Long tagId);
+ 
+     /** All projects not archived carrying a tag, with their client loaded in the same query. */
+     @Query("SELECT p FROM Project p JOIN FETCH p.client JOIN p.tags t WHERE t.id = :tagId"
+-            + " AND p.archived = false ORDER BY p.id")
++            + " AND p.archived = false ORDER BY p.sortOrder, p.id")
+     List<Project> findActiveByTagIdWithClient(Long tagId);
+ 
+     /** A client's projects not archived, with their client loaded in the same query. */
+     @Query("SELECT p FROM Project p JOIN FETCH p.client c WHERE c.id = :clientId AND p.archived = false"
+-            + " ORDER BY p.id")
++            + " ORDER BY p.sortOrder, p.id")
+     List<Project> findActiveByClientIdWithClient(Long clientId);
+ 
+     /** All of a client's projects, archived or not, with their client loaded in the same query. */
+-    @Query("SELECT p FROM Project p JOIN FETCH p.client c WHERE c.id = :clientId ORDER BY p.id")
++    @Query("SELECT p FROM Project p JOIN FETCH p.client c WHERE c.id = :clientId ORDER BY p.sortOrder, p.id")
+     List<Project> findAllByClientIdWithClient(Long clientId);
+ 
+     /**
+@@ -38,13 +38,21 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+      * same query.
+      */
+     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.archived = false"
+-            + " AND LOWER(p.name) LIKE LOWER(CONCAT('%', :text, '%')) ESCAPE '\\' ORDER BY p.id")
++            + " AND LOWER(p.name) LIKE LOWER(CONCAT('%', :text, '%')) ESCAPE '\\' ORDER BY p.sortOrder, p.id")
+     List<Project> searchActiveByNameWithClient(String text);
+ 
+     /** One project with its client loaded in the same query. */
+     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
+     Optional<Project> findByIdWithClient(Long id);
+ 
++    /** The highest position any project holds, or 0 when there are none. */
++    @Query("SELECT COALESCE(MAX(p.sortOrder), 0) FROM Project p")
++    int maxSortOrder();
++
++    /** All projects, archived or not, in their kept order. */
++    @Query("SELECT p FROM Project p ORDER BY p.sortOrder, p.id")
++    List<Project> findAllOrdered();
++
+     /** Whether any project, archived or not, already has the code. */
+     boolean existsByCode(String code);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index fd7ed3b..1734110 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -3,7 +3,13 @@ package net.officefloor.hq.app.project;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.Iterator;
+ import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.Client;
+ import net.officefloor.hq.app.client.ClientRepository;
+@@ -83,6 +89,7 @@ public class ProjectService {
+             throw codeTaken();
+         }
+         Project project = new Project(request.name().trim(), code, client);
++        project.setSortOrder(projects.maxSortOrder() + 1);
+         if (request.status() != null) {
+             project.setStatus(request.status());
+         }
+@@ -103,6 +110,32 @@ public class ProjectService {
+         }
+     }
+ 
++    /**
++     * Puts the given projects into the given order and keeps it. The ids are the list as the user sees
++     * it (possibly filtered); they are rearranged among the places they already hold, so projects not
++     * in the list keep their places.
++     */
++    @Transactional
++    public void reorder(List<Long> ids) {
++        if (new HashSet<>(ids).size() != ids.size()) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A job is listed more than once");
++        }
++        List<Project> all = projects.findAllOrdered();
++        Map<Long, Project> byId = new HashMap<>();
++        all.forEach(p -> byId.put(p.getId(), p));
++        if (!byId.keySet().containsAll(ids)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown job");
++        }
++        Set<Long> moved = Set.copyOf(ids);
++        Iterator<Long> next = ids.iterator();
++        int position = 1;
++        for (Project slot : all) {
++            Project placed = moved.contains(slot.getId()) ? byId.get(next.next()) : slot;
++            placed.setSortOrder(position++);
++        }
++        audit.record("PROJECTS_REORDERED ids=" + ids.stream().map(String::valueOf).collect(Collectors.joining(",")));
++    }
++
+     private static ResponseStatusException codeTaken() {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "A job with this code already exists");
+     }
+diff --git a/src/main/resources/db/migration/V100__project_sort_order.sql b/src/main/resources/db/migration/V100__project_sort_order.sql
+new file mode 100644
+index 0000000..23b9177
+--- /dev/null
++++ b/src/main/resources/db/migration/V100__project_sort_order.sql
+@@ -0,0 +1,4 @@
++-- Jobs can be put into the order the office wants, and that order is kept. Jobs sort by
++-- sort_order, ties broken by id; existing jobs keep the order they were added in.
++ALTER TABLE project ADD COLUMN sort_order INT DEFAULT 0 NOT NULL;
++UPDATE project SET sort_order = id;
