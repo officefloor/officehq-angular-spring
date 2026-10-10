@@ -234,6 +234,10 @@ public class PaymentService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment is more than the balance due");
         }
         Payment saved = payments.saveAndFlush(payment.get());
+        if (invoice.getDueDate() != null && saved.getDate().isBefore(invoice.getDueDate())) {
+            invoice.takeRebateIfEarned(payments.sumAmountByInvoiceIdPaidBefore(invoice.getId(), invoice.getDueDate()),
+                    credited);
+        }
         invoice.applySettledTotals(paid, credited);
         invoices.flush();
         audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount=" + saved.getAmount().toPlainString()

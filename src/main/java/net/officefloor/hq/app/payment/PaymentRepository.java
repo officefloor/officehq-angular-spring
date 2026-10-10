@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.payment;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
@@ -19,6 +20,10 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     /** Total paid against an invoice (zero when nothing has been paid). */
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.invoiceId = :invoiceId")
     BigDecimal sumAmountByInvoiceId(Long invoiceId);
+
+    /** Total paid against an invoice on days before the given date (zero when nothing was). */
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.invoiceId = :invoiceId AND p.date < :date")
+    BigDecimal sumAmountByInvoiceIdPaidBefore(Long invoiceId, LocalDate date);
 
     /** Total paid against every invoice with any of the given statuses (zero when nothing has been paid). */
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p, Invoice i"

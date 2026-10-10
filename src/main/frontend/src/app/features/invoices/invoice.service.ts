@@ -199,6 +199,8 @@ export interface InvoiceDetail extends Invoice {
   rebatePct: number;
   /** The settlement rebate for paying before the due date; null when none is offered. */
   rebate: number | null;
+  /** The reduced amount the client actually needed to pay once the rebate was earned; null until then. */
+  rebatedAmount: number | null;
   lineItems: LineItem[];
   /** The client's tax registration number; null when they are not tax registered. */
   clientTaxNumber: string | null;

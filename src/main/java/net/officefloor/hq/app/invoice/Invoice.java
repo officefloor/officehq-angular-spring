@@ -100,6 +100,10 @@ public class Invoice {
     @Column(name = "rebate_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal rebatePct = BigDecimal.ZERO.setScale(2);
 
+    /** The settlement rebate given back once the reduced amount was paid before the due date; zero until then. */
+    @Column(name = "rebate_taken", nullable = false, precision = 12, scale = 2)
+    private BigDecimal rebateTaken = BigDecimal.ZERO.setScale(2);
+
     /** The late fee charged for each day the invoice is overdue once sent; zero when none is charged. */
     @Column(name = "late_fee_per_day", nullable = false, precision = 12, scale = 2)
     private BigDecimal lateFeePerDay = BigDecimal.ZERO.setScale(2);
@@ -398,6 +402,38 @@ public class Invoice {
     /** The settlement rebate for paying before the due date: the rebate percentage of the amount, to the cent; null when none is offered. */
     public BigDecimal getRebate() {
         return rebatePct.signum() > 0 ? percentOf(amount, rebatePct) : null;
+    }
+
+    /** The settlement rebate given back because the client paid early enough; zero when it has not been earned. */
+    public BigDecimal getRebateTaken() {
+        return rebateTaken;
+    }
+
+    /** Whether the settlement rebate has been earned, so the invoice settles for the reduced amount. */
+    public boolean isRebateTaken() {
+        return rebateTaken.signum() > 0;
+    }
+
+    /**
+     * The reduced amount the client actually needed to pay once the rebate was earned: the amount less the rebate
+     * given back; null when no rebate has been earned.
+     */
+    public BigDecimal getRebatedAmount() {
+        return isRebateTaken() ? amount.subtract(rebateTaken) : null;
+    }
+
+    /**
+     * Gives back the settlement rebate when what was paid before the due date, together with the credit and any
+     * part written off, has cleared the amount less the rebate. Once taken it stays taken.
+     */
+    public void takeRebateIfEarned(BigDecimal paidBeforeDue, BigDecimal credited) {
+        BigDecimal rebate = getRebate();
+        if (rebate == null || isRebateTaken() || dueDate == null) {
+            return;
+        }
+        if (paidBeforeDue.add(credited).add(writeOffAmount).compareTo(amount.subtract(rebate)) >= 0) {
+            this.rebateTaken = rebate;
+        }
     }
 
     public InvoiceStatus getStatus() {
@@ -702,11 +738,11 @@ public class Invoice {
 
     /**
      * What is left to pay on this invoice given the totals paid and credited against it, less any part written
-     * off; nothing once it is void or written off.
+     * off and any settlement rebate earned; nothing once it is void or written off.
      */
     public BigDecimal amountDue(BigDecimal paid, BigDecimal credited) {
         return status.isClosedUnpaid() ? BigDecimal.ZERO.setScale(2)
-                : amount.subtract(paid).subtract(credited).subtract(writeOffAmount);
+                : amount.subtract(paid).subtract(credited).subtract(writeOffAmount).subtract(rebateTaken);
     }
 
     /**
@@ -723,14 +759,14 @@ public class Invoice {
 
     /**
      * This invoice's status given the totals paid and credited against it. Once sent, it is PAID when the
-     * payments, credit notes and any part written off together clear the amount, PARTIAL once something has been
+     * payments, credit notes, any part written off and any settlement rebate earned together clear the amount, PARTIAL once something has been
      * paid, credited or written off, otherwise still SENT. Drafts, void and written-off invoices keep their status, as does one marked paid by hand.
      */
     public InvoiceStatus statusFor(BigDecimal paid, BigDecimal credited) {
         if (status == InvoiceStatus.DRAFT || status.isClosedUnpaid()) {
             return status;
         }
-        BigDecimal settled = paid.add(credited).add(writeOffAmount);
+        BigDecimal settled = paid.add(credited).add(writeOffAmount).add(rebateTaken);
         if (settled.compareTo(amount) >= 0 || (status == InvoiceStatus.PAID && settled.signum() == 0)) {
             return InvoiceStatus.PAID;
         }

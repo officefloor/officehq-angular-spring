@@ -391,6 +391,12 @@ public class TestSupportController {
                     new BigDecimal(c.get("amount").toString()),
                     Timestamp.from(seedInstant(c.get("date").toString())));
         }
+        // An invoice paid down to the amount less its settlement rebate before its due date takes the rebate.
+        jdbc.update("UPDATE invoice i SET rebate_taken = ROUND(i.amount * i.rebate_pct / 100, 2)"
+                + " WHERE i.rebate_pct > 0 AND i.due_date IS NOT NULL AND i.status IN ('SENT', 'PARTIAL')"
+                + " AND COALESCE((SELECT SUM(p.amount) FROM payment p WHERE p.invoice_id = i.id AND p.paid_date < i.due_date), 0)"
+                + " + COALESCE((SELECT SUM(c.amount) FROM credit_note c WHERE c.invoice_id = i.id), 0)"
+                + " + i.write_off_amount >= i.amount - ROUND(i.amount * i.rebate_pct / 100, 2)");
         for (Map<String, Object> d : rows(fixture, "deposits")) {
             jdbc.update("INSERT INTO deposit (id, client_id, amount, paid_date) VALUES (?, ?, ?, ?)",
                     ((Number) d.get("id")).longValue(), ((Number) d.get("clientId")).longValue(),

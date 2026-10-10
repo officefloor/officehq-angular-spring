@@ -14,7 +14,8 @@ import java.util.List;
  * the total before tax), any early-payment discount offered (its percentage, the days after issue it
  * must be paid within, the last day to pay, and the reduced amount; null when none is offered), any
  * settlement rebate for paying before the due date (its percentage, and the rebate itself; null when none
- * is offered), and the
+ * is offered, and the reduced amount the client actually needed to pay once the rebate was earned; null until
+ * then), and the
  * client's tax number (null when the client is not tax registered), the minimum charge, the net total
  * before it, whether the minimum was billed because the net total came out under it, and the total
  * savings (the line discounts and the invoice's discounts added together). A foreign invoice also gives
@@ -33,7 +34,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
         BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
         BigDecimal levyPct, BigDecimal levy, BigDecimal surcharge, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
         BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
-        BigDecimal rebatePct, BigDecimal rebate,
+        BigDecimal rebatePct, BigDecimal rebate, BigDecimal rebatedAmount,
         InvoiceStatus status, LocalDate issuedDate,
         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts,
         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
@@ -56,7 +57,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
                 invoice.getEffectiveTaxPct(),
                 invoice.getEarlyPaymentPct(), invoice.getEarlyPaymentDays(), invoice.getEarlyPaymentBy(),
                 invoice.getEarlyPaymentAmount(),
-                invoice.getRebatePct(), invoice.getRebate(),
+                invoice.getRebatePct(), invoice.getRebate(), invoice.getRebatedAmount(),
                 status, invoice.getIssuedDate(), invoice.getDueDate(),
                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
                 invoice.getProject().getClient().getTaxNumber(),

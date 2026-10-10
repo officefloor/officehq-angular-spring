@@ -428,6 +428,15 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                 }
               </tr>
             }
+            @if (inv.rebatedAmount !== null) {
+              <tr data-testid="invoice-rebated-row">
+                <th scope="row" colspan="5">Paid early, so the client needed to pay only</th>
+                <td data-testid="invoice-rebated-amount">{{ inv.rebatedAmount | money: inv.currency }}</td>
+                @if (inv.status === 'DRAFT') {
+                  <td></td>
+                }
+              </tr>
+            }
             @if (inv.lateFeePerDay > 0) {
               <tr data-testid="invoice-late-fee-row">
                 <th scope="row" colspan="5">
