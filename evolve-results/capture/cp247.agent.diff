@@ -1,0 +1,151 @@
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index 1aef9e8..34a7a6f 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -134,6 +134,11 @@ export class ProjectService {
+     return this.http.post<Project>(`/api/projects/${id}/archive`, null);
+   }
+ 
++  /** Archives every finished job not already archived, giving back the jobs archived. */
++  archiveCompleted(): Observable<Project[]> {
++    return this.http.post<Project[]>('/api/projects/archive-completed', null);
++  }
++
+   restore(id: number): Observable<Project> {
+     return this.http.post<Project>(`/api/projects/${id}/restore`, null);
+   }
+diff --git a/src/main/frontend/src/app/features/projects/projects.ts b/src/main/frontend/src/app/features/projects/projects.ts
+index 627df66..79b8d8b 100644
+--- a/src/main/frontend/src/app/features/projects/projects.ts
++++ b/src/main/frontend/src/app/features/projects/projects.ts
+@@ -16,7 +16,8 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+ // given tag. Each project carries a short reference code, given when it is added, that no other
+ // project may share, and may carry an optional short description of the work. Jobs can be dragged
+ // into the order wanted, or moved up and down with buttons, and that order is kept. Each job shows what
+-// is still outstanding on it: what is left to pay on its sent invoices.
++// is still outstanding on it: what is left to pay on its sent invoices. All finished jobs can be
++// archived at once.
+ @Component({
+   selector: 'app-projects',
+   imports: [ReactiveFormsModule, RouterLink, MoneyPipe],
+@@ -128,6 +129,21 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+       <p role="alert" data-testid="project-delete-error">{{ deleteError() }}</p>
+     }
+ 
++    <div>
++      <button
++        type="button"
++        data-testid="jobs-archive-completed"
++        [disabled]="archivingCompleted()"
++        (click)="archiveCompleted()"
++      >
++        Archive all finished jobs
++      </button>
++      <p aria-live="polite" data-testid="jobs-archive-completed-status">{{ archiveCompletedStatus() }}</p>
++      @if (archiveCompletedError()) {
++        <p role="alert" data-testid="jobs-archive-completed-error">{{ archiveCompletedError() }}</p>
++      }
++    </div>
++
+     <div>
+       <input
+         id="projects-show-archived"
+@@ -315,6 +331,9 @@ export class Projects {
+   protected readonly reorderStatus = signal('');
+   protected readonly dragIndex = signal<number | null>(null);
+   protected readonly dropIndex = signal<number | null>(null);
++  protected readonly archivingCompleted = signal(false);
++  protected readonly archiveCompletedStatus = signal('');
++  protected readonly archiveCompletedError = signal<string | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+@@ -428,6 +447,32 @@ export class Projects {
+     });
+   }
+ 
++  protected archiveCompleted(): void {
++    this.archivingCompleted.set(true);
++    this.archiveCompletedStatus.set('');
++    this.archiveCompletedError.set(null);
++    this.service.archiveCompleted().subscribe({
++      next: (archived) => {
++        const ids = new Set(archived.map((a) => a.id));
++        this.projects.update((list) =>
++          this.showArchived()
++            ? list.map((p) => archived.find((a) => a.id === p.id) ?? p)
++            : list.filter((p) => !ids.has(p.id)),
++        );
++        this.archiveCompletedStatus.set(
++          archived.length === 0
++            ? 'No finished jobs to archive.'
++            : `Archived ${archived.length} finished ${archived.length === 1 ? 'job' : 'jobs'}.`,
++        );
++        this.archivingCompleted.set(false);
++      },
++      error: () => {
++        this.archiveCompletedError.set('Could not archive the finished jobs. Please try again.');
++        this.archivingCompleted.set(false);
++      },
++    });
++  }
++
+   protected restore(project: Project): void {
+     this.deleting.set(project.id);
+     this.deleteError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectController.java b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+index a5486a3..315cbe8 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+@@ -35,6 +35,11 @@ public class ProjectController {
+         service.reorder(request.ids());
+     }
+ 
++    @PostMapping("/archive-completed")
++    public List<ProjectResponse> archiveCompleted() {
++        return service.archiveCompleted();
++    }
++
+     @GetMapping("/{id}")
+     public ProjectResponse get(@PathVariable Long id) {
+         return service.get(id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index 7b401a6..8fd87d6 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -41,6 +41,11 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+             + " AND LOWER(p.name) LIKE LOWER(CONCAT('%', :text, '%')) ESCAPE '\\' ORDER BY p.sortOrder, p.id")
+     List<Project> searchActiveByNameWithClient(String text);
+ 
++    /** The projects not archived at the given status, with their client loaded in the same query. */
++    @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.archived = false AND p.status = :status"
++            + " ORDER BY p.sortOrder, p.id")
++    List<Project> findActiveByStatusWithClient(ProjectStatus status);
++
+     /** One project with its client loaded in the same query. */
+     @Query("SELECT p FROM Project p JOIN FETCH p.client WHERE p.id = :id")
+     Optional<Project> findByIdWithClient(Long id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index d347bb1..b36c8e2 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -330,6 +330,19 @@ public class ProjectService {
+         return respond(project);
+     }
+ 
++    /**
++     * Archives every finished project not already archived in one go, recording each archiving in the
++     * audit log, and gives back the projects archived.
++     */
++    @Transactional
++    public List<ProjectResponse> archiveCompleted() {
++        List<Project> finished = projects.findActiveByStatusWithClient(ProjectStatus.FINISHED);
++        finished.forEach(p -> p.setArchived(true));
++        projects.flush();
++        finished.forEach(p -> audit.record("PROJECT_ARCHIVED id=" + p.getId()));
++        return respond(finished);
++    }
++
+     /** Brings an archived project back onto the project lists, recording it in the audit log. */
+     @Transactional
+     public ProjectResponse restore(Long id) {
