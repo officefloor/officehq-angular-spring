@@ -47,6 +47,16 @@ public class DashboardController {
         return service.revenueReport(from, to);
     }
 
+    /** The revenue billed in two periods (each on or between its dates), side by side. */
+    @GetMapping("/revenue-compare")
+    public RevenueComparisonResponse revenueComparison(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate aFrom,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate aTo,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate bFrom,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate bTo) {
+        return service.revenueComparison(aFrom, aTo, bFrom, bTo);
+    }
+
     /** How old the debt across all clients is, in the home currency, split into age buckets. */
     @GetMapping("/aging-report")
     public AgingReportResponse agingReport() {

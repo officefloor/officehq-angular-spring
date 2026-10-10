@@ -128,6 +128,25 @@ export interface RevenueReport {
   months: MonthRevenue[];
 }
 
+/** The revenue billed on invoices issued on or between two dates, in the home currency. */
+export interface PeriodRevenue {
+  from: string;
+  to: string;
+  /** How many invoices the revenue came from. */
+  invoices: number;
+  total: number;
+}
+
+/** The revenue of two periods side by side, with the change from the first to the second. */
+export interface RevenueComparison {
+  homeCurrency: CurrencyCode;
+  a: PeriodRevenue;
+  b: PeriodRevenue;
+  change: number;
+  /** The change as a whole percentage of the first period's revenue; null when nothing was billed in it. */
+  changePercent: number | null;
+}
+
 /** One instalment expected in, in its invoice's currency. */
 export interface ForecastEntry {
   id: number;
@@ -196,6 +215,12 @@ export class DashboardService {
   revenueReport(range?: { from: string; to: string }): Observable<RevenueReport> {
     const params = range ? new HttpParams().set('from', range.from).set('to', range.to) : new HttpParams();
     return this.http.get<RevenueReport>('/api/dashboard/revenue-report', { params });
+  }
+
+  /** The revenue of two periods, A and B, side by side. */
+  revenueComparison(a: { from: string; to: string }, b: { from: string; to: string }): Observable<RevenueComparison> {
+    const params = new HttpParams().set('aFrom', a.from).set('aTo', a.to).set('bFrom', b.from).set('bTo', b.to);
+    return this.http.get<RevenueComparison>('/api/dashboard/revenue-compare', { params });
   }
 
   agingReport(): Observable<AgingReport> {

@@ -474,6 +474,23 @@ public class DashboardService {
                 total.setScale(2, RoundingMode.HALF_UP), jobs, months);
     }
 
+    /**
+     * The revenue billed in two periods side by side, each worked out as the revenue report over its dates, with the
+     * change from the first period to the second.
+     */
+    @Transactional(readOnly = true)
+    public RevenueComparisonResponse revenueComparison(LocalDate aFrom, LocalDate aTo, LocalDate bFrom,
+            LocalDate bTo) {
+        RevenueReportResponse a = revenueReport(aFrom, aTo);
+        RevenueReportResponse b = revenueReport(bFrom, bTo);
+        BigDecimal change = b.total().subtract(a.total());
+        Long changePercent = a.total().signum() == 0 ? null
+                : change.multiply(BigDecimal.valueOf(100)).divide(a.total(), 0, RoundingMode.HALF_UP).longValue();
+        return new RevenueComparisonResponse(a.homeCurrency(),
+                new RevenueComparisonResponse.Period(aFrom, aTo, a.invoices(), a.total()),
+                new RevenueComparisonResponse.Period(bFrom, bTo, b.invoices(), b.total()), change, changePercent);
+    }
+
     /** The running revenue of one job while the revenue report is built. */
     private static final class JobTally {
         private final Long projectId;
