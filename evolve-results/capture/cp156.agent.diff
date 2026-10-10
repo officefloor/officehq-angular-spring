@@ -1,0 +1,116 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index 6fad709..de4f240 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -7,6 +7,7 @@ import { InvoiceService } from './invoice.service';
+ // A client's statement: every invoice across the client's projects grouped by job, how much is left to
+ // pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
+ // The balance owed as at a chosen past date can be looked up, counting only entries up to that date.
++// Every figure is in the client's own currency; at the foot the total owed is also given in the home currency.
+ // It opens with the running account: invoices, payments, credit notes, deposits and refunds in date order with the
+ // balance owed after each.
+ // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
+@@ -194,6 +195,14 @@ import { InvoiceService } from './invoice.service';
+           Total owed:
+           <strong data-testid="client-outstanding-total">{{ s.outstanding | money: s.currency }}</strong>
+         </p>
++        <p data-testid="statement-home">
++          Total owed in {{ s.homeCurrency }}:
++          @if (s.homeOutstanding !== null) {
++            <strong data-testid="statement-home-total">{{ s.homeOutstanding | money: s.homeCurrency }}</strong>
++          } @else {
++            <span data-testid="statement-home-total-unavailable">No exchange rate recorded for {{ s.currency }}.</span>
++          }
++        </p>
+       </article>
+     }
+   `,
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 752f2c6..5506ed8 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -103,6 +103,10 @@ export interface ClientStatement {
+   tax: number;
+   /** Invoices, payments, credit notes, deposits and refunds in date order, each with the running balance. */
+   entries: StatementEntry[];
++  /** The business's home currency. */
++  homeCurrency: CurrencyCode;
++  /** The total still owed converted into the home currency, each invoice at its issue-date rate; null without a rate. */
++  homeOutstanding: number | null;
+ }
+ 
+ /** What a client owed as at the end of a chosen day (negative when in credit). */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+index 945a412..f6621eb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -7,6 +7,7 @@ import java.util.ArrayList;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Optional;
+ import java.util.function.Function;
+ 
+ /**
+@@ -16,14 +17,16 @@ import java.util.function.Function;
+  * summary it also gives the total invoiced on those owed invoices and how much of that has been paid,
+  * so the total still owed is what was invoiced less what was paid. It also shows the tax (sales tax and
+  * levy) on each job and across the whole statement, again leaving out drafts and void invoices. All of it
+- * is in the client's currency. Finally it gives the running account: every invoice, payment, credit note, deposit and
++ * is in the client's currency, with the total still owed also converted into the home currency at the foot (each
++ * invoice at the rate on its issue date; null when a rate is missing). Finally it gives the running account: every invoice, payment, credit note, deposit and
+  * refund in date order, each with the balance owed once it is counted.
+  */
+ public record ClientStatementResponse(Long clientId, String clientName, String currency, List<Line> invoices, List<Job> jobs,
+-        BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax, List<StatementEntry> entries) {
++        BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax, List<StatementEntry> entries,
++        String homeCurrency, BigDecimal homeOutstanding) {
+ 
+     static ClientStatementResponse from(Long clientId, String clientName, String currency, List<Line> invoices,
+-            List<StatementEntry> entries) {
++            List<StatementEntry> entries, String homeCurrency, Function<Line, Optional<BigDecimal>> toHome) {
+         Map<Long, List<Line>> byProject = new LinkedHashMap<>();
+         invoices.forEach(l -> byProject.computeIfAbsent(l.projectId(), id -> new ArrayList<>()).add(l));
+         List<Job> jobs = byProject.values().stream()
+@@ -32,7 +35,24 @@ public record ClientStatementResponse(Long clientId, String clientName, String c
+         BigDecimal outstanding = owed(invoices);
+         BigDecimal invoiced = sum(invoices, Line::amount);
+         return new ClientStatementResponse(clientId, clientName, currency, invoices, jobs, invoiced,
+-                invoiced.subtract(outstanding), outstanding, sum(invoices, Line::tax), runningBalance(entries));
++                invoiced.subtract(outstanding), outstanding, sum(invoices, Line::tax), runningBalance(entries), homeCurrency,
++                homeOwed(invoices, toHome));
++    }
++
++    /** What is left to pay across the owed invoices, each converted into the home currency; null if any cannot be. */
++    private static BigDecimal homeOwed(List<Line> lines, Function<Line, Optional<BigDecimal>> toHome) {
++        BigDecimal total = BigDecimal.ZERO;
++        for (Line line : lines) {
++            if (line.status() == InvoiceStatus.DRAFT || line.status().isClosedUnpaid()) {
++                continue;
++            }
++            Optional<BigDecimal> converted = toHome.apply(line);
++            if (converted.isEmpty()) {
++                return null;
++            }
++            total = total.add(converted.get());
++        }
++        return total.setScale(2, RoundingMode.HALF_UP);
+     }
+ 
+     /** Puts the entries in date order, each carrying the balance owed once it and those before it are counted. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 7363bed..bd56913 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -123,8 +123,10 @@ public class InvoiceService {
+                 .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO),
+                         credited.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                 .toList();
++        String home = settings.homeCurrency();
+         return ClientStatementResponse.from(client.getId(), client.getName(), client.getCurrency(), lines,
+-                accountEntries(clientId, found));
++                accountEntries(clientId, found), home, l -> l.issuedDate() == null ? Optional.empty()
++                        : fxRates.convert(client.getCurrency(), home, l.issuedDate(), l.amountDue()));
+     }
+ 
+     /**
