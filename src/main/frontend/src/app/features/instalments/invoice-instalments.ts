@@ -41,6 +41,12 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
               per day
             </p>
           }
+          @if (interest.hasValue()) {
+            <p data-testid="invoice-interest-row">
+              Total interest built up:
+              <strong data-testid="invoice-interest">{{ interest.value().accrued | money: currency() }}</strong>
+            </p>
+          }
           <table data-testid="invoice-instalments-table">
             <caption>When each part of this invoice is due</caption>
             <thead>
@@ -279,6 +285,7 @@ export class InvoiceInstalments {
         // Reload so the schedule stays in due-date order.
         this.instalments.reload();
         this.next.reload();
+        this.interest.reload();
         this.form.reset();
         this.saving.set(false);
       },
@@ -300,6 +307,7 @@ export class InvoiceInstalments {
       next: () => {
         this.instalments.update((list) => (list ?? []).filter((n) => n.id !== instalment.id));
         this.next.reload();
+        this.interest.reload();
         this.removing.set(null);
       },
       error: () => {

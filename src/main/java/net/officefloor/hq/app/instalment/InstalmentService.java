@@ -38,10 +38,13 @@ public class InstalmentService {
                 .map(i -> from(invoice, i, today)).toList();
     }
 
-    /** The interest charged for each day an instalment of the invoice is paid late. */
+    /**
+     * The interest charged for each day an instalment of the invoice is paid late, and the total that has
+     * built up across its late instalments.
+     */
     @Transactional(readOnly = true)
     public InstalmentInterestResponse interest(Long projectId, Long invoiceId) {
-        return new InstalmentInterestResponse(find(projectId, invoiceId).getInstalmentInterestPerDay());
+        return interestOf(find(projectId, invoiceId));
     }
 
     /** Sets the interest charged for each day an instalment of an invoice still to be paid is paid late. */
@@ -53,7 +56,15 @@ public class InstalmentService {
         invoices.flush();
         audit.record("INSTALMENT_INTEREST_SET invoice=" + invoiceId + " perDay="
                 + invoice.getInstalmentInterestPerDay().toPlainString());
-        return new InstalmentInterestResponse(invoice.getInstalmentInterestPerDay());
+        return interestOf(invoice);
+    }
+
+    private InstalmentInterestResponse interestOf(Invoice invoice) {
+        LocalDate today = LocalDate.now(clock);
+        BigDecimal accrued = instalments.findByInvoiceIdOrderByDueDateAscIdAsc(invoice.getId()).stream()
+                .map(i -> from(invoice, i, today).interest())
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        return new InstalmentInterestResponse(invoice.getInstalmentInterestPerDay(), accrued);
     }
 
     /**

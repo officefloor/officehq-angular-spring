@@ -20,6 +20,8 @@ export interface Instalment {
 /** The interest charged for each day an instalment of an invoice is paid late. */
 export interface InstalmentInterest {
   interestPerDay: number;
+  /** Total interest that has built up across the late instalments. */
+  accrued: number;
 }
 
 /** The earliest instalment of an invoice still to be paid. */
