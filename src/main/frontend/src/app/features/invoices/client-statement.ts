@@ -7,6 +7,7 @@ import { InvoiceService } from './invoice.service';
 // A client's statement: every invoice across the client's projects grouped by job, how much is left to
 // pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
 // The balance owed as at a chosen past date can be looked up, counting only entries up to that date.
+// Every figure is in the client's own currency; at the foot the total owed is also given in the home currency.
 // It opens with the running account: invoices, payments, credit notes, deposits and refunds in date order with the
 // balance owed after each.
 // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
@@ -193,6 +194,14 @@ import { InvoiceService } from './invoice.service';
         <p>
           Total owed:
           <strong data-testid="client-outstanding-total">{{ s.outstanding | money: s.currency }}</strong>
+        </p>
+        <p data-testid="statement-home">
+          Total owed in {{ s.homeCurrency }}:
+          @if (s.homeOutstanding !== null) {
+            <strong data-testid="statement-home-total">{{ s.homeOutstanding | money: s.homeCurrency }}</strong>
+          } @else {
+            <span data-testid="statement-home-total-unavailable">No exchange rate recorded for {{ s.currency }}.</span>
+          }
         </p>
       </article>
     }

@@ -123,8 +123,10 @@ public class InvoiceService {
                 .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO),
                         credited.getOrDefault(i.getId(), BigDecimal.ZERO)))
                 .toList();
+        String home = settings.homeCurrency();
         return ClientStatementResponse.from(client.getId(), client.getName(), client.getCurrency(), lines,
-                accountEntries(clientId, found));
+                accountEntries(clientId, found), home, l -> l.issuedDate() == null ? Optional.empty()
+                        : fxRates.convert(client.getCurrency(), home, l.issuedDate(), l.amountDue()));
     }
 
     /**

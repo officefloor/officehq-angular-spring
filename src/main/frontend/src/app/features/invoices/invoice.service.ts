@@ -103,6 +103,10 @@ export interface ClientStatement {
   tax: number;
   /** Invoices, payments, credit notes, deposits and refunds in date order, each with the running balance. */
   entries: StatementEntry[];
+  /** The business's home currency. */
+  homeCurrency: CurrencyCode;
+  /** The total still owed converted into the home currency, each invoice at its issue-date rate; null without a rate. */
+  homeOutstanding: number | null;
 }
 
 /** What a client owed as at the end of a chosen day (negative when in credit). */

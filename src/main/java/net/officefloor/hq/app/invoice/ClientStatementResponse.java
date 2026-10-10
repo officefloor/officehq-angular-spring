@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -16,14 +17,16 @@ import java.util.function.Function;
  * summary it also gives the total invoiced on those owed invoices and how much of that has been paid,
  * so the total still owed is what was invoiced less what was paid. It also shows the tax (sales tax and
  * levy) on each job and across the whole statement, again leaving out drafts and void invoices. All of it
- * is in the client's currency. Finally it gives the running account: every invoice, payment, credit note, deposit and
+ * is in the client's currency, with the total still owed also converted into the home currency at the foot (each
+ * invoice at the rate on its issue date; null when a rate is missing). Finally it gives the running account: every invoice, payment, credit note, deposit and
  * refund in date order, each with the balance owed once it is counted.
  */
 public record ClientStatementResponse(Long clientId, String clientName, String currency, List<Line> invoices, List<Job> jobs,
-        BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax, List<StatementEntry> entries) {
+        BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax, List<StatementEntry> entries,
+        String homeCurrency, BigDecimal homeOutstanding) {
 
     static ClientStatementResponse from(Long clientId, String clientName, String currency, List<Line> invoices,
-            List<StatementEntry> entries) {
+            List<StatementEntry> entries, String homeCurrency, Function<Line, Optional<BigDecimal>> toHome) {
         Map<Long, List<Line>> byProject = new LinkedHashMap<>();
         invoices.forEach(l -> byProject.computeIfAbsent(l.projectId(), id -> new ArrayList<>()).add(l));
         List<Job> jobs = byProject.values().stream()
@@ -32,7 +35,24 @@ public record ClientStatementResponse(Long clientId, String clientName, String c
         BigDecimal outstanding = owed(invoices);
         BigDecimal invoiced = sum(invoices, Line::amount);
         return new ClientStatementResponse(clientId, clientName, currency, invoices, jobs, invoiced,
-                invoiced.subtract(outstanding), outstanding, sum(invoices, Line::tax), runningBalance(entries));
+                invoiced.subtract(outstanding), outstanding, sum(invoices, Line::tax), runningBalance(entries), homeCurrency,
+                homeOwed(invoices, toHome));
+    }
+
+    /** What is left to pay across the owed invoices, each converted into the home currency; null if any cannot be. */
+    private static BigDecimal homeOwed(List<Line> lines, Function<Line, Optional<BigDecimal>> toHome) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (Line line : lines) {
+            if (line.status() == InvoiceStatus.DRAFT || line.status().isClosedUnpaid()) {
+                continue;
+            }
+            Optional<BigDecimal> converted = toHome.apply(line);
+            if (converted.isEmpty()) {
+                return null;
+            }
+            total = total.add(converted.get());
+        }
+        return total.setScale(2, RoundingMode.HALF_UP);
     }
 
     /** Puts the entries in date order, each carrying the balance owed once it and those before it are counted. */
