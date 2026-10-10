@@ -64,19 +64,6 @@ public class InvoiceController {
         return service.applyDiscount(projectId, invoiceId, request);
     }
 
-    @PostMapping("/{invoiceId}/discounts")
-    @ResponseStatus(HttpStatus.CREATED)
-    public InvoiceDetailResponse addDiscount(@PathVariable Long projectId, @PathVariable Long invoiceId,
-            @Valid @RequestBody DiscountRequest request) {
-        return service.addDiscount(projectId, invoiceId, request);
-    }
-
-    @DeleteMapping("/{invoiceId}/discounts/{discountId}")
-    public InvoiceDetailResponse removeDiscount(@PathVariable Long projectId, @PathVariable Long invoiceId,
-            @PathVariable Long discountId) {
-        return service.removeDiscount(projectId, invoiceId, discountId);
-    }
-
     @PutMapping("/{invoiceId}/tax")
     public InvoiceDetailResponse applyTax(@PathVariable Long projectId, @PathVariable Long invoiceId,
             @Valid @RequestBody TaxRequest request) {

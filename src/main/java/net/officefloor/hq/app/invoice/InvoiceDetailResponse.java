@@ -5,8 +5,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * A single invoice together with the line items it is built from: their subtotal, each discount on it
- * (with what it takes off), the percentage discounts and flat amount discounts added up, and what they all take off together, the sales tax percentage, the taxable base it is charged on (the
+ * A single invoice together with the line items it is built from: their subtotal, its discount
+ * (at most one, with what it takes off), its percentage or flat amount, and what it takes off, the sales tax percentage, the taxable base it is charged on (the
  * taxable lines after the discount) and what it adds, any flat surcharge (such as a handling fee) added after tax, the amount owed including the tax and the surcharge, the total before tax, whether the prices already include the tax
  * (so it is worked back out rather than added on), whether the client is tax exempt (so
  * there is no tax at all), the effective tax rate (the sales tax as a percentage of

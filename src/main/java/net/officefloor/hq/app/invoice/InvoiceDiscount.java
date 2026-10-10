@@ -12,7 +12,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
-/** One discount on an invoice: either a percentage or a flat amount taken off its subtotal, never both. */
+/** The one discount on an invoice: either a percentage or a flat amount taken off its subtotal, never both. */
 @Entity
 @Table(name = "invoice_discount")
 public class InvoiceDiscount {
@@ -53,6 +53,13 @@ public class InvoiceDiscount {
         this.discountPct = discountPct.setScale(2, RoundingMode.HALF_UP);
         this.discountAmount = discountAmount.setScale(2, RoundingMode.HALF_UP);
         this.discountCap = discountCap == null ? null : discountCap.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** Takes on the kind and size of another discount, keeping this one's place on the invoice. */
+    void replaceWith(InvoiceDiscount other) {
+        this.discountPct = other.discountPct;
+        this.discountAmount = other.discountAmount;
+        this.discountCap = other.discountCap;
     }
 
     public Long getId() {

@@ -196,7 +196,7 @@ export interface LineItem {
   grossAmount: number;
 }
 
-/** One discount on an invoice: a percentage or a flat amount (the other zero), and what it takes off. */
+/** The one discount on an invoice: a percentage or a flat amount (the other zero), and what it takes off. */
 export interface InvoiceDiscount {
   id: number;
   discountPct: number;
@@ -217,13 +217,13 @@ export interface InvoiceDetail extends Invoice {
   /** The total before tax: the amount less the sales tax. */
   totalExTax: number;
   subtotal: number;
-  /** The percentage discounts added up; zero when there are none. */
+  /** The discount's percentage; zero when it is a flat amount or there is none. */
   discountPct: number;
-  /** The flat amount discounts added up (taken off after the percentages); zero when there are none. */
+  /** The discount's flat amount; zero when it is a percentage or there is none. */
   discountAmount: number;
-  /** What all the discounts take off together, before tax. */
+  /** What the discount takes off, before tax. */
   discount: number;
-  /** Each discount on the invoice, in the order it was added. */
+  /** The invoice's discount: empty when it has none, otherwise its one discount. */
   discounts: InvoiceDiscount[];
   taxPct: number;
   taxableBase: number;
@@ -399,20 +399,6 @@ export class InvoiceService {
       discountAmount,
       discountCap,
     });
-  }
-
-  /** Adds another percentage or flat amount discount to a draft invoice (the other being zero). */
-  addDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0, discountCap: number | null = null): Observable<InvoiceDetail> {
-    return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discounts`, {
-      discountPct,
-      discountAmount,
-      discountCap,
-    });
-  }
-
-  /** Removes one discount from a draft invoice. */
-  removeDiscount(projectId: number, invoiceId: number, discountId: number): Observable<InvoiceDetail> {
-    return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discounts/${discountId}`);
   }
 
   /** Sets the sales tax percentage added to a draft invoice after its discount; zero removes the tax. */

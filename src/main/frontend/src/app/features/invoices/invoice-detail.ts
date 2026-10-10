@@ -20,7 +20,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 
 // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
-// amount, their subtotal, each discount on it (a percentage or a flat amount) as its own negative line and what they take off combined before tax, the taxable amount (leaving out tax-free lines), any
+// amount, their subtotal, its discount (a percentage or a flat amount) and what it takes off before tax, the taxable amount (leaving out tax-free lines), any
 // sales tax added on it after the discount, the effective tax rate
 // (the tax as a percentage of the total before tax), any flat surcharge (such as a handling fee, added after tax and
 // never taxed), the total before tax, and the final total including the tax (also shown as the total after tax).
@@ -30,7 +30,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 // It also shows the client's purchase-order number, which can be put on or cleared at any time.
 // It also shows the total savings: every line discount and invoice discount added together.
 // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the client's early-payment window.
-// Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+// Lines, the discount, the tax rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
   imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceAdjustmentNotes, InvoiceInstalments, InvoicePoNumber, InvoiceSentSnapshot, Notes],
@@ -259,41 +259,12 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                 <td></td>
               }
             </tr>
-            @for (d of inv.discounts; track d.id) {
-              <tr [attr.data-testid]="'discount-row-' + d.id">
-                <th scope="row" colspan="5" data-testid="discount-row-label">
-                  @if (d.discountAmount > 0) {
-                    Discount {{ $index + 1 }} ({{ d.discountAmount | money: inv.currency }} off)
-                  } @else {
-                    Discount {{ $index + 1 }} ({{ d.discountPct | number: '1.0-2' : 'en-US' }}%@if (d.discountCap !== null) {, up to <span data-testid="discount-row-cap">{{ d.discountCap | money: inv.currency }}</span>})
-                  }
-                </th>
-                <td>
-                  <span [attr.data-testid]="'breakdown-discount-row-' + d.id">-<span data-testid="discount-row-amount">{{ d.amount | money: inv.currency }}</span></span>
-                </td>
-                @if (inv.status === 'DRAFT') {
-                  <td>
-                    <button
-                      type="button"
-                      data-testid="discount-row-remove"
-                      [attr.aria-label]="'Remove discount ' + ($index + 1)"
-                      [disabled]="discountSaving()"
-                      (click)="removeDiscount(d.id)"
-                    >
-                      Remove
-                    </button>
-                  </td>
-                }
-              </tr>
-            }
             <tr>
               <th scope="row" colspan="5">
-                @if (inv.discounts.length > 1) {
-                  Combined discount (@if (inv.discountPct > 0) {<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%}@if (inv.discountPct > 0 && inv.discountAmount > 0) { + }@if (inv.discountAmount > 0) {<span data-testid="invoice-discount-amount">{{ inv.discountAmount | money: inv.currency }}</span> off})
-                } @else if (inv.discountAmount > 0) {
+                @if (inv.discountAmount > 0) {
                   Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | money: inv.currency }}</span> off)
                 } @else {
-                  Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%)
+                  Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%@if (inv.discounts.length > 0 && inv.discounts[0].discountCap !== null) {, up to <span data-testid="discount-row-cap">{{ inv.discounts[0].discountCap | money: inv.currency }}</span>})
                 }
               </th>
               <td data-testid="invoice-discount">{{ inv.discount | money: inv.currency }}</td>
@@ -585,9 +556,6 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
             </div>
           }
           <button type="submit" data-testid="discount-form-submit" [disabled]="discountSaving()">Apply discount</button>
-          <button type="button" data-testid="discount-form-add" [disabled]="discountSaving()" (click)="addDiscount()">
-            Add as another discount
-          </button>
           @if (discountError()) {
             <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
           }
@@ -1101,7 +1069,7 @@ export class InvoiceDetailPage {
     return control.invalid && (control.touched || control.dirty);
   }
 
-  // Replaces the invoice's discounts with the one in the form.
+  // Sets the invoice's one discount to the one in the form.
   protected applyDiscount(): void {
     const chosen = this.chosenDiscount();
     if (chosen) {
@@ -1112,30 +1080,6 @@ export class InvoiceDetailPage {
     }
   }
 
-  // Adds the discount in the form alongside any the invoice already has.
-  protected addDiscount(): void {
-    const chosen = this.chosenDiscount();
-    if (!chosen) {
-      return;
-    }
-    if (chosen.pct <= 0 && chosen.amount <= 0) {
-      this.discountError.set('Enter more than zero to add a discount.');
-      return;
-    }
-    this.saveDiscount(
-      this.service.addDiscount(this.projectIdNumber(), Number(this.invoiceId()), chosen.pct, chosen.amount, chosen.cap),
-      'Could not add the discount. Please try again.',
-    );
-  }
-
-  protected removeDiscount(discountId: number): void {
-    this.saveDiscount(
-      this.service.removeDiscount(this.projectIdNumber(), Number(this.invoiceId()), discountId),
-      'Could not remove the discount. Please try again.',
-    );
-  }
-
-  // The percentage (with any cap) or amount chosen in the form (only the chosen kind; the other is zero), or null when it is invalid.
   private chosenDiscount(): { pct: number; amount: number; cap: number | null } | null {
     const { discountType, discountPct, discountAmount, discountCap } = this.discountForm.controls;
     const isPct = discountType.value === 'pct';

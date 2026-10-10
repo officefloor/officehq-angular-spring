@@ -402,7 +402,7 @@ public class InvoiceService {
         // A new invoice starts with the client's standard discount, if they have one.
         BigDecimal defaultDiscountPct = project.getClient().getDefaultDiscountPct();
         if (defaultDiscountPct.signum() > 0) {
-            invoice.addDiscount(defaultDiscountPct, BigDecimal.ZERO);
+            invoice.applyDiscount(defaultDiscountPct);
         }
         Invoice saved = invoices.save(invoice);
         return InvoiceResponse.from(saved, BigDecimal.ZERO, BigDecimal.ZERO);
@@ -447,33 +447,11 @@ public class InvoiceService {
         return detail(invoice);
     }
 
-    /** Replaces the discounts on a draft invoice with a single percentage or flat one and reworks the invoice amount to match. */
+    /** Sets the one percentage or flat discount on a draft invoice and reworks the invoice amount to match. */
     @Transactional
     public InvoiceDetailResponse applyDiscount(Long projectId, Long invoiceId, DiscountRequest request) {
         Invoice invoice = findDraft(projectId, invoiceId);
         invoice.applyDiscount(request.discountPct(), request.flatAmount(), request.discountCap());
-        invoices.flush();
-        return detail(invoice);
-    }
-
-    /** Adds another percentage or flat discount to a draft invoice and reworks the invoice amount to match. */
-    @Transactional
-    public InvoiceDetailResponse addDiscount(Long projectId, Long invoiceId, DiscountRequest request) {
-        Invoice invoice = findDraft(projectId, invoiceId);
-        if (request.discountPct().signum() == 0 && request.flatAmount().signum() == 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A discount takes off a percentage or a flat amount");
-        }
-        invoice.addDiscount(request.discountPct(), request.flatAmount(), request.discountCap());
-        invoices.flush();
-        return detail(invoice);
-    }
-
-    /** Removes one discount from a draft invoice and reworks the invoice amount to match. */
-    @Transactional
-    public InvoiceDetailResponse removeDiscount(Long projectId, Long invoiceId, Long discountId) {
-        Invoice invoice = findDraft(projectId, invoiceId);
-        invoice.removeDiscount(invoice.findDiscount(discountId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Discount not found")));
         invoices.flush();
         return detail(invoice);
     }

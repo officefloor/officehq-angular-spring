@@ -17,12 +17,14 @@ import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.project.ProjectStatus;
 import net.officefloor.hq.app.recurring.RecurringInvoice;
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Per-spec data setup for the end-to-end tests. Profile-guarded so it exists ONLY under the test
@@ -276,8 +278,8 @@ public class TestSupportController {
                     projectId);
             boolean taxInclusive = Boolean.TRUE.equals(client.get("TAX_INCLUSIVE"));
             boolean taxExempt = Boolean.TRUE.equals(client.get("TAX_EXEMPT"));
-            // An invoice may carry several discounts, each a percentage ("pct") or a flat amount ("amount");
-            // an older fixture gives at most one as discountPct / discountAmount. A percentage may be capped
+            // An invoice carries at most one discount, a percentage ("pct") or a flat amount ("amount"), given
+            // as a one-entry "discounts" list or as discountPct / discountAmount. A percentage may be capped
             // at the most it takes off ("cap", or discountCap alongside discountPct).
             List<Map<String, Object>> discounts = new ArrayList<>(rows(i, "discounts"));
             if (i.get("discountPct") != null && new BigDecimal(i.get("discountPct").toString()).signum() > 0) {
@@ -296,6 +298,9 @@ public class TestSupportController {
             if (i.get("discounts") == null && i.get("discountPct") == null && i.get("discountAmount") == null
                     && clientDefaultPct.signum() > 0) {
                 discounts.add(Map.of("pct", clientDefaultPct));
+            }
+            if (discounts.size() > 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An invoice carries only one discount");
             }
             // The percentages each take their share of the subtotal (never more than is left); the flat
             // amounts are then taken off what is left and shared across the lines in proportion to what

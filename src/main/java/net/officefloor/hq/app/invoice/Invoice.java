@@ -146,7 +146,7 @@ public class Invoice {
     @OrderBy("id")
     private List<InvoiceLineItem> lineItems = new ArrayList<>();
 
-    /** The discounts taken off the subtotal before tax, in the order they were added. */
+    /** The discount taken off the subtotal before tax: at most one. */
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id")
     private List<InvoiceDiscount> discounts = new ArrayList<>();
@@ -200,7 +200,7 @@ public class Invoice {
         return getTax().multiply(BigDecimal.valueOf(100)).divide(totalExTax, 2, RoundingMode.HALF_UP);
     }
 
-    /** The discounts on this invoice, in the order they were added. */
+    /** The discount on this invoice: empty when it has none, otherwise its one discount. */
     public List<InvoiceDiscount> getDiscounts() {
         return List.copyOf(discounts);
     }
@@ -487,63 +487,34 @@ public class Invoice {
         return lineItems.stream().filter(l -> l.getId().equals(lineItemId)).findFirst();
     }
 
-    /** Replaces this invoice's discounts with a single percentage and reworks its amount to match. */
+    /** Sets this invoice's one discount as a percentage and reworks its amount to match. */
     public void applyDiscount(BigDecimal discountPct) {
         applyDiscount(discountPct, BigDecimal.ZERO);
     }
 
     /**
-     * Replaces this invoice's discounts with a single one, either a percentage or a flat amount (the other
-     * being zero; zero for both leaves no discount), and reworks its amount to match.
+     * Sets this invoice's one discount, either a percentage or a flat amount (the other being zero; zero
+     * for both leaves no discount), and reworks its amount to match.
      */
     public void applyDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
         applyDiscount(discountPct, discountAmount, null);
     }
 
     /**
-     * Replaces this invoice's discounts with a single one, either a percentage (optionally capped at the
-     * most it takes off) or a flat amount, and reworks its amount to match.
+     * Sets this invoice's one discount, either a percentage (optionally capped at the most it takes off) or
+     * a flat amount, replacing any it had (zero for both leaves no discount), and reworks its amount to match.
      */
     public void applyDiscount(BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discountCap) {
         InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount, discountCap);
-        discounts.clear();
-        if (discountPct.signum() != 0 || discountAmount.signum() != 0) {
-            discounts.add(discount);
-        }
-        recalculateAmount();
-    }
-
-    /**
-     * Adds another discount to this invoice, either a percentage or a flat amount (the other being zero),
-     * and reworks its amount to match.
-     */
-    public InvoiceDiscount addDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
-        return addDiscount(discountPct, discountAmount, null);
-    }
-
-    /**
-     * Adds another discount to this invoice, either a percentage (optionally capped at the most it takes
-     * off) or a flat amount, and reworks its amount to match.
-     */
-    public InvoiceDiscount addDiscount(BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discountCap) {
         if (discountPct.signum() == 0 && discountAmount.signum() == 0) {
-            throw new IllegalArgumentException("A discount takes off a percentage or a flat amount");
+            discounts.clear();
+        } else if (discounts.isEmpty()) {
+            discounts.add(discount);
+        } else {
+            // The existing discount is changed in place, as an invoice only ever has the one.
+            discounts.get(0).replaceWith(discount);
         }
-        InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount, discountCap);
-        discounts.add(discount);
         recalculateAmount();
-        return discount;
-    }
-
-    /** Removes a discount from this invoice and reworks its amount to match. */
-    public void removeDiscount(InvoiceDiscount discount) {
-        discounts.remove(discount);
-        recalculateAmount();
-    }
-
-    /** The discount on this invoice with the given id, if there is one. */
-    public Optional<InvoiceDiscount> findDiscount(Long discountId) {
-        return discounts.stream().filter(d -> d.getId().equals(discountId)).findFirst();
     }
 
     /** Sets the sales tax percentage added to this invoice and reworks its amount to match. */
