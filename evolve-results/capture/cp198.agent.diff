@@ -1,0 +1,98 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index cb56698..7639089 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -43,6 +43,8 @@ export interface DashboardSummary {
+   topClients: TopClient[];
+   /** How many tasks not yet done are past their due date. */
+   overdueTasks: number;
++  /** Average days from issue to final payment on paid invoices, rounded; null when no invoice has been paid. */
++  averageDaysToPay: number | null;
+ }
+ 
+ /** The tax charged on invoices issued on or between two dates, in the home currency. */
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 8498df1..af3808d 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -14,7 +14,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // exchange rate from its own issue date, and how many of those sent
+ // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+-// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. An aging report across all clients, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
++// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, and the average number of days clients take to pay (issue date to final payment on paid invoices). An aging report across all clients, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
+ @Component({
+   selector: 'app-dashboard',
+   imports: [MoneyPipe, AgingReportPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
+@@ -69,6 +69,14 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+           <dt>Overdue tasks</dt>
+           <dd data-testid="dashboard-overdue-tasks-count">{{ s.overdueTasks }}</dd>
+         </div>
++        <div>
++          <dt>Average days to pay</dt>
++          @if (s.averageDaysToPay !== null) {
++            <dd data-testid="kpi-days-to-pay">{{ s.averageDaysToPay }}</dd>
++          } @else {
++            <dd data-testid="kpi-days-to-pay-none">No paid invoices yet</dd>
++          }
++        </div>
+       </dl>
+ 
+       <section data-testid="dashboard-top-clients" aria-labelledby="dashboard-top-clients-heading">
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+index dd49003..51d892e 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+@@ -9,12 +9,14 @@ import java.util.List;
+  * (left to pay on overdue invoices plus the late fees and instalment interest they have built up) is one total in
+  * the home currency, and is also split by how many days overdue each invoice is.
+  * What is outstanding is also given as one grand total in the home currency, each invoice converted at the
+- * exchange rate from its own issue date. Also how many tasks not yet done are past their due date.
++ * exchange rate from its own issue date. Also how many tasks not yet done are past their due date,
++ * and the average number of days clients take to pay (from issue date to final payment on paid invoices; null when
++ * there are none).
+  */
+ public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
+         BigDecimal outstandingHome, long overdue,
+         String homeCurrency, BigDecimal overdueAmount, OverdueBuckets overdueBuckets, List<TopClient> topClients,
+-        long overdueTasks) {
++        long overdueTasks, Long averageDaysToPay) {
+ 
+     /** What is still owed in one currency. */
+     public record CurrencyTotal(String currency, BigDecimal amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index d2782f3..a371d09 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -103,7 +103,30 @@ public class DashboardService {
+                         clientsInHome.get(c.id()).setScale(2, RoundingMode.HALF_UP)))
+                 .toList();
+         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
+-                overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today));
++                overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay());
++    }
++
++    /**
++     * The average number of days clients take to pay, rounded to the nearest whole day: for each paid invoice with an
++     * issue date, the days from its issue date to the date of its last payment. Null when no invoice qualifies.
++     */
++    private Long averageDaysToPay() {
++        Map<Long, LocalDate> issued = new HashMap<>();
++        invoices.findAllWithProjectByStatus(InvoiceStatus.PAID).stream().filter(i -> i.getIssuedDate() != null)
++                .forEach(i -> issued.put(i.getId(), i.getIssuedDate()));
++        if (issued.isEmpty()) {
++            return null;
++        }
++        Map<Long, LocalDate> settled = new HashMap<>();
++        payments.findByInvoiceIdIn(issued.keySet())
++                .forEach(p -> settled.merge(p.getInvoiceId(), p.getDate(), (a, b) -> a.isAfter(b) ? a : b));
++        if (settled.isEmpty()) {
++            return null;
++        }
++        double average = settled.entrySet().stream()
++                .mapToLong(e -> Math.max(0, ChronoUnit.DAYS.between(issued.get(e.getKey()), e.getValue())))
++                .average().orElse(0);
++        return Math.round(average);
+     }
+ 
+     /**
