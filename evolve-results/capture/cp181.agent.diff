@@ -1,0 +1,243 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 6ec760e..23d2cb1 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -59,6 +59,16 @@ export interface TaxSummary {
+   total: number;
+ }
+ 
++/** The revenue billed on invoices issued on or between two dates, in the home currency. */
++export interface RevenueReport {
++  from: string;
++  to: string;
++  homeCurrency: CurrencyCode;
++  /** How many invoices the revenue came from. */
++  invoices: number;
++  total: number;
++}
++
+ /** One instalment expected in, in its invoice's currency. */
+ export interface ForecastEntry {
+   id: number;
+@@ -90,6 +100,10 @@ export class DashboardService {
+     return this.http.get<TaxSummary>('/api/dashboard/tax-summary', { params: new HttpParams().set('from', from).set('to', to) });
+   }
+ 
++  revenueReport(from: string, to: string): Observable<RevenueReport> {
++    return this.http.get<RevenueReport>('/api/dashboard/revenue-report', { params: new HttpParams().set('from', from).set('to', to) });
++  }
++
+   forecast(): Observable<Forecast> {
+     return this.http.get<Forecast>('/api/dashboard/forecast');
+   }
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 53335ae..67058c2 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService, DashboardSummary } from './dashboard.service';
+ import { CashFlowForecast } from './cash-flow-forecast';
++import { RevenueReport } from './revenue-report';
+ import { TaxSummaryReport } from './tax-summary';
+ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ 
+@@ -11,10 +12,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // exchange rate from its own issue date, and how many of those sent
+ // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+-// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. A tax summary for a chosen date range can be opened from here.
++// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. A tax summary and a revenue report for a chosen date range can be opened from here.
+ @Component({
+   selector: 'app-dashboard',
+-  imports: [MoneyPipe, CashFlowForecast, TaxSummaryReport, UpcomingRecurringInvoices],
++  imports: [MoneyPipe, CashFlowForecast, RevenueReport, TaxSummaryReport, UpcomingRecurringInvoices],
+   template: `
+     <h1>Dashboard</h1>
+ 
+@@ -106,12 +107,26 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+     @if (taxSummaryOpen()) {
+       <app-tax-summary id="tax-summary" />
+     }
++
++    <button
++      type="button"
++      data-testid="revenue-report-open"
++      aria-controls="revenue-report"
++      [attr.aria-expanded]="revenueReportOpen()"
++      (click)="revenueReportOpen.set(!revenueReportOpen())"
++    >
++      {{ revenueReportOpen() ? 'Hide revenue report' : 'Revenue report' }}
++    </button>
++    @if (revenueReportOpen()) {
++      <app-revenue-report id="revenue-report" />
++    }
+   `,
+ })
+ export class Dashboard {
+   protected readonly summary = signal<DashboardSummary | null>(null);
+   protected readonly loadError = signal<string | null>(null);
+   protected readonly taxSummaryOpen = signal(false);
++  protected readonly revenueReportOpen = signal(false);
+ 
+   constructor() {
+     inject(DashboardService)
+diff --git a/src/main/frontend/src/app/features/dashboard/revenue-report.ts b/src/main/frontend/src/app/features/dashboard/revenue-report.ts
+new file mode 100644
+index 0000000..0017e55
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/revenue-report.ts
+@@ -0,0 +1,76 @@
++import { Component, inject, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { DashboardService } from './dashboard.service';
++
++// The revenue billed over a chosen date range: the total of the invoices issued within it that were sent
++// (drafts and cancelled invoices are left out), in the home currency.
++@Component({
++  selector: 'app-revenue-report',
++  imports: [MoneyPipe],
++  styles: `
++    .revenue-report-range {
++      display: flex;
++      flex-wrap: wrap;
++      align-items: center;
++      gap: 0.5rem;
++    }
++    .revenue-report-figures {
++      display: grid;
++      grid-template-columns: max-content max-content;
++      gap: 0.25rem 1.5rem;
++    }
++    .revenue-report-figures dd {
++      margin: 0;
++      text-align: right;
++    }
++  `,
++  template: `
++    <section aria-labelledby="revenue-report-heading" data-testid="revenue-report">
++      <h2 id="revenue-report-heading">Revenue report</h2>
++      <form class="revenue-report-range" (submit)="apply($event, fromInput.value, toInput.value)">
++        <label for="revenue-report-from">From</label>
++        <input #fromInput id="revenue-report-from" type="date" required data-testid="revenue-report-from" />
++        <label for="revenue-report-to">To</label>
++        <input #toInput id="revenue-report-to" type="date" required data-testid="revenue-report-to" />
++        <button type="submit" data-testid="revenue-report-apply">Show revenue</button>
++      </form>
++      @if (rangeError()) {
++        <p role="alert" data-testid="revenue-report-range-error">{{ rangeError() }}</p>
++      } @else if (report.error()) {
++        <p role="alert" data-testid="revenue-report-error">Could not load the revenue report.</p>
++      } @else if (report.value(); as r) {
++        <dl class="revenue-report-figures" aria-live="polite">
++          <dt>Invoices</dt>
++          <dd data-testid="revenue-report-invoices">{{ r.invoices }}</dd>
++          <dt>Total billed</dt>
++          <dd data-testid="revenue-report-total">{{ r.total | money: r.homeCurrency }}</dd>
++        </dl>
++      }
++    </section>
++  `,
++})
++export class RevenueReport {
++  private readonly service = inject(DashboardService);
++
++  private readonly range = signal<{ from: string; to: string } | undefined>(undefined);
++  protected readonly rangeError = signal<string | null>(null);
++
++  protected readonly report = rxResource({
++    params: () => this.range(),
++    stream: ({ params }) => this.service.revenueReport(params.from, params.to),
++  });
++
++  protected apply(event: Event, from: string, to: string): void {
++    event.preventDefault();
++    if (!from || !to) {
++      return;
++    }
++    if (from > to) {
++      this.rangeError.set('The start date must not be after the end date.');
++      return;
++    }
++    this.rangeError.set(null);
++    this.range.set({ from, to });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index 06d15af..a746315 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -29,6 +29,14 @@ public class DashboardController {
+         return service.taxSummary(from, to);
+     }
+ 
++    /** The revenue billed on invoices issued on or between the given dates. */
++    @GetMapping("/revenue-report")
++    public RevenueReportResponse revenueReport(
++            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
++            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
++        return service.revenueReport(from, to);
++    }
++
+     /** The money expected in from the instalments still to be paid on sent invoices. */
+     @GetMapping("/forecast")
+     public ForecastResponse forecast() {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index b8d5e23..615208f 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -247,4 +247,35 @@ public class DashboardService {
+         levy = levy.setScale(2, RoundingMode.HALF_UP);
+         return new TaxSummaryResponse(from, to, home, count, tax, levy, tax.add(levy));
+     }
++
++    /**
++     * The revenue billed on or between the given dates: the amounts of the invoices issued in the range that were
++     * sent (drafts and cancelled invoices are left out), each converted into the home currency at its issue date's
++     * rate (an invoice that cannot be converted is left out).
++     */
++    @Transactional(readOnly = true)
++    public RevenueReportResponse revenueReport(LocalDate from, LocalDate to) {
++        if (from.isAfter(to)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The start date must not be after the end date");
++        }
++        List<InvoiceStatus> billed = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID,
++                InvoiceStatus.WRITTEN_OFF);
++        String home = settings.homeCurrency();
++        BigDecimal total = BigDecimal.ZERO;
++        long count = 0;
++        for (Invoice invoice : invoices.findByStatusInAndIssuedDateBetween(billed, from, to)) {
++            String currency = invoice.getCurrency();
++            if (currency.equals(home)) {
++                total = total.add(invoice.getAmount());
++                count++;
++                continue;
++            }
++            var inHome = fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount());
++            if (inHome.isPresent()) {
++                total = total.add(inHome.get());
++                count++;
++            }
++        }
++        return new RevenueReportResponse(from, to, home, count, total.setScale(2, RoundingMode.HALF_UP));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/RevenueReportResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/RevenueReportResponse.java
+new file mode 100644
+index 0000000..b14e25a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/RevenueReportResponse.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * The revenue billed on or between two dates, in the home currency: the total of the invoices issued in the range
++ * that were sent, with how many invoices it came from.
++ */
++public record RevenueReportResponse(LocalDate from, LocalDate to, String homeCurrency, long invoices,
++        BigDecimal total) {
++}
