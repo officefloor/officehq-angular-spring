@@ -1,0 +1,529 @@
+diff --git a/src/main/frontend/src/app/features/tasks/project-tasks.ts b/src/main/frontend/src/app/features/tasks/project-tasks.ts
+index bf0e8c7..b44d03b 100644
+--- a/src/main/frontend/src/app/features/tasks/project-tasks.ts
++++ b/src/main/frontend/src/app/features/tasks/project-tasks.ts
+@@ -1,6 +1,7 @@
+ import { Component, computed, inject, input, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { TaskChecklist } from './task-checklist';
+ import { Task, TaskService } from './task.service';
+ 
+ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+@@ -8,7 +9,7 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+ // A project's task list: add tasks and tick them off (OPEN <-> DONE) as they are finished.
+ @Component({
+   selector: 'app-project-tasks',
+-  imports: [ReactiveFormsModule],
++  imports: [ReactiveFormsModule, TaskChecklist],
+   template: `
+     <section aria-labelledby="project-tasks-heading" data-testid="project-tasks">
+       <h2 id="project-tasks-heading">Tasks</h2>
+@@ -90,6 +91,7 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+                   <th scope="col">Task</th>
+                   <th scope="col">Due date</th>
+                   <th scope="col">Assignee</th>
++                  <th scope="col">Checklist</th>
+                   <th scope="col">Status</th>
+                   <th scope="col">Action</th>
+                 </tr>
+@@ -100,6 +102,14 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+                     <td data-testid="task-title">{{ t.title }}</td>
+                     <td data-testid="task-due-date">{{ t.dueDate ?? '' }}</td>
+                     <td data-testid="task-assignee">{{ t.assignee ?? '' }}</td>
++                    <td>
++                      <app-task-checklist
++                        [projectId]="projectId()"
++                        [taskId]="t.id"
++                        [taskTitle]="t.title"
++                        [items]="t.checklist"
++                      />
++                    </td>
+                     <td data-testid="task-status">{{ t.done ? 'DONE' : 'OPEN' }}</td>
+                     <td>
+                       <button
+diff --git a/src/main/frontend/src/app/features/tasks/task-checklist.ts b/src/main/frontend/src/app/features/tasks/task-checklist.ts
+new file mode 100644
+index 0000000..7330230
+--- /dev/null
++++ b/src/main/frontend/src/app/features/tasks/task-checklist.ts
+@@ -0,0 +1,116 @@
++import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { ChecklistItem, TaskService } from './task.service';
++
++// A task's checklist: sub-items that are added and ticked off one by one.
++@Component({
++  selector: 'app-task-checklist',
++  imports: [ReactiveFormsModule],
++  template: `
++    <div [attr.data-testid]="'task-checklist-' + taskId()">
++      @if (checklist().length > 0) {
++        <p [id]="'checklist-progress-' + taskId()" data-testid="checklist-progress">
++          {{ doneCount() }} of {{ checklist().length }} done
++        </p>
++        <ul [attr.aria-label]="'Checklist for ' + taskTitle()">
++          @for (item of checklist(); track item.id) {
++            <li [attr.data-testid]="'checklist-item-row-' + item.id">
++              <input
++                type="checkbox"
++                [id]="'checklist-item-' + item.id"
++                [attr.data-testid]="'checklist-item-toggle-' + item.id"
++                [checked]="item.done"
++                [disabled]="toggling() === item.id"
++                (change)="toggle(item, $event)"
++              />
++              <label [for]="'checklist-item-' + item.id" data-testid="checklist-item-text">{{
++                item.text
++              }}</label>
++            </li>
++          }
++        </ul>
++      }
++      @if (toggleError()) {
++        <p role="alert" data-testid="checklist-toggle-error">{{ toggleError() }}</p>
++      }
++      <form [formGroup]="form" (ngSubmit)="add()" data-testid="checklist-form" novalidate>
++        <label [for]="'checklist-new-' + taskId()">New checklist item</label>
++        <input
++          [id]="'checklist-new-' + taskId()"
++          type="text"
++          formControlName="text"
++          maxlength="255"
++          data-testid="checklist-form-text"
++        />
++        <button
++          type="submit"
++          data-testid="checklist-form-submit"
++          [disabled]="saving()"
++          [attr.aria-label]="'Add checklist item to ' + taskTitle()"
++        >
++          Add
++        </button>
++        @if (saveError()) {
++          <p role="alert" data-testid="checklist-form-error">{{ saveError() }}</p>
++        }
++      </form>
++    </div>
++  `,
++})
++export class TaskChecklist {
++  private readonly service = inject(TaskService);
++
++  readonly projectId = input.required<number>();
++  readonly taskId = input.required<number>();
++  readonly taskTitle = input.required<string>();
++  readonly items = input<ChecklistItem[]>([]);
++
++  protected readonly checklist = linkedSignal(() => this.items());
++  protected readonly doneCount = computed(() => this.checklist().filter((i) => i.done).length);
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++  protected readonly toggling = signal<number | null>(null);
++  protected readonly toggleError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    text: ['', [Validators.required, Validators.maxLength(255)]],
++  });
++
++  protected add(): void {
++    const text = this.form.getRawValue().text.trim();
++    if (this.form.invalid || !text) {
++      this.form.reset();
++      return;
++    }
++    this.saving.set(true);
++    this.saveError.set(null);
++    this.service.addChecklistItem(this.projectId(), this.taskId(), text).subscribe({
++      next: (created) => {
++        this.checklist.update((list) => [...list, created]);
++        this.form.reset();
++        this.saving.set(false);
++      },
++      error: () => {
++        this.saveError.set('Could not add the checklist item. Please try again.');
++        this.saving.set(false);
++      },
++    });
++  }
++
++  protected toggle(item: ChecklistItem, event: Event): void {
++    const checkbox = event.target as HTMLInputElement;
++    this.toggling.set(item.id);
++    this.toggleError.set(null);
++    this.service.toggleChecklistItem(this.projectId(), this.taskId(), item.id).subscribe({
++      next: (updated) => {
++        this.checklist.update((list) => list.map((i) => (i.id === updated.id ? updated : i)));
++        this.toggling.set(null);
++      },
++      error: () => {
++        this.toggleError.set('Could not update the checklist item. Please try again.');
++        checkbox.checked = item.done;
++        this.toggling.set(null);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/tasks/task.service.ts b/src/main/frontend/src/app/features/tasks/task.service.ts
+index 59a304a..73e1255 100644
+--- a/src/main/frontend/src/app/features/tasks/task.service.ts
++++ b/src/main/frontend/src/app/features/tasks/task.service.ts
+@@ -2,6 +2,13 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ 
++export interface ChecklistItem {
++  id: number;
++  taskId: number;
++  text: string;
++  done: boolean;
++}
++
+ export interface Task {
+   id: number;
+   projectId: number;
+@@ -9,6 +16,7 @@ export interface Task {
+   done: boolean;
+   dueDate: string | null;
+   assignee: string | null;
++  checklist: ChecklistItem[];
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+@@ -31,4 +39,17 @@ export class TaskService {
+   toggle(projectId: number, taskId: number): Observable<Task> {
+     return this.http.post<Task>(`/api/projects/${projectId}/tasks/${taskId}/toggle`, null);
+   }
++
++  addChecklistItem(projectId: number, taskId: number, text: string): Observable<ChecklistItem> {
++    return this.http.post<ChecklistItem>(`/api/projects/${projectId}/tasks/${taskId}/checklist`, {
++      text,
++    });
++  }
++
++  toggleChecklistItem(projectId: number, taskId: number, itemId: number): Observable<ChecklistItem> {
++    return this.http.post<ChecklistItem>(
++      `/api/projects/${projectId}/tasks/${taskId}/checklist/${itemId}/toggle`,
++      null,
++    );
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 31b6bc9..c721772 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -55,6 +55,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE note RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE project_tag");
+             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE task_checklist_item RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
+@@ -140,12 +141,14 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO project_tag (project_id, tag_id) VALUES (?, ?)",
+                     ((Number) pt.get("projectId")).longValue(), ((Number) pt.get("tagId")).longValue());
+         }
++        // Tasks are given at the top level (with a projectId) or nested inside their project.
+         for (Map<String, Object> t : rows(fixture, "tasks")) {
+-            jdbc.update("INSERT INTO task (id, project_id, title, done, due_date, assignee) VALUES (?, ?, ?, ?, ?, ?)",
+-                    ((Number) t.get("id")).longValue(), ((Number) t.get("projectId")).longValue(),
+-                    t.get("title"), Boolean.TRUE.equals(t.get("done")),
+-                    t.get("dueDate") == null ? null : LocalDate.parse(t.get("dueDate").toString()),
+-                    t.get("assignee"));
++            seedTask(t, ((Number) t.get("projectId")).longValue());
++        }
++        for (Map<String, Object> p : rows(fixture, "projects")) {
++            for (Map<String, Object> t : rows(p, "tasks")) {
++                seedTask(t, ((Number) p.get("id")).longValue());
++            }
+         }
+         for (Map<String, Object> n : rows(fixture, "notes")) {
+             Instant at = n.get("at") == null ? clock.instant() : seedInstant(n.get("at").toString());
+@@ -333,6 +336,7 @@ public class TestSupportController {
+         restartIdentity("invoice_line_item");
+         restartIdentity("invoice_discount");
+         restartIdentity("task");
++        restartIdentity("task_checklist_item");
+         restartIdentity("tag");
+         restartIdentity("note");
+         restartIdentity("payment");
+@@ -340,6 +344,19 @@ public class TestSupportController {
+         restartIdentity("deposit");
+     }
+ 
++    /** A task and the sub-items on its checklist. */
++    private void seedTask(Map<String, Object> t, long projectId) {
++        long taskId = ((Number) t.get("id")).longValue();
++        jdbc.update("INSERT INTO task (id, project_id, title, done, due_date, assignee) VALUES (?, ?, ?, ?, ?, ?)",
++                taskId, projectId, t.get("title"), Boolean.TRUE.equals(t.get("done")),
++                t.get("dueDate") == null ? null : LocalDate.parse(t.get("dueDate").toString()),
++                t.get("assignee"));
++        for (Map<String, Object> c : rows(t, "checklist")) {
++            jdbc.update("INSERT INTO task_checklist_item (id, task_id, text, done) VALUES (?, ?, ?, ?)",
++                    ((Number) c.get("id")).longValue(), taskId, c.get("text"), Boolean.TRUE.equals(c.get("done")));
++        }
++    }
++
+     /** A fixture timestamp, either a full instant or a bare date taken as the start of that day (UTC). */
+     private static Instant seedInstant(String value) {
+         return value.contains("T") ? Instant.parse(value) : LocalDate.parse(value).atStartOfDay(ZoneOffset.UTC).toInstant();
+diff --git a/src/main/java/net/officefloor/hq/app/task/ChecklistItem.java b/src/main/java/net/officefloor/hq/app/task/ChecklistItem.java
+new file mode 100644
+index 0000000..e891df6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/ChecklistItem.java
+@@ -0,0 +1,57 @@
++package net.officefloor.hq.app.task;
++
++import jakarta.persistence.Entity;
++import jakarta.persistence.FetchType;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.ManyToOne;
++import jakarta.persistence.Table;
++
++/** A sub-item on a task's checklist, ticked off on its own. */
++@Entity
++@Table(name = "task_checklist_item")
++public class ChecklistItem {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @ManyToOne(fetch = FetchType.LAZY, optional = false)
++    @JoinColumn(name = "task_id", nullable = false)
++    private Task task;
++
++    private String text;
++
++    private boolean done;
++
++    protected ChecklistItem() {
++    }
++
++    public ChecklistItem(Task task, String text) {
++        this.task = task;
++        this.text = text;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Task getTask() {
++        return task;
++    }
++
++    public String getText() {
++        return text;
++    }
++
++    public boolean isDone() {
++        return done;
++    }
++
++    /** Flips the item between open and done. */
++    public void toggle() {
++        this.done = !this.done;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/ChecklistItemRepository.java b/src/main/java/net/officefloor/hq/app/task/ChecklistItemRepository.java
+new file mode 100644
+index 0000000..4100b76
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/ChecklistItemRepository.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.task;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface ChecklistItemRepository extends JpaRepository<ChecklistItem, Long> {
++
++    /** The checklist items of all a project's tasks, in the order they were added. */
++    List<ChecklistItem> findByTaskProjectIdOrderById(Long projectId);
++
++    /** A task's checklist items, in the order they were added. */
++    List<ChecklistItem> findByTaskIdOrderById(Long taskId);
++
++    Optional<ChecklistItem> findByIdAndTaskIdAndTaskProjectId(Long id, Long taskId, Long projectId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/ChecklistItemRequest.java b/src/main/java/net/officefloor/hq/app/task/ChecklistItemRequest.java
+new file mode 100644
+index 0000000..c9251d3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/ChecklistItemRequest.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.task;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++
++/** Payload to add a sub-item to a task's checklist. */
++public record ChecklistItemRequest(@NotBlank @Size(max = 255) String text) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/ChecklistItemResponse.java b/src/main/java/net/officefloor/hq/app/task/ChecklistItemResponse.java
+new file mode 100644
+index 0000000..a77f4c8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/ChecklistItemResponse.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.task;
++
++public record ChecklistItemResponse(Long id, Long taskId, String text, boolean done) {
++
++    static ChecklistItemResponse from(ChecklistItem item) {
++        return new ChecklistItemResponse(item.getId(), item.getTask().getId(), item.getText(), item.isDone());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskController.java b/src/main/java/net/officefloor/hq/app/task/TaskController.java
+index d969f21..6667111 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskController.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskController.java
+@@ -37,4 +37,17 @@ public class TaskController {
+     public TaskResponse toggle(@PathVariable Long projectId, @PathVariable Long taskId) {
+         return service.toggle(projectId, taskId);
+     }
++
++    @PostMapping("/{taskId}/checklist")
++    @ResponseStatus(HttpStatus.CREATED)
++    public ChecklistItemResponse addChecklistItem(@PathVariable Long projectId, @PathVariable Long taskId,
++            @Valid @RequestBody ChecklistItemRequest request) {
++        return service.addChecklistItem(projectId, taskId, request);
++    }
++
++    @PostMapping("/{taskId}/checklist/{itemId}/toggle")
++    public ChecklistItemResponse toggleChecklistItem(@PathVariable Long projectId, @PathVariable Long taskId,
++            @PathVariable Long itemId) {
++        return service.toggleChecklistItem(projectId, taskId, itemId);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskResponse.java b/src/main/java/net/officefloor/hq/app/task/TaskResponse.java
+index 7176427..c1c5b00 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskResponse.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskResponse.java
+@@ -1,12 +1,13 @@
+ package net.officefloor.hq.app.task;
+ 
+ import java.time.LocalDate;
++import java.util.List;
+ 
+ public record TaskResponse(Long id, Long projectId, String title, boolean done, LocalDate dueDate,
+-        String assignee) {
++        String assignee, List<ChecklistItemResponse> checklist) {
+ 
+-    static TaskResponse from(Task task) {
++    static TaskResponse from(Task task, List<ChecklistItemResponse> checklist) {
+         return new TaskResponse(task.getId(), task.getProject().getId(), task.getTitle(), task.isDone(),
+-                task.getDueDate(), task.getAssignee());
++                task.getDueDate(), task.getAssignee(), checklist);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskService.java b/src/main/java/net/officefloor/hq/app/task/TaskService.java
+index ee10b28..bb18499 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskService.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskService.java
+@@ -1,6 +1,8 @@
+ package net.officefloor.hq.app.task;
+ 
+ import java.util.List;
++import java.util.Map;
++import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.project.Project;
+ import net.officefloor.hq.app.project.ProjectRepository;
+@@ -13,11 +15,14 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TaskService {
+ 
+     private final TaskRepository tasks;
++    private final ChecklistItemRepository checklistItems;
+     private final ProjectRepository projects;
+     private final Audit audit;
+ 
+-    public TaskService(TaskRepository tasks, ProjectRepository projects, Audit audit) {
++    public TaskService(TaskRepository tasks, ChecklistItemRepository checklistItems, ProjectRepository projects,
++            Audit audit) {
+         this.tasks = tasks;
++        this.checklistItems = checklistItems;
+         this.projects = projects;
+         this.audit = audit;
+     }
+@@ -27,7 +32,11 @@ public class TaskService {
+         if (!projects.existsById(projectId)) {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job");
+         }
+-        return tasks.findByProjectIdOrderById(projectId).stream().map(TaskResponse::from).toList();
++        Map<Long, List<ChecklistItemResponse>> checklists = checklistItems.findByTaskProjectIdOrderById(projectId)
++                .stream().map(ChecklistItemResponse::from)
++                .collect(Collectors.groupingBy(ChecklistItemResponse::taskId));
++        return tasks.findByProjectIdOrderById(projectId).stream()
++                .map(t -> TaskResponse.from(t, checklists.getOrDefault(t.getId(), List.of()))).toList();
+     }
+ 
+     @Transactional
+@@ -36,16 +45,40 @@ public class TaskService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+         Task saved = tasks.save(new Task(project, request.title().trim(), request.dueDate(),
+                 request.assignee() == null || request.assignee().isBlank() ? null : request.assignee().trim()));
+-        return TaskResponse.from(saved);
++        return TaskResponse.from(saved, List.of());
+     }
+ 
+     /** Ticks a task off (or reopens it) and records the change in the audit log. */
+     @Transactional
+     public TaskResponse toggle(Long projectId, Long taskId) {
+-        Task task = tasks.findByIdAndProjectId(taskId, projectId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown task"));
++        Task task = findTask(projectId, taskId);
+         task.toggle();
+         audit.record("TASK_TOGGLED id=" + task.getId() + " done=" + task.isDone());
+-        return TaskResponse.from(task);
++        return TaskResponse.from(task, checklistItems.findByTaskIdOrderById(taskId).stream()
++                .map(ChecklistItemResponse::from).toList());
++    }
++
++    /** Adds a sub-item to a task's checklist. */
++    @Transactional
++    public ChecklistItemResponse addChecklistItem(Long projectId, Long taskId, ChecklistItemRequest request) {
++        Task task = findTask(projectId, taskId);
++        ChecklistItem saved = checklistItems.save(new ChecklistItem(task, request.text().trim()));
++        audit.record("CHECKLIST_ITEM_ADDED id=" + saved.getId() + " taskId=" + taskId);
++        return ChecklistItemResponse.from(saved);
++    }
++
++    /** Ticks a checklist item off (or reopens it) and records the change in the audit log. */
++    @Transactional
++    public ChecklistItemResponse toggleChecklistItem(Long projectId, Long taskId, Long itemId) {
++        ChecklistItem item = checklistItems.findByIdAndTaskIdAndTaskProjectId(itemId, taskId, projectId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown checklist item"));
++        item.toggle();
++        audit.record("CHECKLIST_ITEM_TOGGLED id=" + item.getId() + " done=" + item.isDone());
++        return ChecklistItemResponse.from(item);
++    }
++
++    private Task findTask(Long projectId, Long taskId) {
++        return tasks.findByIdAndProjectId(taskId, projectId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown task"));
+     }
+ }
+diff --git a/src/main/resources/db/migration/V67__task_checklist.sql b/src/main/resources/db/migration/V67__task_checklist.sql
+new file mode 100644
+index 0000000..deba391
+--- /dev/null
++++ b/src/main/resources/db/migration/V67__task_checklist.sql
+@@ -0,0 +1,10 @@
++-- A task may carry a checklist of sub-items, each ticked off on its own. They go with their task.
++CREATE TABLE task_checklist_item (
++    id      BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    task_id BIGINT       NOT NULL,
++    text    VARCHAR(255) NOT NULL,
++    done    BOOLEAN      NOT NULL DEFAULT FALSE,
++    CONSTRAINT task_checklist_item_task_fk FOREIGN KEY (task_id) REFERENCES task (id) ON DELETE CASCADE
++);
++
++CREATE INDEX task_checklist_item_task_idx ON task_checklist_item (task_id);
