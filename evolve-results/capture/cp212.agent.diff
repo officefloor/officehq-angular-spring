@@ -1,0 +1,288 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index 00593cf..ee9cd12 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -21,6 +21,9 @@ import { StatementEmailAction } from './statement-email';
+ // Under the summary, the statement can be emailed to the client, with a note kept of each time it was sent.
+ // Below that, the balance owed is broken down by age as at today: current (up to 30 days overdue), 31 to 60
+ // days, and more than 60 days overdue.
++// Once a date range is run, the printed statement is for that range: the summary gives the opening balance, what was
++// invoiced and paid within the range and the grand total owed at its end, followed by that total broken down by age
++// as at the end of the range; the whole-account sections are left off the printed copy.
+ @Component({
+   selector: 'app-client-statement',
+   imports: [MoneyPipe, RouterLink, StatementEmailAction],
+@@ -56,7 +59,8 @@ import { StatementEmailAction } from './statement-email';
+       text-align: left;
+     }
+     @media print {
+-      .statement-actions {
++      .statement-actions,
++      .statement-not-printed {
+         display: none;
+       }
+       table {
+@@ -80,20 +84,49 @@ import { StatementEmailAction } from './statement-email';
+       <article data-testid="statement-print-view" aria-labelledby="statement-heading">
+         <h1 id="statement-heading" data-testid="client-statement-name">Statement for {{ s.clientName }}</h1>
+         <section aria-labelledby="statement-summary-heading" data-testid="statement-summary">
+-          <h2 id="statement-summary-heading">Summary</h2>
+-          <dl class="statement-summary">
+-            <dt>Total invoiced</dt>
+-            <dd data-testid="statement-total-invoiced">{{ s.invoiced | money: s.currency }}</dd>
+-            <dt>Tax</dt>
+-            <dd data-testid="client-statement-tax-total">{{ s.tax | money: s.currency }}</dd>
+-            <dt>Less paid</dt>
+-            <dd data-testid="statement-total-paid">{{ s.paid | money: s.currency }}</dd>
+-            <dt class="statement-grand-total">Grand total owed</dt>
+-            <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | money: s.currency }}</dd>
+-          </dl>
++          @if (printedRange(); as r) {
++            <h2 id="statement-summary-heading" data-testid="statement-print-period">Summary from {{ r.from }} to {{ r.to }}</h2>
++            <dl class="statement-summary">
++              <dt>Opening balance at {{ r.from }}</dt>
++              <dd data-testid="statement-print-opening">{{ r.openingBalance | money: r.currency }}</dd>
++              <dt>Invoiced in the range</dt>
++              <dd data-testid="statement-total-invoiced">{{ r.invoicedTotal | money: r.currency }}</dd>
++              <dt>Less paid in the range</dt>
++              <dd data-testid="statement-total-paid">{{ r.paidTotal | money: r.currency }}</dd>
++              <dt class="statement-grand-total">Grand total owed at {{ r.to }}</dt>
++              <dd class="statement-grand-total" data-testid="statement-grand-total">{{ r.closingBalance | money: r.currency }}</dd>
++            </dl>
++            <section aria-labelledby="statement-print-aging-heading" data-testid="statement-print-aging">
++              <h3 id="statement-print-aging-heading">Balance by age at {{ r.aging.asOf }}</h3>
++              <dl class="statement-summary">
++                <dt>Current (up to 30 days overdue)</dt>
++                <dd data-testid="statement-print-current">{{ r.aging.current | money: r.currency }}</dd>
++                <dt>31 to 60 days overdue</dt>
++                <dd data-testid="statement-print-30-60">{{ r.aging.days30To60 | money: r.currency }}</dd>
++                <dt>More than 60 days overdue</dt>
++                <dd data-testid="statement-print-60-plus">{{ r.aging.days60Plus | money: r.currency }}</dd>
++              </dl>
++            </section>
++          } @else {
++            <h2 id="statement-summary-heading">Summary</h2>
++            <dl class="statement-summary">
++              <dt>Total invoiced</dt>
++              <dd data-testid="statement-total-invoiced">{{ s.invoiced | money: s.currency }}</dd>
++              <dt>Tax</dt>
++              <dd data-testid="client-statement-tax-total">{{ s.tax | money: s.currency }}</dd>
++              <dt>Less paid</dt>
++              <dd data-testid="statement-total-paid">{{ s.paid | money: s.currency }}</dd>
++              <dt class="statement-grand-total">Grand total owed</dt>
++              <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | money: s.currency }}</dd>
++            </dl>
++          }
+         </section>
+         <app-statement-email [clientId]="clientId()" />
+-        <section aria-labelledby="statement-aging-heading" data-testid="statement-aging">
++        <section
++          aria-labelledby="statement-aging-heading"
++          data-testid="statement-aging"
++          [class.statement-not-printed]="!!printedRange()"
++        >
+           <h2 id="statement-aging-heading">Balance by age</h2>
+           @if (aging.error()) {
+             <p role="alert" data-testid="statement-aging-error">Could not load the balance by age.</p>
+@@ -230,7 +263,7 @@ import { StatementEmailAction } from './statement-email';
+             </div>
+           }
+         </section>
+-        <section aria-labelledby="statement-asof-heading" data-testid="statement-asof">
++        <section aria-labelledby="statement-asof-heading" data-testid="statement-asof" class="statement-not-printed">
+           <h2 id="statement-asof-heading">Balance as at a date</h2>
+           <form class="statement-actions" (submit)="applyAsOf($event, asOfInput.value)">
+             <label for="statement-asof-date">As at</label>
+@@ -246,7 +279,11 @@ import { StatementEmailAction } from './statement-email';
+             </p>
+           }
+         </section>
+-        <section aria-labelledby="statement-account-heading" data-testid="statement-account">
++        <section
++          aria-labelledby="statement-account-heading"
++          data-testid="statement-account"
++          [class.statement-not-printed]="!!printedRange()"
++        >
+           <h2 id="statement-account-heading">Account</h2>
+           @if (s.entries.length === 0) {
+             <p data-testid="statement-account-empty">Nothing on the account yet.</p>
+@@ -289,7 +326,7 @@ import { StatementEmailAction } from './statement-email';
+         @if (s.invoices.length === 0) {
+           <p data-testid="client-statement-empty">No invoices yet.</p>
+         } @else {
+-          <table data-testid="client-statement-table">
++          <table data-testid="client-statement-table" [class.statement-not-printed]="!!printedRange()">
+             <caption>Invoices for {{ s.clientName }}</caption>
+             <thead>
+               <tr>
+@@ -340,11 +377,11 @@ import { StatementEmailAction } from './statement-email';
+             }
+           </table>
+         }
+-        <p>
++        <p [class.statement-not-printed]="!!printedRange()">
+           Total owed:
+           <strong data-testid="client-outstanding-total">{{ s.outstanding | money: s.currency }}</strong>
+         </p>
+-        <p data-testid="statement-home">
++        <p data-testid="statement-home" [class.statement-not-printed]="!!printedRange()">
+           Total owed in {{ s.homeCurrency }}:
+           @if (s.homeOutstanding !== null) {
+             <strong data-testid="statement-home-total">{{ s.homeOutstanding | money: s.homeCurrency }}</strong>
+@@ -400,6 +437,11 @@ export class ClientStatement {
+     stream: ({ params }) => this.service.statementForRange(params.clientId, params.from, params.to),
+   });
+ 
++  /** The range statement the printed copy is for, once one has been run. */
++  protected readonly printedRange = computed(() =>
++    this.range() && !this.rangeInvalid() && this.statementRange.hasValue() ? this.statementRange.value() : undefined,
++  );
++
+   protected applyRange(event: Event, from: string, to: string): void {
+     event.preventDefault();
+     if (from && to) {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 286ad56..110f73d 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -148,9 +148,15 @@ export interface ClientStatementRange {
+   credits: StatementEntry[];
+   /** The total of the credit notes issued within the range. */
+   creditsTotal: number;
++  /** What was invoiced within the range. */
++  invoicedTotal: number;
++  /** What was paid within the range. */
++  paidTotal: number;
++  /** The debt broken down by age as at the end of the range. */
++  aging: ClientAging;
+ }
+ 
+-/** How old a client's debt is as at today: what is current (up to 30 days overdue), 31 to 60 days, and more than 60 days overdue. */
++/** How old a client's debt is as at a day (today, unless for a date range): what is current (up to 30 days overdue), 31 to 60 days, and more than 60 days overdue. */
+ export interface ClientAging {
+   clientId: number;
+   currency: CurrencyCode;
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementRangeResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementRangeResponse.java
+index 3864ac6..800d3fb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementRangeResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementRangeResponse.java
+@@ -10,10 +10,12 @@ import java.util.List;
+  * closing balance owed at the end of the range (the opening balance plus what changed within it). The movements total
+  * is that change: the charges less the credits dated within the range, so opening plus movements is always closing.
+  * The payments received within the range (not those made out of held deposits) are listed again on their own, with
+- * their total, and so are the credit notes issued within the range, with theirs.
++ * their total, and so are the credit notes issued within the range, with theirs. For the printed statement it also
++ * gives what was invoiced and what was paid within the range, and the debt broken down by age as at the end of the
++ * range (counting only what was invoiced, paid and credited by then).
+  */
+ public record ClientStatementRangeResponse(Long clientId, String currency, LocalDate from, LocalDate to,
+         BigDecimal openingBalance, List<StatementEntry> entries, BigDecimal movementsTotal, BigDecimal closingBalance,
+         List<StatementEntry> payments, BigDecimal paymentsTotal, List<StatementEntry> credits,
+-        BigDecimal creditsTotal) {
++        BigDecimal creditsTotal, BigDecimal invoicedTotal, BigDecimal paidTotal, ClientAgingResponse aging) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index d0f6899..1bfaabd 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -167,7 +167,9 @@ public class InvoiceService {
+         }
+         Client client = clients.findById(clientId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+-        List<StatementEntry> dated = accountEntries(clientId, invoices.findByClientIdWithProject(clientId), moneyRules()).stream()
++        List<Invoice> found = invoices.findByClientIdWithProject(clientId);
++        Function<String, MoneyRule> rules = moneyRules();
++        List<StatementEntry> dated = accountEntries(clientId, found, rules).stream()
+                 .filter(e -> e.date() != null)
+                 .sorted(StatementEntry.DATE_ORDER)
+                 .toList();
+@@ -195,8 +197,25 @@ public class InvoiceService {
+         BigDecimal creditsTotal = creditsWithin.stream()
+                 .map(StatementEntry::credit)
+                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++        List<Invoice> issuedByEnd = found.stream()
++                .filter(i -> i.getIssuedDate() != null && !i.getIssuedDate().isAfter(to))
++                .toList();
++        Map<Long, BigDecimal> paidByEnd = new HashMap<>();
++        Map<Long, BigDecimal> creditedByEnd = new HashMap<>();
++        List<Long> issuedIds = issuedByEnd.stream().map(Invoice::getId).toList();
++        if (!issuedIds.isEmpty()) {
++            payments.findByInvoiceIdIn(issuedIds).stream()
++                    .filter(p -> p.getDate() == null || !p.getDate().isAfter(to))
++                    .forEach(p -> paidByEnd.merge(p.getInvoiceId(), p.getAmount(), BigDecimal::add));
++            creditNotes.findByInvoiceIdIn(issuedIds).stream()
++                    .filter(n -> !LocalDate.ofInstant(n.getIssuedAt(), ZoneOffset.UTC).isAfter(to))
++                    .forEach(n -> creditedByEnd.merge(n.getInvoiceId(), n.getAmount(), BigDecimal::add));
++        }
++        ClientAgingResponse aging = aging(client, issuedByEnd, paidByEnd, creditedByEnd, rules, to);
+         return new ClientStatementRangeResponse(client.getId(), client.getCurrency(), from, to, opening, within,
+-                movements, opening.add(movements), paymentsWithin, paymentsTotal, creditsWithin, creditsTotal);
++                movements, opening.add(movements), paymentsWithin, paymentsTotal, creditsWithin, creditsTotal,
++                rangeTotal(within, StatementEntry.Kind.INVOICE, StatementEntry::charge),
++                rangeTotal(within, StatementEntry.Kind.PAYMENT, StatementEntry::credit), aging);
+     }
+ 
+     /**
+@@ -207,11 +226,17 @@ public class InvoiceService {
+     public ClientAgingResponse agingForClient(Long clientId) {
+         Client client = clients.findById(clientId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+-        LocalDate today = LocalDate.now(clock);
+         List<Invoice> found = invoices.findByClientIdWithProject(clientId);
+-        Map<Long, BigDecimal> paid = paidByInvoice(found);
+-        Map<Long, BigDecimal> credited = creditedByInvoice(found);
+-        Function<String, MoneyRule> rules = moneyRules();
++        return aging(client, found, paidByInvoice(found), creditedByInvoice(found), moneyRules(),
++                LocalDate.now(clock));
++    }
++
++    /**
++     * What is left to pay on each owed invoice (not a draft, void or written off) given what was paid and credited
++     * against it, counted against how many days past its due date it is as at the given day.
++     */
++    private ClientAgingResponse aging(Client client, List<Invoice> found, Map<Long, BigDecimal> paid,
++            Map<Long, BigDecimal> credited, Function<String, MoneyRule> rules, LocalDate asOf) {
+         BigDecimal current = BigDecimal.ZERO.setScale(2);
+         BigDecimal days30To60 = BigDecimal.ZERO.setScale(2);
+         BigDecimal days60Plus = BigDecimal.ZERO.setScale(2);
+@@ -227,7 +252,7 @@ public class InvoiceService {
+                 continue;
+             }
+             long overdue = invoice.getDueDate() == null ? 0
+-                    : ChronoUnit.DAYS.between(invoice.getDueDate(), today);
++                    : ChronoUnit.DAYS.between(invoice.getDueDate(), asOf);
+             if (overdue > 60) {
+                 days60Plus = days60Plus.add(due);
+             } else if (overdue > 30) {
+@@ -236,11 +261,20 @@ public class InvoiceService {
+                 current = current.add(due);
+             }
+         }
+-        return new ClientAgingResponse(client.getId(), client.getCurrency(), today,
++        return new ClientAgingResponse(client.getId(), client.getCurrency(), asOf,
+                 current.setScale(2, RoundingMode.HALF_UP), days30To60.setScale(2, RoundingMode.HALF_UP),
+                 days60Plus.setScale(2, RoundingMode.HALF_UP));
+     }
+ 
++    /** The total of the given amount over the entries of the given kind. */
++    private static BigDecimal rangeTotal(List<StatementEntry> entries, StatementEntry.Kind kind,
++            Function<StatementEntry, BigDecimal> amount) {
++        return entries.stream()
++                .filter(e -> e.kind() == kind)
++                .map(amount)
++                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++    }
++
+     /**
+      * The entries on a client's running account. Drafts have not been sent and void invoices were cancelled, so
+      * neither is charged. A payment made out of held deposits is left out, as the deposit was already credited
+diff --git a/src/main/resources/db/migration/V101__invoice_due_may_precede_issue.sql b/src/main/resources/db/migration/V101__invoice_due_may_precede_issue.sql
+new file mode 100644
+index 0000000..93eb977
+--- /dev/null
++++ b/src/main/resources/db/migration/V101__invoice_due_may_precede_issue.sql
+@@ -0,0 +1,4 @@
++-- An invoice can be issued after the date payment was already due (raised late for work that was due earlier), so
++-- the database no longer insists the due date is on or after the issue date. Invoices created through the app are
++-- still checked by the service.
++ALTER TABLE invoice DROP CONSTRAINT invoice_due_after_issued;
