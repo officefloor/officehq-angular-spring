@@ -107,9 +107,11 @@ public class DashboardService {
         Map<Invoice, BigDecimal> overdueInHome = inHome(invoices.findByStatusInAndDueDateBefore(owing, today), home, today, true);
         BigDecimal overdueAmount = sum(overdueInHome);
         DashboardResponse.OverdueBuckets overdueBuckets = buckets(overdueInHome, today);
+        // Clients are ranked by the same rule as the outstanding total, so disputed and written-off debt is left out.
         Map<Long, BigDecimal> clientsInHome = new HashMap<>();
-        owedInHome.forEach((invoice, amount) -> clientsInHome.merge(invoice.getProject().getClient().getId(), amount,
-                BigDecimal::add));
+        owedInHome.entrySet().stream().filter(e -> countsInKpis(e.getKey()))
+                .forEach(e -> clientsInHome.merge(e.getKey().getProject().getClient().getId(), e.getValue(),
+                        BigDecimal::add));
         List<DashboardResponse.TopClient> top = clientService.topByOutstanding(TOP_CLIENTS, clientsInHome).stream()
                 .map(c -> new DashboardResponse.TopClient(c.id(), c.name(), c.currency(), c.outstanding(),
                         clientsInHome.get(c.id()).setScale(2, RoundingMode.HALF_UP)))
