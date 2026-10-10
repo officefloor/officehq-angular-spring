@@ -1,0 +1,100 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index caaf208..9338e3c 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -19,7 +19,7 @@ import { ClientExport } from './client-export';
+ import { ClientMerge } from './client-merge';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
++// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them (net of credits and write-offs), their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+   imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+@@ -123,7 +123,7 @@ import { Client, ClientService } from './client.service';
+             Contacts: <span data-testid="client-contacts-count">{{ summary.value().contactCount }}</span>
+           </li>
+           <li>
+-            Billed to date:
++            Billed to date (net of credits and write-offs):
+             <span data-testid="client-lifetime-billed">{{
+               summary.value().lifetimeBilled | money: c.currency
+             }}</span>
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 1877041..46dd167 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -52,6 +52,7 @@ export interface Client {
+ export interface ClientSummary {
+   projectCount: number;
+   contactCount: number;
++  /** The total billed to the client, net of credit notes and write-offs, in their currency. */
+   lifetimeBilled: number;
+   /** What the client has actually paid, less refunds, in their currency. */
+   lifetimeValue: number;
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 4f08752..10fb673 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -14,6 +14,7 @@ import net.officefloor.hq.app.contact.ContactRepository;
+ import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+ import net.officefloor.hq.app.currency.Currency;
+ import net.officefloor.hq.app.currency.CurrencyService;
++import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.deposit.DepositRepository;
+@@ -92,11 +93,37 @@ public class ClientService {
+     public ClientSummaryResponse summary(Long id) {
+         Client client = clients.findById(id)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+-        BigDecimal billed = invoices.sumAmountByClientIdAndStatusIn(id, BILLED).setScale(2, RoundingMode.HALF_UP);
+-        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientIdAndArchivedFalse(id), billed,
++        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientIdAndArchivedFalse(id), lifetimeBilled(id),
+                 lifetimeValue(client));
+     }
+ 
++    /**
++     * The total billed to a client net of credits and write-offs: the amount of each invoice issued to them, less
++     * the credit notes against it, any part written off and, for an invoice written off as bad debt, the balance
++     * given up when it was written off.
++     */
++    private BigDecimal lifetimeBilled(Long clientId) {
++        List<Invoice> billed = invoices.findByClientIdWithProject(clientId).stream()
++                .filter(i -> BILLED.contains(i.getStatus()))
++                .toList();
++        List<Long> ids = billed.stream().map(Invoice::getId).toList();
++        Map<Long, BigDecimal> paid = new HashMap<>();
++        payments.sumAmountByInvoiceIds(ids).forEach(t -> paid.put(t.getInvoiceId(), t.getPaid()));
++        Map<Long, BigDecimal> credited = new HashMap<>();
++        creditNotes.sumAmountByInvoiceIds(ids).forEach(t -> credited.put(t.getInvoiceId(), t.getCredited()));
++        return billed.stream().map(i -> {
++            BigDecimal net = i.getAmount()
++                    .subtract(credited.getOrDefault(i.getId(), BigDecimal.ZERO))
++                    .subtract(i.getWriteOffAmount());
++            if (i.getStatus() == InvoiceStatus.WRITTEN_OFF) {
++                BigDecimal givenUp = net.subtract(paid.getOrDefault(i.getId(), BigDecimal.ZERO))
++                        .subtract(i.getRebateTaken()).max(BigDecimal.ZERO);
++                net = net.subtract(givenUp);
++            }
++            return net;
++        }).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
++    }
++
+     /**
+      * What a client has actually paid, in their currency: the money received in payments made against an invoice on
+      * their own, in lump payments (including any kept as credit) and as deposits, less what has been refunded to them.
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java
+index 87486b7..6febea0 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientSummaryResponse.java
+@@ -4,7 +4,8 @@ import java.math.BigDecimal;
+ 
+ /**
+  * At-a-glance counts of a client's projects and contacts, and the total ever billed to them in their currency: the
+- * sum of every invoice issued to them (drafts, not yet issued, and cancelled invoices are left out). Also their
++ * sum of every invoice issued to them (drafts, not yet issued, and cancelled invoices are left out), net of the
++ * credit notes against them and what has been written off. Also their
+  * lifetime value in their currency: the money they have actually paid, less what has been refunded to them.
+  */
+ public record ClientSummaryResponse(long projectCount, long contactCount, BigDecimal lifetimeBilled,
