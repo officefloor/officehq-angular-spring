@@ -1,0 +1,294 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-credit-limit.ts b/src/main/frontend/src/app/features/clients/client-credit-limit.ts
+new file mode 100644
+index 0000000..21bbe62
+--- /dev/null
++++ b/src/main/frontend/src/app/features/clients/client-credit-limit.ts
+@@ -0,0 +1,76 @@
++import { Component, inject, input, linkedSignal, output, signal } from '@angular/core';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { Client, ClientService } from './client.service';
++
++// The most a client may owe, in their currency, with a form to set it or remove it.
++@Component({
++  selector: 'app-client-credit-limit',
++  imports: [MoneyPipe],
++  template: `
++    <p>
++      Credit limit:
++      @if (client().creditLimit !== null) {
++        <span data-testid="client-credit-limit">{{ client().creditLimit | money: client().currency }}</span>
++      } @else {
++        <span data-testid="client-credit-limit-none">No limit</span>
++      }
++    </p>
++    <form (submit)="$event.preventDefault(); save()">
++      <label for="client-credit-limit-input">Credit limit ({{ client().currency }}, blank for no limit)</label>
++      <input
++        id="client-credit-limit-input"
++        type="number"
++        min="0"
++        step="0.01"
++        data-testid="client-credit-limit-input"
++        [value]="amount()"
++        (input)="amount.set($any($event.target).value)"
++        [attr.aria-invalid]="invalid()"
++        [attr.aria-describedby]="invalid() ? 'client-credit-limit-invalid' : null"
++      />
++      <button type="submit" data-testid="client-credit-limit-save" [disabled]="saving()">Save credit limit</button>
++      @if (invalid()) {
++        <p id="client-credit-limit-invalid" role="alert" data-testid="client-credit-limit-invalid">
++          Credit limit must be zero or more.
++        </p>
++      }
++      @if (saveError()) {
++        <p role="alert" data-testid="client-credit-limit-error">{{ saveError() }}</p>
++      }
++    </form>
++  `,
++})
++export class ClientCreditLimit {
++  private readonly service = inject(ClientService);
++
++  readonly client = input.required<Client>();
++  /** Emits the client once their credit limit has been saved. */
++  readonly changed = output<Client>();
++
++  protected readonly amount = linkedSignal(() => this.client().creditLimit?.toString() ?? '');
++  protected readonly invalid = signal(false);
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected save(): void {
++    const text = this.amount().toString().trim();
++    const limit = text === '' ? null : Number(text);
++    if (limit !== null && (!Number.isFinite(limit) || limit < 0)) {
++      this.invalid.set(true);
++      return;
++    }
++    this.invalid.set(false);
++    this.saveError.set(null);
++    this.saving.set(true);
++    this.service.changeCreditLimit(this.client().id, limit).subscribe({
++      next: (client) => {
++        this.saving.set(false);
++        this.changed.emit(client);
++      },
++      error: () => {
++        this.saving.set(false);
++        this.saveError.set('Could not save the credit limit. Please try again.');
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 14a086c..55593c7 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -9,15 +9,16 @@ import { ClientAging } from '../invoices/client-aging';
+ import { ClientDeposits } from '../deposits/client-deposits';
+ import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
+ import { ClientProjects } from '../projects/client-projects';
++import { ClientCreditLimit } from './client-credit-limit';
+ import { ClientCurrency } from './client-currency';
+ import { ClientExport } from './client-export';
+ import { ClientMerge } from './client-merge';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, preferred language, account manager, tax number, billing address, main contact and currency, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
++// A single client's page: their name, email, phone number, preferred language, account manager, tax number, billing address, main contact, currency and credit limit, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
++  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -98,6 +99,7 @@ import { Client, ClientService } from './client.service';
+       </p>
+       <app-client-export [clientId]="clientId()" />
+       <app-client-currency [client]="c" (changed)="currencyChanged($event)" />
++      <app-client-credit-limit [client]="c" (changed)="creditLimitChanged($event)" />
+       @if (summary.hasValue()) {
+         <ul class="client-badges" aria-label="At a glance" data-testid="client-badges">
+           <li>
+@@ -230,6 +232,10 @@ export class ClientDetail {
+     this.client.set(client);
+   }
+ 
++  protected creditLimitChanged(client: Client): void {
++    this.client.set(client);
++  }
++
+   protected clientMerged(kept: Client): void {
+     // This client no longer exists; carry on at the one it was merged into, unless the user is already leaving.
+     if (this.leaving) {
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 21ef201..87e4e8f 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -32,6 +32,8 @@ export interface Client {
+   primaryContact: { id: number; name: string } | null;
+   /** The currency the client is billed in; all of their money is shown in it. */
+   currency: CurrencyCode;
++  /** The most the client may owe, in their currency; null when no limit is set. */
++  creditLimit: number | null;
+   /** What is left to pay on the client's sent, not yet fully paid invoices, in their currency. */
+   outstanding: number;
+ }
+@@ -43,7 +45,7 @@ export interface ClientSummary {
+   lifetimeBilled: number;
+ }
+ 
+-export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'outstanding'>;
++export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'outstanding'>;
+ 
+ /** Where a client's contact details file is downloaded from. */
+ export function exportUrl(id: number): string {
+@@ -83,6 +85,11 @@ export class ClientService {
+     return this.http.put<Client>(`/api/clients/${id}/currency`, { currency });
+   }
+ 
++  /** Sets the most the client may owe, in their currency; null removes the limit. */
++  changeCreditLimit(id: number, creditLimit: number | null): Observable<Client> {
++    return this.http.put<Client>(`/api/clients/${id}/credit-limit`, { creditLimit });
++  }
++
+   /** Merges the client into another one, which keeps everything the client had; the client is removed. */
+   merge(id: number, targetId: number): Observable<Client> {
+     return this.http.post<Client>(`/api/clients/${id}/merge`, { targetId });
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index cbeb988..2b1ff94 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -108,14 +108,15 @@ public class TestSupportController {
+                     r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"), c.get("language"), c.get("accountManager"),
+                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
+                     Boolean.TRUE.equals(c.get("keyAccount")),
+                     Boolean.TRUE.equals(c.get("archived")),
+                     c.get("currency") == null ? Currency.DEFAULT : c.get("currency").toString(),
+-                    decimal(c.get("defaultDiscountPct")));
++                    decimal(c.get("defaultDiscountPct")),
++                    c.get("creditLimit") == null ? null : decimal(c.get("creditLimit")));
+         }
+         for (Map<String, Object> c : rows(fixture, "contacts")) {
+             jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index f07c737..e115ca3 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -57,6 +57,10 @@ public class Client {
+     @Column(name = "default_discount_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal defaultDiscountPct = BigDecimal.ZERO.setScale(2);
+ 
++    /** The most the client may owe, in their currency; none when no limit is set. */
++    @Column(precision = 12, scale = 2)
++    private BigDecimal creditLimit;
++
+     /** The currency the client is billed in; all of their money is in it. */
+     @Column(nullable = false)
+     private String currency = Currency.DEFAULT;
+@@ -166,6 +170,14 @@ public class Client {
+         this.archived = archived;
+     }
+ 
++    public BigDecimal getCreditLimit() {
++        return creditLimit;
++    }
++
++    public void setCreditLimit(BigDecimal creditLimit) {
++        this.creditLimit = creditLimit == null ? null : creditLimit.setScale(2, RoundingMode.HALF_UP);
++    }
++
+     public String getCurrency() {
+         return currency;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index 3d8b985..02e8f13 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -68,6 +68,11 @@ public class ClientController {
+         return service.changeCurrency(id, request.currency());
+     }
+ 
++    @PutMapping("/{id}/credit-limit")
++    public ClientResponse changeCreditLimit(@PathVariable Long id, @Valid @RequestBody ClientCreditLimitRequest request) {
++        return service.changeCreditLimit(id, request.creditLimit());
++    }
++
+     @PostMapping("/{id}/archive")
+     public ClientResponse archive(@PathVariable Long id) {
+         return service.archive(id);
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientCreditLimitRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientCreditLimitRequest.java
+new file mode 100644
+index 0000000..6f16d2d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientCreditLimitRequest.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.client;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import java.math.BigDecimal;
++
++/** Payload to set the most a client may owe, in their currency; null removes the limit. */
++public record ClientCreditLimitRequest(@DecimalMin("0") @Digits(integer = 10, fraction = 2) BigDecimal creditLimit) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index 7be262b..66d03ef 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -4,7 +4,7 @@ import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+ public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, String language, String accountManager, boolean taxInclusive, boolean taxExempt, boolean keyAccount, BigDecimal defaultDiscountPct, boolean archived, PrimaryContact primaryContact,
+-        String currency, BigDecimal outstanding) {
++        String currency, BigDecimal creditLimit, BigDecimal outstanding) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+     public record PrimaryContact(Long id, String name) {
+@@ -15,6 +15,6 @@ public record ClientResponse(Long id, String name, String email, String phone, S
+         Contact primary = client.getPrimaryContact();
+         return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.getLanguage(), client.getAccountManager(), client.isTaxInclusive(), client.isTaxExempt(), client.isKeyAccount(), client.getDefaultDiscountPct(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
+-                client.getCurrency(), outstanding);
++                client.getCurrency(), client.getCreditLimit(), outstanding);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index ef82597..f8d6b4e 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -163,6 +163,16 @@ public class ClientService {
+         return respond(client);
+     }
+ 
++    /** Sets the most a client may owe, in their currency, or removes the limit; recorded in the audit log. */
++    @Transactional
++    public ClientResponse changeCreditLimit(Long id, BigDecimal creditLimit) {
++        Client client = find(id);
++        client.setCreditLimit(creditLimit);
++        clients.flush();
++        audit.record("CLIENT_CREDIT_LIMIT_SET id=" + id + " limit=" + (creditLimit == null ? "none" : client.getCreditLimit().toPlainString()));
++        return respond(client);
++    }
++
+     private static ResponseStatusException emailTaken() {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "A client with this email already exists");
+     }
+diff --git a/src/main/resources/db/migration/V80__client_credit_limit.sql b/src/main/resources/db/migration/V80__client_credit_limit.sql
+new file mode 100644
+index 0000000..6762b81
+--- /dev/null
++++ b/src/main/resources/db/migration/V80__client_credit_limit.sql
+@@ -0,0 +1,4 @@
++-- A client can have a credit limit: the most the office lets them owe, in their currency. Existing
++-- clients have none set.
++ALTER TABLE client ADD COLUMN credit_limit DECIMAL(12, 2);
++ALTER TABLE client ADD CONSTRAINT client_credit_limit_not_negative CHECK (credit_limit IS NULL OR credit_limit >= 0);
