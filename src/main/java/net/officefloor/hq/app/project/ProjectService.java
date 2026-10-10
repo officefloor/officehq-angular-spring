@@ -13,9 +13,11 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.Client;
 import net.officefloor.hq.app.client.ClientRepository;
+import net.officefloor.hq.app.creditnote.CreditNoteRepository;
 import net.officefloor.hq.app.invoice.Invoice;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
+import net.officefloor.hq.app.payment.PaymentRepository;
 import java.util.Locale;
 import java.util.Objects;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -30,13 +32,17 @@ public class ProjectService {
     private final ProjectRepository projects;
     private final ClientRepository clients;
     private final InvoiceRepository invoices;
+    private final PaymentRepository payments;
+    private final CreditNoteRepository creditNotes;
     private final Audit audit;
 
     public ProjectService(ProjectRepository projects, ClientRepository clients, InvoiceRepository invoices,
-            Audit audit) {
+            PaymentRepository payments, CreditNoteRepository creditNotes, Audit audit) {
         this.projects = projects;
         this.clients = clients;
         this.invoices = invoices;
+        this.payments = payments;
+        this.creditNotes = creditNotes;
         this.audit = audit;
     }
 
@@ -53,8 +59,7 @@ public class ProjectService {
             found = includeArchived ? projects.findAllByTagIdWithClient(tagId)
                     : projects.findActiveByTagIdWithClient(tagId);
         }
-        return found.stream().filter(p -> status == null || p.getStatus() == status).map(ProjectResponse::from)
-                .toList();
+        return respond(found.stream().filter(p -> status == null || p.getStatus() == status).toList());
     }
 
     /**
@@ -67,15 +72,15 @@ public class ProjectService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
         }
         if (includeAll) {
-            return projects.findAllByClientIdWithClient(clientId).stream().map(ProjectResponse::from).toList();
+            return respond(projects.findAllByClientIdWithClient(clientId));
         }
-        return projects.findActiveByClientIdWithClient(clientId).stream()
-                .filter(p -> p.getStatus() == ProjectStatus.ACTIVE).map(ProjectResponse::from).toList();
+        return respond(projects.findActiveByClientIdWithClient(clientId).stream()
+                .filter(p -> p.getStatus() == ProjectStatus.ACTIVE).toList());
     }
 
     @Transactional(readOnly = true)
     public ProjectResponse get(Long id) {
-        return projects.findByIdWithClient(id).map(ProjectResponse::from)
+        return projects.findByIdWithClient(id).map(this::respond)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
     }
 
@@ -100,7 +105,7 @@ public class ProjectService {
             project.setBillable(request.billable());
         }
         try {
-            return ProjectResponse.from(projects.saveAndFlush(project));
+            return respond(projects.saveAndFlush(project));
         } catch (DataIntegrityViolationException e) {
             // Lost a race with a concurrent add of the same code; the unique constraint caught it.
             if (String.valueOf(e.getMessage()).toUpperCase().contains("PROJECT_CODE_UQ")) {
@@ -134,6 +139,35 @@ public class ProjectService {
             placed.setSortOrder(position++);
         }
         audit.record("PROJECTS_REORDERED ids=" + ids.stream().map(String::valueOf).collect(Collectors.joining(",")));
+    }
+
+    private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
+
+    /** The given projects, each with what is still owed on it. */
+    private List<ProjectResponse> respond(List<Project> found) {
+        Map<Long, BigDecimal> owed = outstandingByProject();
+        return found.stream().map(p -> ProjectResponse.from(p, owed.getOrDefault(p.getId(), ZERO))).toList();
+    }
+
+    private ProjectResponse respond(Project project) {
+        return ProjectResponse.from(project, outstandingByProject().getOrDefault(project.getId(), ZERO));
+    }
+
+    /**
+     * What is still owed on each project: what is left to pay on its sent invoices that are not yet fully
+     * paid, after the payments and credit notes against them. Projects owing nothing are left out.
+     */
+    private Map<Long, BigDecimal> outstandingByProject() {
+        List<InvoiceStatus> owing = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL);
+        Map<Long, BigDecimal> owed = new HashMap<>();
+        invoices.sumAmountByStatusInPerProject(owing).forEach(t -> owed.merge(t.getProjectId(), t.getTotal(),
+                BigDecimal::add));
+        payments.sumAmountByInvoiceStatusInPerProject(owing).forEach(t -> owed.merge(t.getProjectId(),
+                t.getTotal().negate(), BigDecimal::add));
+        creditNotes.sumAmountByInvoiceStatusInPerProject(owing).forEach(t -> owed.merge(t.getProjectId(),
+                t.getTotal().negate(), BigDecimal::add));
+        owed.replaceAll((id, amount) -> amount.setScale(2, RoundingMode.HALF_UP));
+        return owed;
     }
 
     private static ResponseStatusException codeTaken() {
@@ -190,7 +224,7 @@ public class ProjectService {
             projects.flush();
             audit.record("PROJECT_STATUS_CHANGED id=" + id + " status=" + status);
         }
-        return ProjectResponse.from(project);
+        return respond(project);
     }
 
     /** Marks a project billable or non-billable, recording the change in the audit log. */
@@ -203,7 +237,7 @@ public class ProjectService {
             projects.flush();
             audit.record("PROJECT_BILLABLE_SET id=" + id + " billable=" + billable);
         }
-        return ProjectResponse.from(project);
+        return respond(project);
     }
 
     /**
@@ -223,7 +257,7 @@ public class ProjectService {
             audit.record("PROJECT_DATES_SET id=" + id + " start=" + (startDate == null ? "none" : startDate)
                     + " end=" + (endDate == null ? "none" : endDate));
         }
-        return ProjectResponse.from(project);
+        return respond(project);
     }
 
     /** Notes (or, given none, clears) a job's file reference, recording the change in the audit log. */
@@ -237,7 +271,7 @@ public class ProjectService {
             projects.flush();
             audit.record("PROJECT_FILE_REF_SET id=" + id + " fileRef=" + (ref == null ? "none" : ref));
         }
-        return ProjectResponse.from(project);
+        return respond(project);
     }
 
     /** Puts a job into (or, given none, takes it out of) a category, recording the change in the audit log. */
@@ -251,7 +285,7 @@ public class ProjectService {
             projects.flush();
             audit.record("PROJECT_CATEGORY_SET id=" + id + " category=" + (value == null ? "none" : value));
         }
-        return ProjectResponse.from(project);
+        return respond(project);
     }
 
     /** Closes a job so no new invoice can be raised on it, recording the closing in the audit log. */
@@ -264,7 +298,7 @@ public class ProjectService {
             projects.flush();
             audit.record("PROJECT_CLOSED id=" + id);
         }
-        return ProjectResponse.from(project);
+        return respond(project);
     }
 
     /** Reopens a closed job so invoices can be raised on it again, recording the reopening in the audit log. */
@@ -277,7 +311,7 @@ public class ProjectService {
             projects.flush();
             audit.record("PROJECT_REOPENED id=" + id);
         }
-        return ProjectResponse.from(project);
+        return respond(project);
     }
 
     /**
@@ -293,7 +327,7 @@ public class ProjectService {
             projects.flush();
             audit.record("PROJECT_ARCHIVED id=" + id);
         }
-        return ProjectResponse.from(project);
+        return respond(project);
     }
 
     /** Brings an archived project back onto the project lists, recording it in the audit log. */
@@ -306,6 +340,6 @@ public class ProjectService {
             projects.flush();
             audit.record("PROJECT_RESTORED id=" + id);
         }
-        return ProjectResponse.from(project);
+        return respond(project);
     }
 }

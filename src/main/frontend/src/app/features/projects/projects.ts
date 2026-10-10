@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Client, ClientService } from '../clients/client.service';
+import { MoneyPipe } from '../currencies/money.pipe';
 import { Tag, TagService } from '../tags/tag.service';
 import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './project.service';
 
@@ -14,10 +15,11 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
 // the projects at a chosen status. The tag and status filters combine, e.g. active projects with a
 // given tag. Each project carries a short reference code, given when it is added, that no other
 // project may share, and may carry an optional short description of the work. Jobs can be dragged
-// into the order wanted, or moved up and down with buttons, and that order is kept.
+// into the order wanted, or moved up and down with buttons, and that order is kept. Each job shows what
+// is still outstanding on it: what is left to pay on its sent invoices.
 @Component({
   selector: 'app-projects',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, MoneyPipe],
   template: `
     <h1>Jobs</h1>
 
@@ -189,6 +191,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
             <th scope="col">Name</th>
             <th scope="col">Client</th>
             <th scope="col">Status</th>
+            <th scope="col">Outstanding</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -251,6 +254,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
                   }
                 </select>
               </td>
+              <td data-testid="project-outstanding">{{ p.outstanding ?? 0 | money: p.currency }}</td>
               <td>
                 <a
                   [routerLink]="['/projects', p.id]"

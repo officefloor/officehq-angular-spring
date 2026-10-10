@@ -53,6 +53,18 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
             + " WHERE i.status IN :statuses GROUP BY p.client.id")
     List<ClientTotal> sumAmountByStatusInPerClient(Collection<InvoiceStatus> statuses);
 
+    /** Sum of the invoice amounts with any of the given statuses, per project; projects with none are left out. */
+    @Query("SELECT i.project.id AS projectId, SUM(i.amount) AS total FROM Invoice i"
+            + " WHERE i.status IN :statuses GROUP BY i.project.id")
+    List<ProjectTotal> sumAmountByStatusInPerProject(Collection<InvoiceStatus> statuses);
+
+    /** A total of money for one project. */
+    interface ProjectTotal {
+        Long getProjectId();
+
+        BigDecimal getTotal();
+    }
+
     /** A total of money for one client. */
     interface ClientTotal {
         Long getClientId();

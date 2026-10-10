@@ -37,6 +37,8 @@ export interface Project {
   fileRef: string | null;
   /** The category the job is put into (e.g. "Web"); null when it has none. */
   category: string | null;
+  /** What is still owed on the job's sent invoices after payments and credit notes; null where not worked out. */
+  outstanding: number | null;
 }
 
 /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */

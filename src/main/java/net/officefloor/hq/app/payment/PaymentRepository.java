@@ -41,6 +41,11 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             + " WHERE p.invoiceId = i.id AND i.status IN :statuses GROUP BY pr.client.id")
     List<InvoiceRepository.ClientTotal> sumAmountByInvoiceStatusInPerClient(Collection<InvoiceStatus> statuses);
 
+    /** Total paid against invoices with any of the given statuses, per project; projects with none are left out. */
+    @Query("SELECT i.project.id AS projectId, SUM(p.amount) AS total FROM Payment p, Invoice i"
+            + " WHERE p.invoiceId = i.id AND i.status IN :statuses GROUP BY i.project.id")
+    List<InvoiceRepository.ProjectTotal> sumAmountByInvoiceStatusInPerProject(Collection<InvoiceStatus> statuses);
+
     /** Total paid against each of the given invoices; invoices with no payments are left out. */
     @Query("SELECT p.invoiceId AS invoiceId, SUM(p.amount) AS paid FROM Payment p"
             + " WHERE p.invoiceId IN :invoiceIds GROUP BY p.invoiceId")

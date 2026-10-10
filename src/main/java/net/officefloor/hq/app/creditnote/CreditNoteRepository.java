@@ -25,6 +25,11 @@ public interface CreditNoteRepository extends JpaRepository<CreditNote, Long> {
             + " WHERE c.invoiceId = i.id AND i.status IN :statuses GROUP BY pr.client.id")
     List<InvoiceRepository.ClientTotal> sumAmountByInvoiceStatusInPerClient(Collection<InvoiceStatus> statuses);
 
+    /** Total credited against invoices with any of the given statuses, per project; projects with none are left out. */
+    @Query("SELECT i.project.id AS projectId, SUM(c.amount) AS total FROM CreditNote c, Invoice i"
+            + " WHERE c.invoiceId = i.id AND i.status IN :statuses GROUP BY i.project.id")
+    List<InvoiceRepository.ProjectTotal> sumAmountByInvoiceStatusInPerProject(Collection<InvoiceStatus> statuses);
+
     /** Total credited against each of the given invoices; invoices with no credit notes are left out. */
     @Query("SELECT c.invoiceId AS invoiceId, SUM(c.amount) AS credited FROM CreditNote c"
             + " WHERE c.invoiceId IN :invoiceIds GROUP BY c.invoiceId")
