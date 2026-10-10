@@ -189,7 +189,7 @@ export interface InvoiceDetail extends Invoice {
   effectiveTaxPct: number;
   /** The percentage taken off when paid early; zero when no early-payment discount is offered. */
   earlyPaymentPct: number;
-  /** How many days after being issued it must be paid within to get the early-payment discount. */
+  /** How many days after being issued it must be paid within to get the early-payment discount: the client's early-payment window; zero when they have none. */
   earlyPaymentDays: number;
   /** The last day to pay to get the early-payment discount; null when none is offered. */
   earlyPaymentBy: string | null;
@@ -359,11 +359,10 @@ export class InvoiceService {
     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/minimum-charge`, { minimumCharge });
   }
 
-  /** Sets the early-payment discount offered on a draft invoice; zero for either removes the offer. */
-  applyEarlyPayment(projectId: number, invoiceId: number, earlyPaymentPct: number, earlyPaymentDays: number): Observable<InvoiceDetail> {
+  /** Sets the early-payment discount offered on a draft invoice, earned within the client's early-payment window; zero removes the offer. */
+  applyEarlyPayment(projectId: number, invoiceId: number, earlyPaymentPct: number): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/early-payment`, {
       earlyPaymentPct,
-      earlyPaymentDays,
     });
   }
 

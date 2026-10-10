@@ -92,10 +92,6 @@ public class Invoice {
     @Column(name = "early_payment_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal earlyPaymentPct = BigDecimal.ZERO.setScale(2);
 
-    /** How many days after being issued the invoice must be paid within to get the early-payment discount. */
-    @Column(name = "early_payment_days", nullable = false)
-    private int earlyPaymentDays;
-
     /** The percentage of the amount given back when paid before the due date; zero when no rebate is offered. */
     @Column(name = "rebate_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal rebatePct = BigDecimal.ZERO.setScale(2);
@@ -371,19 +367,23 @@ public class Invoice {
         return earlyPaymentPct;
     }
 
-    /** How many days after being issued the invoice must be paid within to get the early-payment discount. */
+    /**
+     * How many days after being issued the invoice must be paid within to get the early-payment discount:
+     * the early-payment window in its client's payment terms; zero when the client has none.
+     */
     public int getEarlyPaymentDays() {
-        return earlyPaymentDays;
+        Integer window = project.getClient().getEarlyPaymentWindowDays();
+        return window != null ? window : 0;
     }
 
-    /** Whether an early-payment discount is offered: a percentage off when paid within some days. */
+    /** Whether an early-payment discount is offered: a percentage off when paid within the client's early-payment window. */
     public boolean offersEarlyPayment() {
-        return earlyPaymentPct.signum() > 0 && earlyPaymentDays > 0;
+        return earlyPaymentPct.signum() > 0 && getEarlyPaymentDays() > 0;
     }
 
     /** The last day the invoice can be paid to get the early-payment discount; null when none is offered. */
     public LocalDate getEarlyPaymentBy() {
-        return offersEarlyPayment() ? issuedDate.plusDays(earlyPaymentDays) : null;
+        return offersEarlyPayment() ? issuedDate.plusDays(getEarlyPaymentDays()) : null;
     }
 
     /**
@@ -648,12 +648,11 @@ public class Invoice {
     }
 
     /**
-     * Sets the early-payment discount offered on this invoice: the percentage taken off if it is paid
-     * within the given number of days of being issued. It does not change the amount owed.
+     * Sets the early-payment discount offered on this invoice: the percentage taken off what is owed if it is
+     * paid within its client's early-payment window. It does not change the amount owed.
      */
-    public void applyEarlyPayment(BigDecimal earlyPaymentPct, int earlyPaymentDays) {
+    public void applyEarlyPayment(BigDecimal earlyPaymentPct) {
         this.earlyPaymentPct = earlyPaymentPct.setScale(2, RoundingMode.HALF_UP);
-        this.earlyPaymentDays = earlyPaymentDays;
     }
 
     /**

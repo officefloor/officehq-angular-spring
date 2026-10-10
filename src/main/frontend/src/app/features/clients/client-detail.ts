@@ -13,6 +13,7 @@ import { ClientProjects } from '../projects/client-projects';
 import { ClientCreditLimit } from './client-credit-limit';
 import { ClientCurrency } from './client-currency';
 import { ClientPaymentTerms } from './client-payment-terms';
+import { ClientEarlyPaymentWindow } from './client-early-payment-window';
 import { ClientExport } from './client-export';
 import { ClientMerge } from './client-merge';
 import { Client, ClientService } from './client.service';
@@ -20,7 +21,7 @@ import { Client, ClientService } from './client.service';
 // A single client's page: their name, email, phone number, preferred language, account manager, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
 @Component({
   selector: 'app-client-detail',
-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
   styles: `
     .client-badges {
       display: flex;
@@ -103,6 +104,7 @@ import { Client, ClientService } from './client.service';
       <app-client-currency [client]="c" (changed)="currencyChanged($event)" />
       <app-client-credit-limit [client]="c" (changed)="creditLimitChanged($event)" />
       <app-client-payment-terms [client]="c" (changed)="paymentTermsChanged($event)" />
+      <app-client-early-payment-window [client]="c" (changed)="paymentTermsChanged($event)" />
       @if (summary.hasValue()) {
         <ul class="client-badges" aria-label="At a glance" data-testid="client-badges">
           <li>

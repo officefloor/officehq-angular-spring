@@ -173,14 +173,48 @@ public class ClientService {
         return respond(client);
     }
 
-    /** Sets the number of days a client has to pay an invoice, or removes their payment terms; recorded in the audit log. */
+    /**
+     * Sets the number of days a client has to pay an invoice, or removes their payment terms; recorded in the audit log.
+     * An early-payment window longer than the new terms is cut back to them, and removed along with the terms.
+     */
     @Transactional
     public ClientResponse changePaymentTerms(Long id, Integer paymentTermsDays) {
         Client client = find(id);
         client.setPaymentTermsDays(paymentTermsDays);
+        Integer window = client.getEarlyPaymentWindowDays();
+        Integer cappedWindow = window == null || paymentTermsDays == null ? null : Math.min(window, paymentTermsDays);
+        client.setEarlyPaymentWindowDays(cappedWindow);
         clients.flush();
         audit.record("CLIENT_PAYMENT_TERMS_SET id=" + id + " days=" + (paymentTermsDays == null ? "none" : paymentTermsDays));
+        if (window != null && !window.equals(cappedWindow)) {
+            recordEarlyPaymentWindow(id, cappedWindow);
+        }
         return respond(client);
+    }
+
+    /**
+     * Sets the early-payment window in a client's payment terms: the days after issue within which an invoice must be
+     * paid to earn its early-payment discount, or removes it; recorded in the audit log. It must lie within the terms.
+     */
+    @Transactional
+    public ClientResponse changeEarlyPaymentWindow(Long id, Integer earlyPaymentWindowDays) {
+        Client client = find(id);
+        if (earlyPaymentWindowDays != null) {
+            if (client.getPaymentTermsDays() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Agree payment terms before an early-payment window");
+            }
+            if (earlyPaymentWindowDays > client.getPaymentTermsDays()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The early-payment window must be within the payment terms");
+            }
+        }
+        client.setEarlyPaymentWindowDays(earlyPaymentWindowDays);
+        clients.flush();
+        recordEarlyPaymentWindow(id, earlyPaymentWindowDays);
+        return respond(client);
+    }
+
+    private void recordEarlyPaymentWindow(Long id, Integer earlyPaymentWindowDays) {
+        audit.record("CLIENT_EARLY_PAYMENT_WINDOW_SET id=" + id + " days=" + (earlyPaymentWindowDays == null ? "none" : earlyPaymentWindowDays));
     }
 
     private static ResponseStatusException emailTaken() {

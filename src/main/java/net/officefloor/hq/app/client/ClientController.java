@@ -78,6 +78,11 @@ public class ClientController {
         return service.changePaymentTerms(id, request.paymentTermsDays());
     }
 
+    @PutMapping("/{id}/early-payment-window")
+    public ClientResponse changeEarlyPaymentWindow(@PathVariable Long id, @Valid @RequestBody ClientEarlyPaymentWindowRequest request) {
+        return service.changeEarlyPaymentWindow(id, request.earlyPaymentWindowDays());
+    }
+
     @PostMapping("/{id}/archive")
     public ClientResponse archive(@PathVariable Long id) {
         return service.archive(id);

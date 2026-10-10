@@ -64,6 +64,12 @@ public class Client {
     /** The number of days the client has to pay an invoice (e.g. 30 for net 30); none when no terms are agreed. */
     private Integer paymentTermsDays;
 
+    /**
+     * Part of the client's payment terms: the number of days after an invoice is issued within which paying it
+     * earns its early-payment discount; within the payment terms, and none when not agreed.
+     */
+    private Integer earlyPaymentWindowDays;
+
     /** The currency the client is billed in; all of their money is in it. */
     @Column(nullable = false)
     private String currency = Currency.DEFAULT;
@@ -187,6 +193,14 @@ public class Client {
 
     public void setPaymentTermsDays(Integer paymentTermsDays) {
         this.paymentTermsDays = paymentTermsDays;
+    }
+
+    public Integer getEarlyPaymentWindowDays() {
+        return earlyPaymentWindowDays;
+    }
+
+    public void setEarlyPaymentWindowDays(Integer earlyPaymentWindowDays) {
+        this.earlyPaymentWindowDays = earlyPaymentWindowDays;
     }
 
     public String getCurrency() {

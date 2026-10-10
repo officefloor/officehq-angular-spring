@@ -36,6 +36,8 @@ export interface Client {
   creditLimit: number | null;
   /** The number of days the client has to pay an invoice (e.g. 30 for net 30); null when no terms are agreed. */
   paymentTermsDays: number | null;
+  /** Part of the payment terms: the days after issue within which paying earns an invoice's early-payment discount; null when not agreed. */
+  earlyPaymentWindowDays: number | null;
   /** What is left to pay on the client's sent, not yet fully paid invoices, in their currency. */
   outstanding: number;
 }
@@ -47,7 +49,7 @@ export interface ClientSummary {
   lifetimeBilled: number;
 }
 
-export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'outstanding'>;
+export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding'>;
 
 /** Where a client's contact details file is downloaded from. */
 export function exportUrl(id: number): string {
@@ -95,6 +97,11 @@ export class ClientService {
   /** Sets the number of days the client has to pay an invoice; null removes their payment terms. */
   changePaymentTerms(id: number, paymentTermsDays: number | null): Observable<Client> {
     return this.http.put<Client>(`/api/clients/${id}/payment-terms`, { paymentTermsDays });
+  }
+
+  /** Sets the early-payment window in the client's payment terms; null removes it. */
+  changeEarlyPaymentWindow(id: number, earlyPaymentWindowDays: number | null): Observable<Client> {
+    return this.http.put<Client>(`/api/clients/${id}/early-payment-window`, { earlyPaymentWindowDays });
   }
 
   /** Merges the client into another one, which keeps everything the client had; the client is removed. */

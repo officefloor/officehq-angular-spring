@@ -112,8 +112,8 @@ public class TestSupportController {
                     r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
         }
         for (Map<String, Object> c : rows(fixture, "clients")) {
-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days, early_payment_window_days)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"), c.get("language"), c.get("accountManager"),
                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
                     Boolean.TRUE.equals(c.get("keyAccount")),
@@ -121,7 +121,9 @@ public class TestSupportController {
                     c.get("currency") == null ? Currency.DEFAULT : c.get("currency").toString(),
                     decimal(c.get("defaultDiscountPct")),
                     c.get("creditLimit") == null ? null : decimal(c.get("creditLimit")),
-                    c.get("paymentTermsDays") == null ? null : ((Number) c.get("paymentTermsDays")).intValue());
+                    c.get("paymentTermsDays") == null ? null : ((Number) c.get("paymentTermsDays")).intValue(),
+                    // The early-payment window, part of the client's payment terms.
+                    c.get("earlyPaymentWindowDays") == null ? null : ((Number) c.get("earlyPaymentWindowDays")).intValue());
             // When the client was contacted, each with a date and a note.
             for (Map<String, Object> h : rows(c, "contactHistory")) {
                 jdbc.update("INSERT INTO contact_history (id, client_id, contact_date, note) VALUES (?, ?, ?, ?)",
@@ -310,7 +312,6 @@ public class TestSupportController {
                     : new BigDecimal(i.get("surcharge").toString());
             // A minimum charge is billed instead when the net total comes out under it.
             BigDecimal minimumCharge = decimal(i.get("minimumCharge"));
-            int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
             // A settlement rebate offered for paying before the due date is just recorded; it does not change the amount owed.
             BigDecimal rebatePct = decimal(i.get("rebatePct"));
             // An invoice may be billed in its own currency ("currency"); without one it is in its client's.
@@ -325,12 +326,12 @@ public class TestSupportController {
             // Part of the invoice may already have been written off as bad debt ("writeOff"), so it is no longer owed.
             BigDecimal writeOff = decimal(i.get("writeOff"));
             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
-                    + " early_payment_pct, early_payment_days, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + " early_payment_pct, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
                     surcharge, taxInclusive, taxExempt,
-                    earlyPaymentPct, earlyPaymentDays, rebatePct, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
+                    earlyPaymentPct, rebatePct, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
                     retentionReleased, writeOff,
                     i.get("currency") == null ? null : i.get("currency").toString());
             for (Map<String, Object> d : discounts) {

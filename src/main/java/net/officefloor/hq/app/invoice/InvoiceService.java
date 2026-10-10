@@ -392,7 +392,7 @@ public class InvoiceService {
     @Transactional
     public InvoiceDetailResponse applyEarlyPayment(Long projectId, Long invoiceId, EarlyPaymentRequest request) {
         Invoice invoice = findDraft(projectId, invoiceId);
-        invoice.applyEarlyPayment(request.earlyPaymentPct(), request.earlyPaymentDays());
+        invoice.applyEarlyPayment(request.earlyPaymentPct());
         invoices.flush();
         return detail(invoice);
     }

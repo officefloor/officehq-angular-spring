@@ -25,7 +25,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 // When the net total comes out under the invoice's minimum charge, the minimum is billed instead and marked as applied.
 // A foreign invoice also shows its original amount in the client's currency alongside its total in the home currency, converted at the exchange rate from its issue date.
 // It also shows the total savings: every line discount and invoice discount added together.
-// When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the set number of days.
+// When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the client's early-payment window.
 // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
@@ -726,25 +726,16 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               </p>
             }
           </div>
-          <div>
-            <label for="early-pay-days">Paid within this many days of issue</label>
-            <input
-              id="early-pay-days"
-              type="number"
-              inputmode="numeric"
-              min="0"
-              step="1"
-              formControlName="earlyPaymentDays"
-              data-testid="early-pay-form-days"
-              [attr.aria-invalid]="earlyPayInvalid('earlyPaymentDays')"
-              [attr.aria-describedby]="earlyPayInvalid('earlyPaymentDays') ? 'early-pay-days-error' : null"
-            />
-            @if (earlyPayInvalid('earlyPaymentDays')) {
-              <p id="early-pay-days-error" role="alert" data-testid="early-pay-form-days-error">
-                Enter a whole number of days from 0 to 3650.
-              </p>
+          <p>
+            Paid within
+            @if (inv.earlyPaymentDays > 0) {
+              <span data-testid="early-pay-form-days">{{ inv.earlyPaymentDays }}</span> days of issue, the client's
+              early-payment window.
+            } @else {
+              the client's early-payment window, which is not agreed yet:
+              <span data-testid="early-pay-form-days-none">set it in their payment terms</span> to offer the discount.
             }
-          </div>
+          </p>
           <button type="submit" data-testid="early-pay-form-submit" [disabled]="earlyPaySaving()">Apply early-payment discount</button>
           @if (earlyPayError()) {
             <p role="alert" data-testid="early-pay-form-error">{{ earlyPayError() }}</p>
@@ -1359,7 +1350,6 @@ export class InvoiceDetailPage {
 
   protected readonly earlyPayForm = this.fb.group({
     earlyPaymentPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
-    earlyPaymentDays: ['', [Validators.required, Validators.min(0), Validators.max(3650), Validators.pattern(/^\d+$/)]],
   });
 
   // Starts the early-payment fields from the invoice's current offer whenever the invoice loads.
@@ -1368,12 +1358,11 @@ export class InvoiceDetailPage {
       const inv = this.invoice.value();
       this.earlyPayForm.setValue({
         earlyPaymentPct: String(inv.earlyPaymentPct),
-        earlyPaymentDays: String(inv.earlyPaymentDays),
       });
     }
   });
 
-  protected earlyPayInvalid(name: 'earlyPaymentPct' | 'earlyPaymentDays'): boolean {
+  protected earlyPayInvalid(name: 'earlyPaymentPct'): boolean {
     const control = this.earlyPayForm.controls[name];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -1385,9 +1374,9 @@ export class InvoiceDetailPage {
     }
     this.earlyPaySaving.set(true);
     this.earlyPayError.set(null);
-    const { earlyPaymentPct, earlyPaymentDays } = this.earlyPayForm.getRawValue();
+    const { earlyPaymentPct } = this.earlyPayForm.getRawValue();
     this.service
-      .applyEarlyPayment(this.projectIdNumber(), Number(this.invoiceId()), Number(earlyPaymentPct), Number(earlyPaymentDays))
+      .applyEarlyPayment(this.projectIdNumber(), Number(this.invoiceId()), Number(earlyPaymentPct))
       .subscribe({
         next: (updated) => {
           this.invoice.set(updated);
