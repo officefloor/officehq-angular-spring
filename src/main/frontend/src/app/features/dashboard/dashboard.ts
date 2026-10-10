@@ -43,7 +43,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
         </div>
         <div>
           <dt>Outstanding in {{ s.homeCurrency }} (converted at each invoice's date)</dt>
-          <dd data-testid="dashboard-outstanding-home">{{ s.outstandingHome | money: s.homeCurrency }}</dd>
+          <dd data-testid="dashboard-outstanding-home"><span data-testid="kpi-outstanding">{{ s.outstandingHome | money: s.homeCurrency }}</span></dd>
         </div>
         <div>
           <dt>Overdue invoices</dt>
