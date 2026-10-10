@@ -10,6 +10,11 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     /** All clients not archived, in id order. */
     List<Client> findByArchivedFalseOrderById();
 
+    /** How many clients not archived are in each segment, by segment name; clients in no segment are left out. */
+    @Query("SELECT new net.officefloor.hq.app.client.ClientSegmentResponse(c.segment, COUNT(c)) FROM Client c"
+            + " WHERE c.archived = false AND c.segment IS NOT NULL GROUP BY c.segment ORDER BY c.segment")
+    List<ClientSegmentResponse> countActiveBySegment();
+
     /** Whether any client, archived or not, already has the email, ignoring case. */
     boolean existsByEmailIgnoreCase(String email);
 

@@ -123,6 +123,23 @@ import { Client, ClientService } from './client.service';
         }
       </div>
       <div>
+        <label for="client-edit-segment">Segment (optional)</label>
+        <input
+          id="client-edit-segment"
+          type="text"
+          formControlName="segment"
+          autocomplete="off"
+          data-testid="client-edit-form-segment"
+          [attr.aria-invalid]="showError('segment')"
+          [attr.aria-describedby]="showError('segment') ? 'client-edit-segment-error' : null"
+        />
+        @if (showError('segment')) {
+          <p id="client-edit-segment-error" role="alert" data-testid="client-edit-form-segment-error">
+            Segment must be 50 characters or fewer.
+          </p>
+        }
+      </div>
+      <div>
         <label for="client-edit-tax-number">Tax number (optional)</label>
         <input
           id="client-edit-tax-number"
@@ -228,6 +245,7 @@ export class ClientEditForm implements OnInit {
     language: ['', Validators.maxLength(50)],
     accountManager: ['', Validators.maxLength(255)],
     billingContact: ['', Validators.maxLength(255)],
+    segment: ['', Validators.maxLength(50)],
     taxNumber: ['', Validators.maxLength(50)],
     billingAddress: ['', Validators.maxLength(500)],
     taxInclusive: false,
@@ -241,11 +259,11 @@ export class ClientEditForm implements OnInit {
   }
 
   ngOnInit(): void {
-    const { name, email, phone, language, accountManager, billingContact, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.client();
-    this.form.setValue({ name, email, phone: phone ?? '', language: language ?? '', accountManager: accountManager ?? '', billingContact: billingContact ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt, keyAccount, defaultDiscountPct });
+    const { name, email, phone, language, accountManager, billingContact, segment, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.client();
+    this.form.setValue({ name, email, phone: phone ?? '', language: language ?? '', accountManager: accountManager ?? '', billingContact: billingContact ?? '', segment: segment ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt, keyAccount, defaultDiscountPct });
   }
 
-  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'accountManager' | 'billingContact' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
+  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'accountManager' | 'billingContact' | 'segment' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -255,10 +273,10 @@ export class ClientEditForm implements OnInit {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, language, accountManager, billingContact, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
+    const { name, email, phone, language, accountManager, billingContact, segment, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, accountManager: accountManager.trim() || null, billingContact: billingContact.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
+    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, accountManager: accountManager.trim() || null, billingContact: billingContact.trim() || null, segment: segment.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
       next: (updated) => {
         this.saving.set(false);
         this.saved.emit(updated);

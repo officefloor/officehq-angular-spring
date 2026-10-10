@@ -4,15 +4,16 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ClientEditForm } from './client-edit-form';
+import { ClientSegments } from './client-segments';
 import { Client, ClientService } from './client.service';
 
 // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
 // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
 // list and search unless the archived toggle is on, where it can be restored. A client's name or email
-// can be corrected in place from its row. Key accounts carry a marker beside their name. The list can be sorted by name, by how much each client owes, or with key accounts first.
+// can be corrected in place from its row. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment. The list can be sorted by name, by how much each client owes, or with key accounts first.
 @Component({
   selector: 'app-clients',
-  imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm],
+  imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm, ClientSegments],
   styles: `
     .key-account {
       margin-inline-start: 0.5em;
@@ -135,6 +136,23 @@ import { Client, ClientService } from './client.service';
         }
       </div>
       <div>
+        <label for="client-segment">Segment (optional)</label>
+        <input
+          id="client-segment"
+          type="text"
+          formControlName="segment"
+          autocomplete="off"
+          data-testid="client-form-segment"
+          [attr.aria-invalid]="showError('segment')"
+          [attr.aria-describedby]="showError('segment') ? 'client-segment-error' : null"
+        />
+        @if (showError('segment')) {
+          <p id="client-segment-error" role="alert" data-testid="client-form-segment-error">
+            Segment must be 50 characters or fewer.
+          </p>
+        }
+      </div>
+      <div>
         <label for="client-tax-number">Tax number (optional)</label>
         <input
           id="client-tax-number"
@@ -211,6 +229,23 @@ import { Client, ClientService } from './client.service';
       }
     </form>
 
+    <div>
+      <button
+        type="button"
+        data-testid="client-segments-open"
+        aria-controls="client-segments"
+        [attr.aria-expanded]="segmentsOpen()"
+        (click)="segmentsOpen.set(!segmentsOpen())"
+      >
+        Segments
+      </button>
+      @if (segmentsOpen()) {
+        <section id="client-segments" aria-label="Client segments" data-testid="client-segments">
+          <app-client-segments />
+        </section>
+      }
+    </div>
+
     @if (actionError()) {
       <p role="alert" data-testid="client-archive-error">{{ actionError() }}</p>
     }
@@ -269,6 +304,9 @@ import { Client, ClientService } from './client.service';
                   <span data-testid="client-name">{{ c.name }}</span>
                   @if (c.keyAccount) {
                     <span class="key-account" data-testid="client-key-account">Key account</span>
+                  }
+                  @if (c.segment) {
+                    <span data-testid="client-segment">({{ c.segment }})</span>
                   }
                   @if (c.archived) {
                     <span [attr.data-testid]="'client-archived-' + c.id">(archived)</span>
@@ -348,6 +386,7 @@ export class Clients {
   protected readonly busy = signal<number | null>(null);
   protected readonly actionError = signal<string | null>(null);
   protected readonly editing = signal<number | null>(null);
+  protected readonly segmentsOpen = signal(false);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -365,6 +404,7 @@ export class Clients {
     language: ['', Validators.maxLength(50)],
     accountManager: ['', Validators.maxLength(255)],
     billingContact: ['', Validators.maxLength(255)],
+    segment: ['', Validators.maxLength(50)],
     taxNumber: ['', Validators.maxLength(50)],
     billingAddress: ['', Validators.maxLength(500)],
     taxInclusive: false,
@@ -385,7 +425,7 @@ export class Clients {
     this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
   }
 
-  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'accountManager' | 'billingContact' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
+  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'accountManager' | 'billingContact' | 'segment' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
     const control = this.form.controls[field];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -395,10 +435,10 @@ export class Clients {
       this.form.markAllAsTouched();
       return;
     }
-    const { name, email, phone, language, accountManager, billingContact, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
+    const { name, email, phone, language, accountManager, billingContact, segment, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
     this.saving.set(true);
     this.saveError.set(null);
-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, accountManager: accountManager.trim() || null, billingContact: billingContact.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
+    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, accountManager: accountManager.trim() || null, billingContact: billingContact.trim() || null, segment: segment.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created]);
         this.form.reset();

@@ -54,6 +54,12 @@ public class ClientService {
         return respond(found);
     }
 
+    /** How many clients, not archived, are in each segment, by segment name; clients in no segment are left out. */
+    @Transactional(readOnly = true)
+    public List<ClientSegmentResponse> segments() {
+        return clients.countActiveBySegment();
+    }
+
     @Transactional(readOnly = true)
     public ClientResponse get(Long id) {
         return respond(find(id));
@@ -85,6 +91,7 @@ public class ClientService {
             client.setLanguage(request.trimmedLanguage());
             client.setAccountManager(request.trimmedAccountManager());
             client.setBillingContact(request.trimmedBillingContact());
+            client.setSegment(request.trimmedSegment());
             client.setTaxInclusive(Boolean.TRUE.equals(request.taxInclusive()));
             client.setTaxExempt(Boolean.TRUE.equals(request.taxExempt()));
             client.setKeyAccount(Boolean.TRUE.equals(request.keyAccount()));
@@ -102,7 +109,7 @@ public class ClientService {
     }
 
     /**
-     * Corrects a client's name, email, phone number, tax number, billing address, preferred language, account manager and billing contact (each left as it is when not given, cleared when blank); the email, once trimmed, must not belong to another client.
+     * Corrects a client's name, email, phone number, tax number, billing address, preferred language, account manager, billing contact and segment (each left as it is when not given, cleared when blank); the email, once trimmed, must not belong to another client.
      * When whether their prices include tax, or whether they are tax exempt, changes, their draft invoices are reworked to match; sent ones keep the
      * figures they were issued with. The change is recorded in the audit log.
      */
@@ -122,6 +129,9 @@ public class ClientService {
         }
         if (request.billingContact() != null) {
             client.setBillingContact(request.trimmedBillingContact());
+        }
+        if (request.segment() != null) {
+            client.setSegment(request.trimmedSegment());
         }
         if (request.taxInclusive() != null && request.taxInclusive() != client.isTaxInclusive()) {
             client.setTaxInclusive(request.taxInclusive());

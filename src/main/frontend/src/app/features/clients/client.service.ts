@@ -21,6 +21,8 @@ export interface Client {
   accountManager: string | null;
   /** Who the client's bills should go to, when someone other than the client themselves; null when not recorded. */
   billingContact: string | null;
+  /** The segment the client is grouped into (e.g. "VIP"); null when in none. */
+  segment: string | null;
   /** Whether the client's prices already include tax, so it is worked back out of them rather than added on. */
   taxInclusive: boolean;
   /** Whether the client is tax exempt, so none of their invoices carry any tax whatever the lines say. */
@@ -53,6 +55,12 @@ export interface ClientSummary {
 
 export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding'>;
 
+/** A segment clients are grouped into, and how many clients are in it. */
+export interface ClientSegment {
+  segment: string;
+  count: number;
+}
+
 /** Where a client's contact details file is downloaded from. */
 export function exportUrl(id: number): string {
   return `/api/clients/${id}/export`;
@@ -64,6 +72,11 @@ export class ClientService {
 
   list(includeArchived = false): Observable<Client[]> {
     return this.http.get<Client[]>('/api/clients', { params: { includeArchived } });
+  }
+
+  /** How many clients, not archived, are in each segment. */
+  segments(): Observable<ClientSegment[]> {
+    return this.http.get<ClientSegment[]>('/api/clients/segments');
   }
 
   get(id: number): Observable<Client> {

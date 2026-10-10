@@ -33,6 +33,12 @@ public class ClientController {
         return service.list(includeArchived);
     }
 
+    /** How many clients are in each segment. */
+    @GetMapping("/segments")
+    public List<ClientSegmentResponse> segments() {
+        return service.segments();
+    }
+
     @GetMapping("/{id}")
     public ClientResponse get(@PathVariable Long id) {
         return service.get(id);

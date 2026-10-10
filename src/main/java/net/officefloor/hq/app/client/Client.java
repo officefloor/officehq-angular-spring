@@ -45,6 +45,9 @@ public class Client {
     /** Who the client's bills should go to, when someone other than the client themselves; none when not recorded. */
     private String billingContact;
 
+    /** The segment the client is grouped into (e.g. "VIP"); none when not in one. */
+    private String segment;
+
     private boolean archived;
 
     /** Whether the client's prices already include tax, so tax is worked back out of them rather than added on. */
@@ -131,6 +134,14 @@ public class Client {
 
     public void setBillingContact(String billingContact) {
         this.billingContact = billingContact;
+    }
+
+    public String getSegment() {
+        return segment;
+    }
+
+    public void setSegment(String segment) {
+        this.segment = segment;
     }
 
     public String getTaxNumber() {
