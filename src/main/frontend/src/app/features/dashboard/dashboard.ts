@@ -3,6 +3,7 @@ import { MoneyPipe } from '../currencies/money.pipe';
 import { DashboardService, DashboardSummary } from './dashboard.service';
 import { CashFlowForecast } from './cash-flow-forecast';
 import { RevenueReport } from './revenue-report';
+import { TaxReport } from './tax-report';
 import { TaxSummaryReport } from './tax-summary';
 import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 
@@ -12,10 +13,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 // exchange rate from its own issue date, and how many of those sent
 // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
 // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
-// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. A tax summary and a revenue report for a chosen date range can be opened from here.
+// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. A tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
 @Component({
   selector: 'app-dashboard',
-  imports: [MoneyPipe, CashFlowForecast, RevenueReport, TaxSummaryReport, UpcomingRecurringInvoices],
+  imports: [MoneyPipe, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
   template: `
     <h1>Dashboard</h1>
 
@@ -110,6 +111,19 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 
     <button
       type="button"
+      data-testid="tax-report-open"
+      aria-controls="tax-report"
+      [attr.aria-expanded]="taxReportOpen()"
+      (click)="taxReportOpen.set(!taxReportOpen())"
+    >
+      {{ taxReportOpen() ? 'Hide tax report' : 'Tax report by rate' }}
+    </button>
+    @if (taxReportOpen()) {
+      <app-tax-report id="tax-report" />
+    }
+
+    <button
+      type="button"
       data-testid="revenue-report-open"
       aria-controls="revenue-report"
       [attr.aria-expanded]="revenueReportOpen()"
@@ -126,6 +140,7 @@ export class Dashboard {
   protected readonly summary = signal<DashboardSummary | null>(null);
   protected readonly loadError = signal<string | null>(null);
   protected readonly taxSummaryOpen = signal(false);
+  protected readonly taxReportOpen = signal(false);
   protected readonly revenueReportOpen = signal(false);
 
   constructor() {

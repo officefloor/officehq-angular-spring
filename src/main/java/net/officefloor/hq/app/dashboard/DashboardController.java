@@ -29,6 +29,13 @@ public class DashboardController {
         return service.taxSummary(from, to);
     }
 
+    /** The sales tax charged on invoices issued on or between the given dates, broken down by tax rate. */
+    @GetMapping("/tax-report")
+    public TaxReportResponse taxReport(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return service.taxReport(from, to);
+    }
+
     /**
      * The revenue billed on invoices issued on or between the given dates, broken down by job. Without both dates the
      * revenue is over all time.

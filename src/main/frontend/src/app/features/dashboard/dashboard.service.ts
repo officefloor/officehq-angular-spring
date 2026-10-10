@@ -59,6 +59,30 @@ export interface TaxSummary {
   total: number;
 }
 
+/** The sales tax charged at one rate, in the home currency. */
+export interface RateTax {
+  /** The tax rate as a percentage. */
+  rate: number;
+  /** How many invoices were taxed at the rate. */
+  invoices: number;
+  /** What the tax at the rate was charged on. */
+  taxableBase: number;
+  tax: number;
+}
+
+/** The sales tax charged on invoices issued on or between two dates, in the home currency, broken down by rate. */
+export interface TaxReport {
+  from: string;
+  to: string;
+  homeCurrency: CurrencyCode;
+  /** How many invoices the tax came from. */
+  invoices: number;
+  taxableBase: number;
+  tax: number;
+  /** The lowest rate first; only the rates something was taxed at. */
+  rates: RateTax[];
+}
+
 /** The revenue billed for one job (project), in the home currency. */
 export interface JobRevenue {
   projectId: number;
@@ -123,6 +147,10 @@ export class DashboardService {
 
   taxSummary(from: string, to: string): Observable<TaxSummary> {
     return this.http.get<TaxSummary>('/api/dashboard/tax-summary', { params: new HttpParams().set('from', from).set('to', to) });
+  }
+
+  taxReport(from: string, to: string): Observable<TaxReport> {
+    return this.http.get<TaxReport>('/api/dashboard/tax-report', { params: new HttpParams().set('from', from).set('to', to) });
   }
 
   /** The revenue report over the given range, or over all time when no range is given. */

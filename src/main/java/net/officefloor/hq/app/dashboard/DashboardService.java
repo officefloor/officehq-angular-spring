@@ -252,6 +252,69 @@ public class DashboardService {
     }
 
     /**
+     * The sales tax charged on invoices issued on or between the given dates that were sent (drafts and cancelled
+     * invoices are left out), broken down by the invoice's tax rate: the taxable base and the tax at each rate, each
+     * converted into the home currency at its issue date's rate (an invoice that cannot be converted is left out).
+     * Invoices with nothing taxable on them are left out.
+     */
+    @Transactional(readOnly = true)
+    public TaxReportResponse taxReport(LocalDate from, LocalDate to) {
+        if (from.isAfter(to)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The start date must not be after the end date");
+        }
+        List<InvoiceStatus> charged = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID,
+                InvoiceStatus.WRITTEN_OFF);
+        String home = settings.homeCurrency();
+        Map<BigDecimal, RateTally> byRate = new TreeMap<>();
+        for (Invoice invoice : invoices.findByStatusInAndIssuedDateBetween(charged, from, to)) {
+            BigDecimal base = invoice.getTaxableBase();
+            if (base.signum() == 0) {
+                continue;
+            }
+            String currency = invoice.getCurrency();
+            BigDecimal tax = invoice.getTax();
+            if (!currency.equals(home)) {
+                var inHomeBase = fxRates.toHome(currency, invoice.getIssuedDate(), base);
+                var inHomeTax = fxRates.toHome(currency, invoice.getIssuedDate(), tax);
+                if (inHomeBase.isEmpty() || inHomeTax.isEmpty()) {
+                    continue;
+                }
+                base = inHomeBase.get();
+                tax = inHomeTax.get();
+            }
+            byRate.computeIfAbsent(invoice.getTaxPct().stripTrailingZeros(), r -> new RateTally()).add(base, tax);
+        }
+        List<TaxReportResponse.RateTax> rates = new ArrayList<>();
+        BigDecimal totalBase = BigDecimal.ZERO.setScale(2);
+        BigDecimal totalTax = BigDecimal.ZERO.setScale(2);
+        long count = 0;
+        for (var entry : byRate.entrySet()) {
+            RateTally tally = entry.getValue();
+            BigDecimal base = tally.base.setScale(2, RoundingMode.HALF_UP);
+            BigDecimal tax = tally.tax.setScale(2, RoundingMode.HALF_UP);
+            rates.add(new TaxReportResponse.RateTax(entry.getKey().setScale(Math.max(0, entry.getKey().scale())),
+                    tally.invoices, base, tax));
+            totalBase = totalBase.add(base);
+            totalTax = totalTax.add(tax);
+            count += tally.invoices;
+        }
+        return new TaxReportResponse(from, to, home, count, totalBase, totalTax, rates);
+    }
+
+    /** The taxable base and tax added up at one tax rate. */
+    private static final class RateTally {
+        private BigDecimal base = BigDecimal.ZERO;
+        private BigDecimal tax = BigDecimal.ZERO;
+        private long invoices;
+
+        void add(BigDecimal base, BigDecimal tax) {
+            this.base = this.base.add(base);
+            this.tax = this.tax.add(tax);
+            invoices++;
+        }
+    }
+
+    /**
      * The revenue billed on or between the given dates (over all time when either date is missing): the amounts of
      * the invoices issued in the range that were sent (drafts and cancelled invoices are left out) or, when the
      * settings count revenue once paid, only those fully paid, each converted
