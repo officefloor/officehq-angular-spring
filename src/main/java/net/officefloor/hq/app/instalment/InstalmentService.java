@@ -3,6 +3,7 @@ package net.officefloor.hq.app.instalment;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
@@ -31,9 +32,44 @@ public class InstalmentService {
 
     @Transactional(readOnly = true)
     public List<InstalmentResponse> list(Long projectId, Long invoiceId) {
-        find(projectId, invoiceId);
+        Invoice invoice = find(projectId, invoiceId);
+        LocalDate today = LocalDate.now(clock);
         return instalments.findByInvoiceIdOrderByDueDateAscIdAsc(invoiceId).stream()
-                .map(InstalmentResponse::from).toList();
+                .map(i -> from(invoice, i, today)).toList();
+    }
+
+    /** The interest charged for each day an instalment of the invoice is paid late. */
+    @Transactional(readOnly = true)
+    public InstalmentInterestResponse interest(Long projectId, Long invoiceId) {
+        return new InstalmentInterestResponse(find(projectId, invoiceId).getInstalmentInterestPerDay());
+    }
+
+    /** Sets the interest charged for each day an instalment of an invoice still to be paid is paid late. */
+    @Transactional
+    public InstalmentInterestResponse applyInterest(Long projectId, Long invoiceId, InstalmentInterestRequest request) {
+        Invoice invoice = find(projectId, invoiceId);
+        requireOpen(invoice);
+        invoice.applyInstalmentInterest(request.interestPerDay());
+        invoices.flush();
+        audit.record("INSTALMENT_INTEREST_SET invoice=" + invoiceId + " perDay="
+                + invoice.getInstalmentInterestPerDay().toPlainString());
+        return new InstalmentInterestResponse(invoice.getInstalmentInterestPerDay());
+    }
+
+    /**
+     * How many days an instalment is late on the given day: the days past its due date while it is still
+     * unpaid on an invoice still to be paid; otherwise none.
+     */
+    private static long daysLate(Invoice invoice, Instalment instalment, LocalDate today) {
+        if (instalment.isPaid() || !isOpen(invoice)) {
+            return 0;
+        }
+        return Math.max(0, ChronoUnit.DAYS.between(instalment.getDueDate(), today));
+    }
+
+    private static InstalmentResponse from(Invoice invoice, Instalment instalment, LocalDate today) {
+        return InstalmentResponse.from(instalment, daysLate(invoice, instalment, today),
+                invoice.getInstalmentInterestPerDay());
     }
 
     /**
@@ -67,7 +103,7 @@ public class InstalmentService {
         Instalment saved = instalments.saveAndFlush(new Instalment(invoiceId, request.amount(), request.date()));
         audit.record("INSTALMENT_SCHEDULED invoice=" + invoiceId + " amount=" + saved.getAmount().toPlainString()
                 + " date=" + saved.getDueDate());
-        return InstalmentResponse.from(saved);
+        return from(invoice, saved, LocalDate.now(clock));
     }
 
     /** Takes an instalment off an invoice's schedule. */

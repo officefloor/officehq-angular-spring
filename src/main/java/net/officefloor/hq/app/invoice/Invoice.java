@@ -100,6 +100,9 @@ public class Invoice {
     @Column(name = "late_fee_per_day", nullable = false, precision = 12, scale = 2)
     private BigDecimal lateFeePerDay = BigDecimal.ZERO.setScale(2);
 
+    @Column(name = "instalment_interest_per_day", nullable = false, precision = 12, scale = 2)
+    private BigDecimal instalmentInterestPerDay = BigDecimal.ZERO.setScale(2);
+
     /** The percentage of the amount held back as retention, not due yet; zero when none is held back. */
     @Column(name = "retention_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal retentionPct = BigDecimal.ZERO.setScale(2);
@@ -532,6 +535,15 @@ public class Invoice {
 
     public BigDecimal getLateFeePerDay() {
         return lateFeePerDay;
+    }
+
+    /** Sets the interest charged for each day an instalment of this invoice is paid late. */
+    public void applyInstalmentInterest(BigDecimal interestPerDay) {
+        this.instalmentInterestPerDay = interestPerDay.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public BigDecimal getInstalmentInterestPerDay() {
+        return instalmentInterestPerDay;
     }
 
     /** Sets the percentage of this invoice held back as retention. It does not change the amount invoiced. */

@@ -11,6 +11,15 @@ export interface Instalment {
   date: string;
   /** Whether the instalment has been paid. */
   paid: boolean;
+  /** Days past its due date while still unpaid. */
+  daysLate: number;
+  /** Interest accrued for the days it is late. */
+  interest: number;
+}
+
+/** The interest charged for each day an instalment of an invoice is paid late. */
+export interface InstalmentInterest {
+  interestPerDay: number;
 }
 
 /** The earliest instalment of an invoice still to be paid. */
@@ -40,6 +49,17 @@ export class InstalmentService {
   /** The next instalment due on an invoice, or null when nothing more is due on its plan. */
   next(projectId: number, invoiceId: number): Observable<NextInstalment | null> {
     return this.http.get<NextInstalment | null>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments/next`);
+  }
+
+  /** The interest charged for each day an instalment of an invoice is paid late. */
+  interest(projectId: number, invoiceId: number): Observable<InstalmentInterest> {
+    return this.http.get<InstalmentInterest>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments/interest`);
+  }
+
+  applyInterest(projectId: number, invoiceId: number, interestPerDay: number): Observable<InstalmentInterest> {
+    return this.http.put<InstalmentInterest>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments/interest`, {
+      interestPerDay,
+    });
   }
 
   schedule(projectId: number, invoiceId: number, instalment: NewInstalment): Observable<Instalment> {
