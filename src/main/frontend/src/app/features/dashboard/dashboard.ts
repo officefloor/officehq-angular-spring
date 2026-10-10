@@ -14,7 +14,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 // exchange rate from its own issue date, and how many of those sent
 // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
 // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
-// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. An aging report across all clients, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
+// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, and the average number of days clients take to pay (issue date to final payment on paid invoices). An aging report across all clients, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
 @Component({
   selector: 'app-dashboard',
   imports: [MoneyPipe, AgingReportPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
@@ -68,6 +68,14 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
         <div>
           <dt>Overdue tasks</dt>
           <dd data-testid="dashboard-overdue-tasks-count">{{ s.overdueTasks }}</dd>
+        </div>
+        <div>
+          <dt>Average days to pay</dt>
+          @if (s.averageDaysToPay !== null) {
+            <dd data-testid="kpi-days-to-pay">{{ s.averageDaysToPay }}</dd>
+          } @else {
+            <dd data-testid="kpi-days-to-pay-none">No paid invoices yet</dd>
+          }
         </div>
       </dl>
 

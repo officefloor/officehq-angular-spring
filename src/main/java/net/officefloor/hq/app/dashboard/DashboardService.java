@@ -103,7 +103,30 @@ public class DashboardService {
                         clientsInHome.get(c.id()).setScale(2, RoundingMode.HALF_UP)))
                 .toList();
         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
-                overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today));
+                overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay());
+    }
+
+    /**
+     * The average number of days clients take to pay, rounded to the nearest whole day: for each paid invoice with an
+     * issue date, the days from its issue date to the date of its last payment. Null when no invoice qualifies.
+     */
+    private Long averageDaysToPay() {
+        Map<Long, LocalDate> issued = new HashMap<>();
+        invoices.findAllWithProjectByStatus(InvoiceStatus.PAID).stream().filter(i -> i.getIssuedDate() != null)
+                .forEach(i -> issued.put(i.getId(), i.getIssuedDate()));
+        if (issued.isEmpty()) {
+            return null;
+        }
+        Map<Long, LocalDate> settled = new HashMap<>();
+        payments.findByInvoiceIdIn(issued.keySet())
+                .forEach(p -> settled.merge(p.getInvoiceId(), p.getDate(), (a, b) -> a.isAfter(b) ? a : b));
+        if (settled.isEmpty()) {
+            return null;
+        }
+        double average = settled.entrySet().stream()
+                .mapToLong(e -> Math.max(0, ChronoUnit.DAYS.between(issued.get(e.getKey()), e.getValue())))
+                .average().orElse(0);
+        return Math.round(average);
     }
 
     /**

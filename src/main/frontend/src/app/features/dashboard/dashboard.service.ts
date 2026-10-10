@@ -43,6 +43,8 @@ export interface DashboardSummary {
   topClients: TopClient[];
   /** How many tasks not yet done are past their due date. */
   overdueTasks: number;
+  /** Average days from issue to final payment on paid invoices, rounded; null when no invoice has been paid. */
+  averageDaysToPay: number | null;
 }
 
 /** The tax charged on invoices issued on or between two dates, in the home currency. */
