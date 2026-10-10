@@ -211,6 +211,23 @@ export interface AgingReportLine {
   amount: number;
 }
 
+/** What was overdue at the close of one month (as at today for the current month), in the home currency. */
+export interface OverdueTrendMonth {
+  /** The month as yyyy-MM. */
+  month: string;
+  asOf: string;
+  amount: number;
+  /** The change from the month before; null for the first month listed. */
+  change: number | null;
+}
+
+/** How the overdue total has changed over recent months, oldest first, ending with the current month. */
+export interface OverdueTrend {
+  asOf: string;
+  homeCurrency: CurrencyCode;
+  months: OverdueTrendMonth[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class DashboardService {
   private readonly http = inject(HttpClient);
@@ -245,5 +262,9 @@ export class DashboardService {
 
   forecast(): Observable<Forecast> {
     return this.http.get<Forecast>('/api/dashboard/forecast');
+  }
+
+  overdueTrend(): Observable<OverdueTrend> {
+    return this.http.get<OverdueTrend>('/api/dashboard/overdue-trend');
   }
 }

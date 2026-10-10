@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { MoneyPipe } from '../currencies/money.pipe';
 import { DashboardService, DashboardSummary } from './dashboard.service';
 import { AgingReportPanel } from './aging-report';
+import { OverdueTrendPanel } from './overdue-trend';
 import { CashFlowForecast } from './cash-flow-forecast';
 import { RevenueReport } from './revenue-report';
 import { TaxReport } from './tax-report';
@@ -14,10 +15,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 // exchange rate from its own issue date (leaving out disputed and written-off invoices), and how many of those sent
 // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
 // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
-// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected. An aging report across all clients, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
+// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected. An aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
 @Component({
   selector: 'app-dashboard',
-  imports: [MoneyPipe, AgingReportPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
+  imports: [MoneyPipe, AgingReportPanel, OverdueTrendPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
   template: `
     <h1>Dashboard</h1>
 
@@ -159,6 +160,19 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 
     <button
       type="button"
+      data-testid="overdue-trend-open"
+      aria-controls="overdue-trend"
+      [attr.aria-expanded]="overdueTrendOpen()"
+      (click)="overdueTrendOpen.set(!overdueTrendOpen())"
+    >
+      {{ overdueTrendOpen() ? 'Hide overdue trend' : 'Overdue trend' }}
+    </button>
+    @if (overdueTrendOpen()) {
+      <app-overdue-trend id="overdue-trend" />
+    }
+
+    <button
+      type="button"
       data-testid="tax-summary-open"
       aria-controls="tax-summary"
       [attr.aria-expanded]="taxSummaryOpen()"
@@ -201,6 +215,7 @@ export class Dashboard {
   protected readonly summary = signal<DashboardSummary | null>(null);
   protected readonly loadError = signal<string | null>(null);
   protected readonly agingReportOpen = signal(false);
+  protected readonly overdueTrendOpen = signal(false);
   protected readonly taxSummaryOpen = signal(false);
   protected readonly taxReportOpen = signal(false);
   protected readonly revenueReportOpen = signal(false);

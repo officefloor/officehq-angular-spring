@@ -233,6 +233,82 @@ public class DashboardService {
                 sum(owedInHome), lines);
     }
 
+    /** How many months the overdue trend covers, the current month included. */
+    static final int OVERDUE_TREND_MONTHS = 6;
+
+    /**
+     * What was overdue at the close of each of the recent months, in the home currency, ending with the current
+     * month. The current month's figure is what is overdue today, exactly as on the dashboard. An earlier month's is
+     * rebuilt from the record: what was left to pay at the month's close (less the payments made by then, and the
+     * credit notes and any write-off or rebate) on each sent invoice not disputed nor cancelled whose due date had
+     * passed, plus the late fee built up by then. An invoice marked paid by hand, without payments to date it by, is
+     * left out of earlier months. A foreign invoice converts at its issue date's rate, as elsewhere.
+     */
+    @Transactional(readOnly = true)
+    public OverdueTrendResponse overdueTrend() {
+        LocalDate today = LocalDate.now(clock);
+        String home = settings.homeCurrency();
+        List<InvoiceStatus> owing = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL);
+        List<Invoice> sent = invoices.findByStatusInWithClient(
+                List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID, InvoiceStatus.WRITTEN_OFF))
+                .stream().filter(i -> !i.isDisputed() && i.getDueDate() != null).toList();
+        List<Long> ids = sent.stream().map(Invoice::getId).toList();
+        Map<Long, List<Payment>> paymentsByInvoice = ids.isEmpty() ? Map.of()
+                : payments.findByInvoiceIdIn(ids).stream().collect(Collectors.groupingBy(Payment::getInvoiceId));
+        Map<Long, BigDecimal> credited = ids.isEmpty() ? Map.of()
+                : creditNotes.sumAmountByInvoiceIds(ids).stream()
+                        .collect(Collectors.toMap(CreditNoteRepository.InvoiceCreditedTotal::getInvoiceId,
+                                CreditNoteRepository.InvoiceCreditedTotal::getCredited));
+
+        YearMonth current = YearMonth.from(today);
+        List<OverdueTrendResponse.Month> months = new ArrayList<>();
+        BigDecimal previous = null;
+        for (int back = OVERDUE_TREND_MONTHS - 1; back >= 0; back--) {
+            YearMonth month = current.minusMonths(back);
+            LocalDate asOf = back == 0 ? today : month.atEndOfMonth();
+            BigDecimal amount = back == 0
+                    ? sum(inHome(invoices.findByStatusInAndDueDateBefore(owing, today), home, today, true))
+                    : overdueAt(sent, paymentsByInvoice, credited, home, asOf);
+            months.add(new OverdueTrendResponse.Month(month.toString(), asOf, amount,
+                    previous == null ? null : amount.subtract(previous)));
+            previous = amount;
+        }
+        return new OverdueTrendResponse(today, home, months);
+    }
+
+    /** What was overdue on the given invoices at the close of the given day, in the home currency. */
+    private BigDecimal overdueAt(List<Invoice> sent, Map<Long, List<Payment>> paymentsByInvoice,
+            Map<Long, BigDecimal> credited, String home, LocalDate asOf) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (Invoice invoice : sent) {
+            if (!invoice.getDueDate().isBefore(asOf)
+                    || (invoice.getIssuedDate() != null && invoice.getIssuedDate().isAfter(asOf))) {
+                continue;
+            }
+            List<Payment> made = paymentsByInvoice.getOrDefault(invoice.getId(), List.of());
+            if (invoice.getStatus() == InvoiceStatus.PAID && made.isEmpty()) {
+                continue;
+            }
+            BigDecimal paid = made.stream().filter(p -> !p.getDate().isAfter(asOf)).map(Payment::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            // Worked out as though still owing, so a write-off is taken off rather than clearing the invoice.
+            BigDecimal due = invoice.getAmount().subtract(paid)
+                    .subtract(credited.getOrDefault(invoice.getId(), BigDecimal.ZERO))
+                    .subtract(invoice.getWriteOffAmount()).subtract(invoice.getRebateTaken());
+            if (due.signum() <= 0) {
+                continue;
+            }
+            due = due.add(invoice.lateFee(InvoiceStatus.SENT, asOf));
+            String currency = invoice.getProject().getClient().getCurrency();
+            BigDecimal inHome = currency.equals(home) ? due
+                    : fxRates.toHome(currency, invoice.getIssuedDate(), due).orElse(null);
+            if (inHome != null) {
+                total = total.add(inHome);
+            }
+        }
+        return total.setScale(2, RoundingMode.HALF_UP);
+    }
+
     /** How many days past its due date an invoice is as at today; one without a due date is not overdue. */
     private static long daysOverdue(Invoice invoice, LocalDate today) {
         LocalDate dueDate = invoice.getDueDate();

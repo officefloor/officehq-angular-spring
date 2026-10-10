@@ -63,6 +63,12 @@ public class DashboardController {
         return service.agingReport();
     }
 
+    /** What was overdue at the close of each recent month, in the home currency, ending with the current month. */
+    @GetMapping("/overdue-trend")
+    public OverdueTrendResponse overdueTrend() {
+        return service.overdueTrend();
+    }
+
     /** The money expected in from the instalments still to be paid on sent invoices. */
     @GetMapping("/forecast")
     public ForecastResponse forecast() {
