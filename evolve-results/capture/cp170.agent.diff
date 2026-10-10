@@ -1,0 +1,140 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index de4f240..1ba7340 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -110,6 +110,7 @@ import { InvoiceService } from './invoice.service';
+                 <tr>
+                   <th scope="col">Date</th>
+                   <th scope="col">Entry</th>
++                  <th scope="col">PO number</th>
+                   <th scope="col" class="statement-money">Charges</th>
+                   <th scope="col" class="statement-money">Credits</th>
+                   <th scope="col" class="statement-money">Balance</th>
+@@ -120,6 +121,7 @@ import { InvoiceService } from './invoice.service';
+                   <tr [attr.data-testid]="'statement-entry-row-' + (n + 1)" [attr.data-kind]="e.kind">
+                     <td data-testid="statement-entry-date">{{ e.date }}</td>
+                     <td data-testid="statement-entry-description">{{ e.description }}</td>
++                    <td data-testid="statement-po">{{ e.poNumber }}</td>
+                     <td class="statement-money" data-testid="statement-entry-charge">
+                       @if (e.charge !== null) {
+                         {{ e.charge | money: s.currency }}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index c5e91e6..426183b 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -83,6 +83,8 @@ export interface StatementEntry {
+   charge: number | null;
+   credit: number | null;
+   balance: number;
++  /** The purchase-order number of the invoice the entry is for; null when it has none. */
++  poNumber: string | null;
+ }
+ 
+ /** A client's invoices across all their projects, also grouped by job, with the total they still owe. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 4e7ef94..8df58f0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -7,6 +7,7 @@ import java.time.LocalDate;
+ import java.time.ZoneOffset;
+ import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
++import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
+@@ -195,36 +196,43 @@ public class InvoiceService {
+     private List<StatementEntry> accountEntries(Long clientId, List<Invoice> found) {
+         List<StatementEntry> entries = new ArrayList<>();
+         List<Long> sent = new ArrayList<>();
++        Map<Long, String> poNumbers = new HashMap<>();
+         for (Invoice invoice : found) {
+             if (invoice.getStatus() == InvoiceStatus.DRAFT) {
+                 continue;
+             }
+             sent.add(invoice.getId());
++            if (invoice.getPoNumber() != null) {
++                poNumbers.put(invoice.getId(), invoice.getPoNumber());
++            }
+             if (invoice.getStatus() != InvoiceStatus.VOID) {
+                 entries.add(StatementEntry.charge(StatementEntry.Kind.INVOICE, invoice.getId(), invoice.getId(),
+-                        invoice.getIssuedDate(), "Invoice #" + invoice.getId(), invoice.getAmount()));
++                        invoice.getIssuedDate(), "Invoice #" + invoice.getId(), invoice.getAmount(),
++                        invoice.getPoNumber()));
+             }
+         }
+         if (!sent.isEmpty()) {
+             for (Payment payment : payments.findByInvoiceIdIn(sent)) {
+                 if (payment.getDepositApplicationId() == null) {
+                     entries.add(StatementEntry.credit(StatementEntry.Kind.PAYMENT, payment.getId(), payment.getInvoiceId(),
+-                            payment.getDate(), "Payment on invoice #" + payment.getInvoiceId(), payment.getAmount()));
++                            payment.getDate(), "Payment on invoice #" + payment.getInvoiceId(), payment.getAmount(),
++                            poNumbers.get(payment.getInvoiceId())));
+                 }
+             }
+             for (CreditNote note : creditNotes.findByInvoiceIdIn(sent)) {
+                 entries.add(StatementEntry.credit(StatementEntry.Kind.CREDIT_NOTE, note.getId(), note.getInvoiceId(),
+                         LocalDate.ofInstant(note.getIssuedAt(), ZoneOffset.UTC),
+-                        "Credit note on invoice #" + note.getInvoiceId(), note.getAmount()));
++                        "Credit note on invoice #" + note.getInvoiceId(), note.getAmount(),
++                        poNumbers.get(note.getInvoiceId())));
+             }
+         }
+         for (Deposit deposit : deposits.findByClientIdOrderByDateAscIdAsc(clientId)) {
+             entries.add(StatementEntry.credit(StatementEntry.Kind.DEPOSIT, deposit.getId(), null, deposit.getDate(),
+-                    "Deposit", deposit.getAmount()));
++                    "Deposit", deposit.getAmount(), null));
+         }
+         for (Refund refund : refunds.findByClientIdOrderByDateDescIdDesc(clientId)) {
+             entries.add(StatementEntry.charge(StatementEntry.Kind.REFUND, refund.getId(), null, refund.getDate(),
+-                    "Refund", refund.getAmount()));
++                    "Refund", refund.getAmount(), null));
+         }
+         return entries;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/StatementEntry.java b/src/main/java/net/officefloor/hq/app/invoice/StatementEntry.java
+index c110c4b..9a9d63e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/StatementEntry.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/StatementEntry.java
+@@ -7,10 +7,11 @@ import java.util.Comparator;
+ /**
+  * One dated entry on a client's running account. An invoice is a charge; a payment, credit note or deposit is a
+  * credit; a refund of unused credit is a charge again. The balance is what the client owes once this entry and every
+- * one before it is counted (negative when the client is in credit). The invoice is the one the entry is for, if any.
++ * one before it is counted (negative when the client is in credit). The invoice is the one the entry is for, if any,
++ * and the purchase-order number is that invoice's, if it has one.
+  */
+ public record StatementEntry(Kind kind, Long sourceId, Long invoiceId, LocalDate date, String description,
+-        BigDecimal charge, BigDecimal credit, BigDecimal balance) {
++        BigDecimal charge, BigDecimal credit, BigDecimal balance, String poNumber) {
+ 
+     /** What an entry records, in the order entries on the same day are listed. */
+     public enum Kind {
+@@ -23,13 +24,15 @@ public record StatementEntry(Kind kind, Long sourceId, Long invoiceId, LocalDate
+             .thenComparing(StatementEntry::sourceId);
+ 
+     static StatementEntry charge(Kind kind, Long sourceId, Long invoiceId, LocalDate date, String description,
+-            BigDecimal amount) {
+-        return new StatementEntry(kind, sourceId, invoiceId, date, description, amount.setScale(2), null, null);
++            BigDecimal amount, String poNumber) {
++        return new StatementEntry(kind, sourceId, invoiceId, date, description, amount.setScale(2), null, null,
++                poNumber);
+     }
+ 
+     static StatementEntry credit(Kind kind, Long sourceId, Long invoiceId, LocalDate date, String description,
+-            BigDecimal amount) {
+-        return new StatementEntry(kind, sourceId, invoiceId, date, description, null, amount.setScale(2), null);
++            BigDecimal amount, String poNumber) {
++        return new StatementEntry(kind, sourceId, invoiceId, date, description, null, amount.setScale(2), null,
++                poNumber);
+     }
+ 
+     /** What this entry adds to what the client owes. */
+@@ -38,6 +41,6 @@ public record StatementEntry(Kind kind, Long sourceId, Long invoiceId, LocalDate
+     }
+ 
+     StatementEntry withBalance(BigDecimal balance) {
+-        return new StatementEntry(kind, sourceId, invoiceId, date, description, charge, credit, balance);
++        return new StatementEntry(kind, sourceId, invoiceId, date, description, charge, credit, balance, poNumber);
+     }
+ }
