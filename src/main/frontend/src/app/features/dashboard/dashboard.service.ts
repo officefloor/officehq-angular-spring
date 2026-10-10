@@ -57,6 +57,8 @@ export interface DashboardSummary {
   billingsYearToDate: number;
   /** What was collected (payments received) from the start of the year to today, in the home currency. */
   collectedYearToDate: number;
+  /** The share of all tasks that are done, as a whole percentage; null when there are no tasks. */
+  taskCompletionRate: number | null;
 }
 
 /** The tax charged on invoices issued on or between two dates, in the home currency. */

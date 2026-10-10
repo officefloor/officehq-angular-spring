@@ -109,7 +109,18 @@ public class DashboardService {
                 overdueBuckets, top, tasks.countByDoneFalse(), tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
                 clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home),
                 collectionRate(home), billings(today.withDayOfYear(1), today, home),
-                collected(today.withDayOfYear(1), today, home));
+                collected(today.withDayOfYear(1), today, home), taskCompletionRate());
+    }
+
+    /** The share of all tasks that are done, as a whole percentage. Null when there are no tasks. */
+    private Long taskCompletionRate() {
+        long total = tasks.count();
+        if (total == 0) {
+            return null;
+        }
+        long done = total - tasks.countByDoneFalse();
+        return BigDecimal.valueOf(done).multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(total), 0, RoundingMode.HALF_UP).longValue();
     }
 
     /**
