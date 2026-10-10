@@ -148,9 +148,15 @@ export interface ClientStatementRange {
   credits: StatementEntry[];
   /** The total of the credit notes issued within the range. */
   creditsTotal: number;
+  /** What was invoiced within the range. */
+  invoicedTotal: number;
+  /** What was paid within the range. */
+  paidTotal: number;
+  /** The debt broken down by age as at the end of the range. */
+  aging: ClientAging;
 }
 
-/** How old a client's debt is as at today: what is current (up to 30 days overdue), 31 to 60 days, and more than 60 days overdue. */
+/** How old a client's debt is as at a day (today, unless for a date range): what is current (up to 30 days overdue), 31 to 60 days, and more than 60 days overdue. */
 export interface ClientAging {
   clientId: number;
   currency: CurrencyCode;

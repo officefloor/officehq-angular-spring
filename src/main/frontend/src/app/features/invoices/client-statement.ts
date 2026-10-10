@@ -21,6 +21,9 @@ import { StatementEmailAction } from './statement-email';
 // Under the summary, the statement can be emailed to the client, with a note kept of each time it was sent.
 // Below that, the balance owed is broken down by age as at today: current (up to 30 days overdue), 31 to 60
 // days, and more than 60 days overdue.
+// Once a date range is run, the printed statement is for that range: the summary gives the opening balance, what was
+// invoiced and paid within the range and the grand total owed at its end, followed by that total broken down by age
+// as at the end of the range; the whole-account sections are left off the printed copy.
 @Component({
   selector: 'app-client-statement',
   imports: [MoneyPipe, RouterLink, StatementEmailAction],
@@ -56,7 +59,8 @@ import { StatementEmailAction } from './statement-email';
       text-align: left;
     }
     @media print {
-      .statement-actions {
+      .statement-actions,
+      .statement-not-printed {
         display: none;
       }
       table {
@@ -80,20 +84,49 @@ import { StatementEmailAction } from './statement-email';
       <article data-testid="statement-print-view" aria-labelledby="statement-heading">
         <h1 id="statement-heading" data-testid="client-statement-name">Statement for {{ s.clientName }}</h1>
         <section aria-labelledby="statement-summary-heading" data-testid="statement-summary">
-          <h2 id="statement-summary-heading">Summary</h2>
-          <dl class="statement-summary">
-            <dt>Total invoiced</dt>
-            <dd data-testid="statement-total-invoiced">{{ s.invoiced | money: s.currency }}</dd>
-            <dt>Tax</dt>
-            <dd data-testid="client-statement-tax-total">{{ s.tax | money: s.currency }}</dd>
-            <dt>Less paid</dt>
-            <dd data-testid="statement-total-paid">{{ s.paid | money: s.currency }}</dd>
-            <dt class="statement-grand-total">Grand total owed</dt>
-            <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | money: s.currency }}</dd>
-          </dl>
+          @if (printedRange(); as r) {
+            <h2 id="statement-summary-heading" data-testid="statement-print-period">Summary from {{ r.from }} to {{ r.to }}</h2>
+            <dl class="statement-summary">
+              <dt>Opening balance at {{ r.from }}</dt>
+              <dd data-testid="statement-print-opening">{{ r.openingBalance | money: r.currency }}</dd>
+              <dt>Invoiced in the range</dt>
+              <dd data-testid="statement-total-invoiced">{{ r.invoicedTotal | money: r.currency }}</dd>
+              <dt>Less paid in the range</dt>
+              <dd data-testid="statement-total-paid">{{ r.paidTotal | money: r.currency }}</dd>
+              <dt class="statement-grand-total">Grand total owed at {{ r.to }}</dt>
+              <dd class="statement-grand-total" data-testid="statement-grand-total">{{ r.closingBalance | money: r.currency }}</dd>
+            </dl>
+            <section aria-labelledby="statement-print-aging-heading" data-testid="statement-print-aging">
+              <h3 id="statement-print-aging-heading">Balance by age at {{ r.aging.asOf }}</h3>
+              <dl class="statement-summary">
+                <dt>Current (up to 30 days overdue)</dt>
+                <dd data-testid="statement-print-current">{{ r.aging.current | money: r.currency }}</dd>
+                <dt>31 to 60 days overdue</dt>
+                <dd data-testid="statement-print-30-60">{{ r.aging.days30To60 | money: r.currency }}</dd>
+                <dt>More than 60 days overdue</dt>
+                <dd data-testid="statement-print-60-plus">{{ r.aging.days60Plus | money: r.currency }}</dd>
+              </dl>
+            </section>
+          } @else {
+            <h2 id="statement-summary-heading">Summary</h2>
+            <dl class="statement-summary">
+              <dt>Total invoiced</dt>
+              <dd data-testid="statement-total-invoiced">{{ s.invoiced | money: s.currency }}</dd>
+              <dt>Tax</dt>
+              <dd data-testid="client-statement-tax-total">{{ s.tax | money: s.currency }}</dd>
+              <dt>Less paid</dt>
+              <dd data-testid="statement-total-paid">{{ s.paid | money: s.currency }}</dd>
+              <dt class="statement-grand-total">Grand total owed</dt>
+              <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | money: s.currency }}</dd>
+            </dl>
+          }
         </section>
         <app-statement-email [clientId]="clientId()" />
-        <section aria-labelledby="statement-aging-heading" data-testid="statement-aging">
+        <section
+          aria-labelledby="statement-aging-heading"
+          data-testid="statement-aging"
+          [class.statement-not-printed]="!!printedRange()"
+        >
           <h2 id="statement-aging-heading">Balance by age</h2>
           @if (aging.error()) {
             <p role="alert" data-testid="statement-aging-error">Could not load the balance by age.</p>
@@ -230,7 +263,7 @@ import { StatementEmailAction } from './statement-email';
             </div>
           }
         </section>
-        <section aria-labelledby="statement-asof-heading" data-testid="statement-asof">
+        <section aria-labelledby="statement-asof-heading" data-testid="statement-asof" class="statement-not-printed">
           <h2 id="statement-asof-heading">Balance as at a date</h2>
           <form class="statement-actions" (submit)="applyAsOf($event, asOfInput.value)">
             <label for="statement-asof-date">As at</label>
@@ -246,7 +279,11 @@ import { StatementEmailAction } from './statement-email';
             </p>
           }
         </section>
-        <section aria-labelledby="statement-account-heading" data-testid="statement-account">
+        <section
+          aria-labelledby="statement-account-heading"
+          data-testid="statement-account"
+          [class.statement-not-printed]="!!printedRange()"
+        >
           <h2 id="statement-account-heading">Account</h2>
           @if (s.entries.length === 0) {
             <p data-testid="statement-account-empty">Nothing on the account yet.</p>
@@ -289,7 +326,7 @@ import { StatementEmailAction } from './statement-email';
         @if (s.invoices.length === 0) {
           <p data-testid="client-statement-empty">No invoices yet.</p>
         } @else {
-          <table data-testid="client-statement-table">
+          <table data-testid="client-statement-table" [class.statement-not-printed]="!!printedRange()">
             <caption>Invoices for {{ s.clientName }}</caption>
             <thead>
               <tr>
@@ -340,11 +377,11 @@ import { StatementEmailAction } from './statement-email';
             }
           </table>
         }
-        <p>
+        <p [class.statement-not-printed]="!!printedRange()">
           Total owed:
           <strong data-testid="client-outstanding-total">{{ s.outstanding | money: s.currency }}</strong>
         </p>
-        <p data-testid="statement-home">
+        <p data-testid="statement-home" [class.statement-not-printed]="!!printedRange()">
           Total owed in {{ s.homeCurrency }}:
           @if (s.homeOutstanding !== null) {
             <strong data-testid="statement-home-total">{{ s.homeOutstanding | money: s.homeCurrency }}</strong>
@@ -399,6 +436,11 @@ export class ClientStatement {
     },
     stream: ({ params }) => this.service.statementForRange(params.clientId, params.from, params.to),
   });
+
+  /** The range statement the printed copy is for, once one has been run. */
+  protected readonly printedRange = computed(() =>
+    this.range() && !this.rangeInvalid() && this.statementRange.hasValue() ? this.statementRange.value() : undefined,
+  );
 
   protected applyRange(event: Event, from: string, to: string): void {
     event.preventDefault();

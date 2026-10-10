@@ -10,10 +10,12 @@ import java.util.List;
  * closing balance owed at the end of the range (the opening balance plus what changed within it). The movements total
  * is that change: the charges less the credits dated within the range, so opening plus movements is always closing.
  * The payments received within the range (not those made out of held deposits) are listed again on their own, with
- * their total, and so are the credit notes issued within the range, with theirs.
+ * their total, and so are the credit notes issued within the range, with theirs. For the printed statement it also
+ * gives what was invoiced and what was paid within the range, and the debt broken down by age as at the end of the
+ * range (counting only what was invoiced, paid and credited by then).
  */
 public record ClientStatementRangeResponse(Long clientId, String currency, LocalDate from, LocalDate to,
         BigDecimal openingBalance, List<StatementEntry> entries, BigDecimal movementsTotal, BigDecimal closingBalance,
         List<StatementEntry> payments, BigDecimal paymentsTotal, List<StatementEntry> credits,
-        BigDecimal creditsTotal) {
+        BigDecimal creditsTotal, BigDecimal invoicedTotal, BigDecimal paidTotal, ClientAgingResponse aging) {
 }

@@ -167,7 +167,9 @@ public class InvoiceService {
         }
         Client client = clients.findById(clientId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
-        List<StatementEntry> dated = accountEntries(clientId, invoices.findByClientIdWithProject(clientId), moneyRules()).stream()
+        List<Invoice> found = invoices.findByClientIdWithProject(clientId);
+        Function<String, MoneyRule> rules = moneyRules();
+        List<StatementEntry> dated = accountEntries(clientId, found, rules).stream()
                 .filter(e -> e.date() != null)
                 .sorted(StatementEntry.DATE_ORDER)
                 .toList();
@@ -195,8 +197,25 @@ public class InvoiceService {
         BigDecimal creditsTotal = creditsWithin.stream()
                 .map(StatementEntry::credit)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        List<Invoice> issuedByEnd = found.stream()
+                .filter(i -> i.getIssuedDate() != null && !i.getIssuedDate().isAfter(to))
+                .toList();
+        Map<Long, BigDecimal> paidByEnd = new HashMap<>();
+        Map<Long, BigDecimal> creditedByEnd = new HashMap<>();
+        List<Long> issuedIds = issuedByEnd.stream().map(Invoice::getId).toList();
+        if (!issuedIds.isEmpty()) {
+            payments.findByInvoiceIdIn(issuedIds).stream()
+                    .filter(p -> p.getDate() == null || !p.getDate().isAfter(to))
+                    .forEach(p -> paidByEnd.merge(p.getInvoiceId(), p.getAmount(), BigDecimal::add));
+            creditNotes.findByInvoiceIdIn(issuedIds).stream()
+                    .filter(n -> !LocalDate.ofInstant(n.getIssuedAt(), ZoneOffset.UTC).isAfter(to))
+                    .forEach(n -> creditedByEnd.merge(n.getInvoiceId(), n.getAmount(), BigDecimal::add));
+        }
+        ClientAgingResponse aging = aging(client, issuedByEnd, paidByEnd, creditedByEnd, rules, to);
         return new ClientStatementRangeResponse(client.getId(), client.getCurrency(), from, to, opening, within,
-                movements, opening.add(movements), paymentsWithin, paymentsTotal, creditsWithin, creditsTotal);
+                movements, opening.add(movements), paymentsWithin, paymentsTotal, creditsWithin, creditsTotal,
+                rangeTotal(within, StatementEntry.Kind.INVOICE, StatementEntry::charge),
+                rangeTotal(within, StatementEntry.Kind.PAYMENT, StatementEntry::credit), aging);
     }
 
     /**
@@ -207,11 +226,17 @@ public class InvoiceService {
     public ClientAgingResponse agingForClient(Long clientId) {
         Client client = clients.findById(clientId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
-        LocalDate today = LocalDate.now(clock);
         List<Invoice> found = invoices.findByClientIdWithProject(clientId);
-        Map<Long, BigDecimal> paid = paidByInvoice(found);
-        Map<Long, BigDecimal> credited = creditedByInvoice(found);
-        Function<String, MoneyRule> rules = moneyRules();
+        return aging(client, found, paidByInvoice(found), creditedByInvoice(found), moneyRules(),
+                LocalDate.now(clock));
+    }
+
+    /**
+     * What is left to pay on each owed invoice (not a draft, void or written off) given what was paid and credited
+     * against it, counted against how many days past its due date it is as at the given day.
+     */
+    private ClientAgingResponse aging(Client client, List<Invoice> found, Map<Long, BigDecimal> paid,
+            Map<Long, BigDecimal> credited, Function<String, MoneyRule> rules, LocalDate asOf) {
         BigDecimal current = BigDecimal.ZERO.setScale(2);
         BigDecimal days30To60 = BigDecimal.ZERO.setScale(2);
         BigDecimal days60Plus = BigDecimal.ZERO.setScale(2);
@@ -227,7 +252,7 @@ public class InvoiceService {
                 continue;
             }
             long overdue = invoice.getDueDate() == null ? 0
-                    : ChronoUnit.DAYS.between(invoice.getDueDate(), today);
+                    : ChronoUnit.DAYS.between(invoice.getDueDate(), asOf);
             if (overdue > 60) {
                 days60Plus = days60Plus.add(due);
             } else if (overdue > 30) {
@@ -236,9 +261,18 @@ public class InvoiceService {
                 current = current.add(due);
             }
         }
-        return new ClientAgingResponse(client.getId(), client.getCurrency(), today,
+        return new ClientAgingResponse(client.getId(), client.getCurrency(), asOf,
                 current.setScale(2, RoundingMode.HALF_UP), days30To60.setScale(2, RoundingMode.HALF_UP),
                 days60Plus.setScale(2, RoundingMode.HALF_UP));
+    }
+
+    /** The total of the given amount over the entries of the given kind. */
+    private static BigDecimal rangeTotal(List<StatementEntry> entries, StatementEntry.Kind kind,
+            Function<StatementEntry, BigDecimal> amount) {
+        return entries.stream()
+                .filter(e -> e.kind() == kind)
+                .map(amount)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /**
