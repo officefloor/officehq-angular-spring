@@ -14,6 +14,8 @@ import { InvoiceService } from './invoice.service';
 // balance owed after each.
 // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
 // with the app's navigation and the page's controls left off the printed copy.
+// Under the summary, the balance owed is broken down by age as at today: current (up to 30 days overdue), 31 to 60
+// days, and more than 60 days overdue.
 @Component({
   selector: 'app-client-statement',
   imports: [MoneyPipe, RouterLink],
@@ -84,6 +86,22 @@ import { InvoiceService } from './invoice.service';
             <dt class="statement-grand-total">Grand total owed</dt>
             <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | money: s.currency }}</dd>
           </dl>
+        </section>
+        <section aria-labelledby="statement-aging-heading" data-testid="statement-aging">
+          <h2 id="statement-aging-heading">Balance by age</h2>
+          @if (aging.error()) {
+            <p role="alert" data-testid="statement-aging-error">Could not load the balance by age.</p>
+          } @else if (aging.value(); as a) {
+            <dl class="statement-summary">
+              <dt>Current (up to 30 days overdue)</dt>
+              <dd data-testid="statement-aging-current">{{ a.current | money: a.currency }}</dd>
+              <dt>31 to 60 days overdue</dt>
+              <dd data-testid="statement-aging-30-60">{{ a.days30To60 | money: a.currency }}</dd>
+              <dt>More than 60 days overdue</dt>
+              <dd data-testid="statement-aging-60-plus">{{ a.days60Plus | money: a.currency }}</dd>
+            </dl>
+            <p data-testid="statement-aging-asof">As at {{ a.asOf }}</p>
+          }
         </section>
         <section aria-labelledby="statement-range-heading" data-testid="statement-range">
           <h2 id="statement-range-heading">Statement for a date range</h2>
@@ -280,6 +298,12 @@ export class ClientStatement {
   protected readonly statement = rxResource({
     params: () => this.clientId(),
     stream: ({ params }) => this.service.statementForClient(params),
+  });
+
+  /** The balance owed broken down by how far past due it is, as at today. */
+  protected readonly aging = rxResource({
+    params: () => this.clientId(),
+    stream: ({ params }) => this.service.agingForClient(params),
   });
 
   /** The day the balance is looked up as at; unset until one is applied. */
