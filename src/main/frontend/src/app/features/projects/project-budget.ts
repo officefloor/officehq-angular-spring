@@ -6,7 +6,7 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
 import { ProjectService } from './project.service';
 import { CurrencyCode } from '../clients/client.service';
 
-// A project's budget: what it is, how much has been invoiced against it (sent invoices, paid or not),
+// A project's budget: what it is, how much has been invoiced against it (sent invoices before tax, paid or not),
 // and what is left, and the job's profitability. Set or change the budget, or clear it by leaving the amount blank.
 @Component({
   selector: 'app-project-budget',
@@ -28,7 +28,7 @@ import { CurrencyCode } from '../clients/client.service';
               {{ b.budget | money: currency() }}
             }
           </dd>
-          <dt>Invoiced</dt>
+          <dt>Invoiced (before tax)</dt>
           <dd data-testid="project-invoiced">{{ b.invoiced | money: currency() }}</dd>
           <dt>Remaining</dt>
           <dd data-testid="project-remaining" [class.over]="b.remaining !== null && b.remaining < 0">

@@ -7,6 +7,8 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.Client;
 import net.officefloor.hq.app.client.ClientRepository;
+import net.officefloor.hq.app.invoice.Invoice;
+import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import java.util.Locale;
 import java.util.Objects;
@@ -21,11 +23,14 @@ public class ProjectService {
 
     private final ProjectRepository projects;
     private final ClientRepository clients;
+    private final InvoiceRepository invoices;
     private final Audit audit;
 
-    public ProjectService(ProjectRepository projects, ClientRepository clients, Audit audit) {
+    public ProjectService(ProjectRepository projects, ClientRepository clients, InvoiceRepository invoices,
+            Audit audit) {
         this.projects = projects;
         this.clients = clients;
+        this.invoices = invoices;
         this.audit = audit;
     }
 
@@ -106,7 +111,10 @@ public class ProjectService {
     private static final List<InvoiceStatus> INVOICED =
             List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID);
 
-    /** The project's budget, how much has been invoiced against it, and what is left. */
+    /**
+     * The project's budget, how much has been invoiced against it (the invoices' totals before tax, as
+     * the tax is not the job's to spend), and what is left.
+     */
     @Transactional(readOnly = true)
     public ProjectBudgetResponse budget(Long id) {
         Project project = projects.findById(id)
@@ -131,7 +139,10 @@ public class ProjectService {
     }
 
     private ProjectBudgetResponse budgetOf(Project project) {
-        BigDecimal invoiced = projects.sumInvoiceAmountByStatusIn(project.getId(), INVOICED)
+        BigDecimal invoiced = invoices.findByProjectIdOrderById(project.getId()).stream()
+                .filter(i -> INVOICED.contains(i.getStatus()))
+                .map(Invoice::getTotalExTax)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
         return ProjectBudgetResponse.of(project.getBudget(), invoiced);
     }
