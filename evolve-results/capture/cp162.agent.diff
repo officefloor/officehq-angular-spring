@@ -1,0 +1,223 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 363699c..443fd68 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -428,6 +428,15 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 }
+               </tr>
+             }
++            @if (inv.rebatedAmount !== null) {
++              <tr data-testid="invoice-rebated-row">
++                <th scope="row" colspan="5">Paid early, so the client needed to pay only</th>
++                <td data-testid="invoice-rebated-amount">{{ inv.rebatedAmount | money: inv.currency }}</td>
++                @if (inv.status === 'DRAFT') {
++                  <td></td>
++                }
++              </tr>
++            }
+             @if (inv.lateFeePerDay > 0) {
+               <tr data-testid="invoice-late-fee-row">
+                 <th scope="row" colspan="5">
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index d9e25da..6dd830e 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -199,6 +199,8 @@ export interface InvoiceDetail extends Invoice {
+   rebatePct: number;
+   /** The settlement rebate for paying before the due date; null when none is offered. */
+   rebate: number | null;
++  /** The reduced amount the client actually needed to pay once the rebate was earned; null until then. */
++  rebatedAmount: number | null;
+   lineItems: LineItem[];
+   /** The client's tax registration number; null when they are not tax registered. */
+   clientTaxNumber: string | null;
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 985fd91..e571b12 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -391,6 +391,12 @@ public class TestSupportController {
+                     new BigDecimal(c.get("amount").toString()),
+                     Timestamp.from(seedInstant(c.get("date").toString())));
+         }
++        // An invoice paid down to the amount less its settlement rebate before its due date takes the rebate.
++        jdbc.update("UPDATE invoice i SET rebate_taken = ROUND(i.amount * i.rebate_pct / 100, 2)"
++                + " WHERE i.rebate_pct > 0 AND i.due_date IS NOT NULL AND i.status IN ('SENT', 'PARTIAL')"
++                + " AND COALESCE((SELECT SUM(p.amount) FROM payment p WHERE p.invoice_id = i.id AND p.paid_date < i.due_date), 0)"
++                + " + COALESCE((SELECT SUM(c.amount) FROM credit_note c WHERE c.invoice_id = i.id), 0)"
++                + " + i.write_off_amount >= i.amount - ROUND(i.amount * i.rebate_pct / 100, 2)");
+         for (Map<String, Object> d : rows(fixture, "deposits")) {
+             jdbc.update("INSERT INTO deposit (id, client_id, amount, paid_date) VALUES (?, ?, ?, ?)",
+                     ((Number) d.get("id")).longValue(), ((Number) d.get("clientId")).longValue(),
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index e886a5c..0554a59 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -100,6 +100,10 @@ public class Invoice {
+     @Column(name = "rebate_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal rebatePct = BigDecimal.ZERO.setScale(2);
+ 
++    /** The settlement rebate given back once the reduced amount was paid before the due date; zero until then. */
++    @Column(name = "rebate_taken", nullable = false, precision = 12, scale = 2)
++    private BigDecimal rebateTaken = BigDecimal.ZERO.setScale(2);
++
+     /** The late fee charged for each day the invoice is overdue once sent; zero when none is charged. */
+     @Column(name = "late_fee_per_day", nullable = false, precision = 12, scale = 2)
+     private BigDecimal lateFeePerDay = BigDecimal.ZERO.setScale(2);
+@@ -400,6 +404,38 @@ public class Invoice {
+         return rebatePct.signum() > 0 ? percentOf(amount, rebatePct) : null;
+     }
+ 
++    /** The settlement rebate given back because the client paid early enough; zero when it has not been earned. */
++    public BigDecimal getRebateTaken() {
++        return rebateTaken;
++    }
++
++    /** Whether the settlement rebate has been earned, so the invoice settles for the reduced amount. */
++    public boolean isRebateTaken() {
++        return rebateTaken.signum() > 0;
++    }
++
++    /**
++     * The reduced amount the client actually needed to pay once the rebate was earned: the amount less the rebate
++     * given back; null when no rebate has been earned.
++     */
++    public BigDecimal getRebatedAmount() {
++        return isRebateTaken() ? amount.subtract(rebateTaken) : null;
++    }
++
++    /**
++     * Gives back the settlement rebate when what was paid before the due date, together with the credit and any
++     * part written off, has cleared the amount less the rebate. Once taken it stays taken.
++     */
++    public void takeRebateIfEarned(BigDecimal paidBeforeDue, BigDecimal credited) {
++        BigDecimal rebate = getRebate();
++        if (rebate == null || isRebateTaken() || dueDate == null) {
++            return;
++        }
++        if (paidBeforeDue.add(credited).add(writeOffAmount).compareTo(amount.subtract(rebate)) >= 0) {
++            this.rebateTaken = rebate;
++        }
++    }
++
+     public InvoiceStatus getStatus() {
+         return status;
+     }
+@@ -702,11 +738,11 @@ public class Invoice {
+ 
+     /**
+      * What is left to pay on this invoice given the totals paid and credited against it, less any part written
+-     * off; nothing once it is void or written off.
++     * off and any settlement rebate earned; nothing once it is void or written off.
+      */
+     public BigDecimal amountDue(BigDecimal paid, BigDecimal credited) {
+         return status.isClosedUnpaid() ? BigDecimal.ZERO.setScale(2)
+-                : amount.subtract(paid).subtract(credited).subtract(writeOffAmount);
++                : amount.subtract(paid).subtract(credited).subtract(writeOffAmount).subtract(rebateTaken);
+     }
+ 
+     /**
+@@ -723,14 +759,14 @@ public class Invoice {
+ 
+     /**
+      * This invoice's status given the totals paid and credited against it. Once sent, it is PAID when the
+-     * payments, credit notes and any part written off together clear the amount, PARTIAL once something has been
++     * payments, credit notes, any part written off and any settlement rebate earned together clear the amount, PARTIAL once something has been
+      * paid, credited or written off, otherwise still SENT. Drafts, void and written-off invoices keep their status, as does one marked paid by hand.
+      */
+     public InvoiceStatus statusFor(BigDecimal paid, BigDecimal credited) {
+         if (status == InvoiceStatus.DRAFT || status.isClosedUnpaid()) {
+             return status;
+         }
+-        BigDecimal settled = paid.add(credited).add(writeOffAmount);
++        BigDecimal settled = paid.add(credited).add(writeOffAmount).add(rebateTaken);
+         if (settled.compareTo(amount) >= 0 || (status == InvoiceStatus.PAID && settled.signum() == 0)) {
+             return InvoiceStatus.PAID;
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 5f7a8df..d373d2c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -14,7 +14,8 @@ import java.util.List;
+  * the total before tax), any early-payment discount offered (its percentage, the days after issue it
+  * must be paid within, the last day to pay, and the reduced amount; null when none is offered), any
+  * settlement rebate for paying before the due date (its percentage, and the rebate itself; null when none
+- * is offered), and the
++ * is offered, and the reduced amount the client actually needed to pay once the rebate was earned; null until
++ * then), and the
+  * client's tax number (null when the client is not tax registered), the minimum charge, the net total
+  * before it, whether the minimum was billed because the net total came out under it, and the total
+  * savings (the line discounts and the invoice's discounts added together). A foreign invoice also gives
+@@ -33,7 +34,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+         BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
+         BigDecimal levyPct, BigDecimal levy, BigDecimal surcharge, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
+         BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
+-        BigDecimal rebatePct, BigDecimal rebate,
++        BigDecimal rebatePct, BigDecimal rebate, BigDecimal rebatedAmount,
+         InvoiceStatus status, LocalDate issuedDate,
+         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts,
+         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
+@@ -56,7 +57,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+                 invoice.getEffectiveTaxPct(),
+                 invoice.getEarlyPaymentPct(), invoice.getEarlyPaymentDays(), invoice.getEarlyPaymentBy(),
+                 invoice.getEarlyPaymentAmount(),
+-                invoice.getRebatePct(), invoice.getRebate(),
++                invoice.getRebatePct(), invoice.getRebate(), invoice.getRebatedAmount(),
+                 status, invoice.getIssuedDate(), invoice.getDueDate(),
+                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
+                 invoice.getProject().getClient().getTaxNumber(),
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+index 175e386..59f3a68 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.payment;
+ 
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+@@ -20,6 +21,10 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
+     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.invoiceId = :invoiceId")
+     BigDecimal sumAmountByInvoiceId(Long invoiceId);
+ 
++    /** Total paid against an invoice on days before the given date (zero when nothing was). */
++    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.invoiceId = :invoiceId AND p.date < :date")
++    BigDecimal sumAmountByInvoiceIdPaidBefore(Long invoiceId, LocalDate date);
++
+     /** Total paid against every invoice with any of the given statuses (zero when nothing has been paid). */
+     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p, Invoice i"
+             + " WHERE p.invoiceId = i.id AND i.status IN :statuses")
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+index 25b83b3..8bd26ec 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+@@ -234,6 +234,10 @@ public class PaymentService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment is more than the balance due");
+         }
+         Payment saved = payments.saveAndFlush(payment.get());
++        if (invoice.getDueDate() != null && saved.getDate().isBefore(invoice.getDueDate())) {
++            invoice.takeRebateIfEarned(payments.sumAmountByInvoiceIdPaidBefore(invoice.getId(), invoice.getDueDate()),
++                    credited);
++        }
+         invoice.applySettledTotals(paid, credited);
+         invoices.flush();
+         audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount=" + saved.getAmount().toPlainString()
+diff --git a/src/main/resources/db/migration/V88__invoice_rebate_taken.sql b/src/main/resources/db/migration/V88__invoice_rebate_taken.sql
+new file mode 100644
+index 0000000..0f22304
+--- /dev/null
++++ b/src/main/resources/db/migration/V88__invoice_rebate_taken.sql
+@@ -0,0 +1,12 @@
++-- The settlement rebate actually taken on an invoice: once the client has paid the amount less the rebate before
++-- the due date, the rebate is given back and the invoice is settled for the reduced amount. Nothing until then.
++ALTER TABLE invoice ADD COLUMN rebate_taken DECIMAL(12, 2) DEFAULT 0 NOT NULL;
++
++-- Invoices already paid down to the reduced amount before their due date take their rebate.
++UPDATE invoice i SET rebate_taken = ROUND(i.amount * i.rebate_pct / 100, 2)
++WHERE i.rebate_pct > 0 AND i.due_date IS NOT NULL AND i.status IN ('SENT', 'PARTIAL')
++  AND COALESCE((SELECT SUM(p.amount) FROM payment p WHERE p.invoice_id = i.id AND p.paid_date < i.due_date), 0)
++    + COALESCE((SELECT SUM(c.amount) FROM credit_note c WHERE c.invoice_id = i.id), 0)
++    + i.write_off_amount >= i.amount - ROUND(i.amount * i.rebate_pct / 100, 2);
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_rebate_taken_not_negative CHECK (rebate_taken >= 0);
