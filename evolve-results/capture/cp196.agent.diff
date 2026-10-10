@@ -1,0 +1,115 @@
+diff --git a/src/main/frontend/src/app/features/projects/project-budget.ts b/src/main/frontend/src/app/features/projects/project-budget.ts
+index 4a9c482..63b2d6a 100644
+--- a/src/main/frontend/src/app/features/projects/project-budget.ts
++++ b/src/main/frontend/src/app/features/projects/project-budget.ts
+@@ -6,7 +6,7 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
+ import { ProjectService } from './project.service';
+ import { CurrencyCode } from '../clients/client.service';
+ 
+-// A project's budget: what it is, how much has been invoiced against it (sent invoices, paid or not),
++// A project's budget: what it is, how much has been invoiced against it (sent invoices before tax, paid or not),
+ // and what is left, and the job's profitability. Set or change the budget, or clear it by leaving the amount blank.
+ @Component({
+   selector: 'app-project-budget',
+@@ -28,7 +28,7 @@ import { CurrencyCode } from '../clients/client.service';
+               {{ b.budget | money: currency() }}
+             }
+           </dd>
+-          <dt>Invoiced</dt>
++          <dt>Invoiced (before tax)</dt>
+           <dd data-testid="project-invoiced">{{ b.invoiced | money: currency() }}</dd>
+           <dt>Remaining</dt>
+           <dd data-testid="project-remaining" [class.over]="b.remaining !== null && b.remaining < 0">
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectBudgetResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectBudgetResponse.java
+index ae44c34..fa4666e 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectBudgetResponse.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectBudgetResponse.java
+@@ -3,8 +3,8 @@ package net.officefloor.hq.app.project;
+ import java.math.BigDecimal;
+ 
+ /**
+- * A project's budget, how much has been invoiced against it (every invoice sent, whether paid or
+- * not; drafts are not yet invoiced) and what is left of it. Budget and remaining are null when no
++ * A project's budget, how much has been invoiced against it (the totals before tax of every invoice
++ * sent, whether paid or not; drafts are not yet invoiced) and what is left of it. Budget and remaining are null when no
+  * budget is set.
+  */
+ public record ProjectBudgetResponse(BigDecimal budget, BigDecimal invoiced, BigDecimal remaining) {
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index 6d6c9f4..4e86667 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -1,11 +1,8 @@
+ package net.officefloor.hq.app.project;
+ 
+-import java.math.BigDecimal;
+-import java.util.Collection;
+ import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+-import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import org.springframework.data.jpa.repository.Query;
+ 
+ public interface ProjectRepository extends JpaRepository<Project, Long> {
+@@ -57,8 +54,4 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+     /** Whether any invoice has been raised against the project. */
+     @Query("SELECT COUNT(i) > 0 FROM Invoice i WHERE i.project.id = :id")
+     boolean hasInvoices(Long id);
+-
+-    /** Sum of the project's invoices with any of the given statuses (zero when there are none). */
+-    @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Invoice i WHERE i.project.id = :id AND i.status IN :statuses")
+-    BigDecimal sumInvoiceAmountByStatusIn(Long id, Collection<InvoiceStatus> statuses);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index d596da6..fd7ed3b 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -7,6 +7,8 @@ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.Client;
+ import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.invoice.Invoice;
++import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import java.util.Locale;
+ import java.util.Objects;
+@@ -21,11 +23,14 @@ public class ProjectService {
+ 
+     private final ProjectRepository projects;
+     private final ClientRepository clients;
++    private final InvoiceRepository invoices;
+     private final Audit audit;
+ 
+-    public ProjectService(ProjectRepository projects, ClientRepository clients, Audit audit) {
++    public ProjectService(ProjectRepository projects, ClientRepository clients, InvoiceRepository invoices,
++            Audit audit) {
+         this.projects = projects;
+         this.clients = clients;
++        this.invoices = invoices;
+         this.audit = audit;
+     }
+ 
+@@ -106,7 +111,10 @@ public class ProjectService {
+     private static final List<InvoiceStatus> INVOICED =
+             List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID);
+ 
+-    /** The project's budget, how much has been invoiced against it, and what is left. */
++    /**
++     * The project's budget, how much has been invoiced against it (the invoices' totals before tax, as
++     * the tax is not the job's to spend), and what is left.
++     */
+     @Transactional(readOnly = true)
+     public ProjectBudgetResponse budget(Long id) {
+         Project project = projects.findById(id)
+@@ -131,7 +139,10 @@ public class ProjectService {
+     }
+ 
+     private ProjectBudgetResponse budgetOf(Project project) {
+-        BigDecimal invoiced = projects.sumInvoiceAmountByStatusIn(project.getId(), INVOICED)
++        BigDecimal invoiced = invoices.findByProjectIdOrderById(project.getId()).stream()
++                .filter(i -> INVOICED.contains(i.getStatus()))
++                .map(Invoice::getTotalExTax)
++                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                 .setScale(2, RoundingMode.HALF_UP);
+         return ProjectBudgetResponse.of(project.getBudget(), invoiced);
+     }
