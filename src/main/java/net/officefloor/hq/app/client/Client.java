@@ -61,6 +61,9 @@ public class Client {
     @Column(precision = 12, scale = 2)
     private BigDecimal creditLimit;
 
+    /** The number of days the client has to pay an invoice (e.g. 30 for net 30); none when no terms are agreed. */
+    private Integer paymentTermsDays;
+
     /** The currency the client is billed in; all of their money is in it. */
     @Column(nullable = false)
     private String currency = Currency.DEFAULT;
@@ -176,6 +179,14 @@ public class Client {
 
     public void setCreditLimit(BigDecimal creditLimit) {
         this.creditLimit = creditLimit == null ? null : creditLimit.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public Integer getPaymentTermsDays() {
+        return paymentTermsDays;
+    }
+
+    public void setPaymentTermsDays(Integer paymentTermsDays) {
+        this.paymentTermsDays = paymentTermsDays;
     }
 
     public String getCurrency() {

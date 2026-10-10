@@ -73,6 +73,11 @@ public class ClientController {
         return service.changeCreditLimit(id, request.creditLimit());
     }
 
+    @PutMapping("/{id}/payment-terms")
+    public ClientResponse changePaymentTerms(@PathVariable Long id, @Valid @RequestBody ClientPaymentTermsRequest request) {
+        return service.changePaymentTerms(id, request.paymentTermsDays());
+    }
+
     @PostMapping("/{id}/archive")
     public ClientResponse archive(@PathVariable Long id) {
         return service.archive(id);

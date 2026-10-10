@@ -34,6 +34,8 @@ export interface Client {
   currency: CurrencyCode;
   /** The most the client may owe, in their currency; null when no limit is set. */
   creditLimit: number | null;
+  /** The number of days the client has to pay an invoice (e.g. 30 for net 30); null when no terms are agreed. */
+  paymentTermsDays: number | null;
   /** What is left to pay on the client's sent, not yet fully paid invoices, in their currency. */
   outstanding: number;
 }
@@ -45,7 +47,7 @@ export interface ClientSummary {
   lifetimeBilled: number;
 }
 
-export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'outstanding'>;
+export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'outstanding'>;
 
 /** Where a client's contact details file is downloaded from. */
 export function exportUrl(id: number): string {
@@ -88,6 +90,11 @@ export class ClientService {
   /** Sets the most the client may owe, in their currency; null removes the limit. */
   changeCreditLimit(id: number, creditLimit: number | null): Observable<Client> {
     return this.http.put<Client>(`/api/clients/${id}/credit-limit`, { creditLimit });
+  }
+
+  /** Sets the number of days the client has to pay an invoice; null removes their payment terms. */
+  changePaymentTerms(id: number, paymentTermsDays: number | null): Observable<Client> {
+    return this.http.put<Client>(`/api/clients/${id}/payment-terms`, { paymentTermsDays });
   }
 
   /** Merges the client into another one, which keeps everything the client had; the client is removed. */

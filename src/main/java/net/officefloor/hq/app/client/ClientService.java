@@ -173,6 +173,16 @@ public class ClientService {
         return respond(client);
     }
 
+    /** Sets the number of days a client has to pay an invoice, or removes their payment terms; recorded in the audit log. */
+    @Transactional
+    public ClientResponse changePaymentTerms(Long id, Integer paymentTermsDays) {
+        Client client = find(id);
+        client.setPaymentTermsDays(paymentTermsDays);
+        clients.flush();
+        audit.record("CLIENT_PAYMENT_TERMS_SET id=" + id + " days=" + (paymentTermsDays == null ? "none" : paymentTermsDays));
+        return respond(client);
+    }
+
     private static ResponseStatusException emailTaken() {
         return new ResponseStatusException(HttpStatus.CONFLICT, "A client with this email already exists");
     }
