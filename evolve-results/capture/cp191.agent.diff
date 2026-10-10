@@ -1,0 +1,203 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-list-export.ts b/src/main/frontend/src/app/features/clients/client-list-export.ts
+new file mode 100644
+index 0000000..636e512
+--- /dev/null
++++ b/src/main/frontend/src/app/features/clients/client-list-export.ts
+@@ -0,0 +1,57 @@
++import { Component, inject, input, signal } from '@angular/core';
++import { ClientService } from './client.service';
++
++// Exports the client list (name, email and phone of each client) to a simple CSV file and confirms how many clients it holds.
++@Component({
++  selector: 'app-client-list-export',
++  template: `
++    <p>
++      <button type="button" data-testid="client-export-all" [disabled]="loading()" (click)="export()">
++        Export client list
++      </button>
++    </p>
++    <div role="status">
++      @if (error()) {
++        <p data-testid="client-export-all-error">Could not export the client list.</p>
++      } @else if (count() !== null) {
++        <p>Exported <span data-testid="export-confirm">{{ count() }}</span> {{ count() === 1 ? 'client' : 'clients' }} to clients.csv.</p>
++      }
++    </div>
++  `,
++})
++export class ClientListExport {
++  private readonly service = inject(ClientService);
++
++  /** Whether archived clients go in the file too, matching the list on show. */
++  readonly includeArchived = input(false);
++
++  protected readonly count = signal<number | null>(null);
++  protected readonly loading = signal(false);
++  protected readonly error = signal(false);
++
++  protected export(): void {
++    this.loading.set(true);
++    this.error.set(false);
++    this.service.exportList(this.includeArchived()).subscribe({
++      next: ({ count, csv }) => {
++        download(csv, 'clients.csv');
++        this.count.set(count);
++        this.loading.set(false);
++      },
++      error: () => {
++        this.error.set(true);
++        this.loading.set(false);
++      },
++    });
++  }
++}
++
++/** Saves the text as a file through the browser. */
++function download(text: string, filename: string): void {
++  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
++  const link = document.createElement('a');
++  link.href = url;
++  link.download = filename;
++  link.click();
++  setTimeout(() => URL.revokeObjectURL(url));
++}
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index b41cb1c..32b9948 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -1,6 +1,6 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+-import { Observable } from 'rxjs';
++import { Observable, map } from 'rxjs';
+ 
+ /** A currency a client can be billed in, by ISO 4217 code; the known ones come from the currency service. */
+ export type CurrencyCode = string;
+@@ -61,6 +61,12 @@ export interface ClientSegment {
+   count: number;
+ }
+ 
++/** The exported client list file and how many clients it holds. */
++export interface ClientListExport {
++  count: number;
++  csv: string;
++}
++
+ /** Where a client's contact details file is downloaded from. */
+ export function exportUrl(id: number): string {
+   return `/api/clients/${id}/export`;
+@@ -87,6 +93,13 @@ export class ClientService {
+     return this.http.get<ClientSummary>(`/api/clients/${id}/summary`);
+   }
+ 
++  /** The client list as a CSV file, with how many clients it holds. */
++  exportList(includeArchived = false): Observable<ClientListExport> {
++    return this.http
++      .get('/api/clients/export', { params: { includeArchived }, observe: 'response', responseType: 'text' })
++      .pipe(map((res) => ({ count: Number(res.headers.get('X-Export-Count') ?? 0), csv: res.body ?? '' })));
++  }
++
+   /** The client's contact details as the CSV file the export downloads. */
+   exportContactDetails(id: number): Observable<string> {
+     return this.http.get(exportUrl(id), { responseType: 'text' });
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index f6a5dcb..78ea647 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -4,16 +4,17 @@ import { Component, computed, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+ import { ClientEditForm } from './client-edit-form';
++import { ClientListExport } from './client-list-export';
+ import { ClientSegments } from './client-segments';
+ import { Client, ClientService } from './client.service';
+ 
+ // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
+ // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
+ // list and search unless the archived toggle is on, where it can be restored. A client's name or email
+-// can be corrected in place from its row. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment. The list can be sorted by name, by how much each client owes, or with key accounts first.
++// can be corrected in place from its row. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first.
+ @Component({
+   selector: 'app-clients',
+-  imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm, ClientSegments],
++  imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm, ClientListExport, ClientSegments],
+   styles: `
+     .key-account {
+       margin-inline-start: 0.5em;
+@@ -246,6 +247,8 @@ import { Client, ClientService } from './client.service';
+       }
+     </div>
+ 
++    <app-client-list-export [includeArchived]="showArchived()" />
++
+     @if (actionError()) {
+       <p role="alert" data-testid="client-archive-error">{{ actionError() }}</p>
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index 5d2694d..a26601c 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -39,6 +39,17 @@ public class ClientController {
+         return service.segments();
+     }
+ 
++    /** Downloads the client list as a CSV file; the X-Export-Count header says how many clients it holds. */
++    @GetMapping(value = "/export", produces = "text/csv")
++    public ResponseEntity<String> exportList(@RequestParam(defaultValue = "false") boolean includeArchived) {
++        ClientListExport export = service.exportList(includeArchived);
++        return ResponseEntity.ok()
++                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename("clients.csv").build().toString())
++                .header("X-Export-Count", String.valueOf(export.count()))
++                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
++                .body(export.csv());
++    }
++
+     @GetMapping("/{id}")
+     public ClientResponse get(@PathVariable Long id) {
+         return service.get(id);
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientListExport.java b/src/main/java/net/officefloor/hq/app/client/ClientListExport.java
+new file mode 100644
+index 0000000..c77a80a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientListExport.java
+@@ -0,0 +1,5 @@
++package net.officefloor.hq.app.client;
++
++/** The client list exported as CSV text, with how many clients it holds. */
++public record ClientListExport(int count, String csv) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 91fc4ab..8db2ce2 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -378,15 +378,27 @@ public class ClientService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+     }
+ 
++    /** The client list as a small CSV file: a header row, then one row of name, email and phone per client, in the order added. */
++    @Transactional(readOnly = true)
++    public ClientListExport exportList(boolean includeArchived) {
++        List<Client> found = includeArchived ? clients.findAll(Sort.by("id")) : clients.findByArchivedFalseOrderById();
++        StringBuilder text = new StringBuilder("name,email,phone\r\n");
++        found.forEach(client -> text.append(contactRow(client)));
++        return new ClientListExport(found.size(), text.toString());
++    }
++
+     /** The client's contact details as a small CSV file: a header row, then one row of name, email and phone. */
+     @Transactional(readOnly = true)
+     public String exportContactDetails(Long id) {
+-        Client client = find(id);
++        return "name,email,phone\r\n" + contactRow(find(id));
++    }
++
++    /** One CSV row of the client's name, email and phone. */
++    private static String contactRow(Client client) {
+         String phone = client.getPhone();
+         // A phone number made only of the usual characters may start with '+' and is safe as it is.
+         String phoneField = phone != null && phone.matches("[0-9 +()\\-.]*") ? csv(phone) : csv(neutralise(phone));
+-        return "name,email,phone\r\n"
+-                + csv(neutralise(client.getName())) + "," + csv(neutralise(client.getEmail())) + "," + phoneField + "\r\n";
++        return csv(neutralise(client.getName())) + "," + csv(neutralise(client.getEmail())) + "," + phoneField + "\r\n";
+     }
+ 
+     /** Stops a value a spreadsheet would read as a formula from being run when the file is opened. */
