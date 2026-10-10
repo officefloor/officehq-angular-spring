@@ -1,0 +1,297 @@
+diff --git a/src/main/frontend/src/app/app.config.ts b/src/main/frontend/src/app/app.config.ts
+index d50b66d..24b4efa 100644
+--- a/src/main/frontend/src/app/app.config.ts
++++ b/src/main/frontend/src/app/app.config.ts
+@@ -1,9 +1,10 @@
+ import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
+-import { provideHttpClient } from '@angular/common/http';
++import { provideHttpClient, withFetch } from '@angular/common/http';
+ import { provideRouter, withComponentInputBinding } from '@angular/router';
+ import { routes } from './app.routes';
+ 
+-// The app's wiring: the router (route params bound to component inputs) and the HTTP client.
++// The app's wiring: the router (route params bound to component inputs) and the HTTP client (fetch-based, so a request
++// marked keepalive finishes even when the page is left straight after).
+ export const appConfig: ApplicationConfig = {
+-  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes, withComponentInputBinding()), provideHttpClient()],
++  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes, withComponentInputBinding()), provideHttpClient(withFetch())],
+ };
+diff --git a/src/main/frontend/src/app/features/settings/settings.service.ts b/src/main/frontend/src/app/features/settings/settings.service.ts
+index bcefaf5..8b7634f 100644
+--- a/src/main/frontend/src/app/features/settings/settings.service.ts
++++ b/src/main/frontend/src/app/features/settings/settings.service.ts
+@@ -8,8 +8,13 @@ export interface Settings {
+   defaultTaxPct: number;
+   /** The currency foreign invoices are converted into for the business's own totals (read-only). */
+   homeCurrency?: string;
++  /** When revenue counts: when an invoice is sent, or once it is paid. */
++  revenueRecognitionBasis?: RecognitionBasis;
+ }
+ 
++/** When revenue counts: when an invoice is sent, or once it is paid. */
++export type RecognitionBasis = 'sent' | 'paid';
++
+ @Injectable({ providedIn: 'root' })
+ export class SettingsService {
+   private readonly http = inject(HttpClient);
+@@ -19,6 +24,7 @@ export class SettingsService {
+   }
+ 
+   update(settings: Settings): Observable<Settings> {
+-    return this.http.put<Settings>('/api/settings', settings);
++    // Kept alive so a save finishes even when the page is left or reloaded straight after.
++    return this.http.put<Settings>('/api/settings', settings, { keepalive: true });
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 0a6ef50..dd67a4e 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -1,11 +1,11 @@
+ import { Component, effect, inject, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+-import { SettingsService } from './settings.service';
++import { RecognitionBasis, SettingsService } from './settings.service';
+ import { CurrencyRounding } from '../currencies/currency-rounding';
+ import { FxRates } from '../fx-rates/fx-rates';
+ 
+-// The app-wide settings: the standard sales tax rate that every new invoice starts with, how each currency rounds, and the exchange rate history.
++// The app-wide settings: the standard sales tax rate that every new invoice starts with, whether revenue counts when an invoice is sent or when it is paid, how each currency rounds, and the exchange rate history.
+ @Component({
+   selector: 'app-settings',
+   imports: [ReactiveFormsModule, CurrencyRounding, FxRates],
+@@ -35,6 +35,17 @@ import { FxRates } from '../fx-rates/fx-rates';
+           </p>
+         }
+       </div>
++      <div>
++        <label for="settings-recognition-basis">Count revenue when an invoice is</label>
++        <select
++          id="settings-recognition-basis"
++          formControlName="revenueRecognitionBasis"
++          data-testid="settings-recognition-basis"
++        >
++          <option value="sent">Sent</option>
++          <option value="paid">Paid</option>
++        </select>
++      </div>
+       <button type="submit" data-testid="settings-save" [disabled]="saving()">Save settings</button>
+       @if (saved()) {
+         <p role="status" data-testid="settings-saved">Settings saved.</p>
+@@ -61,12 +72,20 @@ export class SettingsPage {
+       '',
+       [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(/^\d+(\.\d{1,2})?$/)],
+     ],
++    revenueRecognitionBasis: ['sent' as RecognitionBasis],
+   });
+ 
+-  // Starts the field from the saved rate once the settings load, unless it has already been edited.
++  // Starts each field from the saved settings once they load, unless that field has already been edited.
+   private readonly syncForm = effect(() => {
+-    if (this.settings.hasValue() && !this.form.dirty) {
+-      this.form.setValue({ defaultTaxPct: String(this.settings.value().defaultTaxPct) });
++    if (this.settings.hasValue()) {
++      const settings = this.settings.value();
++      const { defaultTaxPct, revenueRecognitionBasis } = this.form.controls;
++      if (!defaultTaxPct.dirty) {
++        defaultTaxPct.setValue(String(settings.defaultTaxPct));
++      }
++      if (!revenueRecognitionBasis.dirty) {
++        revenueRecognitionBasis.setValue(settings.revenueRecognitionBasis ?? 'sent');
++      }
+     }
+   });
+ 
+@@ -83,11 +102,15 @@ export class SettingsPage {
+     this.saving.set(true);
+     this.saved.set(false);
+     this.saveError.set(null);
++    const { revenueRecognitionBasis } = this.form.getRawValue();
+     const defaultTaxPct = Number(this.form.getRawValue().defaultTaxPct);
+-    this.service.update({ defaultTaxPct }).subscribe({
++    this.service.update({ defaultTaxPct, revenueRecognitionBasis }).subscribe({
+       next: (updated) => {
+         this.settings.set(updated);
+-        this.form.reset({ defaultTaxPct: String(updated.defaultTaxPct) });
++        this.form.reset({
++          defaultTaxPct: String(updated.defaultTaxPct),
++          revenueRecognitionBasis: updated.revenueRecognitionBasis ?? 'sent',
++        });
+         this.saving.set(false);
+         this.saved.set(true);
+       },
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 73fe0e5..8441f88 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -85,7 +85,8 @@ public class TestSupportController {
+         } finally {
+             jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+         }
+-        jdbc.update("UPDATE app_settings SET default_tax_pct = 0, home_currency = 'USD' WHERE id = 1");
++        jdbc.update("UPDATE app_settings SET default_tax_pct = 0, home_currency = 'USD',"
++                + " revenue_recognition_basis = 'sent' WHERE id = 1");
+     }
+ 
+     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index cc091a8..f1c9007 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -27,6 +27,7 @@ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.project.ProjectRepository;
++import net.officefloor.hq.app.settings.RecognitionBasis;
+ import net.officefloor.hq.app.settings.SettingsService;
+ import net.officefloor.hq.app.task.TaskRepository;
+ import org.springframework.http.HttpStatus;
+@@ -252,7 +253,8 @@ public class DashboardService {
+ 
+     /**
+      * The revenue billed on or between the given dates (over all time when either date is missing): the amounts of
+-     * the invoices issued in the range that were sent (drafts and cancelled invoices are left out), each converted
++     * the invoices issued in the range that were sent (drafts and cancelled invoices are left out) or, when the
++     * settings count revenue once paid, only those fully paid, each converted
+      * into the home currency at its issue date's rate (an invoice that cannot be converted is left out). The revenue
+      * is also broken down by job (project), highest-earning first, and by the month each invoice was issued in, earliest first, to show the trend.
+      */
+@@ -262,8 +264,9 @@ public class DashboardService {
+         if (!allTime && from.isAfter(to)) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The start date must not be after the end date");
+         }
+-        List<InvoiceStatus> billed = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID,
+-                InvoiceStatus.WRITTEN_OFF);
++        List<InvoiceStatus> billed = RecognitionBasis.PAID.equals(settings.revenueRecognitionBasis())
++                ? List.of(InvoiceStatus.PAID)
++                : List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID, InvoiceStatus.WRITTEN_OFF);
+         String home = settings.homeCurrency();
+         BigDecimal total = BigDecimal.ZERO;
+         long count = 0;
+diff --git a/src/main/java/net/officefloor/hq/app/settings/RecognitionBasis.java b/src/main/java/net/officefloor/hq/app/settings/RecognitionBasis.java
+new file mode 100644
+index 0000000..9f34026
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/RecognitionBasis.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.settings;
++
++/** When revenue counts: when an invoice is sent, or once it is paid. */
++public final class RecognitionBasis {
++
++    /** Revenue counts once an invoice is sent. */
++    public static final String SENT = "sent";
++
++    /** Revenue counts only once an invoice is fully paid. */
++    public static final String PAID = "paid";
++
++    private RecognitionBasis() {
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/Settings.java b/src/main/java/net/officefloor/hq/app/settings/Settings.java
+index 38ec6f0..5090921 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/Settings.java
++++ b/src/main/java/net/officefloor/hq/app/settings/Settings.java
+@@ -26,6 +26,10 @@ public class Settings {
+     @Column(name = "home_currency", nullable = false, length = 3)
+     private String homeCurrency = "USD";
+ 
++    /** When revenue counts: when an invoice is sent ("sent") or once it is paid ("paid"). */
++    @Column(name = "revenue_recognition_basis", nullable = false, length = 10)
++    private String revenueRecognitionBasis = RecognitionBasis.SENT;
++
+     protected Settings() {
+     }
+ 
+@@ -37,6 +41,14 @@ public class Settings {
+         return homeCurrency;
+     }
+ 
++    public String getRevenueRecognitionBasis() {
++        return revenueRecognitionBasis;
++    }
++
++    public void setRevenueRecognitionBasis(String revenueRecognitionBasis) {
++        this.revenueRecognitionBasis = revenueRecognitionBasis;
++    }
++
+     public void setDefaultTaxPct(BigDecimal defaultTaxPct) {
+         this.defaultTaxPct = defaultTaxPct.setScale(2, RoundingMode.HALF_UP);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsRequest.java b/src/main/java/net/officefloor/hq/app/settings/SettingsRequest.java
+index 2011b19..1348739 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsRequest.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsRequest.java
+@@ -4,9 +4,14 @@ import jakarta.validation.constraints.DecimalMax;
+ import jakarta.validation.constraints.DecimalMin;
+ import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
+ import java.math.BigDecimal;
+ 
+-/** Payload to change the app-wide settings: the sales tax percentage new invoices start with. */
++/**
++ * Payload to change the app-wide settings: the sales tax percentage new invoices start with, and optionally when
++ * revenue counts ("sent" or "paid"; left unchanged when not given).
++ */
+ public record SettingsRequest(
+-        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal defaultTaxPct) {
++        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal defaultTaxPct,
++        @Pattern(regexp = RecognitionBasis.SENT + "|" + RecognitionBasis.PAID) String revenueRecognitionBasis) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java b/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
+index abf716a..b9bd42f 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
+@@ -2,9 +2,10 @@ package net.officefloor.hq.app.settings;
+ 
+ import java.math.BigDecimal;
+ 
+-public record SettingsResponse(BigDecimal defaultTaxPct, String homeCurrency) {
++public record SettingsResponse(BigDecimal defaultTaxPct, String homeCurrency, String revenueRecognitionBasis) {
+ 
+     public static SettingsResponse from(Settings settings) {
+-        return new SettingsResponse(settings.getDefaultTaxPct(), settings.getHomeCurrency());
++        return new SettingsResponse(settings.getDefaultTaxPct(), settings.getHomeCurrency(),
++                settings.getRevenueRecognitionBasis());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index ac6a8d4..9b79925 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -22,6 +22,9 @@ public class SettingsService {
+     public SettingsResponse update(SettingsRequest request) {
+         Settings current = find();
+         current.setDefaultTaxPct(request.defaultTaxPct());
++        if (request.revenueRecognitionBasis() != null) {
++            current.setRevenueRecognitionBasis(request.revenueRecognitionBasis());
++        }
+         settings.flush();
+         return SettingsResponse.from(current);
+     }
+@@ -38,6 +41,12 @@ public class SettingsService {
+         return find().getHomeCurrency();
+     }
+ 
++    /** When revenue counts: {@link RecognitionBasis#SENT} or {@link RecognitionBasis#PAID}. */
++    @Transactional(readOnly = true)
++    public String revenueRecognitionBasis() {
++        return find().getRevenueRecognitionBasis();
++    }
++
+     private Settings find() {
+         return settings.findById(Settings.ID)
+                 .orElseThrow(() -> new IllegalStateException("The settings row is missing"));
+diff --git a/src/main/resources/db/migration/V97__revenue_recognition_basis.sql b/src/main/resources/db/migration/V97__revenue_recognition_basis.sql
+new file mode 100644
+index 0000000..34037c6
+--- /dev/null
++++ b/src/main/resources/db/migration/V97__revenue_recognition_basis.sql
+@@ -0,0 +1,5 @@
++-- When revenue counts: when an invoice is sent ('sent') or once it is paid ('paid'); existing data keeps
++-- counting it when sent.
++ALTER TABLE app_settings ADD COLUMN revenue_recognition_basis VARCHAR(10) DEFAULT 'sent' NOT NULL;
++ALTER TABLE app_settings ADD CONSTRAINT app_settings_revenue_recognition_basis_valid
++    CHECK (revenue_recognition_basis IN ('sent', 'paid'));
