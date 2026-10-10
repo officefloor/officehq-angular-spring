@@ -13,6 +13,7 @@ import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Set;
 import net.officefloor.hq.app.client.Client;
@@ -47,6 +48,10 @@ public class Project {
     private BigDecimal budget;
 
     private boolean billable = true;
+
+    private LocalDate startDate;
+
+    private LocalDate endDate;
 
     @ManyToMany
     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
@@ -129,6 +134,21 @@ public class Project {
 
     public void setBillable(boolean billable) {
         this.billable = billable;
+    }
+
+    /** The day work on the job starts, or null when not set. */
+    public LocalDate getStartDate() {
+        return startDate;
+    }
+
+    /** The day work on the job ends, or null when not set. */
+    public LocalDate getEndDate() {
+        return endDate;
+    }
+
+    public void setDates(LocalDate startDate, LocalDate endDate) {
+        this.startDate = startDate;
+        this.endDate = endDate;
     }
 
     /** The tags labelling this project; add or remove to tag or untag it. */

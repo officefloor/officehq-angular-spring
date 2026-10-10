@@ -29,6 +29,10 @@ export interface Project {
   billable: boolean;
   /** Whether the job is closed; no new invoice can be raised on a closed job. */
   closed: boolean;
+  /** The day work on the job starts (YYYY-MM-DD); null when not set. */
+  startDate: string | null;
+  /** The day work on the job ends (YYYY-MM-DD); null when not set. */
+  endDate: string | null;
 }
 
 /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
@@ -85,6 +89,10 @@ export class ProjectService {
 
   setBillable(id: number, billable: boolean): Observable<Project> {
     return this.http.put<Project>(`/api/projects/${id}/billable`, { billable });
+  }
+
+  setDates(id: number, startDate: string | null, endDate: string | null): Observable<Project> {
+    return this.http.put<Project>(`/api/projects/${id}/dates`, { startDate, endDate });
   }
 
   budget(id: number): Observable<ProjectBudget> {

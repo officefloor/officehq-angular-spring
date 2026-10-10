@@ -2,12 +2,14 @@ package net.officefloor.hq.app.project;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.Client;
 import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import java.util.Locale;
+import java.util.Objects;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -156,6 +158,26 @@ public class ProjectService {
             project.setBillable(billable);
             projects.flush();
             audit.record("PROJECT_BILLABLE_SET id=" + id + " billable=" + billable);
+        }
+        return ProjectResponse.from(project);
+    }
+
+    /**
+     * Sets (or, given none, clears) a job's start and end dates, recording the change in the audit log.
+     * The end may not be before the start.
+     */
+    @Transactional
+    public ProjectResponse setDates(Long id, LocalDate startDate, LocalDate endDate) {
+        if (startDate != null && endDate != null && endDate.isBefore(startDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The end date may not be before the start date");
+        }
+        Project project = projects.findByIdWithClient(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+        if (!Objects.equals(project.getStartDate(), startDate) || !Objects.equals(project.getEndDate(), endDate)) {
+            project.setDates(startDate, endDate);
+            projects.flush();
+            audit.record("PROJECT_DATES_SET id=" + id + " start=" + (startDate == null ? "none" : startDate)
+                    + " end=" + (endDate == null ? "none" : endDate));
         }
         return ProjectResponse.from(project);
     }

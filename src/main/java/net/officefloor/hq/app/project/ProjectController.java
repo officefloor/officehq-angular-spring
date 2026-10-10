@@ -50,6 +50,11 @@ public class ProjectController {
         return service.setBillable(id, request.billable());
     }
 
+    @PutMapping("/{id}/dates")
+    public ProjectResponse setDates(@PathVariable Long id, @RequestBody ProjectDatesRequest request) {
+        return service.setDates(id, request.startDate(), request.endDate());
+    }
+
     @GetMapping("/{id}/budget")
     public ProjectBudgetResponse budget(@PathVariable Long id) {
         return service.budget(id);
