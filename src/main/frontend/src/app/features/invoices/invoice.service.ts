@@ -111,6 +111,8 @@ export interface ClientStatement {
   homeCurrency: CurrencyCode;
   /** The total still owed converted into the home currency, each invoice at its issue-date rate; null without a rate. */
   homeOutstanding: number | null;
+  /** The total of the credit notes on the account. */
+  credited: number;
 }
 
 /** What a client owed as at the end of a chosen day (negative when in credit). */

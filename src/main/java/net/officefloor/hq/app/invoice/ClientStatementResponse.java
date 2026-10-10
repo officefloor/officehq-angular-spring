@@ -20,11 +20,11 @@ import net.officefloor.hq.app.currency.MoneyRule;
  * levy) on each job and across the whole statement, again leaving out drafts and void invoices. All of it
  * is in the client's currency, with the total still owed also converted into the home currency at the foot (each
  * invoice at the rate on its issue date; null when a rate is missing). Finally it gives the running account: every invoice, payment, credit note, deposit and
- * refund in date order, each with the balance owed once it is counted.
+ * refund in date order, each with the balance owed once it is counted, and the total of the credit notes on it.
  */
 public record ClientStatementResponse(Long clientId, String clientName, String currency, List<Line> invoices, List<Job> jobs,
         BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax, List<StatementEntry> entries,
-        String homeCurrency, BigDecimal homeOutstanding) {
+        String homeCurrency, BigDecimal homeOutstanding, BigDecimal credited) {
 
     static ClientStatementResponse from(Long clientId, String clientName, String currency, List<Line> invoices,
             List<StatementEntry> entries, String homeCurrency, Function<Line, Optional<BigDecimal>> toHome) {
@@ -37,7 +37,16 @@ public record ClientStatementResponse(Long clientId, String clientName, String c
         BigDecimal invoiced = sum(invoices, Line::amount);
         return new ClientStatementResponse(clientId, clientName, currency, invoices, jobs, invoiced,
                 invoiced.subtract(outstanding), outstanding, sum(invoices, Line::tax), runningBalance(entries), homeCurrency,
-                homeOwed(invoices, toHome));
+                homeOwed(invoices, toHome), credited(entries));
+    }
+
+    /** The total of the credit notes on the account. */
+    private static BigDecimal credited(List<StatementEntry> entries) {
+        return entries.stream()
+                .filter(e -> e.kind() == StatementEntry.Kind.CREDIT_NOTE)
+                .map(StatementEntry::credit)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
     /** What is left to pay across the owed invoices, each converted into the home currency; null if any cannot be. */

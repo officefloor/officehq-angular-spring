@@ -16,7 +16,7 @@ import { StatementEmailAction } from './statement-email';
 // (the server rounds each one before adding them up), so the totals match the invoices to the cent. At the foot the total owed is also given in the home currency.
 // It opens with the running account: invoices, payments, credit notes, deposits and refunds in date order with the
 // balance owed after each.
-// It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
+// It is laid out to print cleanly: a summary of what was invoiced, what was paid (and how much of that was credit notes) and the grand total owed,
 // with the app's navigation and the page's controls left off the printed copy.
 // Under the summary, the statement can be emailed to the client, with a note kept of each time it was sent.
 // Below that, the balance owed is broken down by age as at today: current (up to 30 days overdue), 31 to 60
@@ -116,6 +116,8 @@ import { StatementEmailAction } from './statement-email';
               <dd data-testid="client-statement-tax-total">{{ s.tax | money: s.currency }}</dd>
               <dt>Less paid</dt>
               <dd data-testid="statement-total-paid">{{ s.paid | money: s.currency }}</dd>
+              <dt>Of which credited</dt>
+              <dd data-testid="statement-credits-total">{{ s.credited | money: s.currency }}</dd>
               <dt class="statement-grand-total">Grand total owed</dt>
               <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | money: s.currency }}</dd>
             </dl>
