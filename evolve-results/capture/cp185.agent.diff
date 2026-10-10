@@ -1,0 +1,208 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index abb4143..89d4914 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -69,9 +69,18 @@ export interface JobRevenue {
+   amount: number;
+ }
+ 
++/** The revenue billed on invoices issued in one calendar month, in the home currency. */
++export interface MonthRevenue {
++  /** The month as yyyy-MM. */
++  month: string;
++  /** How many invoices the month's revenue came from. */
++  invoices: number;
++  amount: number;
++}
++
+ /**
+  * The revenue billed on invoices issued on or between two dates (over all time when the dates are null), in the
+- * home currency, broken down by job with the highest-earning job first.
++ * home currency, broken down by job with the highest-earning job first, and by month with the earliest first.
+  */
+ export interface RevenueReport {
+   from: string | null;
+@@ -81,6 +90,8 @@ export interface RevenueReport {
+   invoices: number;
+   total: number;
+   jobs: JobRevenue[];
++  /** Only the months something was billed in. */
++  months: MonthRevenue[];
+ }
+ 
+ /** One instalment expected in, in its invoice's currency. */
+diff --git a/src/main/frontend/src/app/features/dashboard/revenue-report.ts b/src/main/frontend/src/app/features/dashboard/revenue-report.ts
+index 08083c0..5982074 100644
+--- a/src/main/frontend/src/app/features/dashboard/revenue-report.ts
++++ b/src/main/frontend/src/app/features/dashboard/revenue-report.ts
+@@ -5,7 +5,7 @@ import { DashboardService } from './dashboard.service';
+ 
+ // The revenue billed over a chosen date range (over all time until a range is chosen): the total of the invoices
+ // issued within it that were sent (drafts and cancelled invoices are left out), in the home currency, broken down
+-// by job so the highest-earning jobs show first.
++// by job so the highest-earning jobs show first, and month by month so the trend shows.
+ @Component({
+   selector: 'app-revenue-report',
+   imports: [MoneyPipe],
+@@ -26,11 +26,14 @@ import { DashboardService } from './dashboard.service';
+       text-align: right;
+     }
+     .revenue-report-jobs th,
+-    .revenue-report-jobs td {
++    .revenue-report-jobs td,
++    .revenue-report-months th,
++    .revenue-report-months td {
+       padding: 0.25rem 0.75rem;
+       text-align: left;
+     }
+-    .revenue-report-jobs .amount {
++    .revenue-report-jobs .amount,
++    .revenue-report-months .amount {
+       text-align: right;
+     }
+   `,
+@@ -87,6 +90,29 @@ import { DashboardService } from './dashboard.service';
+         } @else {
+           <p data-testid="revenue-jobs-empty">No revenue billed in this period.</p>
+         }
++        <h3 id="revenue-by-month-heading">Revenue by month</h3>
++        @if (r.months.length) {
++          <table class="revenue-report-months" aria-labelledby="revenue-by-month-heading" data-testid="revenue-months">
++            <thead>
++              <tr>
++                <th scope="col">Month</th>
++                <th scope="col" class="amount">Invoices</th>
++                <th scope="col" class="amount">Revenue</th>
++              </tr>
++            </thead>
++            <tbody>
++              @for (m of r.months; track m.month) {
++                <tr [attr.data-testid]="'revenue-month-row-' + m.month">
++                  <th scope="row" data-testid="revenue-month-label">{{ monthLabel(m.month) }}</th>
++                  <td class="amount" data-testid="revenue-month-invoices">{{ m.invoices }}</td>
++                  <td class="amount" data-testid="revenue-month-amount">{{ m.amount | money: r.homeCurrency }}</td>
++                </tr>
++              }
++            </tbody>
++          </table>
++        } @else {
++          <p data-testid="revenue-months-empty">No revenue billed in this period.</p>
++        }
+       }
+     </section>
+   `,
+@@ -103,6 +129,15 @@ export class RevenueReport {
+     stream: ({ params }) => this.service.revenueReport(params.range ?? undefined),
+   });
+ 
++  private static readonly MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
++    'September', 'October', 'November', 'December'];
++
++  /** A yyyy-MM month as, say, "February 2026". */
++  protected monthLabel(month: string): string {
++    const [year, m] = month.split('-');
++    return `${RevenueReport.MONTHS[Number(m) - 1]} ${year}`;
++  }
++
+   protected apply(event: Event, from: string, to: string): void {
+     event.preventDefault();
+     if (!from || !to) {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 3721e5e..cc091a8 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -4,6 +4,7 @@ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.Clock;
+ import java.time.LocalDate;
++import java.time.YearMonth;
+ import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+@@ -253,7 +254,7 @@ public class DashboardService {
+      * The revenue billed on or between the given dates (over all time when either date is missing): the amounts of
+      * the invoices issued in the range that were sent (drafts and cancelled invoices are left out), each converted
+      * into the home currency at its issue date's rate (an invoice that cannot be converted is left out). The revenue
+-     * is also broken down by job (project), highest-earning first.
++     * is also broken down by job (project), highest-earning first, and by the month each invoice was issued in, earliest first, to show the trend.
+      */
+     @Transactional(readOnly = true)
+     public RevenueReportResponse revenueReport(LocalDate from, LocalDate to) {
+@@ -267,6 +268,7 @@ public class DashboardService {
+         BigDecimal total = BigDecimal.ZERO;
+         long count = 0;
+         Map<Long, JobTally> byJob = new LinkedHashMap<>();
++        Map<YearMonth, MonthTally> byMonth = new TreeMap<>();
+         List<Invoice> issued = allTime ? invoices.findByStatusInWithClient(billed)
+                 : invoices.findByStatusInAndIssuedDateBetween(billed, from, to);
+         for (Invoice invoice : issued) {
+@@ -281,14 +283,17 @@ public class DashboardService {
+             var project = invoice.getProject();
+             byJob.computeIfAbsent(project.getId(),
+                     id -> new JobTally(id, project.getName(), project.getClient().getName())).add(inHome.get());
++            byMonth.computeIfAbsent(YearMonth.from(invoice.getIssuedDate()), MonthTally::new).add(inHome.get());
+         }
++        List<RevenueReportResponse.MonthRevenue> months = byMonth.values().stream().map(MonthTally::toResponse)
++                .toList();
+         List<RevenueReportResponse.JobRevenue> jobs = byJob.values().stream()
+                 .map(JobTally::toResponse)
+                 .sorted(Comparator.comparing(RevenueReportResponse.JobRevenue::amount).reversed()
+                         .thenComparing(RevenueReportResponse.JobRevenue::projectId))
+                 .toList();
+         return new RevenueReportResponse(allTime ? null : from, allTime ? null : to, home, count,
+-                total.setScale(2, RoundingMode.HALF_UP), jobs);
++                total.setScale(2, RoundingMode.HALF_UP), jobs, months);
+     }
+ 
+     /** The running revenue of one job while the revenue report is built. */
+@@ -315,4 +320,25 @@ public class DashboardService {
+                     amount.setScale(2, RoundingMode.HALF_UP));
+         }
+     }
++
++    /** The running revenue of one calendar month while the revenue report is built. */
++    private static final class MonthTally {
++        private final YearMonth month;
++        private long invoices;
++        private BigDecimal amount = BigDecimal.ZERO;
++
++        MonthTally(YearMonth month) {
++            this.month = month;
++        }
++
++        void add(BigDecimal inHome) {
++            amount = amount.add(inHome);
++            invoices++;
++        }
++
++        RevenueReportResponse.MonthRevenue toResponse() {
++            return new RevenueReportResponse.MonthRevenue(month.toString(), invoices,
++                    amount.setScale(2, RoundingMode.HALF_UP));
++        }
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/RevenueReportResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/RevenueReportResponse.java
+index 929ac68..55f8694 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/RevenueReportResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/RevenueReportResponse.java
+@@ -7,13 +7,18 @@ import java.util.List;
+ /**
+  * The revenue billed on or between two dates (or over all time when no dates are given), in the home currency: the
+  * total of the invoices issued in the range that were sent, with how many invoices it came from, broken down by job
+- * (project) with the highest-earning job first.
++ * (project) with the highest-earning job first, and by the month the invoices were issued in, earliest first.
+  */
+ public record RevenueReportResponse(LocalDate from, LocalDate to, String homeCurrency, long invoices,
+-        BigDecimal total, List<JobRevenue> jobs) {
++        BigDecimal total, List<JobRevenue> jobs,
++        List<MonthRevenue> months) {
+ 
+     /** The revenue billed for one job (project), in the home currency. */
+     public record JobRevenue(Long projectId, String projectName, String clientName, long invoices,
+             BigDecimal amount) {
+     }
++
++    /** The revenue billed in one calendar month (as {@code yyyy-MM}), in the home currency. */
++    public record MonthRevenue(String month, long invoices, BigDecimal amount) {
++    }
+ }
