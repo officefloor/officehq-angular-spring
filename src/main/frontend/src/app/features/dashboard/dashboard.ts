@@ -7,8 +7,8 @@ import { TaxSummaryReport } from './tax-summary';
 // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
 // counted), plus one grand total of it in the home currency with each invoice converted at the
 // exchange rate from its own issue date, and how many of those sent
-// invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees,
-// in the home currency). Also lists the top five clients ranked by what they still owe,
+// invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+// instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe,
 // each in their own currency. A tax summary for a chosen date range can be opened from here.
 @Component({
   selector: 'app-dashboard',
@@ -45,8 +45,20 @@ import { TaxSummaryReport } from './tax-summary';
           <dd data-testid="dashboard-overdue-count">{{ s.overdue }}</dd>
         </div>
         <div>
-          <dt>Overdue amount (including late fees)</dt>
+          <dt>Overdue amount (including late fees and interest)</dt>
           <dd data-testid="dashboard-overdue-amount">{{ s.overdueAmount | money: s.homeCurrency }}</dd>
+        </div>
+        <div>
+          <dt>Overdue up to 30 days</dt>
+          <dd data-testid="dashboard-overdue-0-30">{{ s.overdueBuckets.days0To30 | money: s.homeCurrency }}</dd>
+        </div>
+        <div>
+          <dt>Overdue 31 to 60 days</dt>
+          <dd data-testid="dashboard-overdue-31-60">{{ s.overdueBuckets.days31To60 | money: s.homeCurrency }}</dd>
+        </div>
+        <div>
+          <dt>Overdue more than 60 days</dt>
+          <dd data-testid="dashboard-overdue-60-plus">{{ s.overdueBuckets.days60Plus | money: s.homeCurrency }}</dd>
         </div>
       </dl>
 

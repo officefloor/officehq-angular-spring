@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -13,6 +15,8 @@ import net.officefloor.hq.app.client.ClientService;
 import net.officefloor.hq.app.creditnote.CreditNoteRepository;
 import net.officefloor.hq.app.currency.Currency;
 import net.officefloor.hq.app.fx.FxRateService;
+import net.officefloor.hq.app.instalment.Instalment;
+import net.officefloor.hq.app.instalment.InstalmentRepository;
 import net.officefloor.hq.app.invoice.Invoice;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
@@ -35,6 +39,7 @@ public class DashboardService {
     private final CreditNoteRepository creditNotes;
     private final SettingsService settings;
     private final FxRateService fxRates;
+    private final InstalmentRepository instalments;
     private final Clock clock;
 
     /** How many of the biggest debtors the dashboard lists. */
@@ -42,7 +47,7 @@ public class DashboardService {
 
     public DashboardService(ClientRepository clients, ProjectRepository projects, InvoiceRepository invoices,
             ClientService clientService, PaymentRepository payments, CreditNoteRepository creditNotes,
-            SettingsService settings, FxRateService fxRates, Clock clock) {
+            SettingsService settings, FxRateService fxRates, InstalmentRepository instalments, Clock clock) {
         this.clients = clients;
         this.projects = projects;
         this.invoices = invoices;
@@ -51,13 +56,14 @@ public class DashboardService {
         this.creditNotes = creditNotes;
         this.settings = settings;
         this.fxRates = fxRates;
+        this.instalments = instalments;
         this.clock = clock;
     }
 
     /**
      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
      * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices are past their due date and
-     * what is overdue on them, what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe.
+     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe.
      */
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
@@ -74,22 +80,52 @@ public class DashboardService {
         LocalDate today = LocalDate.now(clock);
         long overdue = invoices.countByStatusInAndDueDateBefore(owing, today);
         String home = settings.homeCurrency();
-        BigDecimal outstandingHome = inHome(invoices.findByStatusInWithClient(owing), home, today, false);
-        BigDecimal overdueAmount = inHome(invoices.findByStatusInAndDueDateBefore(owing, today), home, today, true);
+        BigDecimal outstandingHome = sum(inHome(invoices.findByStatusInWithClient(owing), home, today, false));
+        Map<Invoice, BigDecimal> overdueInHome = inHome(invoices.findByStatusInAndDueDateBefore(owing, today), home, today, true);
+        BigDecimal overdueAmount = sum(overdueInHome);
+        DashboardResponse.OverdueBuckets overdueBuckets = buckets(overdueInHome, today);
         List<DashboardResponse.TopClient> top = clientService.topByOutstanding(TOP_CLIENTS).stream()
                 .map(c -> new DashboardResponse.TopClient(c.id(), c.name(), c.currency(), c.outstanding()))
                 .toList();
-        return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount, top);
+        return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
+                overdueBuckets, top);
     }
 
     /**
-     * What is left to pay on the invoices, in the home currency, with the late fee each has accrued by today
-     * when asked for (as for what is overdue). A foreign invoice converts at the exchange rate from its issue
-     * date; one whose currency has no rate by then cannot be converted and is left out.
+     * Splits what is overdue by how many days past its due date each invoice is: up to 30 days, 31 to 60 days,
+     * and more than 60 days.
      */
-    private BigDecimal inHome(List<Invoice> found, String home, LocalDate today, boolean withLateFees) {
+    private static DashboardResponse.OverdueBuckets buckets(Map<Invoice, BigDecimal> overdueInHome, LocalDate today) {
+        BigDecimal upTo30 = BigDecimal.ZERO;
+        BigDecimal days31To60 = BigDecimal.ZERO;
+        BigDecimal days60Plus = BigDecimal.ZERO;
+        for (Map.Entry<Invoice, BigDecimal> e : overdueInHome.entrySet()) {
+            long days = ChronoUnit.DAYS.between(e.getKey().getDueDate(), today);
+            if (days > 60) {
+                days60Plus = days60Plus.add(e.getValue());
+            } else if (days > 30) {
+                days31To60 = days31To60.add(e.getValue());
+            } else {
+                upTo30 = upTo30.add(e.getValue());
+            }
+        }
+        return new DashboardResponse.OverdueBuckets(upTo30.setScale(2, RoundingMode.HALF_UP),
+                days31To60.setScale(2, RoundingMode.HALF_UP), days60Plus.setScale(2, RoundingMode.HALF_UP));
+    }
+
+    private static BigDecimal sum(Map<Invoice, BigDecimal> amounts) {
+        return amounts.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * What is left to pay on each of the invoices, in the home currency, with the late fee and the interest on late
+     * instalments each has built up by today when asked for (as for what is overdue). A foreign invoice converts at
+     * the exchange rate from its issue date; one whose currency has no rate by then cannot be converted and is left out.
+     */
+    private Map<Invoice, BigDecimal> inHome(List<Invoice> found, String home, LocalDate today, boolean withCharges) {
+        Map<Invoice, BigDecimal> amounts = new LinkedHashMap<>();
         if (found.isEmpty()) {
-            return BigDecimal.ZERO.setScale(2);
+            return amounts;
         }
         List<Long> ids = found.stream().map(Invoice::getId).toList();
         Map<Long, BigDecimal> paid = payments.sumAmountByInvoiceIds(ids).stream()
@@ -98,19 +134,38 @@ public class DashboardService {
         Map<Long, BigDecimal> credited = creditNotes.sumAmountByInvoiceIds(ids).stream()
                 .collect(Collectors.toMap(CreditNoteRepository.InvoiceCreditedTotal::getInvoiceId,
                         CreditNoteRepository.InvoiceCreditedTotal::getCredited));
-        BigDecimal total = BigDecimal.ZERO;
+        Map<Long, List<Instalment>> scheduled = withCharges
+                ? instalments.findByInvoiceIdIn(ids).stream().collect(Collectors.groupingBy(Instalment::getInvoiceId))
+                : Map.of();
         for (Invoice invoice : found) {
             BigDecimal due = invoice.amountDue(paid.getOrDefault(invoice.getId(), BigDecimal.ZERO),
                     credited.getOrDefault(invoice.getId(), BigDecimal.ZERO));
-            if (withLateFees) {
-                due = due.add(invoice.lateFee(invoice.getStatus(), today));
+            if (withCharges) {
+                due = due.add(invoice.lateFee(invoice.getStatus(), today))
+                        .add(interest(invoice, scheduled.getOrDefault(invoice.getId(), List.of()), today));
             }
             String currency = invoice.getProject().getClient().getCurrency();
             BigDecimal inHome = currency.equals(home) ? due
-                    : fxRates.toHome(currency, invoice.getIssuedDate(), due).orElse(BigDecimal.ZERO);
-            total = total.add(inHome);
+                    : fxRates.toHome(currency, invoice.getIssuedDate(), due).orElse(null);
+            if (inHome != null) {
+                amounts.put(invoice, inHome);
+            }
         }
-        return total.setScale(2, RoundingMode.HALF_UP);
+        return amounts;
+    }
+
+    /** The interest built up by today on an invoice's instalments still unpaid past their due dates. */
+    private static BigDecimal interest(Invoice invoice, List<Instalment> scheduled, LocalDate today) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (Instalment instalment : scheduled) {
+            if (instalment.isPaid()) {
+                continue;
+            }
+            long daysLate = Math.max(0, ChronoUnit.DAYS.between(instalment.getDueDate(), today));
+            total = total.add(invoice.getInstalmentInterestPerDay().multiply(BigDecimal.valueOf(daysLate))
+                    .setScale(2, RoundingMode.HALF_UP));
+        }
+        return total;
     }
 
     /**

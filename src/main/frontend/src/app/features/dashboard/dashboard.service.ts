@@ -17,6 +17,13 @@ export interface CurrencyTotal {
   amount: number;
 }
 
+/** What is overdue, in the home currency, by how many days past due. */
+export interface OverdueBuckets {
+  days0To30: number;
+  days31To60: number;
+  days60Plus: number;
+}
+
 export interface DashboardSummary {
   clients: number;
   projects: number;
@@ -27,8 +34,10 @@ export interface DashboardSummary {
   overdue: number;
   /** The currency the overdue amount is given in. */
   homeCurrency: CurrencyCode;
-  /** What is left to pay on overdue invoices plus the late fees they have accrued, in the home currency. */
+  /** What is left to pay on overdue invoices plus the late fees and instalment interest they have built up, in the home currency. */
   overdueAmount: number;
+  /** The overdue amount split by how many days past due each invoice is. */
+  overdueBuckets: OverdueBuckets;
   topClients: TopClient[];
 }
 
