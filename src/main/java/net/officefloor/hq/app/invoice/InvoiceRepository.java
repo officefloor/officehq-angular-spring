@@ -64,13 +64,16 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Query("SELECT i FROM Invoice i JOIN FETCH i.project p JOIN FETCH p.client WHERE i.status IN :statuses ORDER BY i.id")
     List<Invoice> findByStatusInWithClient(Collection<InvoiceStatus> statuses);
 
-    /** Invoices with any of the given statuses whose due date is before the given date, with their project and client. */
+    /**
+     * Invoices with any of the given statuses whose due date is before the given date, with their project and client.
+     * A disputed invoice is left out: it still counts as owed but is kept out of the overdue chase.
+     */
     @Query("SELECT i FROM Invoice i JOIN FETCH i.project p JOIN FETCH p.client"
-            + " WHERE i.status IN :statuses AND i.dueDate < :date ORDER BY i.id")
+            + " WHERE i.status IN :statuses AND i.dueDate < :date AND i.disputed = false ORDER BY i.id")
     List<Invoice> findByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);
 
-    /** Number of invoices with any of the given statuses whose due date is before the given date. */
-    @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status IN :statuses AND i.dueDate < :date")
+    /** Number of invoices with any of the given statuses whose due date is before the given date, leaving out disputed ones. */
+    @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status IN :statuses AND i.dueDate < :date AND i.disputed = false")
     long countByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);
 
     /** Invoices with any of the given statuses issued on or between the given dates, with their project and client. */

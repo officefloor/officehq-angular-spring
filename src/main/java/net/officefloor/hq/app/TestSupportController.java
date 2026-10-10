@@ -325,18 +325,19 @@ public class TestSupportController {
             // The retention may already have been released ("retentionReleased"), making it due.
             boolean retentionReleased = Boolean.TRUE.equals(i.get("retentionReleased"));
             // Part of the invoice may already have been written off as bad debt ("writeOff"), so it is no longer owed.
-            // It may carry the client's purchase-order number ("poNumber").
+            // It may carry the client's purchase-order number ("poNumber"), and may be disputed by the client ("disputed").
             BigDecimal writeOff = decimal(i.get("writeOff"));
             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
-                    + " early_payment_pct, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency, po_number)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + " early_payment_pct, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency, po_number, disputed)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
                     surcharge, taxInclusive, taxExempt,
                     earlyPaymentPct, rebatePct, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
                     retentionReleased, writeOff,
                     i.get("currency") == null ? null : i.get("currency").toString(),
-                    i.get("poNumber") == null ? null : i.get("poNumber").toString());
+                    i.get("poNumber") == null ? null : i.get("poNumber").toString(),
+                    Boolean.TRUE.equals(i.get("disputed")));
             for (Map<String, Object> d : discounts) {
                 if (d.get("id") != null) {
                     jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount, discount_cap) VALUES (?, ?, ?, ?, ?)",

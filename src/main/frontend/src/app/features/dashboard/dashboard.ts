@@ -9,7 +9,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
 // counted), plus one grand total of it in the home currency with each invoice converted at the
 // exchange rate from its own issue date, and how many of those sent
-// invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+// invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
 // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
 // converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. A tax summary for a chosen date range can be opened from here.
 @Component({
