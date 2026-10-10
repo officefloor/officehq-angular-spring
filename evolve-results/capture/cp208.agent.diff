@@ -1,0 +1,86 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index 7ad52a5..503e66e 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -8,7 +8,7 @@ import { StatementEmailAction } from './statement-email';
+ // A client's statement: every invoice across the client's projects grouped by job, how much is left to
+ // pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
+ // It can be run for a chosen date range, giving the opening balance, the entries within the range with the running
+-// balance, and the closing balance.
++// balance, the net movement within the range, and the closing balance (opening plus movements).
+ // The balance owed as at a chosen past date can be looked up, counting only entries up to that date.
+ // Each invoice is shown in its own currency and every figure is rounded by the same currency rule as the invoice
+ // (the server rounds each one before adding them up), so the totals match the invoices to the cent. At the foot the total owed is also given in the home currency.
+@@ -125,6 +125,8 @@ import { StatementEmailAction } from './statement-email';
+               <dl class="statement-summary">
+                 <dt>Opening balance at {{ r.from }}</dt>
+                 <dd data-testid="statement-opening-balance">{{ r.openingBalance | money: r.currency }}</dd>
++                <dt>Movements in the range</dt>
++                <dd data-testid="statement-movements-total">{{ r.movementsTotal | money: r.currency }}</dd>
+                 <dt>Closing balance at {{ r.to }}</dt>
+                 <dd data-testid="statement-closing-balance">{{ r.closingBalance | money: r.currency }}</dd>
+               </dl>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 62a5a40..d050b4e 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -137,6 +137,8 @@ export interface ClientStatementRange {
+   to: string;
+   openingBalance: number;
+   entries: StatementEntry[];
++  /** The charges less the credits dated within the range; opening plus movements is the closing balance. */
++  movementsTotal: number;
+   closingBalance: number;
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementRangeResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementRangeResponse.java
+index 0e59d7b..bd60772 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementRangeResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementRangeResponse.java
+@@ -7,8 +7,9 @@ import java.util.List;
+ /**
+  * A client's statement for a chosen date range, in the client's currency: the balance owed at the start of the range
+  * (every entry dated before it), the entries dated within it each with the running balance once it is counted, and the
+- * closing balance owed at the end of the range (the opening balance plus what changed within it).
++ * closing balance owed at the end of the range (the opening balance plus what changed within it). The movements total
++ * is that change: the charges less the credits dated within the range, so opening plus movements is always closing.
+  */
+ public record ClientStatementRangeResponse(Long clientId, String currency, LocalDate from, LocalDate to,
+-        BigDecimal openingBalance, List<StatementEntry> entries, BigDecimal closingBalance) {
++        BigDecimal openingBalance, List<StatementEntry> entries, BigDecimal movementsTotal, BigDecimal closingBalance) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 4c13c8f..f69e1dc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -156,7 +156,8 @@ public class InvoiceService {
+ 
+     /**
+      * A client's statement for the given date range (both ends included): the balance owed at the start of it, the
+-     * entries dated within it in date order each carrying the running balance, and the balance owed at its end.
++     * entries dated within it in date order each carrying the running balance, the net movement within it, and the
++     * balance owed at its end (always the opening balance plus the movements).
+      */
+     @Transactional(readOnly = true)
+     public ClientStatementRangeResponse statementForRange(Long clientId, LocalDate from, LocalDate to) {
+@@ -173,15 +174,16 @@ public class InvoiceService {
+                 .filter(e -> e.date().isBefore(from))
+                 .map(StatementEntry::change)
+                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+-        BigDecimal balance = opening;
++        BigDecimal movements = BigDecimal.ZERO.setScale(2);
+         List<StatementEntry> within = new ArrayList<>();
+         for (StatementEntry entry : dated) {
+             if (!entry.date().isBefore(from) && !entry.date().isAfter(to)) {
+-                balance = balance.add(entry.change());
+-                within.add(entry.withBalance(balance));
++                movements = movements.add(entry.change());
++                within.add(entry.withBalance(opening.add(movements)));
+             }
+         }
+-        return new ClientStatementRangeResponse(client.getId(), client.getCurrency(), from, to, opening, within, balance);
++        return new ClientStatementRangeResponse(client.getId(), client.getCurrency(), from, to, opening, within,
++                movements, opening.add(movements));
+     }
+ 
+     /**
