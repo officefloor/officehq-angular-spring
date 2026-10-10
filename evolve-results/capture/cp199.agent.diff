@@ -1,0 +1,214 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 7639089..58090bc 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -45,6 +45,8 @@ export interface DashboardSummary {
+   overdueTasks: number;
+   /** Average days from issue to final payment on paid invoices, rounded; null when no invoice has been paid. */
+   averageDaysToPay: number | null;
++  /** How many clients were taken on in the current month. */
++  newClientsThisMonth: number;
+ }
+ 
+ /** The tax charged on invoices issued on or between two dates, in the home currency. */
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index af3808d..925a804 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -8,7 +8,7 @@ import { TaxReport } from './tax-report';
+ import { TaxSummaryReport } from './tax-summary';
+ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ 
+-// Dashboard page: how many clients and projects there are, and the total still owed in each currency
++// Dashboard page: how many clients and projects there are (and how many clients were taken on this month), and the total still owed in each currency
+ // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
+ // counted), plus one grand total of it in the home currency with each invoice converted at the
+ // exchange rate from its own issue date, and how many of those sent
+@@ -29,6 +29,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+           <dt>Clients</dt>
+           <dd data-testid="dashboard-clients-count">{{ s.clients }}</dd>
+         </div>
++        <div>
++          <dt>New clients this month</dt>
++          <dd data-testid="dashboard-new-clients">{{ s.newClientsThisMonth }}</dd>
++        </div>
+         <div>
+           <dt>Jobs</dt>
+           <dd data-testid="dashboard-projects-count">{{ s.projects }}</dd>
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 1c7d1bd..f7e81a6 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -119,8 +119,8 @@ public class TestSupportController {
+                     r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, billing_contact, segment, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days, early_payment_window_days)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, billing_contact, segment, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days, early_payment_window_days, created_date)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"), c.get("language"), c.get("accountManager"), c.get("billingContact"), c.get("segment"),
+                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
+                     Boolean.TRUE.equals(c.get("keyAccount")),
+@@ -130,7 +130,9 @@ public class TestSupportController {
+                     c.get("creditLimit") == null ? null : decimal(c.get("creditLimit")),
+                     c.get("paymentTermsDays") == null ? null : ((Number) c.get("paymentTermsDays")).intValue(),
+                     // The early-payment window, part of the client's payment terms.
+-                    c.get("earlyPaymentWindowDays") == null ? null : ((Number) c.get("earlyPaymentWindowDays")).intValue());
++                    c.get("earlyPaymentWindowDays") == null ? null : ((Number) c.get("earlyPaymentWindowDays")).intValue(),
++                    // The day the client was taken on ("createdDate"); without one, today.
++                    c.get("createdDate") == null ? LocalDate.now(clock) : LocalDate.parse(c.get("createdDate").toString()));
+             // When the client was contacted, each with a date and a note.
+             for (Map<String, Object> h : rows(c, "contactHistory")) {
+                 jdbc.update("INSERT INTO contact_history (id, client_id, contact_date, note) VALUES (?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index c2aa100..73534fe 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -11,6 +11,7 @@ import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.time.LocalDate;
+ import net.officefloor.hq.app.contact.Contact;
+ import net.officefloor.hq.app.currency.Currency;
+ 
+@@ -85,6 +86,10 @@ public class Client {
+     @JoinColumn(name = "primary_contact_id")
+     private Contact primaryContact;
+ 
++    /** The day the client was taken on. */
++    @Column(nullable = false)
++    private LocalDate createdDate;
++
+     protected Client() {
+     }
+ 
+@@ -96,6 +101,14 @@ public class Client {
+         this.billingAddress = billingAddress;
+     }
+ 
++    public LocalDate getCreatedDate() {
++        return createdDate;
++    }
++
++    public void setCreatedDate(LocalDate createdDate) {
++        this.createdDate = createdDate;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+index d361018..82854d6 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.client;
+ 
++import java.time.LocalDate;
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Modifying;
+@@ -15,6 +16,9 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+             + " WHERE c.archived = false AND c.segment IS NOT NULL GROUP BY c.segment ORDER BY c.segment")
+     List<ClientSegmentResponse> countActiveBySegment();
+ 
++    /** How many clients were taken on on or after the date. */
++    long countByCreatedDateGreaterThanEqual(LocalDate from);
++
+     /** Whether any client, archived or not, already has the email, ignoring case. */
+     boolean existsByEmailIgnoreCase(String email);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 8db2ce2..a5c0b3c 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.client;
+ 
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.time.Clock;
++import java.time.LocalDate;
+ import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.List;
+@@ -34,9 +36,11 @@ public class ClientService {
+     private final CreditNoteRepository creditNotes;
+     private final CurrencyService currencies;
+     private final Audit audit;
++    private final Clock clock;
+ 
+     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
+-            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes, CurrencyService currencies, Audit audit) {
++            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes, CurrencyService currencies, Audit audit,
++            Clock clock) {
+         this.clients = clients;
+         this.projects = projects;
+         this.contacts = contacts;
+@@ -45,6 +49,7 @@ public class ClientService {
+         this.creditNotes = creditNotes;
+         this.currencies = currencies;
+         this.audit = audit;
++        this.clock = clock;
+     }
+ 
+     /** The clients, leaving out archived ones unless they are asked for. */
+@@ -88,6 +93,7 @@ public class ClientService {
+         }
+         try {
+             Client client = new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber(), request.trimmedBillingAddress());
++            client.setCreatedDate(LocalDate.now(clock));
+             client.setLanguage(request.trimmedLanguage());
+             client.setAccountManager(request.trimmedAccountManager());
+             client.setBillingContact(request.trimmedBillingContact());
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+index 51d892e..614198c 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+@@ -11,12 +11,12 @@ import java.util.List;
+  * What is outstanding is also given as one grand total in the home currency, each invoice converted at the
+  * exchange rate from its own issue date. Also how many tasks not yet done are past their due date,
+  * and the average number of days clients take to pay (from issue date to final payment on paid invoices; null when
+- * there are none).
++ * there are none), and how many new clients were taken on in the current month.
+  */
+ public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
+         BigDecimal outstandingHome, long overdue,
+         String homeCurrency, BigDecimal overdueAmount, OverdueBuckets overdueBuckets, List<TopClient> topClients,
+-        long overdueTasks, Long averageDaysToPay) {
++        long overdueTasks, Long averageDaysToPay, long newClientsThisMonth) {
+ 
+     /** What is still owed in one currency. */
+     public record CurrencyTotal(String currency, BigDecimal amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index a371d09..bf22b81 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -73,7 +73,7 @@ public class DashboardService {
+     /**
+      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
+      * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices (not disputed) are past their due date and
+-     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date.
++     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date, and how many clients were taken on this month.
+      */
+     @Transactional(readOnly = true)
+     public DashboardResponse summary() {
+@@ -103,7 +103,8 @@ public class DashboardService {
+                         clientsInHome.get(c.id()).setScale(2, RoundingMode.HALF_UP)))
+                 .toList();
+         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
+-                overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay());
++                overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
++                clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)));
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/migration/V98__client_created_date.sql b/src/main/resources/db/migration/V98__client_created_date.sql
+new file mode 100644
+index 0000000..e425741
+--- /dev/null
++++ b/src/main/resources/db/migration/V98__client_created_date.sql
+@@ -0,0 +1,2 @@
++-- The day the client was taken on; existing clients count as taken on the day this was added.
++ALTER TABLE client ADD COLUMN created_date DATE DEFAULT CURRENT_DATE NOT NULL;
