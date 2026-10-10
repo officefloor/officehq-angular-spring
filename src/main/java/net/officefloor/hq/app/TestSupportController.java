@@ -65,6 +65,7 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE statement_email RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE contact_history RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE adjustment_note RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE client_payment RESTART IDENTITY");
@@ -491,6 +492,7 @@ public class TestSupportController {
         restartIdentity("payment");
         restartIdentity("client_payment");
         restartIdentity("credit_note");
+        restartIdentity("adjustment_note");
         restartIdentity("deposit");
     }
 
