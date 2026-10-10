@@ -18,7 +18,7 @@ import { ClientExport } from './client-export';
 import { ClientMerge } from './client-merge';
 import { Client, ClientService } from './client.service';
 
-// A single client's page: their name, email, phone number, preferred language, account manager, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
+// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
 @Component({
   selector: 'app-client-detail',
   imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
@@ -62,6 +62,14 @@ import { Client, ClientService } from './client.service';
           <span data-testid="client-account-manager">{{ c.accountManager }}</span>
         } @else {
           <span data-testid="client-account-manager-none">Not recorded</span>
+        }
+      </p>
+      <p>
+        Billing contact:
+        @if (c.billingContact) {
+          <span data-testid="client-billing-contact">{{ c.billingContact }}</span>
+        } @else {
+          <span data-testid="client-billing-contact-none">Same as client</span>
         }
       </p>
       <p>

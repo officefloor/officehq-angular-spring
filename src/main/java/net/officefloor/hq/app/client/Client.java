@@ -42,6 +42,9 @@ public class Client {
     /** The person in the office who looks after the client; none when not recorded. */
     private String accountManager;
 
+    /** Who the client's bills should go to, when someone other than the client themselves; none when not recorded. */
+    private String billingContact;
+
     private boolean archived;
 
     /** Whether the client's prices already include tax, so tax is worked back out of them rather than added on. */
@@ -120,6 +123,14 @@ public class Client {
 
     public void setAccountManager(String accountManager) {
         this.accountManager = accountManager;
+    }
+
+    public String getBillingContact() {
+        return billingContact;
+    }
+
+    public void setBillingContact(String billingContact) {
+        this.billingContact = billingContact;
     }
 
     public String getTaxNumber() {

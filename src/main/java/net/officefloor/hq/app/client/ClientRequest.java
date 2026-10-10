@@ -9,7 +9,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 
 /**
- * Payload to create a client, or to correct an existing client's name, email, phone number, tax number, billing address, preferred language and account manager,
+ * Payload to create a client, or to correct an existing client's name, email, phone number, tax number, billing address, preferred language, account manager and billing contact,
  * whether their prices already include tax and whether they are tax exempt and whether they are a key account and their standard discount percentage (each left as it is when not given).
  */
 public record ClientRequest(
@@ -20,6 +20,7 @@ public record ClientRequest(
         @Size(max = 500) String billingAddress,
         @Size(max = 50) String language,
         @Size(max = 255) String accountManager,
+        @Size(max = 255) String billingContact,
         Boolean taxInclusive,
         Boolean taxExempt,
         Boolean keyAccount,
@@ -46,6 +47,11 @@ public record ClientRequest(
     /** The account manager trimmed, or null when none was given. */
     public String trimmedAccountManager() {
         return accountManager == null || accountManager.isBlank() ? null : accountManager.trim();
+    }
+
+    /** The billing contact trimmed, or null when none was given. */
+    public String trimmedBillingContact() {
+        return billingContact == null || billingContact.isBlank() ? null : billingContact.trim();
     }
 
     /** The billing address trimmed, or null when none was given. */
