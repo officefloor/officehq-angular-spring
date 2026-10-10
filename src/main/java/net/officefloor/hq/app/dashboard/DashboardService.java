@@ -106,7 +106,47 @@ public class DashboardService {
                 .toList();
         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
                 overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
-                clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home));
+                clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home),
+                collectionRate(home));
+    }
+
+    /**
+     * The share of everything billed that has been collected, as a whole percentage: the payments received against
+     * every invoice that was sent (drafts and cancelled invoices are left out) over what those invoices were billed
+     * for, both in the home currency at each invoice's issue date's rate (an invoice that cannot be converted is left
+     * out). Null when nothing has been billed.
+     */
+    private Long collectionRate(String home) {
+        List<Invoice> billed = invoices.findByStatusInWithClient(List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL,
+                InvoiceStatus.PAID, InvoiceStatus.WRITTEN_OFF));
+        if (billed.isEmpty()) {
+            return null;
+        }
+        Map<Long, BigDecimal> paid = payments.sumAmountByInvoiceIds(billed.stream().map(Invoice::getId).toList())
+                .stream().collect(Collectors.toMap(PaymentRepository.InvoicePaidTotal::getInvoiceId,
+                        PaymentRepository.InvoicePaidTotal::getPaid));
+        BigDecimal billedTotal = BigDecimal.ZERO;
+        BigDecimal collected = BigDecimal.ZERO;
+        for (Invoice invoice : billed) {
+            String currency = invoice.getCurrency();
+            BigDecimal amount = invoice.getAmount();
+            BigDecimal received = paid.getOrDefault(invoice.getId(), BigDecimal.ZERO);
+            if (!currency.equals(home)) {
+                var amountInHome = fxRates.toHome(currency, invoice.getIssuedDate(), amount);
+                var receivedInHome = fxRates.toHome(currency, invoice.getIssuedDate(), received);
+                if (amountInHome.isEmpty() || receivedInHome.isEmpty()) {
+                    continue;
+                }
+                amount = amountInHome.get();
+                received = receivedInHome.get();
+            }
+            billedTotal = billedTotal.add(amount);
+            collected = collected.add(received);
+        }
+        if (billedTotal.signum() <= 0) {
+            return null;
+        }
+        return collected.multiply(BigDecimal.valueOf(100)).divide(billedTotal, 0, RoundingMode.HALF_UP).longValue();
     }
 
     /**

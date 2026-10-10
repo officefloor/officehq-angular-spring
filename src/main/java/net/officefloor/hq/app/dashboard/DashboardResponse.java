@@ -12,13 +12,14 @@ import java.util.List;
  * exchange rate from its own issue date. Also how many tasks not yet done are past their due date,
  * and the average number of days clients take to pay (from issue date to final payment on paid invoices; null when
  * there are none), and how many new clients were taken on in the current month, and what was billed (invoices issued and sent) in the current month, in the home
- * currency.
+ * currency, and the share of everything billed that has been collected as a whole percentage (null when nothing
+ * has been billed).
  */
 public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
         BigDecimal outstandingHome, long overdue,
         String homeCurrency, BigDecimal overdueAmount, OverdueBuckets overdueBuckets, List<TopClient> topClients,
         long overdueTasks, Long averageDaysToPay, long newClientsThisMonth,
-        BigDecimal billingsThisMonth) {
+        BigDecimal billingsThisMonth, Long collectionRate) {
 
     /** What is still owed in one currency. */
     public record CurrencyTotal(String currency, BigDecimal amount) {

@@ -49,6 +49,8 @@ export interface DashboardSummary {
   newClientsThisMonth: number;
   /** What was billed (invoices issued and sent, not drafts or cancelled) in the current month, in the home currency. */
   billingsThisMonth: number;
+  /** What has been collected over what was billed (sent invoices), as a whole percentage in the home currency; null when nothing has been billed. */
+  collectionRate: number | null;
 }
 
 /** The tax charged on invoices issued on or between two dates, in the home currency. */
