@@ -3,8 +3,9 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { MoneyPipe } from '../currencies/money.pipe';
 import { DashboardService } from './dashboard.service';
 
-// The revenue billed over a chosen date range: the total of the invoices issued within it that were sent
-// (drafts and cancelled invoices are left out), in the home currency.
+// The revenue billed over a chosen date range (over all time until a range is chosen): the total of the invoices
+// issued within it that were sent (drafts and cancelled invoices are left out), in the home currency, broken down
+// by job so the highest-earning jobs show first.
 @Component({
   selector: 'app-revenue-report',
   imports: [MoneyPipe],
@@ -24,6 +25,14 @@ import { DashboardService } from './dashboard.service';
       margin: 0;
       text-align: right;
     }
+    .revenue-report-jobs th,
+    .revenue-report-jobs td {
+      padding: 0.25rem 0.75rem;
+      text-align: left;
+    }
+    .revenue-report-jobs .amount {
+      text-align: right;
+    }
   `,
   template: `
     <section aria-labelledby="revenue-report-heading" data-testid="revenue-report">
@@ -40,12 +49,44 @@ import { DashboardService } from './dashboard.service';
       } @else if (report.error()) {
         <p role="alert" data-testid="revenue-report-error">Could not load the revenue report.</p>
       } @else if (report.value(); as r) {
+        <p data-testid="revenue-report-period">
+          @if (r.from && r.to) {
+            From {{ r.from }} to {{ r.to }}
+          } @else {
+            All time
+          }
+        </p>
         <dl class="revenue-report-figures" aria-live="polite">
           <dt>Invoices</dt>
           <dd data-testid="revenue-report-invoices">{{ r.invoices }}</dd>
           <dt>Total billed</dt>
           <dd data-testid="revenue-report-total">{{ r.total | money: r.homeCurrency }}</dd>
         </dl>
+        <h3 id="revenue-by-job-heading">Revenue by job</h3>
+        @if (r.jobs.length) {
+          <table class="revenue-report-jobs" aria-labelledby="revenue-by-job-heading" data-testid="revenue-jobs">
+            <thead>
+              <tr>
+                <th scope="col">Job</th>
+                <th scope="col">Client</th>
+                <th scope="col" class="amount">Invoices</th>
+                <th scope="col" class="amount">Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (job of r.jobs; track job.projectId) {
+                <tr [attr.data-testid]="'revenue-job-row-' + job.projectId">
+                  <th scope="row" data-testid="revenue-job-name">{{ job.projectName }}</th>
+                  <td data-testid="revenue-job-client">{{ job.clientName }}</td>
+                  <td class="amount" data-testid="revenue-job-invoices">{{ job.invoices }}</td>
+                  <td class="amount" data-testid="revenue-job-amount">{{ job.amount | money: r.homeCurrency }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        } @else {
+          <p data-testid="revenue-jobs-empty">No revenue billed in this period.</p>
+        }
       }
     </section>
   `,
@@ -53,12 +94,13 @@ import { DashboardService } from './dashboard.service';
 export class RevenueReport {
   private readonly service = inject(DashboardService);
 
-  private readonly range = signal<{ from: string; to: string } | undefined>(undefined);
+  /** The chosen date range; until one is chosen the report covers all time. */
+  private readonly range = signal<{ from: string; to: string } | null>(null);
   protected readonly rangeError = signal<string | null>(null);
 
   protected readonly report = rxResource({
-    params: () => this.range(),
-    stream: ({ params }) => this.service.revenueReport(params.from, params.to),
+    params: () => ({ range: this.range() }),
+    stream: ({ params }) => this.service.revenueReport(params.range ?? undefined),
   });
 
   protected apply(event: Event, from: string, to: string): void {

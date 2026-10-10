@@ -59,14 +59,28 @@ export interface TaxSummary {
   total: number;
 }
 
-/** The revenue billed on invoices issued on or between two dates, in the home currency. */
+/** The revenue billed for one job (project), in the home currency. */
+export interface JobRevenue {
+  projectId: number;
+  projectName: string;
+  clientName: string;
+  /** How many invoices the job's revenue came from. */
+  invoices: number;
+  amount: number;
+}
+
+/**
+ * The revenue billed on invoices issued on or between two dates (over all time when the dates are null), in the
+ * home currency, broken down by job with the highest-earning job first.
+ */
 export interface RevenueReport {
-  from: string;
-  to: string;
+  from: string | null;
+  to: string | null;
   homeCurrency: CurrencyCode;
   /** How many invoices the revenue came from. */
   invoices: number;
   total: number;
+  jobs: JobRevenue[];
 }
 
 /** One instalment expected in, in its invoice's currency. */
@@ -100,8 +114,10 @@ export class DashboardService {
     return this.http.get<TaxSummary>('/api/dashboard/tax-summary', { params: new HttpParams().set('from', from).set('to', to) });
   }
 
-  revenueReport(from: string, to: string): Observable<RevenueReport> {
-    return this.http.get<RevenueReport>('/api/dashboard/revenue-report', { params: new HttpParams().set('from', from).set('to', to) });
+  /** The revenue report over the given range, or over all time when no range is given. */
+  revenueReport(range?: { from: string; to: string }): Observable<RevenueReport> {
+    const params = range ? new HttpParams().set('from', range.from).set('to', range.to) : new HttpParams();
+    return this.http.get<RevenueReport>('/api/dashboard/revenue-report', { params });
   }
 
   forecast(): Observable<Forecast> {

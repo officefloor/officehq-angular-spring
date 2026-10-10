@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.client.ClientRepository;
@@ -249,13 +250,15 @@ public class DashboardService {
     }
 
     /**
-     * The revenue billed on or between the given dates: the amounts of the invoices issued in the range that were
-     * sent (drafts and cancelled invoices are left out), each converted into the home currency at its issue date's
-     * rate (an invoice that cannot be converted is left out).
+     * The revenue billed on or between the given dates (over all time when either date is missing): the amounts of
+     * the invoices issued in the range that were sent (drafts and cancelled invoices are left out), each converted
+     * into the home currency at its issue date's rate (an invoice that cannot be converted is left out). The revenue
+     * is also broken down by job (project), highest-earning first.
      */
     @Transactional(readOnly = true)
     public RevenueReportResponse revenueReport(LocalDate from, LocalDate to) {
-        if (from.isAfter(to)) {
+        boolean allTime = from == null || to == null;
+        if (!allTime && from.isAfter(to)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The start date must not be after the end date");
         }
         List<InvoiceStatus> billed = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID,
@@ -263,19 +266,53 @@ public class DashboardService {
         String home = settings.homeCurrency();
         BigDecimal total = BigDecimal.ZERO;
         long count = 0;
-        for (Invoice invoice : invoices.findByStatusInAndIssuedDateBetween(billed, from, to)) {
+        Map<Long, JobTally> byJob = new LinkedHashMap<>();
+        List<Invoice> issued = allTime ? invoices.findByStatusInWithClient(billed)
+                : invoices.findByStatusInAndIssuedDateBetween(billed, from, to);
+        for (Invoice invoice : issued) {
             String currency = invoice.getCurrency();
-            if (currency.equals(home)) {
-                total = total.add(invoice.getAmount());
-                count++;
+            var inHome = currency.equals(home) ? Optional.of(invoice.getAmount())
+                    : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount());
+            if (inHome.isEmpty()) {
                 continue;
             }
-            var inHome = fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount());
-            if (inHome.isPresent()) {
-                total = total.add(inHome.get());
-                count++;
-            }
+            total = total.add(inHome.get());
+            count++;
+            var project = invoice.getProject();
+            byJob.computeIfAbsent(project.getId(),
+                    id -> new JobTally(id, project.getName(), project.getClient().getName())).add(inHome.get());
         }
-        return new RevenueReportResponse(from, to, home, count, total.setScale(2, RoundingMode.HALF_UP));
+        List<RevenueReportResponse.JobRevenue> jobs = byJob.values().stream()
+                .map(JobTally::toResponse)
+                .sorted(Comparator.comparing(RevenueReportResponse.JobRevenue::amount).reversed()
+                        .thenComparing(RevenueReportResponse.JobRevenue::projectId))
+                .toList();
+        return new RevenueReportResponse(allTime ? null : from, allTime ? null : to, home, count,
+                total.setScale(2, RoundingMode.HALF_UP), jobs);
+    }
+
+    /** The running revenue of one job while the revenue report is built. */
+    private static final class JobTally {
+        private final Long projectId;
+        private final String projectName;
+        private final String clientName;
+        private long invoices;
+        private BigDecimal amount = BigDecimal.ZERO;
+
+        JobTally(Long projectId, String projectName, String clientName) {
+            this.projectId = projectId;
+            this.projectName = projectName;
+            this.clientName = clientName;
+        }
+
+        void add(BigDecimal inHome) {
+            amount = amount.add(inHome);
+            invoices++;
+        }
+
+        RevenueReportResponse.JobRevenue toResponse() {
+            return new RevenueReportResponse.JobRevenue(projectId, projectName, clientName, invoices,
+                    amount.setScale(2, RoundingMode.HALF_UP));
+        }
     }
 }

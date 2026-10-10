@@ -29,11 +29,14 @@ public class DashboardController {
         return service.taxSummary(from, to);
     }
 
-    /** The revenue billed on invoices issued on or between the given dates. */
+    /**
+     * The revenue billed on invoices issued on or between the given dates, broken down by job. Without both dates the
+     * revenue is over all time.
+     */
     @GetMapping("/revenue-report")
     public RevenueReportResponse revenueReport(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return service.revenueReport(from, to);
     }
 
