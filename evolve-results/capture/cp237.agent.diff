@@ -1,0 +1,225 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index b6bfac0..444007e 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -8,6 +8,7 @@ import { Notes } from '../notes/notes';
+ import { Contact } from '../contacts/contact.service';
+ import { ClientCredit } from '../credit/client-credit';
+ import { ClientAging } from '../invoices/client-aging';
++import { ClientFinancialSummaryPanel } from '../invoices/client-financial-summary';
+ import { ClientDeposits } from '../deposits/client-deposits';
+ import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
+ import { ClientRemittances } from '../payments/client-remittances';
+@@ -20,10 +21,10 @@ import { ClientExport } from './client-export';
+ import { ClientMerge } from './client-merge';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them (net of credits and write-offs), their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
++// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a one-screen financial summary (billed, paid, outstanding and overdue), a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them (net of credits and write-offs), their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, Notes, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
++  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, Notes, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging, ClientFinancialSummaryPanel],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -138,6 +139,22 @@ import { Client, ClientService } from './client.service';
+       <p>
+         <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="client-statement-open">View statement</a>
+       </p>
++      <p>
++        <button
++          type="button"
++          data-testid="client-summary-open"
++          aria-controls="client-summary-panel"
++          [attr.aria-expanded]="showingSummary()"
++          (click)="showingSummary.set(!showingSummary())"
++        >
++          {{ showingSummary() ? 'Hide financial summary' : 'Show financial summary' }}
++        </button>
++      </p>
++      <div id="client-summary-panel">
++        @if (showingSummary()) {
++          <app-client-financial-summary [clientId]="clientId()" />
++        }
++      </div>
+       <app-client-aging [clientId]="clientId()" />
+       <p>
+         <button
+@@ -204,6 +221,10 @@ export class ClientDetail {
+     stream: ({ params }) => this.service.summary(params),
+   });
+ 
++  /** Whether the billed, paid, outstanding and overdue summary is shown. */
++  protected readonly showingSummary = signal(false);
++  private readonly financialSummaryPanel = viewChild(ClientFinancialSummaryPanel);
++
+   /** Which split form is open, if any: a payment received, or the client's held deposits. */
+   protected readonly recordingPayment = signal<PaymentSource | null>(null);
+   protected readonly paymentSaved = signal(false);
+@@ -237,6 +258,7 @@ export class ClientDetail {
+     this.depositsPanel()?.reload();
+     this.creditPanel()?.reload();
+     this.agingPanel()?.reload();
++    this.financialSummaryPanel()?.reload();
+     this.remittancesPanel()?.reload();
+     this.summary.reload();
+     this.client.reload();
+diff --git a/src/main/frontend/src/app/features/invoices/client-financial-summary.ts b/src/main/frontend/src/app/features/invoices/client-financial-summary.ts
+new file mode 100644
+index 0000000..ce2d28e
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/client-financial-summary.ts
+@@ -0,0 +1,54 @@
++import { Component, inject, input } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { InvoiceService } from './invoice.service';
++
++// A client's money on one screen: what has been billed to them, how much of it is paid, what is still outstanding, and how much of that is overdue.
++@Component({
++  selector: 'app-client-financial-summary',
++  imports: [MoneyPipe],
++  styles: `
++    .client-summary {
++      display: grid;
++      grid-template-columns: max-content max-content;
++      gap: 0.25rem 1.5rem;
++    }
++    .client-summary dd {
++      margin: 0;
++      text-align: right;
++    }
++  `,
++  template: `
++    <section aria-labelledby="client-summary-heading" data-testid="client-summary">
++      <h2 id="client-summary-heading">Financial summary</h2>
++      @if (summary.error()) {
++        <p role="alert" data-testid="client-summary-error">Could not load the financial summary.</p>
++      } @else if (summary.value(); as s) {
++        <dl class="client-summary">
++          <dt>Billed</dt>
++          <dd data-testid="client-summary-billed">{{ s.billed | money: s.currency }}</dd>
++          <dt>Paid</dt>
++          <dd data-testid="client-summary-paid">{{ s.paid | money: s.currency }}</dd>
++          <dt>Outstanding</dt>
++          <dd data-testid="client-summary-outstanding">{{ s.outstanding | money: s.currency }}</dd>
++          <dt>Overdue</dt>
++          <dd data-testid="client-summary-overdue">{{ s.overdue | money: s.currency }}</dd>
++        </dl>
++      }
++    </section>
++  `,
++})
++export class ClientFinancialSummaryPanel {
++  private readonly service = inject(InvoiceService);
++
++  readonly clientId = input.required<number>();
++
++  protected readonly summary = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.service.financialSummaryForClient(params),
++  });
++
++  reload(): void {
++    this.summary.reload();
++  }
++}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 110f73d..16d20d2 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -156,6 +156,17 @@ export interface ClientStatementRange {
+   aging: ClientAging;
+ }
+ 
++/** A client's money on one screen as at today: billed on sent invoices, paid, still outstanding, and the part of that past due. */
++export interface ClientFinancialSummary {
++  clientId: number;
++  currency: CurrencyCode;
++  asOf: string;
++  billed: number;
++  paid: number;
++  outstanding: number;
++  overdue: number;
++}
++
+ /** How old a client's debt is as at a day (today, unless for a date range): what is current (up to 30 days overdue), 31 to 60 days, and more than 60 days overdue. */
+ export interface ClientAging {
+   clientId: number;
+@@ -339,6 +350,10 @@ export class InvoiceService {
+     return this.http.post<StatementEmail>(`/api/clients/${clientId}/statement/emails`, {});
+   }
+ 
++  financialSummaryForClient(clientId: number): Observable<ClientFinancialSummary> {
++    return this.http.get<ClientFinancialSummary>(`/api/clients/${clientId}/statement/summary`);
++  }
++
+   agingForClient(clientId: number): Observable<ClientAging> {
+     return this.http.get<ClientAging>(`/api/clients/${clientId}/statement/aging`);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientFinancialSummaryResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientFinancialSummaryResponse.java
+new file mode 100644
+index 0000000..0eb663e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientFinancialSummaryResponse.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * A client's money on one screen, in the client's currency, as at today: what has been billed to them on their sent
++ * invoices (drafts and void ones are left out), how much of that has been paid, what is still outstanding, and the part
++ * of the outstanding that is on invoices past their due date.
++ */
++public record ClientFinancialSummaryResponse(Long clientId, String currency, LocalDate asOf, BigDecimal billed,
++        BigDecimal paid, BigDecimal outstanding, BigDecimal overdue) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java
+index 02ff69f..2572ab5 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementController.java
+@@ -24,6 +24,12 @@ public class ClientStatementController {
+         return service.statementForClient(clientId);
+     }
+ 
++    /** The client's billed, paid, outstanding and overdue totals on one screen. */
++    @GetMapping("/summary")
++    public ClientFinancialSummaryResponse summary(@PathVariable Long clientId) {
++        return service.financialSummaryForClient(clientId);
++    }
++
+     /** What the client owed as at the end of the given day. */
+     @GetMapping("/balance")
+     public ClientBalanceAsOfResponse balanceAsOf(@PathVariable Long clientId,
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 1bfaabd..ee3efc9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -138,6 +138,24 @@ public class InvoiceService {
+                         : fxRates.convert(l.currency(), home, l.issuedDate(), l.amountDue()).map(homeRule::round));
+     }
+ 
++    /**
++     * A client's financial summary as at today: the billed, paid and outstanding totals of their statement, and the
++     * part of the outstanding left to pay on invoices whose due date has passed.
++     */
++    @Transactional(readOnly = true)
++    public ClientFinancialSummaryResponse financialSummaryForClient(Long clientId) {
++        ClientStatementResponse statement = statementForClient(clientId);
++        LocalDate today = LocalDate.now(clock);
++        BigDecimal overdue = statement.invoices().stream()
++                .filter(l -> l.status() != InvoiceStatus.DRAFT && !l.status().isClosedUnpaid())
++                .filter(l -> l.dueDate() != null && l.dueDate().isBefore(today) && l.amountDue().signum() > 0)
++                .map(ClientStatementResponse.Line::amountDue)
++                .reduce(BigDecimal.ZERO, BigDecimal::add)
++                .setScale(2, RoundingMode.HALF_UP);
++        return new ClientFinancialSummaryResponse(statement.clientId(), statement.currency(), today,
++                statement.invoiced(), statement.paid(), statement.outstanding(), overdue);
++    }
++
+     /**
+      * What a client owed as at the end of the given day: the running account counting only the entries dated on or
+      * before it.
