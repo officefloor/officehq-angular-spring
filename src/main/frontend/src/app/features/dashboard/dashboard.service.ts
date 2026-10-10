@@ -236,6 +236,23 @@ export interface AgingReportLine {
   amount: number;
 }
 
+/** What one client still owes, counted by the same rule as the dashboard's outstanding figure. */
+export interface ReconciliationClient {
+  id: number;
+  name: string;
+  balance: number;
+}
+
+/** Every client's balance and their total, checked against the dashboard's outstanding figure. */
+export interface Reconciliation {
+  currency: CurrencyCode;
+  clients: ReconciliationClient[];
+  total: number;
+  outstanding: number;
+  difference: number;
+  balanced: boolean;
+}
+
 /** What was overdue at the close of one month (as at today for the current month), in the home currency. */
 export interface OverdueTrendMonth {
   /** The month as yyyy-MM. */
@@ -289,6 +306,10 @@ export class DashboardService {
 
   agingReport(): Observable<AgingReport> {
     return this.http.get<AgingReport>('/api/dashboard/aging-report');
+  }
+
+  reconciliation(): Observable<Reconciliation> {
+    return this.http.get<Reconciliation>('/api/dashboard/reconciliation');
   }
 
   /** The aging report as the CSV file the export downloads. */

@@ -74,6 +74,12 @@ public class DashboardController {
         return service.revenueComparison(aFrom, aTo, bFrom, bTo);
     }
 
+    /** Every client's balance, their total, and whether it equals the dashboard's outstanding figure. */
+    @GetMapping("/reconciliation")
+    public ReconciliationResponse reconciliation() {
+        return service.reconciliation();
+    }
+
     /** How old the debt across all clients is, in the home currency, split into age buckets. */
     @GetMapping("/aging-report")
     public AgingReportResponse agingReport() {

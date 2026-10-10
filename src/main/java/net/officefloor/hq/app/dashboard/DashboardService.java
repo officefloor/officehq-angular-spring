@@ -318,6 +318,37 @@ public class DashboardService {
                 sum(owedInHome), lines);
     }
 
+    /**
+     * Reconciles the client balances with the dashboard's outstanding figure: what each client still owes (by the
+     * same rule as the outstanding figure, see {@link #countsInKpis} and {@link #inHome}), shown in the dashboard's
+     * currency, and their total checked against the outstanding figure worked out independently, as the dashboard
+     * does. Every client is listed, those owing nothing at zero.
+     */
+    @Transactional(readOnly = true)
+    public ReconciliationResponse reconciliation() {
+        LocalDate today = LocalDate.now(clock);
+        String home = settings.homeCurrency();
+        String shownIn = shownIn(home, today);
+        UnaryOperator<BigDecimal> shown = shown(home, shownIn, today);
+        Map<Invoice, BigDecimal> owedInHome = inHome(
+                invoices.findByStatusInWithClient(List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL)), home, today, false);
+        Map<Long, BigDecimal> byClient = new HashMap<>();
+        owedInHome.entrySet().stream().filter(e -> countsInKpis(e.getKey()))
+                .forEach(e -> byClient.merge(e.getKey().getProject().getClient().getId(), e.getValue(), BigDecimal::add));
+        List<ReconciliationResponse.ClientBalance> balances = clients.findAll().stream()
+                .map(c -> new ReconciliationResponse.ClientBalance(c.getId(), c.getName(), shown.apply(
+                        byClient.getOrDefault(c.getId(), BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP))))
+                .sorted(Comparator.comparing(ReconciliationResponse.ClientBalance::name)
+                        .thenComparing(ReconciliationResponse.ClientBalance::id))
+                .toList();
+        BigDecimal total = balances.stream().map(ReconciliationResponse.ClientBalance::balance)
+                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal outstanding = shown.apply(owedInHome.entrySet().stream().filter(e -> countsInKpis(e.getKey()))
+                .map(Map.Entry::getValue).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP));
+        BigDecimal difference = total.subtract(outstanding);
+        return new ReconciliationResponse(shownIn, balances, total, outstanding, difference, difference.signum() == 0);
+    }
+
     /** How many months the overdue trend covers, the current month included. */
     static final int OVERDUE_TREND_MONTHS = 6;
 
