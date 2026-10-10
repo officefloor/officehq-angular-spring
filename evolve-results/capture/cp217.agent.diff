@@ -1,0 +1,128 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/cash-flow-forecast.ts b/src/main/frontend/src/app/features/dashboard/cash-flow-forecast.ts
+index 82b40d3..f635a8c 100644
+--- a/src/main/frontend/src/app/features/dashboard/cash-flow-forecast.ts
++++ b/src/main/frontend/src/app/features/dashboard/cash-flow-forecast.ts
+@@ -5,7 +5,7 @@ import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService } from './dashboard.service';
+ 
+ // A simple cash-flow forecast: the money expected in from instalments still to be paid on sent invoices,
+-// earliest due first, with the total in the home currency.
++// earliest due first, with the total in the home currency, and what can be expected to be collected in the next 30 days.
+ @Component({
+   selector: 'app-cash-flow-forecast',
+   imports: [MoneyPipe, RouterLink],
+@@ -15,6 +15,10 @@ import { DashboardService } from './dashboard.service';
+       @if (forecast.error()) {
+         <p role="alert" data-testid="forecast-error">Could not load the forecast.</p>
+       } @else if (forecast.value(); as f) {
++        <p>
++          Expected in the next 30 days ({{ f.next30Days.from }} to {{ f.next30Days.to }}):
++          <strong data-testid="forecast-30day-total">{{ f.next30Days.total | money: f.homeCurrency }}</strong>
++        </p>
+         @if (f.entries.length === 0) {
+           <p data-testid="forecast-empty">No instalments expected in.</p>
+         } @else {
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index b02650e..fdc467f 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -163,11 +163,23 @@ export interface ForecastEntry {
+   clientName: string;
+ }
+ 
++/**
++ * What falls due on or between two dates, in the home currency: unpaid instalments due in the window, and what is
++ * left to pay on sent invoices without instalments that are due in it. Disputed and already-overdue amounts are left out.
++ */
++export interface ForecastWindow {
++  from: string;
++  to: string;
++  total: number;
++}
++
+ /** The money expected in from instalments still to be paid, earliest due first, with the total in the home currency. */
+ export interface Forecast {
+   homeCurrency: CurrencyCode;
+   entries: ForecastEntry[];
+   total: number;
++  /** What can be expected to be collected over the next 30 days. */
++  next30Days: ForecastWindow;
+ }
+ 
+ /**
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index edcea69..3baa297 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -343,7 +343,46 @@ public class DashboardService {
+                     currency, invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
+                     invoice.getProject().getClient().getName()));
+         }
+-        return new ForecastResponse(home, entries, total.setScale(2, RoundingMode.HALF_UP));
++        LocalDate today = LocalDate.now(clock);
++        return new ForecastResponse(home, entries, total.setScale(2, RoundingMode.HALF_UP),
++                dueWithin(List.copyOf(open.values()), today, today.plusDays(FORECAST_DAYS), home));
++    }
++
++    /** How many days ahead the forecast of what can be collected looks. */
++    static final int FORECAST_DAYS = 30;
++
++    /**
++     * What can be expected to be collected on or between the given dates, in the home currency, from the given open
++     * invoices (disputed ones are left out): an invoice paid by instalments brings in its unpaid instalments due in the
++     * window; any other brings in what is left to pay on it when its due date is in the window. Anything already
++     * overdue is not counted. A foreign amount converts at its invoice's issue date's rate; one that cannot be
++     * converted is left out.
++     */
++    private ForecastResponse.Window dueWithin(List<Invoice> open, LocalDate from, LocalDate to, String home) {
++        List<Invoice> undisputed = open.stream().filter(i -> !i.isDisputed()).toList();
++        Map<Long, List<Instalment>> scheduled = undisputed.isEmpty() ? Map.of()
++                : instalments.findByInvoiceIdIn(undisputed.stream().map(Invoice::getId).toList()).stream()
++                        .collect(Collectors.groupingBy(Instalment::getInvoiceId));
++        BigDecimal total = BigDecimal.ZERO;
++        List<Invoice> unscheduled = new ArrayList<>();
++        for (Invoice invoice : undisputed) {
++            List<Instalment> plan = scheduled.get(invoice.getId());
++            if (plan == null) {
++                if (invoice.getDueDate() != null && !invoice.getDueDate().isBefore(from)
++                        && !invoice.getDueDate().isAfter(to)) {
++                    unscheduled.add(invoice);
++                }
++                continue;
++            }
++            BigDecimal due = plan.stream().filter(i -> !i.isPaid())
++                    .filter(i -> !i.getDueDate().isBefore(from) && !i.getDueDate().isAfter(to))
++                    .map(Instalment::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
++            String currency = invoice.getCurrency();
++            total = total.add(currency.equals(home) ? due
++                    : fxRates.toHome(currency, invoice.getIssuedDate(), due).orElse(BigDecimal.ZERO));
++        }
++        total = total.add(sum(inHome(unscheduled, home, from, false)));
++        return new ForecastResponse.Window(from, to, total.setScale(2, RoundingMode.HALF_UP));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/ForecastResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/ForecastResponse.java
+index b986df8..814acc0 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/ForecastResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/ForecastResponse.java
+@@ -7,9 +7,17 @@ import java.util.List;
+ /**
+  * A simple cash-flow forecast: the money expected in from instalments still to be paid on invoices that have been
+  * sent, earliest due first, each in its invoice's currency, and all of them together as one total in the home
+- * currency (each converted at the exchange rate from its invoice's issue date).
++ * currency (each converted at the exchange rate from its invoice's issue date). Also what can be expected to be
++ * collected in the next 30 days (see {@link Window}).
+  */
+-public record ForecastResponse(String homeCurrency, List<Entry> entries, BigDecimal total) {
++public record ForecastResponse(String homeCurrency, List<Entry> entries, BigDecimal total, Window next30Days) {
++
++    /**
++     * What falls due on or between two dates, in the home currency: on a sent invoice paid by instalments, its unpaid
++     * instalments due in the window; on any other sent invoice, what is left to pay on it when it is due in the window.
++     */
++    public record Window(LocalDate from, LocalDate to, BigDecimal total) {
++    }
+ 
+     /** One instalment expected in: when it is due, how much, and which invoice, job and client it is from. */
+     public record Entry(Long id, LocalDate date, BigDecimal amount, String currency, Long invoiceId, Long projectId,
