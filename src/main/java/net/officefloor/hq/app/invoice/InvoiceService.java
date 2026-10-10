@@ -158,7 +158,7 @@ public class InvoiceService {
      * A client's statement for the given date range (both ends included): the balance owed at the start of it, the
      * entries dated within it in date order each carrying the running balance, the net movement within it, and the
      * balance owed at its end (always the opening balance plus the movements). The payments received within it are
-     * also listed and totalled on their own.
+     * also listed and totalled on their own, as are the credit notes issued within it.
      */
     @Transactional(readOnly = true)
     public ClientStatementRangeResponse statementForRange(Long clientId, LocalDate from, LocalDate to) {
@@ -189,8 +189,14 @@ public class InvoiceService {
         BigDecimal paymentsTotal = paymentsWithin.stream()
                 .map(StatementEntry::credit)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        List<StatementEntry> creditsWithin = within.stream()
+                .filter(e -> e.kind() == StatementEntry.Kind.CREDIT_NOTE)
+                .toList();
+        BigDecimal creditsTotal = creditsWithin.stream()
+                .map(StatementEntry::credit)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         return new ClientStatementRangeResponse(client.getId(), client.getCurrency(), from, to, opening, within,
-                movements, opening.add(movements), paymentsWithin, paymentsTotal);
+                movements, opening.add(movements), paymentsWithin, paymentsTotal, creditsWithin, creditsTotal);
     }
 
     /**
