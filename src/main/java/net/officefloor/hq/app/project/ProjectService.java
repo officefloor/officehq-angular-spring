@@ -182,6 +182,20 @@ public class ProjectService {
         return ProjectResponse.from(project);
     }
 
+    /** Notes (or, given none, clears) a job's file reference, recording the change in the audit log. */
+    @Transactional
+    public ProjectResponse setFileRef(Long id, String fileRef) {
+        String ref = fileRef == null || fileRef.isBlank() ? null : fileRef.trim();
+        Project project = projects.findByIdWithClient(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+        if (!Objects.equals(project.getFileRef(), ref)) {
+            project.setFileRef(ref);
+            projects.flush();
+            audit.record("PROJECT_FILE_REF_SET id=" + id + " fileRef=" + (ref == null ? "none" : ref));
+        }
+        return ProjectResponse.from(project);
+    }
+
     /** Closes a job so no new invoice can be raised on it, recording the closing in the audit log. */
     @Transactional
     public ProjectResponse close(Long id) {

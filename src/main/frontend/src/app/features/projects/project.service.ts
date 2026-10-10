@@ -33,6 +33,8 @@ export interface Project {
   startDate: string | null;
   /** The day work on the job ends (YYYY-MM-DD); null when not set. */
   endDate: string | null;
+  /** A reference to a file kept elsewhere for the job (e.g. a document number); null when none was noted. */
+  fileRef: string | null;
 }
 
 /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
@@ -93,6 +95,10 @@ export class ProjectService {
 
   setDates(id: number, startDate: string | null, endDate: string | null): Observable<Project> {
     return this.http.put<Project>(`/api/projects/${id}/dates`, { startDate, endDate });
+  }
+
+  setFileRef(id: number, fileRef: string | null): Observable<Project> {
+    return this.http.put<Project>(`/api/projects/${id}/file-ref`, { fileRef });
   }
 
   budget(id: number): Observable<ProjectBudget> {

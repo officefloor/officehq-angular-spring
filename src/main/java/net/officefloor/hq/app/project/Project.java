@@ -53,6 +53,8 @@ public class Project {
 
     private LocalDate endDate;
 
+    private String fileRef;
+
     @ManyToMany
     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
             inverseJoinColumns = @JoinColumn(name = "tag_id"))
@@ -149,6 +151,15 @@ public class Project {
     public void setDates(LocalDate startDate, LocalDate endDate) {
         this.startDate = startDate;
         this.endDate = endDate;
+    }
+
+    /** A reference to a file kept elsewhere for the job (e.g. a document number), or null when none was noted. */
+    public String getFileRef() {
+        return fileRef;
+    }
+
+    public void setFileRef(String fileRef) {
+        this.fileRef = fileRef;
     }
 
     /** The tags labelling this project; add or remove to tag or untag it. */

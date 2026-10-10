@@ -55,6 +55,11 @@ public class ProjectController {
         return service.setDates(id, request.startDate(), request.endDate());
     }
 
+    @PutMapping("/{id}/file-ref")
+    public ProjectResponse setFileRef(@PathVariable Long id, @Valid @RequestBody ProjectFileRefRequest request) {
+        return service.setFileRef(id, request.fileRef());
+    }
+
     @GetMapping("/{id}/budget")
     public ProjectBudgetResponse budget(@PathVariable Long id) {
         return service.budget(id);
