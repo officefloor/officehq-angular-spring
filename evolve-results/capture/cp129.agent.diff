@@ -1,0 +1,304 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index da138f5..0d5b0cc 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -394,6 +394,25 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 }
+               </tr>
+             }
++            @if (inv.retentionPct > 0) {
++              <tr data-testid="invoice-retention-row">
++                <th scope="row" colspan="5">
++                  Retention held back, not due yet
++                  (<span data-testid="invoice-retention-pct">{{ inv.retentionPct | number: '1.0-2' : 'en-US' }}</span>%)
++                </th>
++                <td data-testid="invoice-retention">{{ inv.retention | money: inv.currency }}</td>
++                @if (inv.status === 'DRAFT') {
++                  <td></td>
++                }
++              </tr>
++              <tr data-testid="invoice-due-now-row">
++                <th scope="row" colspan="5">Due now</th>
++                <td data-testid="invoice-due-now">{{ inv.dueNow | money: inv.currency }}</td>
++                @if (inv.status === 'DRAFT') {
++                  <td></td>
++                }
++              </tr>
++            }
+           </tfoot>
+         </table>
+         @if (editError()) {
+@@ -669,6 +688,34 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+           }
+         </form>
+ 
++        <form [formGroup]="retentionForm" (ngSubmit)="applyRetention()" data-testid="retention-form" novalidate>
++          <h2>Retention</h2>
++          <div>
++            <label for="retention-pct">Percentage held back, not due yet</label>
++            <input
++              id="retention-pct"
++              type="number"
++              inputmode="decimal"
++              min="0"
++              max="100"
++              step="0.01"
++              formControlName="retentionPct"
++              data-testid="retention-form-pct"
++              [attr.aria-invalid]="retentionInvalid()"
++              [attr.aria-describedby]="retentionInvalid() ? 'retention-pct-error' : null"
++            />
++            @if (retentionInvalid()) {
++              <p id="retention-pct-error" role="alert" data-testid="retention-form-pct-error">
++                Enter a percentage from 0 to 100 with at most two decimal places.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="retention-form-submit" [disabled]="retentionSaving()">Apply retention</button>
++          @if (retentionError()) {
++            <p role="alert" data-testid="retention-form-error">{{ retentionError() }}</p>
++          }
++        </form>
++
+         <form [formGroup]="form" (ngSubmit)="submit()" data-testid="lineitem-form" novalidate>
+           <h2>Add a line item</h2>
+           <div>
+@@ -1200,6 +1247,46 @@ export class InvoiceDetailPage {
+       });
+   }
+ 
++  protected readonly retentionSaving = signal(false);
++  protected readonly retentionError = signal<string | null>(null);
++
++  protected readonly retentionForm = this.fb.group({
++    retentionPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
++  });
++
++  // Starts the retention field from the invoice's current retention whenever the invoice loads.
++  private readonly syncRetention = effect(() => {
++    if (this.invoice.hasValue()) {
++      this.retentionForm.setValue({ retentionPct: String(this.invoice.value().retentionPct) });
++    }
++  });
++
++  protected retentionInvalid(): boolean {
++    const control = this.retentionForm.controls.retentionPct;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected applyRetention(): void {
++    if (this.retentionForm.invalid) {
++      this.retentionForm.markAllAsTouched();
++      return;
++    }
++    this.retentionSaving.set(true);
++    this.retentionError.set(null);
++    this.service
++      .applyRetention(this.projectIdNumber(), Number(this.invoiceId()), Number(this.retentionForm.getRawValue().retentionPct))
++      .subscribe({
++        next: (updated) => {
++          this.invoice.set(updated);
++          this.retentionSaving.set(false);
++        },
++        error: () => {
++          this.retentionError.set('Could not apply the retention. Please try again.');
++          this.retentionSaving.set(false);
++        },
++      });
++  }
++
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 65550fe..58d2784 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -207,6 +207,12 @@ export interface InvoiceDetail extends Invoice {
+   daysLate: number;
+   /** The late fee accrued so far: the fee per day times the days overdue. */
+   lateFee: number;
++  /** The percentage of the amount held back as retention; zero when none is held back. */
++  retentionPct: number;
++  /** The amount held back as retention, which is not due yet. */
++  retention: number;
++  /** What is due now: the amount less the retention held back. */
++  dueNow: number;
+ }
+ 
+ export interface NewLineItem {
+@@ -337,6 +343,11 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/late-fee`, { lateFeePerDay });
+   }
+ 
++  /** Sets the percentage of a draft invoice held back as retention, not due yet; zero holds none back. */
++  applyRetention(projectId: number, invoiceId: number, retentionPct: number): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/retention`, { retentionPct });
++  }
++
+   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index ef7532c..889083d 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -280,13 +280,15 @@ public class TestSupportController {
+             // An invoice may be billed in its own currency ("currency"); without one it is in its client's.
+             // A late fee per day accrues once the invoice is overdue; it does not change the amount invoiced.
+             BigDecimal lateFeePerDay = decimal(i.get("lateFeePerDay"));
++            // A percentage may be held back as retention; it is not due yet but does not change the amount invoiced.
++            BigDecimal retentionPct = decimal(i.get("retentionPct"));
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, currency)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, retention_pct, currency)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
+                     surcharge, taxInclusive, taxExempt,
+-                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay,
++                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, retentionPct,
+                     i.get("currency") == null ? null : i.get("currency").toString());
+             for (Map<String, Object> d : discounts) {
+                 if (d.get("id") != null) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 78cd5c1..dadb651 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -100,6 +100,10 @@ public class Invoice {
+     @Column(name = "late_fee_per_day", nullable = false, precision = 12, scale = 2)
+     private BigDecimal lateFeePerDay = BigDecimal.ZERO.setScale(2);
+ 
++    /** The percentage of the amount held back as retention, not due yet; zero when none is held back. */
++    @Column(name = "retention_pct", nullable = false, precision = 5, scale = 2)
++    private BigDecimal retentionPct = BigDecimal.ZERO.setScale(2);
++
+     @Enumerated(EnumType.STRING)
+     @Column(nullable = false, length = 16)
+     private InvoiceStatus status = InvoiceStatus.DRAFT;
+@@ -526,6 +530,25 @@ public class Invoice {
+         return lateFeePerDay;
+     }
+ 
++    /** Sets the percentage of this invoice held back as retention. It does not change the amount invoiced. */
++    public void applyRetention(BigDecimal retentionPct) {
++        this.retentionPct = retentionPct.setScale(2, RoundingMode.HALF_UP);
++    }
++
++    public BigDecimal getRetentionPct() {
++        return retentionPct;
++    }
++
++    /** The amount held back as retention: the retention percentage of the amount invoiced. */
++    public BigDecimal getRetention() {
++        return percentOf(amount, retentionPct);
++    }
++
++    /** What is due now: the amount invoiced less the retention held back. */
++    public BigDecimal getDueNow() {
++        return amount.subtract(getRetention());
++    }
++
+     /**
+      * How many days past its due date the invoice is on the given day; zero unless it has been sent and
+      * is still owed (sent or part paid).
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index 9038b17..3c99fb6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -113,6 +113,12 @@ public class InvoiceController {
+         return service.applyLateFee(projectId, invoiceId, request);
+     }
+ 
++    @PutMapping("/{invoiceId}/retention")
++    public InvoiceDetailResponse applyRetention(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody RetentionRequest request) {
++        return service.applyRetention(projectId, invoiceId, request);
++    }
++
+     @PostMapping("/{invoiceId}/send")
+     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.send(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 485301d..1bc1528 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -19,7 +19,8 @@ import java.util.List;
+  * the home currency and its amount converted into it at the exchange rate from the invoice's issue date
+  * (null when the invoice is already in the home currency or there is no rate for that date). The late
+  * fee charged per day overdue, the days the invoice is overdue as of today (only while sent and still
+- * owed), and the late fee that has accrued over them.
++ * owed), and the late fee that has accrued over them. The percentage held back as retention, the amount
++ * it holds back (not due yet), and what is due now without it.
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+@@ -30,7 +31,8 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts,
+         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
+         String homeCurrency, BigDecimal homeAmount,
+-        BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee) {
++        BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee,
++        BigDecimal retentionPct, BigDecimal retention, BigDecimal dueNow) {
+ 
+     /**
+      * The invoice with the given status, as worked out from what has been paid and credited against it, and
+@@ -53,6 +55,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+                         d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList(),
+                 invoice.getMinimumCharge(), invoice.getNetTotal(), invoice.isMinimumApplied(),
+                 invoice.getTotalSavings(), homeCurrency, homeAmount,
+-                invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today));
++                invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today),
++                invoice.getRetentionPct(), invoice.getRetention(), invoice.getDueNow());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 466c43d..82d6862 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -372,6 +372,15 @@ public class InvoiceService {
+         return detail(invoice);
+     }
+ 
++    /** Sets the percentage of a draft invoice held back as retention, not due yet. */
++    @Transactional
++    public InvoiceDetailResponse applyRetention(Long projectId, Long invoiceId, RetentionRequest request) {
++        Invoice invoice = findDraft(projectId, invoiceId);
++        invoice.applyRetention(request.retentionPct());
++        invoices.flush();
++        return detail(invoice);
++    }
++
+     /** Sends a draft invoice and records the sending in the audit log. */
+     @Transactional
+     public InvoiceResponse send(Long projectId, Long invoiceId) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/RetentionRequest.java b/src/main/java/net/officefloor/hq/app/invoice/RetentionRequest.java
+new file mode 100644
+index 0000000..7953e85
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/RetentionRequest.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.constraints.DecimalMax;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/** Payload to set the percentage of a draft invoice held back as retention; zero holds none back. */
++public record RetentionRequest(
++        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal retentionPct) {
++}
+diff --git a/src/main/resources/db/migration/V69__invoice_retention.sql b/src/main/resources/db/migration/V69__invoice_retention.sql
+new file mode 100644
+index 0000000..c10811a
+--- /dev/null
++++ b/src/main/resources/db/migration/V69__invoice_retention.sql
+@@ -0,0 +1,5 @@
++-- A percentage of an invoice may be held back as retention: part of the amount invoiced that is not
++-- due yet. Existing invoices hold none back.
++ALTER TABLE invoice ADD COLUMN retention_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_retention_pct_range CHECK (retention_pct >= 0 AND retention_pct <= 100);
