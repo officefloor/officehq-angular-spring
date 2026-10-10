@@ -118,8 +118,24 @@ public class DashboardService {
         Map<Invoice, BigDecimal> owedInHome = inHome(
                 invoices.findByStatusInWithClient(List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL)), home, today, false);
         DashboardResponse.OverdueBuckets aged = buckets(owedInHome, today);
+        List<AgingReportResponse.Line> lines = owedInHome.entrySet().stream().map(e -> {
+            Invoice invoice = e.getKey();
+            long days = daysOverdue(invoice, today);
+            AgingReportResponse.Bucket bucket = days > 60 ? AgingReportResponse.Bucket.DAYS_60_PLUS
+                    : days > 30 ? AgingReportResponse.Bucket.DAYS_30_60 : AgingReportResponse.Bucket.CURRENT;
+            return new AgingReportResponse.Line(invoice.getId(), invoice.getProject().getId(),
+                    invoice.getProject().getClient().getId(), invoice.getProject().getClient().getName(),
+                    invoice.getDueDate(), Math.max(0, days), bucket, e.getValue().setScale(2, RoundingMode.HALF_UP));
+        }).sorted(Comparator.comparingLong(AgingReportResponse.Line::daysOverdue).reversed()
+                .thenComparing(AgingReportResponse.Line::invoiceId)).toList();
         return new AgingReportResponse(today, home, aged.days0To30(), aged.days31To60(), aged.days60Plus(),
-                sum(owedInHome));
+                sum(owedInHome), lines);
+    }
+
+    /** How many days past its due date an invoice is as at today; one without a due date is not overdue. */
+    private static long daysOverdue(Invoice invoice, LocalDate today) {
+        LocalDate dueDate = invoice.getDueDate();
+        return dueDate == null ? 0 : ChronoUnit.DAYS.between(dueDate, today);
     }
 
     /**
@@ -131,8 +147,7 @@ public class DashboardService {
         BigDecimal days31To60 = BigDecimal.ZERO;
         BigDecimal days60Plus = BigDecimal.ZERO;
         for (Map.Entry<Invoice, BigDecimal> e : overdueInHome.entrySet()) {
-            LocalDate dueDate = e.getKey().getDueDate();
-            long days = dueDate == null ? 0 : ChronoUnit.DAYS.between(dueDate, today);
+            long days = daysOverdue(e.getKey(), today);
             if (days > 60) {
                 days60Plus = days60Plus.add(e.getValue());
             } else if (days > 30) {

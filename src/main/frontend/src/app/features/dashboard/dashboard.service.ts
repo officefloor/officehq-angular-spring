@@ -148,6 +148,22 @@ export interface AgingReport {
   days30To60: number;
   days60Plus: number;
   total: number;
+  invoices: AgingReportLine[];
+}
+
+/** The age bucket an invoice falls in on the aging report. */
+export type AgingBucket = 'CURRENT' | 'DAYS_30_60' | 'DAYS_60_PLUS';
+
+/** One invoice behind the aging report: what is left to pay on it in the home currency, and its bucket. */
+export interface AgingReportLine {
+  invoiceId: number;
+  projectId: number;
+  clientId: number;
+  clientName: string;
+  dueDate: string | null;
+  daysOverdue: number;
+  bucket: AgingBucket;
+  amount: number;
 }
 
 @Injectable({ providedIn: 'root' })
