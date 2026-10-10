@@ -53,6 +53,10 @@ export interface DashboardSummary {
   billingsThisMonth: number;
   /** What has been collected over what was billed (sent invoices), as a whole percentage in the home currency; null when nothing has been billed. */
   collectionRate: number | null;
+  /** What was billed (invoices issued and sent) from the start of the year to today, in the home currency. */
+  billingsYearToDate: number;
+  /** What was collected (payments received) from the start of the year to today, in the home currency. */
+  collectedYearToDate: number;
 }
 
 /** The tax charged on invoices issued on or between two dates, in the home currency. */

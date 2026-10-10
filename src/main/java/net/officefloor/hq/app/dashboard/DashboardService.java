@@ -25,6 +25,7 @@ import net.officefloor.hq.app.instalment.InstalmentRepository;
 import net.officefloor.hq.app.invoice.Invoice;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
+import net.officefloor.hq.app.payment.Payment;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.ProjectRepository;
 import net.officefloor.hq.app.settings.RecognitionBasis;
@@ -107,7 +108,27 @@ public class DashboardService {
         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
                 overdueBuckets, top, tasks.countByDoneFalse(), tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
                 clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home),
-                collectionRate(home));
+                collectionRate(home), billings(today.withDayOfYear(1), today, home),
+                collected(today.withDayOfYear(1), today, home));
+    }
+
+    /**
+     * What was collected on or between the given dates, in the home currency: the payments received in the range,
+     * each converted at its invoice's issue date's rate (a payment that cannot be converted is left out).
+     */
+    private BigDecimal collected(LocalDate from, LocalDate to, String home) {
+        List<Payment> received = payments.findByDateBetween(from, to);
+        Map<Long, Invoice> paidInvoices = invoices.findAllById(received.stream()
+                .map(Payment::getInvoiceId).distinct().toList()).stream()
+                .collect(Collectors.toMap(Invoice::getId, i -> i));
+        return received.stream().map(p -> {
+            Invoice invoice = paidInvoices.get(p.getInvoiceId());
+            if (invoice == null) {
+                return Optional.<BigDecimal>empty();
+            }
+            return invoice.getCurrency().equals(home) ? Optional.of(p.getAmount())
+                    : fxRates.toHome(invoice.getCurrency(), invoice.getIssuedDate(), p.getAmount());
+        }).flatMap(Optional::stream).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**

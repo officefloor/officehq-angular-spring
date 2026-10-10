@@ -8,7 +8,7 @@ import { TaxReport } from './tax-report';
 import { TaxSummaryReport } from './tax-summary';
 import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 
-// Dashboard page: how many clients and projects there are (and how many clients were taken on this month), what was billed this month in the home currency,, and the total still owed in each currency
+// Dashboard page: how many clients and projects there are (and how many clients were taken on this month), what was billed this month and year to date in the home currency, what was collected year to date, and the total still owed in each currency
 // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
 // counted), plus one grand total of it in the home currency with each invoice converted at the
 // exchange rate from its own issue date (leaving out disputed and written-off invoices), and how many of those sent
@@ -52,6 +52,14 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
         <div>
           <dt>Billed this month (in {{ s.homeCurrency }})</dt>
           <dd data-testid="kpi-billings-month">{{ s.billingsThisMonth | money: s.homeCurrency }}</dd>
+        </div>
+        <div>
+          <dt>Billed this year (in {{ s.homeCurrency }})</dt>
+          <dd data-testid="kpi-ytd-billings">{{ s.billingsYearToDate | money: s.homeCurrency }}</dd>
+        </div>
+        <div>
+          <dt>Collected this year (in {{ s.homeCurrency }})</dt>
+          <dd data-testid="kpi-ytd-collected">{{ s.collectedYearToDate | money: s.homeCurrency }}</dd>
         </div>
         <div>
           <dt>Collection rate (collected of what was billed)</dt>

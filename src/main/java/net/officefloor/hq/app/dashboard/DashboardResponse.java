@@ -13,13 +13,15 @@ import java.util.List;
  * and the average number of days clients take to pay (from issue date to final payment on paid invoices; null when
  * there are none), and how many new clients were taken on in the current month, and what was billed (invoices issued and sent) in the current month, in the home
  * currency, and the share of everything billed that has been collected as a whole percentage (null when nothing
- * has been billed).
+ * has been billed), and what was billed and what was collected (payments received) from the start of the year to
+ * today, in the home currency.
  */
 public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
         BigDecimal outstandingHome, long overdue,
         String homeCurrency, BigDecimal overdueAmount, OverdueBuckets overdueBuckets, List<TopClient> topClients,
         long openTasks, long overdueTasks, Long averageDaysToPay, long newClientsThisMonth,
-        BigDecimal billingsThisMonth, Long collectionRate) {
+        BigDecimal billingsThisMonth, Long collectionRate, BigDecimal billingsYearToDate,
+        BigDecimal collectedYearToDate) {
 
     /** What is still owed in one currency. */
     public record CurrencyTotal(String currency, BigDecimal amount) {
