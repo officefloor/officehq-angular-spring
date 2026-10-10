@@ -6,6 +6,9 @@ import { Invoice } from '../invoices/invoice.service';
 /** How often a recurring invoice repeats. */
 export type RecurringFrequency = 'MONTHLY';
 
+/** Whether a recurring invoice is generating, or paused so it does not. */
+export type RecurringStatus = 'ACTIVE' | 'PAUSED';
+
 /** An invoice on a project that repeats on a schedule for a fixed amount. */
 export interface RecurringInvoice {
   id: number;
@@ -14,12 +17,13 @@ export interface RecurringInvoice {
   frequency: RecurringFrequency;
   /** ISO date (yyyy-MM-dd) the next invoice falls on. */
   nextDate: string;
+  status: RecurringStatus;
   /** Whether the next invoice has fallen due, so it can be raised now. */
   due: boolean;
 }
 
 /** A recurring invoice that is coming up, with the project and client it bills and the currency it is in. */
-export interface UpcomingRecurringInvoice extends Omit<RecurringInvoice, 'due'> {
+export interface UpcomingRecurringInvoice extends Omit<RecurringInvoice, 'due' | 'status'> {
   projectName: string;
   clientId: number;
   clientName: string;
@@ -52,5 +56,15 @@ export class RecurringInvoiceService {
   /** Raises the invoice the schedule has fallen due for, as a draft to review before sending. */
   generate(projectId: number, recurringId: number): Observable<Invoice> {
     return this.http.post<Invoice>(`/api/projects/${projectId}/recurring-invoices/${recurringId}/generate`, {});
+  }
+
+  /** Pauses the schedule so it stops generating invoices. */
+  pause(projectId: number, recurringId: number): Observable<RecurringInvoice> {
+    return this.http.post<RecurringInvoice>(`/api/projects/${projectId}/recurring-invoices/${recurringId}/pause`, {});
+  }
+
+  /** Resumes a paused schedule so it generates invoices again. */
+  resume(projectId: number, recurringId: number): Observable<RecurringInvoice> {
+    return this.http.post<RecurringInvoice>(`/api/projects/${projectId}/recurring-invoices/${recurringId}/resume`, {});
   }
 }

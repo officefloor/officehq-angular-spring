@@ -43,10 +43,11 @@ public class RecurringInvoiceService {
                 .map(r -> RecurringInvoiceResponse.from(r, today)).toList();
     }
 
-    /** The recurring invoices across all projects next falling today or later, soonest first. */
+    /** The active recurring invoices across all projects next falling today or later, soonest first. */
     @Transactional(readOnly = true)
     public List<UpcomingRecurringInvoiceResponse> upcoming() {
-        List<RecurringInvoice> found = recurring.findByNextDateGreaterThanEqualOrderByNextDateAscIdAsc(LocalDate.now(clock));
+        List<RecurringInvoice> found = recurring.findByStatusAndNextDateGreaterThanEqualOrderByNextDateAscIdAsc(
+                RecurringStatus.ACTIVE, LocalDate.now(clock));
         List<Long> projectIds = found.stream().map(RecurringInvoice::getProjectId).distinct().toList();
         Map<Long, Project> byId = projects.findAllById(projectIds).stream()
                 .collect(Collectors.toMap(Project::getId, Function.identity()));
@@ -70,9 +71,10 @@ public class RecurringInvoiceService {
      */
     @Transactional
     public InvoiceResponse generate(Long projectId, Long recurringId) {
-        RecurringInvoice schedule = recurring.findById(recurringId)
-                .filter(r -> r.getProjectId().equals(projectId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown recurring invoice"));
+        RecurringInvoice schedule = requireSchedule(projectId, recurringId);
+        if (schedule.isPaused()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The recurring invoice is paused");
+        }
         LocalDate due = schedule.getNextDate();
         if (due.isAfter(LocalDate.now(clock))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The recurring invoice is not due yet");
@@ -83,6 +85,36 @@ public class RecurringInvoiceService {
         audit.record("RECURRING_INVOICE_GENERATED id=" + recurringId + " project=" + projectId
                 + " invoice=" + invoice.id() + " status=" + invoice.status() + " nextDate=" + schedule.getNextDate());
         return invoice;
+    }
+
+    /** Pauses the schedule so it stops generating invoices until it is resumed. */
+    @Transactional
+    public RecurringInvoiceResponse pause(Long projectId, Long recurringId) {
+        RecurringInvoice schedule = requireSchedule(projectId, recurringId);
+        if (!schedule.isPaused()) {
+            schedule.pause();
+            recurring.saveAndFlush(schedule);
+            audit.record("RECURRING_INVOICE_PAUSED id=" + recurringId + " project=" + projectId);
+        }
+        return RecurringInvoiceResponse.from(schedule, LocalDate.now(clock));
+    }
+
+    /** Resumes a paused schedule so it generates invoices again. */
+    @Transactional
+    public RecurringInvoiceResponse resume(Long projectId, Long recurringId) {
+        RecurringInvoice schedule = requireSchedule(projectId, recurringId);
+        if (schedule.isPaused()) {
+            schedule.resume();
+            recurring.saveAndFlush(schedule);
+            audit.record("RECURRING_INVOICE_RESUMED id=" + recurringId + " project=" + projectId);
+        }
+        return RecurringInvoiceResponse.from(schedule, LocalDate.now(clock));
+    }
+
+    private RecurringInvoice requireSchedule(Long projectId, Long recurringId) {
+        return recurring.findById(recurringId)
+                .filter(r -> r.getProjectId().equals(projectId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown recurring invoice"));
     }
 
     private void requireProject(Long projectId) {

@@ -2,7 +2,8 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MoneyPipe } from '../currencies/money.pipe';
-import { RecurringInvoiceService } from './recurring-invoice.service';
+import { Observable } from 'rxjs';
+import { RecurringInvoice, RecurringInvoiceService } from './recurring-invoice.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
@@ -25,6 +26,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                 <th scope="col">Amount</th>
                 <th scope="col">Repeats</th>
                 <th scope="col">Next invoice</th>
+                <th scope="col">Status</th>
                 <th scope="col"><span class="visually-hidden">Actions</span></th>
               </tr>
             </thead>
@@ -34,7 +36,29 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                   <td data-testid="recurring-amount">{{ r.amount | money: currency() }}</td>
                   <td data-testid="recurring-frequency">{{ r.frequency }}</td>
                   <td data-testid="recurring-next-date">{{ r.nextDate }}</td>
+                  <td data-testid="recurring-status">{{ r.status }}</td>
                   <td>
+                    @if (r.status === 'PAUSED') {
+                      <button
+                        type="button"
+                        [attr.data-testid]="'recurring-resume-' + r.id"
+                        [attr.aria-label]="'Resume recurring invoice next due ' + r.nextDate"
+                        [disabled]="toggling() === r.id"
+                        (click)="resume(r.id)"
+                      >
+                        Resume
+                      </button>
+                    } @else {
+                      <button
+                        type="button"
+                        [attr.data-testid]="'recurring-pause-' + r.id"
+                        [attr.aria-label]="'Pause recurring invoice next due ' + r.nextDate"
+                        [disabled]="toggling() === r.id"
+                        (click)="pause(r.id)"
+                      >
+                        Pause
+                      </button>
+                    }
                     @if (r.due) {
                       <button
                         type="button"
@@ -55,6 +79,9 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
       }
       @if (generateError()) {
         <p role="alert" data-testid="recurring-generate-error">{{ generateError() }}</p>
+      }
+      @if (toggleError()) {
+        <p role="alert" data-testid="recurring-toggle-error">{{ toggleError() }}</p>
       }
       @if (generated(); as id) {
         <p role="status" data-testid="recurring-generated">Draft invoice #{{ id }} created for review.</p>
@@ -130,6 +157,9 @@ export class ProjectRecurringInvoices {
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
 
+  protected readonly toggling = signal<number | null>(null);
+  protected readonly toggleError = signal<string | null>(null);
+
   protected readonly form = inject(NonNullableFormBuilder).group({
     amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
     nextDate: ['', [Validators.required]],
@@ -154,6 +184,29 @@ export class ProjectRecurringInvoices {
       error: () => {
         this.generating.set(null);
         this.generateError.set('Could not create the draft invoice. Please try again.');
+      },
+    });
+  }
+
+  protected pause(recurringId: number): void {
+    this.toggle(recurringId, this.service.pause(this.projectId(), recurringId), 'pause');
+  }
+
+  protected resume(recurringId: number): void {
+    this.toggle(recurringId, this.service.resume(this.projectId(), recurringId), 'resume');
+  }
+
+  private toggle(recurringId: number, request: Observable<RecurringInvoice>, action: string): void {
+    this.toggling.set(recurringId);
+    this.toggleError.set(null);
+    request.subscribe({
+      next: (updated) => {
+        this.toggling.set(null);
+        this.recurring.update((list) => list?.map((r) => (r.id === updated.id ? updated : r)));
+      },
+      error: () => {
+        this.toggling.set(null);
+        this.toggleError.set(`Could not ${action} the recurring invoice. Please try again.`);
       },
     });
   }

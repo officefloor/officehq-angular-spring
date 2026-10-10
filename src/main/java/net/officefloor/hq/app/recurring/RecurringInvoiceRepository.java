@@ -9,6 +9,7 @@ public interface RecurringInvoiceRepository extends JpaRepository<RecurringInvoi
     /** A project's recurring invoices, soonest next first. */
     List<RecurringInvoice> findByProjectIdOrderByNextDateAscIdAsc(Long projectId);
 
-    /** Every recurring invoice next falling on or after the given day, soonest first. */
-    List<RecurringInvoice> findByNextDateGreaterThanEqualOrderByNextDateAscIdAsc(LocalDate from);
+    /** Every recurring invoice in the given status next falling on or after the given day, soonest first. */
+    List<RecurringInvoice> findByStatusAndNextDateGreaterThanEqualOrderByNextDateAscIdAsc(RecurringStatus status,
+            LocalDate from);
 }

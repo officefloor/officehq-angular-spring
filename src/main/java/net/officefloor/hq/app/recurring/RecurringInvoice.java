@@ -33,6 +33,10 @@ public class RecurringInvoice {
     @Column(name = "next_date", nullable = false)
     private LocalDate nextDate;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private RecurringStatus status = RecurringStatus.ACTIVE;
+
     protected RecurringInvoice() {
     }
 
@@ -61,6 +65,24 @@ public class RecurringInvoice {
 
     public LocalDate getNextDate() {
         return nextDate;
+    }
+
+    public RecurringStatus getStatus() {
+        return status;
+    }
+
+    public boolean isPaused() {
+        return status == RecurringStatus.PAUSED;
+    }
+
+    /** Stops the schedule generating invoices until it is resumed. */
+    public void pause() {
+        this.status = RecurringStatus.PAUSED;
+    }
+
+    /** Lets a paused schedule generate invoices again. */
+    public void resume() {
+        this.status = RecurringStatus.ACTIVE;
     }
 
     /** Moves the schedule on to the date the invoice after this one falls on. */

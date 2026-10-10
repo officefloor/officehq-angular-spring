@@ -41,4 +41,16 @@ public class ProjectRecurringInvoiceController {
     public InvoiceResponse generate(@PathVariable Long projectId, @PathVariable Long recurringId) {
         return service.generate(projectId, recurringId);
     }
+
+    /** Pauses the recurring schedule so it stops generating invoices. */
+    @PostMapping("/{recurringId}/pause")
+    public RecurringInvoiceResponse pause(@PathVariable Long projectId, @PathVariable Long recurringId) {
+        return service.pause(projectId, recurringId);
+    }
+
+    /** Resumes a paused recurring schedule so it generates invoices again. */
+    @PostMapping("/{recurringId}/resume")
+    public RecurringInvoiceResponse resume(@PathVariable Long projectId, @PathVariable Long recurringId) {
+        return service.resume(projectId, recurringId);
+    }
 }
