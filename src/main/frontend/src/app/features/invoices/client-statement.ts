@@ -110,6 +110,7 @@ import { InvoiceService } from './invoice.service';
                 <tr>
                   <th scope="col">Date</th>
                   <th scope="col">Entry</th>
+                  <th scope="col">PO number</th>
                   <th scope="col" class="statement-money">Charges</th>
                   <th scope="col" class="statement-money">Credits</th>
                   <th scope="col" class="statement-money">Balance</th>
@@ -120,6 +121,7 @@ import { InvoiceService } from './invoice.service';
                   <tr [attr.data-testid]="'statement-entry-row-' + (n + 1)" [attr.data-kind]="e.kind">
                     <td data-testid="statement-entry-date">{{ e.date }}</td>
                     <td data-testid="statement-entry-description">{{ e.description }}</td>
+                    <td data-testid="statement-po">{{ e.poNumber }}</td>
                     <td class="statement-money" data-testid="statement-entry-charge">
                       @if (e.charge !== null) {
                         {{ e.charge | money: s.currency }}

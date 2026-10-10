@@ -83,6 +83,8 @@ export interface StatementEntry {
   charge: number | null;
   credit: number | null;
   balance: number;
+  /** The purchase-order number of the invoice the entry is for; null when it has none. */
+  poNumber: string | null;
 }
 
 /** A client's invoices across all their projects, also grouped by job, with the total they still owe. */

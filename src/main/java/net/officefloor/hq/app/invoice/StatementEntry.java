@@ -7,10 +7,11 @@ import java.util.Comparator;
 /**
  * One dated entry on a client's running account. An invoice is a charge; a payment, credit note or deposit is a
  * credit; a refund of unused credit is a charge again. The balance is what the client owes once this entry and every
- * one before it is counted (negative when the client is in credit). The invoice is the one the entry is for, if any.
+ * one before it is counted (negative when the client is in credit). The invoice is the one the entry is for, if any,
+ * and the purchase-order number is that invoice's, if it has one.
  */
 public record StatementEntry(Kind kind, Long sourceId, Long invoiceId, LocalDate date, String description,
-        BigDecimal charge, BigDecimal credit, BigDecimal balance) {
+        BigDecimal charge, BigDecimal credit, BigDecimal balance, String poNumber) {
 
     /** What an entry records, in the order entries on the same day are listed. */
     public enum Kind {
@@ -23,13 +24,15 @@ public record StatementEntry(Kind kind, Long sourceId, Long invoiceId, LocalDate
             .thenComparing(StatementEntry::sourceId);
 
     static StatementEntry charge(Kind kind, Long sourceId, Long invoiceId, LocalDate date, String description,
-            BigDecimal amount) {
-        return new StatementEntry(kind, sourceId, invoiceId, date, description, amount.setScale(2), null, null);
+            BigDecimal amount, String poNumber) {
+        return new StatementEntry(kind, sourceId, invoiceId, date, description, amount.setScale(2), null, null,
+                poNumber);
     }
 
     static StatementEntry credit(Kind kind, Long sourceId, Long invoiceId, LocalDate date, String description,
-            BigDecimal amount) {
-        return new StatementEntry(kind, sourceId, invoiceId, date, description, null, amount.setScale(2), null);
+            BigDecimal amount, String poNumber) {
+        return new StatementEntry(kind, sourceId, invoiceId, date, description, null, amount.setScale(2), null,
+                poNumber);
     }
 
     /** What this entry adds to what the client owes. */
@@ -38,6 +41,6 @@ public record StatementEntry(Kind kind, Long sourceId, Long invoiceId, LocalDate
     }
 
     StatementEntry withBalance(BigDecimal balance) {
-        return new StatementEntry(kind, sourceId, invoiceId, date, description, charge, credit, balance);
+        return new StatementEntry(kind, sourceId, invoiceId, date, description, charge, credit, balance, poNumber);
     }
 }

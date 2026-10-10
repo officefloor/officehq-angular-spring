@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -195,36 +196,43 @@ public class InvoiceService {
     private List<StatementEntry> accountEntries(Long clientId, List<Invoice> found) {
         List<StatementEntry> entries = new ArrayList<>();
         List<Long> sent = new ArrayList<>();
+        Map<Long, String> poNumbers = new HashMap<>();
         for (Invoice invoice : found) {
             if (invoice.getStatus() == InvoiceStatus.DRAFT) {
                 continue;
             }
             sent.add(invoice.getId());
+            if (invoice.getPoNumber() != null) {
+                poNumbers.put(invoice.getId(), invoice.getPoNumber());
+            }
             if (invoice.getStatus() != InvoiceStatus.VOID) {
                 entries.add(StatementEntry.charge(StatementEntry.Kind.INVOICE, invoice.getId(), invoice.getId(),
-                        invoice.getIssuedDate(), "Invoice #" + invoice.getId(), invoice.getAmount()));
+                        invoice.getIssuedDate(), "Invoice #" + invoice.getId(), invoice.getAmount(),
+                        invoice.getPoNumber()));
             }
         }
         if (!sent.isEmpty()) {
             for (Payment payment : payments.findByInvoiceIdIn(sent)) {
                 if (payment.getDepositApplicationId() == null) {
                     entries.add(StatementEntry.credit(StatementEntry.Kind.PAYMENT, payment.getId(), payment.getInvoiceId(),
-                            payment.getDate(), "Payment on invoice #" + payment.getInvoiceId(), payment.getAmount()));
+                            payment.getDate(), "Payment on invoice #" + payment.getInvoiceId(), payment.getAmount(),
+                            poNumbers.get(payment.getInvoiceId())));
                 }
             }
             for (CreditNote note : creditNotes.findByInvoiceIdIn(sent)) {
                 entries.add(StatementEntry.credit(StatementEntry.Kind.CREDIT_NOTE, note.getId(), note.getInvoiceId(),
                         LocalDate.ofInstant(note.getIssuedAt(), ZoneOffset.UTC),
-                        "Credit note on invoice #" + note.getInvoiceId(), note.getAmount()));
+                        "Credit note on invoice #" + note.getInvoiceId(), note.getAmount(),
+                        poNumbers.get(note.getInvoiceId())));
             }
         }
         for (Deposit deposit : deposits.findByClientIdOrderByDateAscIdAsc(clientId)) {
             entries.add(StatementEntry.credit(StatementEntry.Kind.DEPOSIT, deposit.getId(), null, deposit.getDate(),
-                    "Deposit", deposit.getAmount()));
+                    "Deposit", deposit.getAmount(), null));
         }
         for (Refund refund : refunds.findByClientIdOrderByDateDescIdDesc(clientId)) {
             entries.add(StatementEntry.charge(StatementEntry.Kind.REFUND, refund.getId(), null, refund.getDate(),
-                    "Refund", refund.getAmount()));
+                    "Refund", refund.getAmount(), null));
         }
         return entries;
     }
