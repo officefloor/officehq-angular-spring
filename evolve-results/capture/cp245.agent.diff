@@ -1,0 +1,236 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 278dec3..bbdaa5f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -1,5 +1,6 @@
+ import { DecimalPipe } from '@angular/common';
+ import { MoneyPipe } from '../currencies/money.pipe';
++import { InvoiceSentSnapshot } from './invoice-sent-snapshot';
+ import { Component, Injector, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
+ import { rxResource, toSignal } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+@@ -31,7 +32,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+-  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, InvoicePoNumber, Notes],
++  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, InvoicePoNumber, InvoiceSentSnapshot, Notes],
+   template: `
+     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
+     @if (invoice.error()) {
+@@ -89,6 +90,9 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+         <p>Client tax number: <span data-testid="invoice-client-tax-number">{{ inv.clientTaxNumber }}</span></p>
+       }
+       <app-invoice-po-number [invoice]="inv" (changed)="invoice.set($event)" />
++      @if (inv.sentSnapshot; as snapshot) {
++        <app-invoice-sent-snapshot [snapshot]="snapshot" [currency]="inv.currency" />
++      }
+ 
+       <section aria-labelledby="invoice-lineitems-heading">
+         <h2 id="invoice-lineitems-heading" tabindex="-1">Line items</h2>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-sent-snapshot.ts b/src/main/frontend/src/app/features/invoices/invoice-sent-snapshot.ts
+new file mode 100644
+index 0000000..7d60d5f
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/invoice-sent-snapshot.ts
+@@ -0,0 +1,38 @@
++import { Component, input, signal } from '@angular/core';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { CurrencyCode } from '../clients/client.service';
++import { InvoiceSnapshot } from './invoice.service';
++
++// A sent invoice as it read when it was sent, kept as it was even if the rules have changed since.
++@Component({
++  selector: 'app-invoice-sent-snapshot',
++  imports: [MoneyPipe],
++  template: `
++    <section aria-labelledby="invoice-snapshot-heading" data-testid="invoice-snapshot-section">
++      <h2 id="invoice-snapshot-heading">As sent</h2>
++      <button
++        type="button"
++        data-testid="invoice-snapshot-view"
++        aria-controls="invoice-snapshot-panel"
++        [attr.aria-expanded]="open()"
++        (click)="open.set(!open())"
++      >
++        {{ open() ? 'Hide invoice as sent' : 'View invoice as sent' }}
++      </button>
++      @if (open()) {
++        <dl id="invoice-snapshot-panel" data-testid="invoice-snapshot">
++          <dt>Sent on</dt>
++          <dd data-testid="invoice-snapshot-date">{{ snapshot().date }}</dd>
++          <dt>Total as sent</dt>
++          <dd data-testid="invoice-snapshot-total">{{ snapshot().total | money: currency() }}</dd>
++        </dl>
++      }
++    </section>
++  `,
++})
++export class InvoiceSentSnapshot {
++  readonly snapshot = input.required<InvoiceSnapshot>();
++  readonly currency = input.required<CurrencyCode>();
++
++  protected readonly open = signal(false);
++}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 12382cb..38dc33f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -293,6 +293,15 @@ export interface InvoiceDetail extends Invoice {
+   writeOffAmount: number;
+   /** What the client owes right now: what is left to pay after any payments and part written off, less the retention held back. */
+   amountDue: number;
++  /** The invoice as it read when it was sent, unaffected by later changes; null until it is sent. */
++  sentSnapshot: InvoiceSnapshot | null;
++}
++
++/** An invoice as it read when it was sent: the total it showed and the day it went out. */
++export interface InvoiceSnapshot {
++  total: number;
++  /** ISO date (YYYY-MM-DD). */
++  date: string;
+ }
+ 
+ export interface NewLineItem {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 64b266b..3ce920e 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -409,6 +409,17 @@ public class TestSupportController {
+                             Boolean.TRUE.equals(l.get("taxExempt")), lineDiscountPct(l));
+                 }
+             }
++            // A sent invoice keeps a snapshot of how it read when sent ("sentSnapshot": its total and the day it
++            // went out); without one it is taken as it reads now, sent on its issue date.
++            if (!InvoiceStatus.DRAFT.name().equals(seedStatus(i.get("status")))) {
++                @SuppressWarnings("unchecked")
++                Map<String, Object> snapshot = i.get("sentSnapshot") instanceof Map<?, ?> m
++                        ? (Map<String, Object>) m : Map.of();
++                jdbc.update("UPDATE invoice SET sent_snapshot_total = COALESCE(?, amount), sent_snapshot_date = ? WHERE id = ?",
++                        snapshot.get("total") == null ? null : decimal(snapshot.get("total")),
++                        snapshot.get("date") == null ? issued : LocalDate.parse(snapshot.get("date").toString()),
++                        invoiceId);
++            }
+             // The scheduled instalments the invoice is split into, each an amount due on a date and maybe paid.
+             for (Map<String, Object> n : rows(i, "instalments")) {
+                 jdbc.update("INSERT INTO invoice_instalment (id, invoice_id, amount, due_date, paid) VALUES (?, ?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 0f5987e..ece4118 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -124,6 +124,14 @@ public class Invoice {
+     @Column(nullable = false)
+     private boolean disputed;
+ 
++    /** The total the invoice showed when it was sent; null until it is sent. */
++    @Column(name = "sent_snapshot_total", precision = 12, scale = 2)
++    private BigDecimal sentSnapshotTotal;
++
++    /** The day the invoice was sent; null until it is sent. */
++    @Column(name = "sent_snapshot_date")
++    private LocalDate sentSnapshotDate;
++
+     @Enumerated(EnumType.STRING)
+     @Column(nullable = false, length = 16)
+     private InvoiceStatus status = InvoiceStatus.DRAFT;
+@@ -692,9 +700,17 @@ public class Invoice {
+         this.amount = getNetTotal().max(minimumCharge);
+     }
+ 
+-    /** Marks this invoice as sent to the client. */
+-    public void markSent() {
++    /** Marks this invoice as sent to the client on the given day, keeping a snapshot of its total as sent. */
++    public void markSent(LocalDate sentOn) {
+         this.status = InvoiceStatus.SENT;
++        this.sentSnapshotTotal = amount;
++        this.sentSnapshotDate = sentOn;
++    }
++
++    /** The invoice as it read when it was sent; empty until it is sent. */
++    public Optional<InvoiceSnapshot> getSentSnapshot() {
++        return sentSnapshotTotal == null ? Optional.empty()
++                : Optional.of(new InvoiceSnapshot(sentSnapshotTotal, sentSnapshotDate));
+     }
+ 
+     /** Cancels this invoice, so it is no longer owed. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 87115ec..ca8b7ee 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -28,6 +28,7 @@ import java.util.List;
+  * in the home currency by payments on a foreign invoice, from the rate moving between the invoice's issue date
+  * and each payment's date (null when the invoice is in the home currency, has no payments, or a rate is missing).
+  * The client's purchase-order number the invoice is raised against (null when none was given).
++ * The invoice as it read when it was sent, unaffected by later changes (null until it is sent).
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+@@ -41,7 +42,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+         String homeCurrency, BigDecimal homeAmount,
+         BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee,
+         BigDecimal retentionPct, BigDecimal retention, boolean retentionReleased, BigDecimal dueNow, BigDecimal writeOffAmount, BigDecimal amountDue,
+-        BigDecimal fxGainLoss, String poNumber) {
++        BigDecimal fxGainLoss, String poNumber, InvoiceSnapshot sentSnapshot) {
+ 
+     /**
+      * The invoice with the given status, as worked out from what has been paid and credited against it, and
+@@ -67,6 +68,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+                 invoice.getTotalSavings(), homeCurrency, homeAmount,
+                 invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today),
+                 invoice.getRetentionPct(), invoice.getRetention(), invoice.isRetentionReleased(), invoice.getDueNow(),
+-                invoice.getWriteOffAmount(), amountDue, fxGainLoss, invoice.getPoNumber());
++                invoice.getWriteOffAmount(), amountDue, fxGainLoss, invoice.getPoNumber(),
++                invoice.getSentSnapshot().orElse(null));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 632c2d0..8861873 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -596,7 +596,7 @@ public class InvoiceService {
+             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                     "Sending this invoice would take the client over their credit limit");
+         }
+-        invoice.markSent();
++        invoice.markSent(LocalDate.now(clock));
+         invoices.flush();
+         audit.record("INVOICE_SENT id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
+         return toResponse(invoice);
+@@ -628,7 +628,8 @@ public class InvoiceService {
+             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                     "Sending these invoices would take the client over their credit limit");
+         }
+-        drafts.forEach(Invoice::markSent);
++        LocalDate today = LocalDate.now(clock);
++        drafts.forEach(i -> i.markSent(today));
+         invoices.flush();
+         drafts.forEach(i -> audit.record("INVOICE_SENT id=" + i.getId() + " amount=" + i.getAmount().toPlainString()));
+         return drafts.stream().map(this::toResponse).toList();
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceSnapshot.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceSnapshot.java
+new file mode 100644
+index 0000000..c30adcd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceSnapshot.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** An invoice as it read when it was sent: the total it showed and the day it went out. */
++public record InvoiceSnapshot(BigDecimal total, LocalDate date) {
++}
+diff --git a/src/main/resources/db/migration/V110__invoice_sent_snapshot.sql b/src/main/resources/db/migration/V110__invoice_sent_snapshot.sql
+new file mode 100644
+index 0000000..2208ace
+--- /dev/null
++++ b/src/main/resources/db/migration/V110__invoice_sent_snapshot.sql
+@@ -0,0 +1,8 @@
++-- A sent invoice keeps a snapshot of how it read when it was sent (its total and the day it went out), so it
++-- can still be viewed as sent after later rule changes alter its live figures. Unset until it is sent.
++ALTER TABLE invoice ADD COLUMN sent_snapshot_total DECIMAL(12, 2);
++ALTER TABLE invoice ADD COLUMN sent_snapshot_date DATE;
++
++-- An invoice already sent is taken as it reads now, sent on the day it was issued.
++UPDATE invoice SET sent_snapshot_total = amount, sent_snapshot_date = issued_date
++WHERE status <> 'DRAFT';
