@@ -1,0 +1,286 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 23d2cb1..abb4143 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -59,14 +59,28 @@ export interface TaxSummary {
+   total: number;
+ }
+ 
+-/** The revenue billed on invoices issued on or between two dates, in the home currency. */
++/** The revenue billed for one job (project), in the home currency. */
++export interface JobRevenue {
++  projectId: number;
++  projectName: string;
++  clientName: string;
++  /** How many invoices the job's revenue came from. */
++  invoices: number;
++  amount: number;
++}
++
++/**
++ * The revenue billed on invoices issued on or between two dates (over all time when the dates are null), in the
++ * home currency, broken down by job with the highest-earning job first.
++ */
+ export interface RevenueReport {
+-  from: string;
+-  to: string;
++  from: string | null;
++  to: string | null;
+   homeCurrency: CurrencyCode;
+   /** How many invoices the revenue came from. */
+   invoices: number;
+   total: number;
++  jobs: JobRevenue[];
+ }
+ 
+ /** One instalment expected in, in its invoice's currency. */
+@@ -100,8 +114,10 @@ export class DashboardService {
+     return this.http.get<TaxSummary>('/api/dashboard/tax-summary', { params: new HttpParams().set('from', from).set('to', to) });
+   }
+ 
+-  revenueReport(from: string, to: string): Observable<RevenueReport> {
+-    return this.http.get<RevenueReport>('/api/dashboard/revenue-report', { params: new HttpParams().set('from', from).set('to', to) });
++  /** The revenue report over the given range, or over all time when no range is given. */
++  revenueReport(range?: { from: string; to: string }): Observable<RevenueReport> {
++    const params = range ? new HttpParams().set('from', range.from).set('to', range.to) : new HttpParams();
++    return this.http.get<RevenueReport>('/api/dashboard/revenue-report', { params });
+   }
+ 
+   forecast(): Observable<Forecast> {
+diff --git a/src/main/frontend/src/app/features/dashboard/revenue-report.ts b/src/main/frontend/src/app/features/dashboard/revenue-report.ts
+index 0017e55..08083c0 100644
+--- a/src/main/frontend/src/app/features/dashboard/revenue-report.ts
++++ b/src/main/frontend/src/app/features/dashboard/revenue-report.ts
+@@ -3,8 +3,9 @@ import { rxResource } from '@angular/core/rxjs-interop';
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService } from './dashboard.service';
+ 
+-// The revenue billed over a chosen date range: the total of the invoices issued within it that were sent
+-// (drafts and cancelled invoices are left out), in the home currency.
++// The revenue billed over a chosen date range (over all time until a range is chosen): the total of the invoices
++// issued within it that were sent (drafts and cancelled invoices are left out), in the home currency, broken down
++// by job so the highest-earning jobs show first.
+ @Component({
+   selector: 'app-revenue-report',
+   imports: [MoneyPipe],
+@@ -24,6 +25,14 @@ import { DashboardService } from './dashboard.service';
+       margin: 0;
+       text-align: right;
+     }
++    .revenue-report-jobs th,
++    .revenue-report-jobs td {
++      padding: 0.25rem 0.75rem;
++      text-align: left;
++    }
++    .revenue-report-jobs .amount {
++      text-align: right;
++    }
+   `,
+   template: `
+     <section aria-labelledby="revenue-report-heading" data-testid="revenue-report">
+@@ -40,12 +49,44 @@ import { DashboardService } from './dashboard.service';
+       } @else if (report.error()) {
+         <p role="alert" data-testid="revenue-report-error">Could not load the revenue report.</p>
+       } @else if (report.value(); as r) {
++        <p data-testid="revenue-report-period">
++          @if (r.from && r.to) {
++            From {{ r.from }} to {{ r.to }}
++          } @else {
++            All time
++          }
++        </p>
+         <dl class="revenue-report-figures" aria-live="polite">
+           <dt>Invoices</dt>
+           <dd data-testid="revenue-report-invoices">{{ r.invoices }}</dd>
+           <dt>Total billed</dt>
+           <dd data-testid="revenue-report-total">{{ r.total | money: r.homeCurrency }}</dd>
+         </dl>
++        <h3 id="revenue-by-job-heading">Revenue by job</h3>
++        @if (r.jobs.length) {
++          <table class="revenue-report-jobs" aria-labelledby="revenue-by-job-heading" data-testid="revenue-jobs">
++            <thead>
++              <tr>
++                <th scope="col">Job</th>
++                <th scope="col">Client</th>
++                <th scope="col" class="amount">Invoices</th>
++                <th scope="col" class="amount">Revenue</th>
++              </tr>
++            </thead>
++            <tbody>
++              @for (job of r.jobs; track job.projectId) {
++                <tr [attr.data-testid]="'revenue-job-row-' + job.projectId">
++                  <th scope="row" data-testid="revenue-job-name">{{ job.projectName }}</th>
++                  <td data-testid="revenue-job-client">{{ job.clientName }}</td>
++                  <td class="amount" data-testid="revenue-job-invoices">{{ job.invoices }}</td>
++                  <td class="amount" data-testid="revenue-job-amount">{{ job.amount | money: r.homeCurrency }}</td>
++                </tr>
++              }
++            </tbody>
++          </table>
++        } @else {
++          <p data-testid="revenue-jobs-empty">No revenue billed in this period.</p>
++        }
+       }
+     </section>
+   `,
+@@ -53,12 +94,13 @@ import { DashboardService } from './dashboard.service';
+ export class RevenueReport {
+   private readonly service = inject(DashboardService);
+ 
+-  private readonly range = signal<{ from: string; to: string } | undefined>(undefined);
++  /** The chosen date range; until one is chosen the report covers all time. */
++  private readonly range = signal<{ from: string; to: string } | null>(null);
+   protected readonly rangeError = signal<string | null>(null);
+ 
+   protected readonly report = rxResource({
+-    params: () => this.range(),
+-    stream: ({ params }) => this.service.revenueReport(params.from, params.to),
++    params: () => ({ range: this.range() }),
++    stream: ({ params }) => this.service.revenueReport(params.range ?? undefined),
+   });
+ 
+   protected apply(event: Event, from: string, to: string): void {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index a746315..5427e85 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -29,11 +29,14 @@ public class DashboardController {
+         return service.taxSummary(from, to);
+     }
+ 
+-    /** The revenue billed on invoices issued on or between the given dates. */
++    /**
++     * The revenue billed on invoices issued on or between the given dates, broken down by job. Without both dates the
++     * revenue is over all time.
++     */
+     @GetMapping("/revenue-report")
+     public RevenueReportResponse revenueReport(
+-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+         return service.revenueReport(from, to);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 615208f..3721e5e 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -11,6 +11,7 @@ import java.util.HashMap;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Optional;
+ import java.util.TreeMap;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.client.ClientRepository;
+@@ -249,13 +250,15 @@ public class DashboardService {
+     }
+ 
+     /**
+-     * The revenue billed on or between the given dates: the amounts of the invoices issued in the range that were
+-     * sent (drafts and cancelled invoices are left out), each converted into the home currency at its issue date's
+-     * rate (an invoice that cannot be converted is left out).
++     * The revenue billed on or between the given dates (over all time when either date is missing): the amounts of
++     * the invoices issued in the range that were sent (drafts and cancelled invoices are left out), each converted
++     * into the home currency at its issue date's rate (an invoice that cannot be converted is left out). The revenue
++     * is also broken down by job (project), highest-earning first.
+      */
+     @Transactional(readOnly = true)
+     public RevenueReportResponse revenueReport(LocalDate from, LocalDate to) {
+-        if (from.isAfter(to)) {
++        boolean allTime = from == null || to == null;
++        if (!allTime && from.isAfter(to)) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The start date must not be after the end date");
+         }
+         List<InvoiceStatus> billed = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID,
+@@ -263,19 +266,53 @@ public class DashboardService {
+         String home = settings.homeCurrency();
+         BigDecimal total = BigDecimal.ZERO;
+         long count = 0;
+-        for (Invoice invoice : invoices.findByStatusInAndIssuedDateBetween(billed, from, to)) {
++        Map<Long, JobTally> byJob = new LinkedHashMap<>();
++        List<Invoice> issued = allTime ? invoices.findByStatusInWithClient(billed)
++                : invoices.findByStatusInAndIssuedDateBetween(billed, from, to);
++        for (Invoice invoice : issued) {
+             String currency = invoice.getCurrency();
+-            if (currency.equals(home)) {
+-                total = total.add(invoice.getAmount());
+-                count++;
++            var inHome = currency.equals(home) ? Optional.of(invoice.getAmount())
++                    : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount());
++            if (inHome.isEmpty()) {
+                 continue;
+             }
+-            var inHome = fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount());
+-            if (inHome.isPresent()) {
+-                total = total.add(inHome.get());
+-                count++;
+-            }
++            total = total.add(inHome.get());
++            count++;
++            var project = invoice.getProject();
++            byJob.computeIfAbsent(project.getId(),
++                    id -> new JobTally(id, project.getName(), project.getClient().getName())).add(inHome.get());
++        }
++        List<RevenueReportResponse.JobRevenue> jobs = byJob.values().stream()
++                .map(JobTally::toResponse)
++                .sorted(Comparator.comparing(RevenueReportResponse.JobRevenue::amount).reversed()
++                        .thenComparing(RevenueReportResponse.JobRevenue::projectId))
++                .toList();
++        return new RevenueReportResponse(allTime ? null : from, allTime ? null : to, home, count,
++                total.setScale(2, RoundingMode.HALF_UP), jobs);
++    }
++
++    /** The running revenue of one job while the revenue report is built. */
++    private static final class JobTally {
++        private final Long projectId;
++        private final String projectName;
++        private final String clientName;
++        private long invoices;
++        private BigDecimal amount = BigDecimal.ZERO;
++
++        JobTally(Long projectId, String projectName, String clientName) {
++            this.projectId = projectId;
++            this.projectName = projectName;
++            this.clientName = clientName;
++        }
++
++        void add(BigDecimal inHome) {
++            amount = amount.add(inHome);
++            invoices++;
++        }
++
++        RevenueReportResponse.JobRevenue toResponse() {
++            return new RevenueReportResponse.JobRevenue(projectId, projectName, clientName, invoices,
++                    amount.setScale(2, RoundingMode.HALF_UP));
+         }
+-        return new RevenueReportResponse(from, to, home, count, total.setScale(2, RoundingMode.HALF_UP));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/RevenueReportResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/RevenueReportResponse.java
+index b14e25a..929ac68 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/RevenueReportResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/RevenueReportResponse.java
+@@ -2,11 +2,18 @@ package net.officefloor.hq.app.dashboard;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.List;
+ 
+ /**
+- * The revenue billed on or between two dates, in the home currency: the total of the invoices issued in the range
+- * that were sent, with how many invoices it came from.
++ * The revenue billed on or between two dates (or over all time when no dates are given), in the home currency: the
++ * total of the invoices issued in the range that were sent, with how many invoices it came from, broken down by job
++ * (project) with the highest-earning job first.
+  */
+ public record RevenueReportResponse(LocalDate from, LocalDate to, String homeCurrency, long invoices,
+-        BigDecimal total) {
++        BigDecimal total, List<JobRevenue> jobs) {
++
++    /** The revenue billed for one job (project), in the home currency. */
++    public record JobRevenue(Long projectId, String projectName, String clientName, long invoices,
++            BigDecimal amount) {
++    }
+ }
