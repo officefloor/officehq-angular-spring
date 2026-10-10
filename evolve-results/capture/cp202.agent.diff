@@ -1,0 +1,115 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 186102d..1557abc 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -49,6 +49,8 @@ export interface DashboardSummary {
+   newClientsThisMonth: number;
+   /** What was billed (invoices issued and sent, not drafts or cancelled) in the current month, in the home currency. */
+   billingsThisMonth: number;
++  /** What has been collected over what was billed (sent invoices), as a whole percentage in the home currency; null when nothing has been billed. */
++  collectionRate: number | null;
+ }
+ 
+ /** The tax charged on invoices issued on or between two dates, in the home currency. */
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 24ec37c..9c0abce 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -14,7 +14,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // exchange rate from its own issue date (leaving out disputed and written-off invoices), and how many of those sent
+ // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+-// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, and the average number of days clients take to pay (issue date to final payment on paid invoices). An aging report across all clients, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
++// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected. An aging report across all clients, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
+ @Component({
+   selector: 'app-dashboard',
+   imports: [MoneyPipe, AgingReportPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
+@@ -53,6 +53,14 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+           <dt>Billed this month (in {{ s.homeCurrency }})</dt>
+           <dd data-testid="kpi-billings-month">{{ s.billingsThisMonth | money: s.homeCurrency }}</dd>
+         </div>
++        <div>
++          <dt>Collection rate (collected of what was billed)</dt>
++          @if (s.collectionRate !== null) {
++            <dd data-testid="kpi-collection-rate">{{ s.collectionRate }}%</dd>
++          } @else {
++            <dd data-testid="kpi-collection-rate-none">Nothing billed yet</dd>
++          }
++        </div>
+         <div>
+           <dt>Overdue invoices</dt>
+           <dd data-testid="dashboard-overdue-count">{{ s.overdue }}</dd>
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+index c5ff73e..898863c 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+@@ -12,13 +12,14 @@ import java.util.List;
+  * exchange rate from its own issue date. Also how many tasks not yet done are past their due date,
+  * and the average number of days clients take to pay (from issue date to final payment on paid invoices; null when
+  * there are none), and how many new clients were taken on in the current month, and what was billed (invoices issued and sent) in the current month, in the home
+- * currency.
++ * currency, and the share of everything billed that has been collected as a whole percentage (null when nothing
++ * has been billed).
+  */
+ public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
+         BigDecimal outstandingHome, long overdue,
+         String homeCurrency, BigDecimal overdueAmount, OverdueBuckets overdueBuckets, List<TopClient> topClients,
+         long overdueTasks, Long averageDaysToPay, long newClientsThisMonth,
+-        BigDecimal billingsThisMonth) {
++        BigDecimal billingsThisMonth, Long collectionRate) {
+ 
+     /** What is still owed in one currency. */
+     public record CurrencyTotal(String currency, BigDecimal amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index aeacff7..4d033d8 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -106,7 +106,47 @@ public class DashboardService {
+                 .toList();
+         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
+                 overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
+-                clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home));
++                clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home),
++                collectionRate(home));
++    }
++
++    /**
++     * The share of everything billed that has been collected, as a whole percentage: the payments received against
++     * every invoice that was sent (drafts and cancelled invoices are left out) over what those invoices were billed
++     * for, both in the home currency at each invoice's issue date's rate (an invoice that cannot be converted is left
++     * out). Null when nothing has been billed.
++     */
++    private Long collectionRate(String home) {
++        List<Invoice> billed = invoices.findByStatusInWithClient(List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL,
++                InvoiceStatus.PAID, InvoiceStatus.WRITTEN_OFF));
++        if (billed.isEmpty()) {
++            return null;
++        }
++        Map<Long, BigDecimal> paid = payments.sumAmountByInvoiceIds(billed.stream().map(Invoice::getId).toList())
++                .stream().collect(Collectors.toMap(PaymentRepository.InvoicePaidTotal::getInvoiceId,
++                        PaymentRepository.InvoicePaidTotal::getPaid));
++        BigDecimal billedTotal = BigDecimal.ZERO;
++        BigDecimal collected = BigDecimal.ZERO;
++        for (Invoice invoice : billed) {
++            String currency = invoice.getCurrency();
++            BigDecimal amount = invoice.getAmount();
++            BigDecimal received = paid.getOrDefault(invoice.getId(), BigDecimal.ZERO);
++            if (!currency.equals(home)) {
++                var amountInHome = fxRates.toHome(currency, invoice.getIssuedDate(), amount);
++                var receivedInHome = fxRates.toHome(currency, invoice.getIssuedDate(), received);
++                if (amountInHome.isEmpty() || receivedInHome.isEmpty()) {
++                    continue;
++                }
++                amount = amountInHome.get();
++                received = receivedInHome.get();
++            }
++            billedTotal = billedTotal.add(amount);
++            collected = collected.add(received);
++        }
++        if (billedTotal.signum() <= 0) {
++            return null;
++        }
++        return collected.multiply(BigDecimal.valueOf(100)).divide(billedTotal, 0, RoundingMode.HALF_UP).longValue();
+     }
+ 
+     /**
