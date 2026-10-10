@@ -1,0 +1,632 @@
+diff --git a/src/main/frontend/src/app/features/tasks/project-tasks.ts b/src/main/frontend/src/app/features/tasks/project-tasks.ts
+index b44d03b..bde7ebc 100644
+--- a/src/main/frontend/src/app/features/tasks/project-tasks.ts
++++ b/src/main/frontend/src/app/features/tasks/project-tasks.ts
+@@ -1,20 +1,32 @@
+-import { Component, computed, inject, input, signal } from '@angular/core';
+-import { rxResource } from '@angular/core/rxjs-interop';
+-import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+-import { TaskChecklist } from './task-checklist';
+-import { Task, TaskService } from './task.service';
++import { Component, computed, inject, input, signal } from "@angular/core";
++import { rxResource } from "@angular/core/rxjs-interop";
++import {
++  NonNullableFormBuilder,
++  ReactiveFormsModule,
++  Validators,
++} from "@angular/forms";
++import { TaskChecklist } from "./task-checklist";
++import { Task, TaskPriority, TaskService } from "./task.service";
+ 
+-export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
++export type TaskFilter = "ALL" | "OPEN" | "DONE";
+ 
+ // A project's task list: add tasks and tick them off (OPEN <-> DONE) as they are finished.
+ @Component({
+-  selector: 'app-project-tasks',
++  selector: "app-project-tasks",
+   imports: [ReactiveFormsModule, TaskChecklist],
+   template: `
+-    <section aria-labelledby="project-tasks-heading" data-testid="project-tasks">
++    <section
++      aria-labelledby="project-tasks-heading"
++      data-testid="project-tasks"
++    >
+       <h2 id="project-tasks-heading">Tasks</h2>
+ 
+-      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="task-form" novalidate>
++      <form
++        [formGroup]="form"
++        (ngSubmit)="submit()"
++        data-testid="task-form"
++        novalidate
++      >
+         <div>
+           <label for="task-title">Task</label>
+           <input
+@@ -23,10 +35,16 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+             formControlName="title"
+             data-testid="task-form-title"
+             [attr.aria-invalid]="showTitleError()"
+-            [attr.aria-describedby]="showTitleError() ? 'task-title-error' : null"
++            [attr.aria-describedby]="
++              showTitleError() ? 'task-title-error' : null
++            "
+           />
+           @if (showTitleError()) {
+-            <p id="task-title-error" role="alert" data-testid="task-form-title-error">
++            <p
++              id="task-title-error"
++              role="alert"
++              data-testid="task-form-title-error"
++            >
+               Task is required.
+             </p>
+           }
+@@ -50,7 +68,26 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+             data-testid="task-form-assignee"
+           />
+         </div>
+-        <button type="submit" data-testid="task-form-submit" [disabled]="saving()">Add task</button>
++        <div>
++          <label for="task-priority">Priority (optional)</label>
++          <select
++            id="task-priority"
++            formControlName="priority"
++            data-testid="task-form-priority"
++          >
++            <option value="">None</option>
++            <option value="Low">Low</option>
++            <option value="Medium">Medium</option>
++            <option value="High">High</option>
++          </select>
++        </div>
++        <button
++          type="submit"
++          data-testid="task-form-submit"
++          [disabled]="saving()"
++        >
++          Add task
++        </button>
+         @if (saveError()) {
+           <p role="alert" data-testid="task-form-error">{{ saveError() }}</p>
+         }
+@@ -61,10 +98,14 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+       }
+ 
+       @if (tasks.error()) {
+-        <p role="alert" data-testid="project-tasks-error">Could not load the tasks.</p>
++        <p role="alert" data-testid="project-tasks-error">
++          Could not load the tasks.
++        </p>
+       } @else if (tasks.hasValue()) {
+         @if (tasks.value().length === 0) {
+-          <p data-testid="project-tasks-empty">No tasks for this project yet.</p>
++          <p data-testid="project-tasks-empty">
++            No tasks for this project yet.
++          </p>
+         } @else {
+           <div>
+             <label for="task-filter">Show</label>
+@@ -81,16 +122,19 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+           </div>
+           @if (visibleTasks().length === 0) {
+             <p data-testid="project-tasks-filter-empty">
+-              {{ filter() === 'OPEN' ? 'No open tasks.' : 'No done tasks.' }}
++              {{ filter() === "OPEN" ? "No open tasks." : "No done tasks." }}
+             </p>
+           } @else {
+             <table data-testid="project-tasks-table">
+-              <caption>Tasks for this job</caption>
++              <caption>
++                Tasks for this job
++              </caption>
+               <thead>
+                 <tr>
+                   <th scope="col">Task</th>
+                   <th scope="col">Due date</th>
+                   <th scope="col">Assignee</th>
++                  <th scope="col">Priority</th>
+                   <th scope="col">Checklist</th>
+                   <th scope="col">Status</th>
+                   <th scope="col">Action</th>
+@@ -100,8 +144,9 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+                 @for (t of visibleTasks(); track t.id) {
+                   <tr [attr.data-testid]="'task-row-' + t.id">
+                     <td data-testid="task-title">{{ t.title }}</td>
+-                    <td data-testid="task-due-date">{{ t.dueDate ?? '' }}</td>
+-                    <td data-testid="task-assignee">{{ t.assignee ?? '' }}</td>
++                    <td data-testid="task-due-date">{{ t.dueDate ?? "" }}</td>
++                    <td data-testid="task-assignee">{{ t.assignee ?? "" }}</td>
++                    <td data-testid="task-priority">{{ t.priority ?? "" }}</td>
+                     <td>
+                       <app-task-checklist
+                         [projectId]="projectId()"
+@@ -110,17 +155,21 @@ export type TaskFilter = 'ALL' | 'OPEN' | 'DONE';
+                         [items]="t.checklist"
+                       />
+                     </td>
+-                    <td data-testid="task-status">{{ t.done ? 'DONE' : 'OPEN' }}</td>
++                    <td data-testid="task-status">
++                      {{ t.done ? "DONE" : "OPEN" }}
++                    </td>
+                     <td>
+                       <button
+                         type="button"
+                         [attr.data-testid]="'task-toggle-' + t.id"
+                         [attr.aria-pressed]="t.done"
+-                        [attr.aria-label]="(t.done ? 'Reopen ' : 'Tick off ') + t.title"
++                        [attr.aria-label]="
++                          (t.done ? 'Reopen ' : 'Tick off ') + t.title
++                        "
+                         [disabled]="toggling() === t.id"
+                         (click)="toggle(t)"
+                       >
+-                        {{ t.done ? 'Reopen' : 'Tick off' }}
++                        {{ t.done ? "Reopen" : "Tick off" }}
+                       </button>
+                     </td>
+                   </tr>
+@@ -142,13 +191,13 @@ export class ProjectTasks {
+     params: () => this.projectId(),
+     stream: ({ params }) => this.service.listForProject(params),
+   });
+-  protected readonly filter = signal<TaskFilter>('ALL');
++  protected readonly filter = signal<TaskFilter>("ALL");
+   protected readonly visibleTasks = computed(() => {
+     const list = this.tasks.value() ?? [];
+     switch (this.filter()) {
+-      case 'OPEN':
++      case "OPEN":
+         return list.filter((t) => !t.done);
+-      case 'DONE':
++      case "DONE":
+         return list.filter((t) => t.done);
+       default:
+         return list;
+@@ -160,9 +209,10 @@ export class ProjectTasks {
+   protected readonly toggleError = signal<string | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+-    title: ['', [Validators.required, Validators.maxLength(255)]],
+-    dueDate: [''],
+-    assignee: ['', Validators.maxLength(255)],
++    title: ["", [Validators.required, Validators.maxLength(255)]],
++    dueDate: [""],
++    assignee: ["", Validators.maxLength(255)],
++    priority: ["" as TaskPriority | ""],
+   });
+ 
+   protected setFilter(event: Event): void {
+@@ -175,26 +225,39 @@ export class ProjectTasks {
+   }
+ 
+   protected submit(): void {
+-    const { title: rawTitle, dueDate, assignee } = this.form.getRawValue();
++    const {
++      title: rawTitle,
++      dueDate,
++      assignee,
++      priority,
++    } = this.form.getRawValue();
+     const title = rawTitle.trim();
+     if (this.form.invalid || !title) {
+-      this.form.controls.title.setValue('');
++      this.form.controls.title.setValue("");
+       this.form.markAllAsTouched();
+       return;
+     }
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.create(this.projectId(), title, dueDate || null, assignee.trim() || null).subscribe({
+-      next: (created) => {
+-        this.tasks.update((list) => [...(list ?? []), created]);
+-        this.form.reset();
+-        this.saving.set(false);
+-      },
+-      error: () => {
+-        this.saveError.set('Could not save the task. Please try again.');
+-        this.saving.set(false);
+-      },
+-    });
++    this.service
++      .create(
++        this.projectId(),
++        title,
++        dueDate || null,
++        assignee.trim() || null,
++        priority || null,
++      )
++      .subscribe({
++        next: (created) => {
++          this.tasks.update((list) => [...(list ?? []), created]);
++          this.form.reset();
++          this.saving.set(false);
++        },
++        error: () => {
++          this.saveError.set("Could not save the task. Please try again.");
++          this.saving.set(false);
++        },
++      });
+   }
+ 
+   protected toggle(task: Task): void {
+@@ -202,11 +265,13 @@ export class ProjectTasks {
+     this.toggleError.set(null);
+     this.service.toggle(this.projectId(), task.id).subscribe({
+       next: (updated) => {
+-        this.tasks.update((list) => (list ?? []).map((t) => (t.id === updated.id ? updated : t)));
++        this.tasks.update((list) =>
++          (list ?? []).map((t) => (t.id === updated.id ? updated : t)),
++        );
+         this.toggling.set(null);
+       },
+       error: () => {
+-        this.toggleError.set('Could not update the task. Please try again.');
++        this.toggleError.set("Could not update the task. Please try again.");
+         this.toggling.set(null);
+       },
+     });
+diff --git a/src/main/frontend/src/app/features/tasks/task-checklist.ts b/src/main/frontend/src/app/features/tasks/task-checklist.ts
+index 7330230..2212899 100644
+--- a/src/main/frontend/src/app/features/tasks/task-checklist.ts
++++ b/src/main/frontend/src/app/features/tasks/task-checklist.ts
+@@ -1,15 +1,29 @@
+-import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
+-import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+-import { ChecklistItem, TaskService } from './task.service';
++import {
++  Component,
++  computed,
++  inject,
++  input,
++  linkedSignal,
++  signal,
++} from "@angular/core";
++import {
++  NonNullableFormBuilder,
++  ReactiveFormsModule,
++  Validators,
++} from "@angular/forms";
++import { ChecklistItem, TaskService } from "./task.service";
+ 
+ // A task's checklist: sub-items that are added and ticked off one by one.
+ @Component({
+-  selector: 'app-task-checklist',
++  selector: "app-task-checklist",
+   imports: [ReactiveFormsModule],
+   template: `
+     <div [attr.data-testid]="'task-checklist-' + taskId()">
+       @if (checklist().length > 0) {
+-        <p [id]="'checklist-progress-' + taskId()" data-testid="checklist-progress">
++        <p
++          [id]="'checklist-progress-' + taskId()"
++          data-testid="checklist-progress"
++        >
+           {{ doneCount() }} of {{ checklist().length }} done
+         </p>
+         <ul [attr.aria-label]="'Checklist for ' + taskTitle()">
+@@ -23,17 +37,26 @@ import { ChecklistItem, TaskService } from './task.service';
+                 [disabled]="toggling() === item.id"
+                 (change)="toggle(item, $event)"
+               />
+-              <label [for]="'checklist-item-' + item.id" data-testid="checklist-item-text">{{
+-                item.text
+-              }}</label>
++              <label
++                [for]="'checklist-item-' + item.id"
++                data-testid="checklist-item-text"
++                >{{ item.text }}</label
++              >
+             </li>
+           }
+         </ul>
+       }
+       @if (toggleError()) {
+-        <p role="alert" data-testid="checklist-toggle-error">{{ toggleError() }}</p>
++        <p role="alert" data-testid="checklist-toggle-error">
++          {{ toggleError() }}
++        </p>
+       }
+-      <form [formGroup]="form" (ngSubmit)="add()" data-testid="checklist-form" novalidate>
++      <form
++        [formGroup]="form"
++        (ngSubmit)="add()"
++        data-testid="checklist-form"
++        novalidate
++      >
+         <label [for]="'checklist-new-' + taskId()">New checklist item</label>
+         <input
+           [id]="'checklist-new-' + taskId()"
+@@ -51,7 +74,9 @@ import { ChecklistItem, TaskService } from './task.service';
+           Add
+         </button>
+         @if (saveError()) {
+-          <p role="alert" data-testid="checklist-form-error">{{ saveError() }}</p>
++          <p role="alert" data-testid="checklist-form-error">
++            {{ saveError() }}
++          </p>
+         }
+       </form>
+     </div>
+@@ -66,14 +91,16 @@ export class TaskChecklist {
+   readonly items = input<ChecklistItem[]>([]);
+ 
+   protected readonly checklist = linkedSignal(() => this.items());
+-  protected readonly doneCount = computed(() => this.checklist().filter((i) => i.done).length);
++  protected readonly doneCount = computed(
++    () => this.checklist().filter((i) => i.done).length,
++  );
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+   protected readonly toggling = signal<number | null>(null);
+   protected readonly toggleError = signal<string | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+-    text: ['', [Validators.required, Validators.maxLength(255)]],
++    text: ["", [Validators.required, Validators.maxLength(255)]],
+   });
+ 
+   protected add(): void {
+@@ -84,33 +111,43 @@ export class TaskChecklist {
+     }
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.addChecklistItem(this.projectId(), this.taskId(), text).subscribe({
+-      next: (created) => {
+-        this.checklist.update((list) => [...list, created]);
+-        this.form.reset();
+-        this.saving.set(false);
+-      },
+-      error: () => {
+-        this.saveError.set('Could not add the checklist item. Please try again.');
+-        this.saving.set(false);
+-      },
+-    });
++    this.service
++      .addChecklistItem(this.projectId(), this.taskId(), text)
++      .subscribe({
++        next: (created) => {
++          this.checklist.update((list) => [...list, created]);
++          this.form.reset();
++          this.saving.set(false);
++        },
++        error: () => {
++          this.saveError.set(
++            "Could not add the checklist item. Please try again.",
++          );
++          this.saving.set(false);
++        },
++      });
+   }
+ 
+   protected toggle(item: ChecklistItem, event: Event): void {
+     const checkbox = event.target as HTMLInputElement;
+     this.toggling.set(item.id);
+     this.toggleError.set(null);
+-    this.service.toggleChecklistItem(this.projectId(), this.taskId(), item.id).subscribe({
+-      next: (updated) => {
+-        this.checklist.update((list) => list.map((i) => (i.id === updated.id ? updated : i)));
+-        this.toggling.set(null);
+-      },
+-      error: () => {
+-        this.toggleError.set('Could not update the checklist item. Please try again.');
+-        checkbox.checked = item.done;
+-        this.toggling.set(null);
+-      },
+-    });
++    this.service
++      .toggleChecklistItem(this.projectId(), this.taskId(), item.id)
++      .subscribe({
++        next: (updated) => {
++          this.checklist.update((list) =>
++            list.map((i) => (i.id === updated.id ? updated : i)),
++          );
++          this.toggling.set(null);
++        },
++        error: () => {
++          this.toggleError.set(
++            "Could not update the checklist item. Please try again.",
++          );
++          checkbox.checked = item.done;
++          this.toggling.set(null);
++        },
++      });
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/tasks/task.service.ts b/src/main/frontend/src/app/features/tasks/task.service.ts
+index 73e1255..b108077 100644
+--- a/src/main/frontend/src/app/features/tasks/task.service.ts
++++ b/src/main/frontend/src/app/features/tasks/task.service.ts
+@@ -1,6 +1,6 @@
+-import { HttpClient } from '@angular/common/http';
+-import { Injectable, inject } from '@angular/core';
+-import { Observable } from 'rxjs';
++import { HttpClient } from "@angular/common/http";
++import { Injectable, inject } from "@angular/core";
++import { Observable } from "rxjs";
+ 
+ export interface ChecklistItem {
+   id: number;
+@@ -9,6 +9,8 @@ export interface ChecklistItem {
+   done: boolean;
+ }
+ 
++export type TaskPriority = "Low" | "Medium" | "High";
++
+ export interface Task {
+   id: number;
+   projectId: number;
+@@ -16,10 +18,11 @@ export interface Task {
+   done: boolean;
+   dueDate: string | null;
+   assignee: string | null;
++  priority: TaskPriority | null;
+   checklist: ChecklistItem[];
+ }
+ 
+-@Injectable({ providedIn: 'root' })
++@Injectable({ providedIn: "root" })
+ export class TaskService {
+   private readonly http = inject(HttpClient);
+ 
+@@ -32,21 +35,41 @@ export class TaskService {
+     title: string,
+     dueDate: string | null,
+     assignee: string | null,
++    priority: TaskPriority | null,
+   ): Observable<Task> {
+-    return this.http.post<Task>(`/api/projects/${projectId}/tasks`, { title, dueDate, assignee });
++    return this.http.post<Task>(`/api/projects/${projectId}/tasks`, {
++      title,
++      dueDate,
++      assignee,
++      priority,
++    });
+   }
+ 
+   toggle(projectId: number, taskId: number): Observable<Task> {
+-    return this.http.post<Task>(`/api/projects/${projectId}/tasks/${taskId}/toggle`, null);
++    return this.http.post<Task>(
++      `/api/projects/${projectId}/tasks/${taskId}/toggle`,
++      null,
++    );
+   }
+ 
+-  addChecklistItem(projectId: number, taskId: number, text: string): Observable<ChecklistItem> {
+-    return this.http.post<ChecklistItem>(`/api/projects/${projectId}/tasks/${taskId}/checklist`, {
+-      text,
+-    });
++  addChecklistItem(
++    projectId: number,
++    taskId: number,
++    text: string,
++  ): Observable<ChecklistItem> {
++    return this.http.post<ChecklistItem>(
++      `/api/projects/${projectId}/tasks/${taskId}/checklist`,
++      {
++        text,
++      },
++    );
+   }
+ 
+-  toggleChecklistItem(projectId: number, taskId: number, itemId: number): Observable<ChecklistItem> {
++  toggleChecklistItem(
++    projectId: number,
++    taskId: number,
++    itemId: number,
++  ): Observable<ChecklistItem> {
+     return this.http.post<ChecklistItem>(
+       `/api/projects/${projectId}/tasks/${taskId}/checklist/${itemId}/toggle`,
+       null,
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 16393c3..e64329e 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -376,10 +376,10 @@ public class TestSupportController {
+     /** A task and the sub-items on its checklist. */
+     private void seedTask(Map<String, Object> t, long projectId) {
+         long taskId = ((Number) t.get("id")).longValue();
+-        jdbc.update("INSERT INTO task (id, project_id, title, done, due_date, assignee) VALUES (?, ?, ?, ?, ?, ?)",
++        jdbc.update("INSERT INTO task (id, project_id, title, done, due_date, assignee, priority) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                 taskId, projectId, t.get("title"), Boolean.TRUE.equals(t.get("done")),
+                 t.get("dueDate") == null ? null : LocalDate.parse(t.get("dueDate").toString()),
+-                t.get("assignee"));
++                t.get("assignee"), t.get("priority"));
+         for (Map<String, Object> c : rows(t, "checklist")) {
+             jdbc.update("INSERT INTO task_checklist_item (id, task_id, text, done) VALUES (?, ?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), taskId, c.get("text"), Boolean.TRUE.equals(c.get("done")));
+diff --git a/src/main/java/net/officefloor/hq/app/task/Task.java b/src/main/java/net/officefloor/hq/app/task/Task.java
+index 0f9a6af..8c99685 100644
+--- a/src/main/java/net/officefloor/hq/app/task/Task.java
++++ b/src/main/java/net/officefloor/hq/app/task/Task.java
+@@ -34,14 +34,18 @@ public class Task {
+     /** The name of the person the task is for; optional. */
+     private String assignee;
+ 
++    /** How pressing the task is: Low, Medium or High; optional. */
++    private String priority;
++
+     protected Task() {
+     }
+ 
+-    public Task(Project project, String title, LocalDate dueDate, String assignee) {
++    public Task(Project project, String title, LocalDate dueDate, String assignee, String priority) {
+         this.project = project;
+         this.title = title;
+         this.dueDate = dueDate;
+         this.assignee = assignee;
++        this.priority = priority;
+     }
+ 
+     public Long getId() {
+@@ -68,6 +72,10 @@ public class Task {
+         return assignee;
+     }
+ 
++    public String getPriority() {
++        return priority;
++    }
++
+     /** Flips the task between open and done. */
+     public void toggle() {
+         this.done = !this.done;
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskRequest.java b/src/main/java/net/officefloor/hq/app/task/TaskRequest.java
+index 8aef3df..4934e2b 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskRequest.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskRequest.java
+@@ -1,10 +1,12 @@
+ package net.officefloor.hq.app.task;
+ 
+ import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
+ 
+-/** Payload to add a task to a project; the due date and assignee are optional. */
++/** Payload to add a task to a project; the due date, assignee and priority are optional. */
+ public record TaskRequest(@NotBlank @Size(max = 255) String title, LocalDate dueDate,
+-        @Size(max = 255) String assignee) {
++        @Size(max = 255) String assignee,
++        @Pattern(regexp = "Low|Medium|High") String priority) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskResponse.java b/src/main/java/net/officefloor/hq/app/task/TaskResponse.java
+index c1c5b00..99df6ee 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskResponse.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskResponse.java
+@@ -4,10 +4,10 @@ import java.time.LocalDate;
+ import java.util.List;
+ 
+ public record TaskResponse(Long id, Long projectId, String title, boolean done, LocalDate dueDate,
+-        String assignee, List<ChecklistItemResponse> checklist) {
++        String assignee, String priority, List<ChecklistItemResponse> checklist) {
+ 
+     static TaskResponse from(Task task, List<ChecklistItemResponse> checklist) {
+         return new TaskResponse(task.getId(), task.getProject().getId(), task.getTitle(), task.isDone(),
+-                task.getDueDate(), task.getAssignee(), checklist);
++                task.getDueDate(), task.getAssignee(), task.getPriority(), checklist);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskService.java b/src/main/java/net/officefloor/hq/app/task/TaskService.java
+index bb18499..030e5af 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskService.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskService.java
+@@ -44,7 +44,8 @@ public class TaskService {
+         Project project = projects.findById(projectId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+         Task saved = tasks.save(new Task(project, request.title().trim(), request.dueDate(),
+-                request.assignee() == null || request.assignee().isBlank() ? null : request.assignee().trim()));
++                request.assignee() == null || request.assignee().isBlank() ? null : request.assignee().trim(),
++                request.priority()));
+         return TaskResponse.from(saved, List.of());
+     }
+ 
+diff --git a/src/main/resources/db/migration/V77__task_priority.sql b/src/main/resources/db/migration/V77__task_priority.sql
+new file mode 100644
+index 0000000..79486af
+--- /dev/null
++++ b/src/main/resources/db/migration/V77__task_priority.sql
+@@ -0,0 +1,3 @@
++-- A task may carry a priority: Low, Medium or High.
++ALTER TABLE task ADD COLUMN priority VARCHAR(10);
++ALTER TABLE task ADD CONSTRAINT task_priority_valid CHECK (priority IS NULL OR priority IN ('Low', 'Medium', 'High'));
