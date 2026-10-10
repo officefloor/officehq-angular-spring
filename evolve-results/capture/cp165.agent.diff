@@ -1,0 +1,150 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 293ab14..6c5aaf7 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -386,6 +386,11 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/retention/release`, null);
+   }
+ 
++  /** Sends every draft invoice on a job in one go; returns the invoices that were sent. */
++  sendDrafts(projectId: number): Observable<ProjectInvoice[]> {
++    return this.http.post<ProjectInvoice[]>(`/api/projects/${projectId}/invoices/send-drafts`, null);
++  }
++
+   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+   }
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index 447495c..3bb119d 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -21,7 +21,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+ }
+ 
+ // A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each the client owes right now (with any retention held back shown separately), adds a
+-// new draft (starting from the default tax rate in the settings), sends a draft and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
++// new draft (starting from the default tax rate in the settings), sends a draft (or all of the job's drafts at once) and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
+ // opens onto its line items and payments. Invoices with a credit put against them are flagged.
+ @Component({
+   selector: 'app-project-invoices',
+@@ -119,6 +119,19 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+       } @else if (list().length === 0) {
+         <p data-testid="project-invoices-empty">No invoices yet.</p>
+       } @else {
++        @if (draftCount() > 0) {
++          <button
++            type="button"
++            data-testid="job-bulk-send"
++            [disabled]="bulkSending()"
++            (click)="sendAllDrafts()"
++          >
++            Send all drafts ({{ draftCount() }})
++          </button>
++        }
++        @if (bulkSendError()) {
++          <p role="alert" data-testid="job-bulk-send-error">{{ bulkSendError() }}</p>
++        }
+         <table data-testid="project-invoices-table">
+           <caption>Invoices for this job</caption>
+           <thead>
+@@ -253,6 +266,10 @@ export class ProjectInvoices {
+   protected readonly creditWarning = signal<string | null>(null);
+   protected readonly cancelError = signal<string | null>(null);
+ 
++  protected readonly draftCount = computed(() => this.list().filter((i) => i.status === 'DRAFT').length);
++  protected readonly bulkSending = signal(false);
++  protected readonly bulkSendError = signal<string | null>(null);
++
+   protected readonly form = inject(NonNullableFormBuilder).group(
+     {
+       amount: ['', [Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)]],
+@@ -363,6 +380,30 @@ export class ProjectInvoices {
+     });
+   }
+ 
++  protected sendAllDrafts(): void {
++    this.bulkSending.set(true);
++    this.bulkSendError.set(null);
++    this.sendError.set(null);
++    this.creditWarning.set(null);
++    this.service.sendDrafts(this.projectId()).subscribe({
++      next: (sent) => {
++        sent.forEach((i) => this.replace(i));
++        this.bulkSending.set(false);
++        this.invoiced.emit();
++      },
++      error: (err: HttpErrorResponse) => {
++        this.bulkSendError.set(
++          err.status === 422
++            ? 'No invoices were sent: sending them all would take the client over their credit limit.'
++            : err.status === 409
++              ? 'No invoices were sent: every draft needs a line item before it can be sent.'
++              : 'Could not send the draft invoices. Please try again.',
++        );
++        this.bulkSending.set(false);
++      },
++    });
++  }
++
+   protected cancel(invoiceId: number): void {
+     this.busy.set(invoiceId);
+     this.cancelError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index 7b7e73e..596ca0a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -130,6 +130,11 @@ public class InvoiceController {
+         return service.releaseRetention(projectId, invoiceId);
+     }
+ 
++    @PostMapping("/send-drafts")
++    public List<InvoiceResponse> sendDrafts(@PathVariable Long projectId) {
++        return service.sendDrafts(projectId);
++    }
++
+     @PostMapping("/{invoiceId}/send")
+     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.send(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 823df4b..ff2133b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -469,6 +469,38 @@ public class InvoiceService {
+         return toResponse(invoice);
+     }
+ 
++    /**
++     * Sends every draft invoice on a job in one go, and records each sending in the audit log. It is all or
++     * nothing: if any draft has no line items, or sending them all would take the client over their credit
++     * limit, none are sent.
++     */
++    @Transactional
++    public List<InvoiceResponse> sendDrafts(Long projectId) {
++        if (!projects.existsById(projectId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job");
++        }
++        List<Invoice> drafts = invoices.findByProjectIdOrderById(projectId).stream()
++                .filter(i -> i.getStatus() == InvoiceStatus.DRAFT)
++                .toList();
++        if (drafts.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "There are no draft invoices to send");
++        }
++        if (drafts.stream().anyMatch(i -> i.getAmount().signum() == 0)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Add a line item to every draft before sending");
++        }
++        Client client = drafts.get(0).getProject().getClient();
++        BigDecimal limit = client.getCreditLimit();
++        BigDecimal total = drafts.stream().map(Invoice::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
++        if (limit != null && clientService.outstanding(client.getId()).add(total).compareTo(limit) > 0) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
++                    "Sending these invoices would take the client over their credit limit");
++        }
++        drafts.forEach(Invoice::markSent);
++        invoices.flush();
++        drafts.forEach(i -> audit.record("INVOICE_SENT id=" + i.getId() + " amount=" + i.getAmount().toPlainString()));
++        return drafts.stream().map(this::toResponse).toList();
++    }
++
+     /**
+      * Cancels an invoice sent by mistake, so it no longer counts toward what is owed, and records the
+      * cancellation in the audit log. Only a sent invoice with nothing yet paid against it can be voided.
