@@ -1,0 +1,124 @@
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index b71afd8..1a13054 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -1,3 +1,4 @@
++import { HttpErrorResponse } from '@angular/common/http';
+ import { RouterLink } from '@angular/router';
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
+@@ -200,6 +201,9 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+         @if (cancelError()) {
+           <p role="alert" data-testid="invoice-cancel-error">{{ cancelError() }}</p>
+         }
++        @if (creditWarning()) {
++          <p role="alert" data-testid="invoice-credit-warning">{{ creditWarning() }}</p>
++        }
+         @if (sendError()) {
+           <p role="alert" data-testid="invoice-send-error">{{ sendError() }}</p>
+         }
+@@ -245,6 +249,8 @@ export class ProjectInvoices {
+   // The invoice whose send or cancel request is in flight.
+   protected readonly busy = signal<number | null>(null);
+   protected readonly sendError = signal<string | null>(null);
++  /** Shown when sending was refused because it would take the client over their credit limit. */
++  protected readonly creditWarning = signal<string | null>(null);
+   protected readonly cancelError = signal<string | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group(
+@@ -337,14 +343,21 @@ export class ProjectInvoices {
+   protected send(invoiceId: number): void {
+     this.busy.set(invoiceId);
+     this.sendError.set(null);
++    this.creditWarning.set(null);
+     this.service.send(this.projectId(), invoiceId).subscribe({
+       next: (sent) => {
+         this.replace(sent);
+         this.busy.set(null);
+         this.invoiced.emit();
+       },
+-      error: () => {
+-        this.sendError.set('Could not send the invoice. Please try again.');
++      error: (err: HttpErrorResponse) => {
++        if (err.status === 422) {
++          this.creditWarning.set(
++            'This invoice was not sent: it would take the client over their credit limit.',
++          );
++        } else {
++          this.sendError.set('Could not send the invoice. Please try again.');
++        }
+         this.busy.set(null);
+       },
+     });
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index f8d6b4e..b579aed 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -284,6 +284,12 @@ public class ClientService {
+         return totals;
+     }
+ 
++    /** What the client still owes on their sent invoices, after payments and credit notes. */
++    @Transactional(readOnly = true)
++    public BigDecimal outstanding(Long clientId) {
++        return outstandingByClient().getOrDefault(clientId, ZERO);
++    }
++
+     private ClientResponse respond(Client client) {
+         return ClientResponse.from(client, outstandingByClient().getOrDefault(client.getId(), ZERO));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 2bcd46f..8171a45 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.Client;
+ import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.client.ClientService;
+ import net.officefloor.hq.app.creditnote.CreditNote;
+ import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+ import net.officefloor.hq.app.deposit.Deposit;
+@@ -47,13 +48,15 @@ public class InvoiceService {
+     private final SettingsService settings;
+     private final FxRateService fxRates;
+     private final InstalmentRepository instalments;
++    private final ClientService clientService;
+     private final Audit audit;
+     private final Clock clock;
+ 
+     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
+             CreditNoteRepository creditNotes, ClientRepository clients, DepositRepository deposits,
+-            RefundRepository refunds, SettingsService settings, FxRateService fxRates, InstalmentRepository instalments, Audit audit,
+-            Clock clock) {
++            RefundRepository refunds, SettingsService settings, FxRateService fxRates, InstalmentRepository instalments,
++            ClientService clientService, Audit audit, Clock clock) {
++        this.clientService = clientService;
+         this.invoices = invoices;
+         this.projects = projects;
+         this.clients = clients;
+@@ -427,7 +430,10 @@ public class InvoiceService {
+         return detail(invoice);
+     }
+ 
+-    /** Sends a draft invoice and records the sending in the audit log. */
++    /**
++     * Sends a draft invoice and records the sending in the audit log. An invoice that would take the
++     * client over their credit limit is refused and stays a draft.
++     */
+     @Transactional
+     public InvoiceResponse send(Long projectId, Long invoiceId) {
+         Invoice invoice = find(projectId, invoiceId);
+@@ -437,6 +443,12 @@ public class InvoiceService {
+         if (invoice.getAmount().signum() == 0) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "Add a line item before sending the invoice");
+         }
++        Client client = invoice.getProject().getClient();
++        BigDecimal limit = client.getCreditLimit();
++        if (limit != null && clientService.outstanding(client.getId()).add(invoice.getAmount()).compareTo(limit) > 0) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
++                    "Sending this invoice would take the client over their credit limit");
++        }
+         invoice.markSent();
+         invoices.flush();
+         audit.record("INVOICE_SENT id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
