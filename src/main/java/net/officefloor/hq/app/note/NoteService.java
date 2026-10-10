@@ -2,6 +2,7 @@ package net.officefloor.hq.app.note;
 
 import java.time.Instant;
 import java.util.List;
+import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.project.ProjectRepository;
 import org.springframework.http.HttpStatus;
@@ -15,11 +16,14 @@ public class NoteService {
     private final NoteRepository notes;
     private final ProjectRepository projects;
     private final InvoiceRepository invoices;
+    private final ClientRepository clients;
 
-    public NoteService(NoteRepository notes, ProjectRepository projects, InvoiceRepository invoices) {
+    public NoteService(NoteRepository notes, ProjectRepository projects, InvoiceRepository invoices,
+            ClientRepository clients) {
         this.notes = notes;
         this.projects = projects;
         this.invoices = invoices;
+        this.clients = clients;
     }
 
     @Transactional(readOnly = true)
@@ -48,6 +52,26 @@ public class NoteService {
         requireInvoice(projectId, invoiceId);
         Note saved = notes.save(new Note(Note.INVOICE, invoiceId, request.text().trim(), Instant.now()));
         return NoteResponse.from(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public List<NoteResponse> listForClient(Long clientId) {
+        requireClient(clientId);
+        return notes.findByTargetTypeAndTargetIdOrderByCreatedAtDescIdDesc(Note.CLIENT, clientId).stream()
+                .map(NoteResponse::from).toList();
+    }
+
+    @Transactional
+    public NoteResponse createForClient(Long clientId, NoteRequest request) {
+        requireClient(clientId);
+        Note saved = notes.save(new Note(Note.CLIENT, clientId, request.text().trim(), Instant.now()));
+        return NoteResponse.from(saved);
+    }
+
+    private void requireClient(Long clientId) {
+        if (!clients.existsById(clientId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+        }
     }
 
     private void requireInvoice(Long projectId, Long invoiceId) {

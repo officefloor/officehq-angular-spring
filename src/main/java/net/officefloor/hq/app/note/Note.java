@@ -8,7 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 
-/** A free-text note written against a record, such as a project or an invoice. */
+/** A free-text note written against a record, such as a project, an invoice or a client. */
 @Entity
 @Table(name = "note")
 public class Note {
@@ -18,6 +18,9 @@ public class Note {
 
     /** Target type for notes kept on an invoice. */
     public static final String INVOICE = "invoice";
+
+    /** Target type for notes kept on a client. */
+    public static final String CLIENT = "client";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

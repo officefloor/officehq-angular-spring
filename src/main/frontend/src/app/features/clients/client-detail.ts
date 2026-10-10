@@ -4,6 +4,7 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { ClientContacts } from '../contacts/client-contacts';
 import { ClientContactHistory } from '../contact-history/client-contact-history';
+import { Notes } from '../notes/notes';
 import { Contact } from '../contacts/contact.service';
 import { ClientCredit } from '../credit/client-credit';
 import { ClientAging } from '../invoices/client-aging';
@@ -22,7 +23,7 @@ import { Client, ClientService } from './client.service';
 // A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them (net of credits and write-offs), their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
 @Component({
   selector: 'app-client-detail',
-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, Notes, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
   styles: `
     .client-badges {
       display: flex;
@@ -179,6 +180,7 @@ import { Client, ClientService } from './client.service';
         (contactArchived)="contactArchived($event)"
       />
       <app-client-contact-history [clientId]="clientId()" />
+      <app-notes [clientId]="clientId()" />
       <app-client-projects [clientId]="clientId()" />
       <app-client-merge [client]="c" (merged)="clientMerged($event)" />
     }

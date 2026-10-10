@@ -2,10 +2,11 @@ import { DatePipe } from '@angular/common';
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { NoteService } from './note.service';
+import { Observable, throwError } from 'rxjs';
+import { Note, NoteService } from './note.service';
 
-// The notes kept on a job, or on one of its invoices when an invoice is given: write a note and read
-// them back, newest first.
+// The notes kept on a job, on one of its invoices when an invoice is given, or on a client when a
+// client is given: write a note and read them back as a timeline, newest first.
 @Component({
   selector: 'app-notes',
   imports: [ReactiveFormsModule, DatePipe],
@@ -45,7 +46,7 @@ import { NoteService } from './note.service';
         } @else {
           <ol
             class="notes"
-            [attr.aria-label]="(kind() === 'invoice' ? 'Invoice' : 'Job') + ' notes, newest first'"
+            [attr.aria-label]="listLabel()"
             [attr.data-testid]="kind() + '-note-list'"
           >
             @for (n of notes.value(); track n.id) {
@@ -73,19 +74,25 @@ import { NoteService } from './note.service';
 export class Notes {
   private readonly service = inject(NoteService);
 
-  readonly projectId = input.required<number>();
+  /** The job whose notes these are (or whose invoice's notes, when an invoice is given). */
+  readonly projectId = input<number>();
   /** When given, the notes are the invoice's rather than the job's. */
   readonly invoiceId = input<number>();
+  /** When given, the notes are the client's. */
+  readonly clientId = input<number>();
 
-  protected readonly kind = computed(() => (this.invoiceId() === undefined ? 'project' : 'invoice'));
-  protected readonly label = computed(() => (this.kind() === 'invoice' ? 'invoice' : 'job'));
+  protected readonly kind = computed(() =>
+    this.clientId() !== undefined ? 'client' : this.invoiceId() === undefined ? 'project' : 'invoice',
+  );
+  protected readonly label = computed(() => (this.kind() === 'project' ? 'job' : this.kind()));
+  protected readonly listLabel = computed(() => {
+    const label = this.label();
+    return `${label.charAt(0).toUpperCase()}${label.slice(1)} notes, newest first`;
+  });
 
   protected readonly notes = rxResource({
-    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
-    stream: ({ params }) =>
-      params.invoiceId === undefined
-        ? this.service.listForProject(params.projectId)
-        : this.service.listForInvoice(params.projectId, params.invoiceId),
+    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId(), clientId: this.clientId() }),
+    stream: ({ params }) => this.list(params.projectId, params.invoiceId, params.clientId),
   });
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
@@ -108,12 +115,7 @@ export class Notes {
     }
     this.saving.set(true);
     this.saveError.set(null);
-    const invoiceId = this.invoiceId();
-    const request =
-      invoiceId === undefined
-        ? this.service.createForProject(this.projectId(), text)
-        : this.service.createForInvoice(this.projectId(), invoiceId, text);
-    request.subscribe({
+    this.create(text).subscribe({
       next: (created) => {
         this.notes.update((list) => [created, ...(list ?? [])]);
         this.form.reset();
@@ -124,5 +126,32 @@ export class Notes {
         this.saving.set(false);
       },
     });
+  }
+
+  private list(projectId?: number, invoiceId?: number, clientId?: number): Observable<Note[]> {
+    if (clientId !== undefined) {
+      return this.service.listForClient(clientId);
+    }
+    if (projectId === undefined) {
+      return throwError(() => new Error('Notes need a job or a client'));
+    }
+    return invoiceId === undefined
+      ? this.service.listForProject(projectId)
+      : this.service.listForInvoice(projectId, invoiceId);
+  }
+
+  private create(text: string): Observable<Note> {
+    const clientId = this.clientId();
+    const projectId = this.projectId();
+    const invoiceId = this.invoiceId();
+    if (clientId !== undefined) {
+      return this.service.createForClient(clientId, text);
+    }
+    if (projectId === undefined) {
+      return throwError(() => new Error('Notes need a job or a client'));
+    }
+    return invoiceId === undefined
+      ? this.service.createForProject(projectId, text)
+      : this.service.createForInvoice(projectId, invoiceId, text);
   }
 }

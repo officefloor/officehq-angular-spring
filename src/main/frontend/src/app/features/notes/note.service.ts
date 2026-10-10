@@ -32,4 +32,13 @@ export class NoteService {
   createForInvoice(projectId: number, invoiceId: number, text: string): Observable<Note> {
     return this.http.post<Note>(`/api/projects/${projectId}/invoices/${invoiceId}/notes`, { text });
   }
+
+  /** A client's notes, newest first. */
+  listForClient(clientId: number): Observable<Note[]> {
+    return this.http.get<Note[]>(`/api/clients/${clientId}/notes`);
+  }
+
+  createForClient(clientId: number, text: string): Observable<Note> {
+    return this.http.post<Note>(`/api/clients/${clientId}/notes`, { text });
+  }
 }

@@ -20,6 +20,8 @@ import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.deposit.DepositRepository;
 import net.officefloor.hq.app.fx.FxRateService;
+import net.officefloor.hq.app.note.Note;
+import net.officefloor.hq.app.note.NoteRepository;
 import net.officefloor.hq.app.payment.ClientPaymentRepository;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.refund.RefundRepository;
@@ -45,6 +47,7 @@ public class ClientService {
     private final ClientPaymentRepository clientPayments;
     private final DepositRepository deposits;
     private final RefundRepository refunds;
+    private final NoteRepository notes;
     private final FxRateService fxRates;
     private final CurrencyService currencies;
     private final SettingsService settings;
@@ -54,7 +57,7 @@ public class ClientService {
     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
             InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes,
             ClientPaymentRepository clientPayments, DepositRepository deposits, RefundRepository refunds,
-            FxRateService fxRates, CurrencyService currencies, SettingsService settings, Audit audit, Clock clock) {
+            NoteRepository notes, FxRateService fxRates, CurrencyService currencies, SettingsService settings, Audit audit, Clock clock) {
         this.clients = clients;
         this.projects = projects;
         this.contacts = contacts;
@@ -64,6 +67,7 @@ public class ClientService {
         this.clientPayments = clientPayments;
         this.deposits = deposits;
         this.refunds = refunds;
+        this.notes = notes;
         this.fxRates = fxRates;
         this.currencies = currencies;
         this.settings = settings;
@@ -392,7 +396,7 @@ public class ClientService {
 
     /**
      * Merges a duplicate client into the client it duplicates: the duplicate's projects (and so their
-     * invoices), contacts, contact history, emailed statements, payments, deposits and refunds all move to the kept client, which takes the
+     * invoices), contacts, contact history, notes, emailed statements, payments, deposits and refunds all move to the kept client, which takes the
      * duplicate's main contact if it has none of its own, and the duplicate is then removed. Both must
      * be billed in the same currency, so no money changes currency. Recorded in the audit log.
      */
@@ -415,6 +419,7 @@ public class ClientService {
         clients.moveProjects(id, targetId);
         clients.moveContacts(id, targetId);
         clients.moveContactHistory(id, targetId);
+        notes.moveNotes(Note.CLIENT, id, targetId);
         clients.moveStatementEmails(id, targetId);
         clients.moveClientPayments(id, targetId);
         clients.moveDeposits(id, targetId);

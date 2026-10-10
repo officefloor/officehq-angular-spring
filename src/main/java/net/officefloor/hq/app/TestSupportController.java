@@ -200,6 +200,14 @@ public class TestSupportController {
                     ((Number) n.get("id")).longValue(), n.get("targetType"),
                     ((Number) n.get("targetId")).longValue(), n.get("text"), Timestamp.from(at));
         }
+        // Notes written on a client, stamped with the day they were written.
+        for (Map<String, Object> n : rows(fixture, "clientNotes")) {
+            Object when = n.get("at") != null ? n.get("at") : n.get("date");
+            Instant at = when == null ? clock.instant() : seedInstant(when.toString());
+            jdbc.update("INSERT INTO note (id, target_type, target_id, text, created_at) VALUES (?, ?, ?, ?, ?)",
+                    ((Number) n.get("id")).longValue(), "client",
+                    ((Number) n.get("clientId")).longValue(), n.get("text"), Timestamp.from(at));
+        }
         // An invoice repeating for a fixed amount on a project, monthly unless it says otherwise.
         for (Map<String, Object> r : rows(fixture, "recurring")) {
             jdbc.update("INSERT INTO recurring_invoice (id, project_id, amount, frequency, next_date, status, period_days, prorate_first)"
