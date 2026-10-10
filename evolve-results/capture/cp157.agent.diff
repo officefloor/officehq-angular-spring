@@ -1,0 +1,290 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 55593c7..0e3babb 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -11,14 +11,15 @@ import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
+ import { ClientProjects } from '../projects/client-projects';
+ import { ClientCreditLimit } from './client-credit-limit';
+ import { ClientCurrency } from './client-currency';
++import { ClientPaymentTerms } from './client-payment-terms';
+ import { ClientExport } from './client-export';
+ import { ClientMerge } from './client-merge';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, preferred language, account manager, tax number, billing address, main contact, currency and credit limit, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
++// A single client's page: their name, email, phone number, preferred language, account manager, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
++  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -100,6 +101,7 @@ import { Client, ClientService } from './client.service';
+       <app-client-export [clientId]="clientId()" />
+       <app-client-currency [client]="c" (changed)="currencyChanged($event)" />
+       <app-client-credit-limit [client]="c" (changed)="creditLimitChanged($event)" />
++      <app-client-payment-terms [client]="c" (changed)="paymentTermsChanged($event)" />
+       @if (summary.hasValue()) {
+         <ul class="client-badges" aria-label="At a glance" data-testid="client-badges">
+           <li>
+@@ -236,6 +238,10 @@ export class ClientDetail {
+     this.client.set(client);
+   }
+ 
++  protected paymentTermsChanged(client: Client): void {
++    this.client.set(client);
++  }
++
+   protected clientMerged(kept: Client): void {
+     // This client no longer exists; carry on at the one it was merged into, unless the user is already leaving.
+     if (this.leaving) {
+diff --git a/src/main/frontend/src/app/features/clients/client-payment-terms.ts b/src/main/frontend/src/app/features/clients/client-payment-terms.ts
+new file mode 100644
+index 0000000..d307fbf
+--- /dev/null
++++ b/src/main/frontend/src/app/features/clients/client-payment-terms.ts
+@@ -0,0 +1,75 @@
++import { Component, inject, input, linkedSignal, output, signal } from '@angular/core';
++import { Client, ClientService } from './client.service';
++
++// The number of days a client has to pay an invoice (e.g. net 30), with a form to set it or remove it.
++@Component({
++  selector: 'app-client-payment-terms',
++  template: `
++    <p>
++      Payment terms:
++      @if (client().paymentTermsDays !== null) {
++        <span data-testid="client-payment-terms">Net {{ client().paymentTermsDays }}</span>
++      } @else {
++        <span data-testid="client-payment-terms-none">None agreed</span>
++      }
++    </p>
++    <form (submit)="$event.preventDefault(); save()">
++      <label for="client-payment-terms-input">Payment terms (days, blank for none)</label>
++      <input
++        id="client-payment-terms-input"
++        type="number"
++        min="0"
++        max="365"
++        step="1"
++        data-testid="client-payment-terms-input"
++        [value]="days()"
++        (input)="days.set($any($event.target).value)"
++        [attr.aria-invalid]="invalid()"
++        [attr.aria-describedby]="invalid() ? 'client-payment-terms-invalid' : null"
++      />
++      <button type="submit" data-testid="client-payment-terms-save" [disabled]="saving()">Save payment terms</button>
++      @if (invalid()) {
++        <p id="client-payment-terms-invalid" role="alert" data-testid="client-payment-terms-invalid">
++          Payment terms must be a whole number of days from 0 to 365.
++        </p>
++      }
++      @if (saveError()) {
++        <p role="alert" data-testid="client-payment-terms-error">{{ saveError() }}</p>
++      }
++    </form>
++  `,
++})
++export class ClientPaymentTerms {
++  private readonly service = inject(ClientService);
++
++  readonly client = input.required<Client>();
++  /** Emits the client once their payment terms have been saved. */
++  readonly changed = output<Client>();
++
++  protected readonly days = linkedSignal(() => this.client().paymentTermsDays?.toString() ?? '');
++  protected readonly invalid = signal(false);
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected save(): void {
++    const text = this.days().toString().trim();
++    const days = text === '' ? null : Number(text);
++    if (days !== null && (!Number.isInteger(days) || days < 0 || days > 365)) {
++      this.invalid.set(true);
++      return;
++    }
++    this.invalid.set(false);
++    this.saveError.set(null);
++    this.saving.set(true);
++    this.service.changePaymentTerms(this.client().id, days).subscribe({
++      next: (client) => {
++        this.saving.set(false);
++        this.changed.emit(client);
++      },
++      error: () => {
++        this.saving.set(false);
++        this.saveError.set('Could not save the payment terms. Please try again.');
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 87e4e8f..e3dcc9e 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -34,6 +34,8 @@ export interface Client {
+   currency: CurrencyCode;
+   /** The most the client may owe, in their currency; null when no limit is set. */
+   creditLimit: number | null;
++  /** The number of days the client has to pay an invoice (e.g. 30 for net 30); null when no terms are agreed. */
++  paymentTermsDays: number | null;
+   /** What is left to pay on the client's sent, not yet fully paid invoices, in their currency. */
+   outstanding: number;
+ }
+@@ -45,7 +47,7 @@ export interface ClientSummary {
+   lifetimeBilled: number;
+ }
+ 
+-export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'outstanding'>;
++export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'outstanding'>;
+ 
+ /** Where a client's contact details file is downloaded from. */
+ export function exportUrl(id: number): string {
+@@ -90,6 +92,11 @@ export class ClientService {
+     return this.http.put<Client>(`/api/clients/${id}/credit-limit`, { creditLimit });
+   }
+ 
++  /** Sets the number of days the client has to pay an invoice; null removes their payment terms. */
++  changePaymentTerms(id: number, paymentTermsDays: number | null): Observable<Client> {
++    return this.http.put<Client>(`/api/clients/${id}/payment-terms`, { paymentTermsDays });
++  }
++
+   /** Merges the client into another one, which keeps everything the client had; the client is removed. */
+   merge(id: number, targetId: number): Observable<Client> {
+     return this.http.post<Client>(`/api/clients/${id}/merge`, { targetId });
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 6780d1f..5466529 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -111,15 +111,16 @@ public class TestSupportController {
+                     r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"), c.get("language"), c.get("accountManager"),
+                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
+                     Boolean.TRUE.equals(c.get("keyAccount")),
+                     Boolean.TRUE.equals(c.get("archived")),
+                     c.get("currency") == null ? Currency.DEFAULT : c.get("currency").toString(),
+                     decimal(c.get("defaultDiscountPct")),
+-                    c.get("creditLimit") == null ? null : decimal(c.get("creditLimit")));
++                    c.get("creditLimit") == null ? null : decimal(c.get("creditLimit")),
++                    c.get("paymentTermsDays") == null ? null : ((Number) c.get("paymentTermsDays")).intValue());
+         }
+         for (Map<String, Object> c : rows(fixture, "contacts")) {
+             jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index e115ca3..f79cf22 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -61,6 +61,9 @@ public class Client {
+     @Column(precision = 12, scale = 2)
+     private BigDecimal creditLimit;
+ 
++    /** The number of days the client has to pay an invoice (e.g. 30 for net 30); none when no terms are agreed. */
++    private Integer paymentTermsDays;
++
+     /** The currency the client is billed in; all of their money is in it. */
+     @Column(nullable = false)
+     private String currency = Currency.DEFAULT;
+@@ -178,6 +181,14 @@ public class Client {
+         this.creditLimit = creditLimit == null ? null : creditLimit.setScale(2, RoundingMode.HALF_UP);
+     }
+ 
++    public Integer getPaymentTermsDays() {
++        return paymentTermsDays;
++    }
++
++    public void setPaymentTermsDays(Integer paymentTermsDays) {
++        this.paymentTermsDays = paymentTermsDays;
++    }
++
+     public String getCurrency() {
+         return currency;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index 02e8f13..279ee44 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -73,6 +73,11 @@ public class ClientController {
+         return service.changeCreditLimit(id, request.creditLimit());
+     }
+ 
++    @PutMapping("/{id}/payment-terms")
++    public ClientResponse changePaymentTerms(@PathVariable Long id, @Valid @RequestBody ClientPaymentTermsRequest request) {
++        return service.changePaymentTerms(id, request.paymentTermsDays());
++    }
++
+     @PostMapping("/{id}/archive")
+     public ClientResponse archive(@PathVariable Long id) {
+         return service.archive(id);
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientPaymentTermsRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientPaymentTermsRequest.java
+new file mode 100644
+index 0000000..05e81e9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientPaymentTermsRequest.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.client;
++
++import jakarta.validation.constraints.Max;
++import jakarta.validation.constraints.Min;
++
++/** Payload to set the number of days a client has to pay an invoice (e.g. 30 for net 30); null removes the terms. */
++public record ClientPaymentTermsRequest(@Min(0) @Max(365) Integer paymentTermsDays) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index 66d03ef..0fc3c0f 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -4,7 +4,7 @@ import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+ public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, String language, String accountManager, boolean taxInclusive, boolean taxExempt, boolean keyAccount, BigDecimal defaultDiscountPct, boolean archived, PrimaryContact primaryContact,
+-        String currency, BigDecimal creditLimit, BigDecimal outstanding) {
++        String currency, BigDecimal creditLimit, Integer paymentTermsDays, BigDecimal outstanding) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+     public record PrimaryContact(Long id, String name) {
+@@ -15,6 +15,6 @@ public record ClientResponse(Long id, String name, String email, String phone, S
+         Contact primary = client.getPrimaryContact();
+         return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.getLanguage(), client.getAccountManager(), client.isTaxInclusive(), client.isTaxExempt(), client.isKeyAccount(), client.getDefaultDiscountPct(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
+-                client.getCurrency(), client.getCreditLimit(), outstanding);
++                client.getCurrency(), client.getCreditLimit(), client.getPaymentTermsDays(), outstanding);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index b579aed..eb36345 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -173,6 +173,16 @@ public class ClientService {
+         return respond(client);
+     }
+ 
++    /** Sets the number of days a client has to pay an invoice, or removes their payment terms; recorded in the audit log. */
++    @Transactional
++    public ClientResponse changePaymentTerms(Long id, Integer paymentTermsDays) {
++        Client client = find(id);
++        client.setPaymentTermsDays(paymentTermsDays);
++        clients.flush();
++        audit.record("CLIENT_PAYMENT_TERMS_SET id=" + id + " days=" + (paymentTermsDays == null ? "none" : paymentTermsDays));
++        return respond(client);
++    }
++
+     private static ResponseStatusException emailTaken() {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "A client with this email already exists");
+     }
+diff --git a/src/main/resources/db/migration/V85__client_payment_terms.sql b/src/main/resources/db/migration/V85__client_payment_terms.sql
+new file mode 100644
+index 0000000..51ca403
+--- /dev/null
++++ b/src/main/resources/db/migration/V85__client_payment_terms.sql
+@@ -0,0 +1,3 @@
++-- A client's payment terms: the number of days they have to pay an invoice (e.g. net 30); none when not agreed.
++ALTER TABLE client ADD COLUMN payment_terms_days INTEGER;
++ALTER TABLE client ADD CONSTRAINT client_payment_terms_days_range CHECK (payment_terms_days IS NULL OR payment_terms_days BETWEEN 0 AND 365);
