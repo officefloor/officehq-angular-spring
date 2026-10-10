@@ -5,7 +5,7 @@ import { DashboardService } from './dashboard.service';
 
 // The revenue billed over a chosen date range (over all time until a range is chosen): the total of the invoices
 // issued within it that were sent (drafts and cancelled invoices are left out), in the home currency, broken down
-// by job so the highest-earning jobs show first.
+// by job so the highest-earning jobs show first, and month by month so the trend shows.
 @Component({
   selector: 'app-revenue-report',
   imports: [MoneyPipe],
@@ -26,11 +26,14 @@ import { DashboardService } from './dashboard.service';
       text-align: right;
     }
     .revenue-report-jobs th,
-    .revenue-report-jobs td {
+    .revenue-report-jobs td,
+    .revenue-report-months th,
+    .revenue-report-months td {
       padding: 0.25rem 0.75rem;
       text-align: left;
     }
-    .revenue-report-jobs .amount {
+    .revenue-report-jobs .amount,
+    .revenue-report-months .amount {
       text-align: right;
     }
   `,
@@ -87,6 +90,29 @@ import { DashboardService } from './dashboard.service';
         } @else {
           <p data-testid="revenue-jobs-empty">No revenue billed in this period.</p>
         }
+        <h3 id="revenue-by-month-heading">Revenue by month</h3>
+        @if (r.months.length) {
+          <table class="revenue-report-months" aria-labelledby="revenue-by-month-heading" data-testid="revenue-months">
+            <thead>
+              <tr>
+                <th scope="col">Month</th>
+                <th scope="col" class="amount">Invoices</th>
+                <th scope="col" class="amount">Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (m of r.months; track m.month) {
+                <tr [attr.data-testid]="'revenue-month-row-' + m.month">
+                  <th scope="row" data-testid="revenue-month-label">{{ monthLabel(m.month) }}</th>
+                  <td class="amount" data-testid="revenue-month-invoices">{{ m.invoices }}</td>
+                  <td class="amount" data-testid="revenue-month-amount">{{ m.amount | money: r.homeCurrency }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        } @else {
+          <p data-testid="revenue-months-empty">No revenue billed in this period.</p>
+        }
       }
     </section>
   `,
@@ -102,6 +128,15 @@ export class RevenueReport {
     params: () => ({ range: this.range() }),
     stream: ({ params }) => this.service.revenueReport(params.range ?? undefined),
   });
+
+  private static readonly MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+    'September', 'October', 'November', 'December'];
+
+  /** A yyyy-MM month as, say, "February 2026". */
+  protected monthLabel(month: string): string {
+    const [year, m] = month.split('-');
+    return `${RevenueReport.MONTHS[Number(m) - 1]} ${year}`;
+  }
 
   protected apply(event: Event, from: string, to: string): void {
     event.preventDefault();

@@ -69,9 +69,18 @@ export interface JobRevenue {
   amount: number;
 }
 
+/** The revenue billed on invoices issued in one calendar month, in the home currency. */
+export interface MonthRevenue {
+  /** The month as yyyy-MM. */
+  month: string;
+  /** How many invoices the month's revenue came from. */
+  invoices: number;
+  amount: number;
+}
+
 /**
  * The revenue billed on invoices issued on or between two dates (over all time when the dates are null), in the
- * home currency, broken down by job with the highest-earning job first.
+ * home currency, broken down by job with the highest-earning job first, and by month with the earliest first.
  */
 export interface RevenueReport {
   from: string | null;
@@ -81,6 +90,8 @@ export interface RevenueReport {
   invoices: number;
   total: number;
   jobs: JobRevenue[];
+  /** Only the months something was billed in. */
+  months: MonthRevenue[];
 }
 
 /** One instalment expected in, in its invoice's currency. */

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -253,7 +254,7 @@ public class DashboardService {
      * The revenue billed on or between the given dates (over all time when either date is missing): the amounts of
      * the invoices issued in the range that were sent (drafts and cancelled invoices are left out), each converted
      * into the home currency at its issue date's rate (an invoice that cannot be converted is left out). The revenue
-     * is also broken down by job (project), highest-earning first.
+     * is also broken down by job (project), highest-earning first, and by the month each invoice was issued in, earliest first, to show the trend.
      */
     @Transactional(readOnly = true)
     public RevenueReportResponse revenueReport(LocalDate from, LocalDate to) {
@@ -267,6 +268,7 @@ public class DashboardService {
         BigDecimal total = BigDecimal.ZERO;
         long count = 0;
         Map<Long, JobTally> byJob = new LinkedHashMap<>();
+        Map<YearMonth, MonthTally> byMonth = new TreeMap<>();
         List<Invoice> issued = allTime ? invoices.findByStatusInWithClient(billed)
                 : invoices.findByStatusInAndIssuedDateBetween(billed, from, to);
         for (Invoice invoice : issued) {
@@ -281,14 +283,17 @@ public class DashboardService {
             var project = invoice.getProject();
             byJob.computeIfAbsent(project.getId(),
                     id -> new JobTally(id, project.getName(), project.getClient().getName())).add(inHome.get());
+            byMonth.computeIfAbsent(YearMonth.from(invoice.getIssuedDate()), MonthTally::new).add(inHome.get());
         }
+        List<RevenueReportResponse.MonthRevenue> months = byMonth.values().stream().map(MonthTally::toResponse)
+                .toList();
         List<RevenueReportResponse.JobRevenue> jobs = byJob.values().stream()
                 .map(JobTally::toResponse)
                 .sorted(Comparator.comparing(RevenueReportResponse.JobRevenue::amount).reversed()
                         .thenComparing(RevenueReportResponse.JobRevenue::projectId))
                 .toList();
         return new RevenueReportResponse(allTime ? null : from, allTime ? null : to, home, count,
-                total.setScale(2, RoundingMode.HALF_UP), jobs);
+                total.setScale(2, RoundingMode.HALF_UP), jobs, months);
     }
 
     /** The running revenue of one job while the revenue report is built. */
@@ -312,6 +317,27 @@ public class DashboardService {
 
         RevenueReportResponse.JobRevenue toResponse() {
             return new RevenueReportResponse.JobRevenue(projectId, projectName, clientName, invoices,
+                    amount.setScale(2, RoundingMode.HALF_UP));
+        }
+    }
+
+    /** The running revenue of one calendar month while the revenue report is built. */
+    private static final class MonthTally {
+        private final YearMonth month;
+        private long invoices;
+        private BigDecimal amount = BigDecimal.ZERO;
+
+        MonthTally(YearMonth month) {
+            this.month = month;
+        }
+
+        void add(BigDecimal inHome) {
+            amount = amount.add(inHome);
+            invoices++;
+        }
+
+        RevenueReportResponse.MonthRevenue toResponse() {
+            return new RevenueReportResponse.MonthRevenue(month.toString(), invoices,
                     amount.setScale(2, RoundingMode.HALF_UP));
         }
     }
