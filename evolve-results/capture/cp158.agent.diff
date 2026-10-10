@@ -1,0 +1,100 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 5506ed8..b3f275f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -252,7 +252,7 @@ export interface NewInvoice {
+   amount?: number;
+   /** Defaults to today on the server when omitted. */
+   issuedDate?: string;
+-  /** Defaults to 30 days after the issue date on the server when omitted. */
++  /** Defaults to the client's payment terms (30 days when none) after the issue date on the server when omitted. */
+   dueDate?: string;
+   /** The sales tax percentage; defaults to the default tax rate in the settings on the server when omitted. */
+   taxPct?: number;
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index 1a13054..447495c 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -70,7 +70,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+           <input id="invoice-issued" type="date" formControlName="issuedDate" data-testid="invoice-form-issued" />
+         </div>
+         <div>
+-          <label for="invoice-due">Due (optional, defaults to 30 days after issue)</label>
++          <label for="invoice-due">Due (optional, defaults to the client's payment terms after issue)</label>
+           <input
+             id="invoice-due"
+             type="date"
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 5466529..50cbd6c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -180,15 +180,19 @@ public class TestSupportController {
+                     Boolean.TRUE.equals(r.get("prorateFirst")));
+         }
+         for (Map<String, Object> i : rows(fixture, "invoices")) {
+-            // A missing date is filled in from the other one using the standard payment term; with
+-            // neither given the invoice is issued today.
++            // A missing date is filled in from the other one using the client's payment terms (the
++            // standard term when they have none); with neither given the invoice is issued today.
+             // The issue date may be given as "issuedDate" or "issueDate".
++            Integer paymentTermsDays = jdbc.queryForObject(
++                    "SELECT c.payment_terms_days FROM project p JOIN client c ON c.id = p.client_id WHERE p.id = ?",
++                    Integer.class, ((Number) i.get("projectId")).longValue());
++            int termDays = InvoiceRequest.termDays(paymentTermsDays);
+             Object issuedValue = i.get("issuedDate") != null ? i.get("issuedDate") : i.get("issueDate");
+             LocalDate issued = issuedValue != null ? LocalDate.parse(issuedValue.toString())
+                     : i.get("dueDate") != null
+-                            ? LocalDate.parse(i.get("dueDate").toString()).minusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
++                            ? LocalDate.parse(i.get("dueDate").toString()).minusDays(termDays)
+                             : LocalDate.now(clock);
+-            LocalDate due = i.get("dueDate") == null ? issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS)
++            LocalDate due = i.get("dueDate") == null ? issued.plusDays(termDays)
+                     : LocalDate.parse(i.get("dueDate").toString());
+             long invoiceId = ((Number) i.get("id")).longValue();
+             List<Map<String, Object>> lineItems = rows(i, "lineItems");
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
+index 23d0558..aff87d4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRequest.java
+@@ -9,8 +9,8 @@ import java.time.LocalDate;
+ /**
+  * Payload to add an invoice to a project. Everything is optional: without an amount the invoice
+  * starts as an empty draft to be built up from line items, while an amount is carried as a single
+- * line. The issue date defaults to today and the due date to {@link #DEFAULT_TERM_DAYS} days after
+- * the issue date. The sales tax percentage defaults to the default tax rate in the settings.
++ * line. The issue date defaults to today and the due date to the client's payment terms (or
++ * {@link #DEFAULT_TERM_DAYS} days when none are agreed) after the issue date. The sales tax percentage defaults to the default tax rate in the settings.
+  */
+ public record InvoiceRequest(
+         @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
+@@ -18,9 +18,14 @@ public record InvoiceRequest(
+         LocalDate dueDate,
+         @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal taxPct) {
+ 
+-    /** Days between issue and due date when no due date is given. */
++    /** Days between issue and due date when no due date is given and the client has no payment terms. */
+     public static final int DEFAULT_TERM_DAYS = 30;
+ 
++    /** Days between issue and due date for a client with the given payment terms, which may be none. */
++    public static int termDays(Integer paymentTermsDays) {
++        return paymentTermsDays != null ? paymentTermsDays : DEFAULT_TERM_DAYS;
++    }
++
+     /** Description of the single line an invoice raised as one figure is given. */
+     public static final String SINGLE_AMOUNT_DESCRIPTION = "Invoice amount";
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index bd56913..5cc3c59 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -262,7 +262,9 @@ public class InvoiceService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The job is closed; no new invoice can be raised on it");
+         }
+         LocalDate issued = request.issuedDate() != null ? request.issuedDate() : LocalDate.now();
+-        LocalDate due = request.dueDate() != null ? request.dueDate() : issued.plusDays(InvoiceRequest.DEFAULT_TERM_DAYS);
++        // Without a due date the invoice falls due after the client's payment terms (net N days).
++        LocalDate due = request.dueDate() != null ? request.dueDate()
++                : issued.plusDays(InvoiceRequest.termDays(project.getClient().getPaymentTermsDays()));
+         if (due.isBefore(issued)) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Due date must not be before the issue date");
+         }
