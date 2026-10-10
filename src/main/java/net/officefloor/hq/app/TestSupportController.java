@@ -108,6 +108,11 @@ public class TestSupportController {
         if (fixture.get("homeCurrency") != null) {
             jdbc.update("UPDATE app_settings SET home_currency = ? WHERE id = 1", fixture.get("homeCurrency").toString());
         }
+        // App settings: "recognitionBasis" is when revenue counts, "sent" or "paid".
+        if (fixture.get("settings") instanceof Map<?, ?> s && s.get("recognitionBasis") != null) {
+            jdbc.update("UPDATE app_settings SET revenue_recognition_basis = ? WHERE id = 1",
+                    s.get("recognitionBasis").toString());
+        }
         // An exchange rate: from its date, one unit of the currency is worth "rate" units of the home currency.
         for (Map<String, Object> r : rows(fixture, "fxRates")) {
             jdbc.update("INSERT INTO fx_rate (currency, rate_date, rate) VALUES (?, ?, ?)",
