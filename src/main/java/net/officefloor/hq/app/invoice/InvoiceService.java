@@ -381,6 +381,26 @@ public class InvoiceService {
         return detail(invoice);
     }
 
+    /**
+     * Releases the retention held back on a sent invoice once the job is finished, so it becomes due, and
+     * records the release in the audit log.
+     */
+    @Transactional
+    public InvoiceDetailResponse releaseRetention(Long projectId, Long invoiceId) {
+        Invoice invoice = find(projectId, invoiceId);
+        if (invoice.getStatus() == InvoiceStatus.DRAFT || invoice.getStatus().isClosedUnpaid()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a sent invoice can have its retention released");
+        }
+        BigDecimal retention = invoice.getRetention();
+        if (retention.signum() == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has no retention held back to release");
+        }
+        invoice.releaseRetention();
+        invoices.flush();
+        audit.record("INVOICE_RETENTION_RELEASED id=" + invoice.getId() + " amount=" + retention.toPlainString());
+        return detail(invoice);
+    }
+
     /** Sends a draft invoice and records the sending in the audit log. */
     @Transactional
     public InvoiceResponse send(Long projectId, Long invoiceId) {
@@ -471,6 +491,8 @@ public class InvoiceService {
         String currency = invoice.getCurrency();
         BigDecimal homeAmount = currency.equals(home) ? null
                 : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount()).orElse(null);
-        return InvoiceDetailResponse.from(invoice, status, home, homeAmount, LocalDate.now(clock));
+        BigDecimal amountDue = invoice.dueNow(payments.sumAmountByInvoiceId(invoice.getId()),
+                creditNotes.sumAmountByInvoiceId(invoice.getId()));
+        return InvoiceDetailResponse.from(invoice, status, home, homeAmount, LocalDate.now(clock), amountDue);
     }
 }

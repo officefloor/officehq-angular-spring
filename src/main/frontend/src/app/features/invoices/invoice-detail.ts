@@ -397,7 +397,11 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
             @if (inv.retentionPct > 0) {
               <tr data-testid="invoice-retention-row">
                 <th scope="row" colspan="5">
-                  Retention held back, not due yet
+                  @if (inv.retentionReleased) {
+                    Retention <span data-testid="invoice-retention-released">released</span>, now due
+                  } @else {
+                    Retention held back, not due yet
+                  }
                   (<span data-testid="invoice-retention-pct">{{ inv.retentionPct | number: '1.0-2' : 'en-US' }}</span>%)
                 </th>
                 <td data-testid="invoice-retention">{{ inv.retention | money: inv.currency }}</td>
@@ -413,8 +417,30 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                 }
               </tr>
             }
+            <tr data-testid="invoice-due-amount-row">
+              <th scope="row" colspan="5">Owed now (after payments and credits)</th>
+              <td data-testid="invoice-due-amount">{{ inv.amountDue | money: inv.currency }}</td>
+              @if (inv.status === 'DRAFT') {
+                <td></td>
+              }
+            </tr>
           </tfoot>
         </table>
+        @if (canReleaseRetention()) {
+          <p>
+            <button
+              type="button"
+              (click)="releaseRetention()"
+              [disabled]="releasingRetention()"
+              data-testid="invoice-retention-release"
+            >
+              Release retention (job finished)
+            </button>
+          </p>
+        }
+        @if (releaseRetentionError()) {
+          <p role="alert" data-testid="invoice-retention-release-error">{{ releaseRetentionError() }}</p>
+        }
         @if (editError()) {
           <p role="alert" data-testid="lineitem-edit-error">{{ editError() }}</p>
         }
@@ -891,6 +917,38 @@ export class InvoiceDetailPage {
       error: () => {
         this.writeOffError.set('Could not write off the invoice. Please try again.');
         this.writingOff.set(false);
+      },
+    });
+  }
+
+  protected readonly releasingRetention = signal(false);
+  protected readonly releaseRetentionError = signal<string | null>(null);
+
+  // Retention can be released once the invoice is sent and still holds some back.
+  protected readonly canReleaseRetention = computed(() => {
+    const inv = this.invoice.value();
+    return (
+      !!inv &&
+      inv.retention > 0 &&
+      !inv.retentionReleased &&
+      inv.status !== 'DRAFT' &&
+      inv.status !== 'VOID' &&
+      inv.status !== 'WRITTEN_OFF'
+    );
+  });
+
+  // Releases the retention held back once the job is finished, so it becomes due.
+  protected releaseRetention(): void {
+    this.releasingRetention.set(true);
+    this.releaseRetentionError.set(null);
+    this.service.releaseRetention(this.projectIdNumber(), Number(this.invoiceId())).subscribe({
+      next: (updated) => {
+        this.invoice.set(updated);
+        this.releasingRetention.set(false);
+      },
+      error: () => {
+        this.releaseRetentionError.set('Could not release the retention. Please try again.');
+        this.releasingRetention.set(false);
       },
     });
   }

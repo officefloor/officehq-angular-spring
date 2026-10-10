@@ -119,6 +119,11 @@ public class InvoiceController {
         return service.applyRetention(projectId, invoiceId, request);
     }
 
+    @PostMapping("/{invoiceId}/retention/release")
+    public InvoiceDetailResponse releaseRetention(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+        return service.releaseRetention(projectId, invoiceId);
+    }
+
     @PostMapping("/{invoiceId}/send")
     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.send(projectId, invoiceId);

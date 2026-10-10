@@ -212,10 +212,14 @@ export interface InvoiceDetail extends Invoice {
   lateFee: number;
   /** The percentage of the amount held back as retention; zero when none is held back. */
   retentionPct: number;
-  /** The amount held back as retention, which is not due yet. */
+  /** The amount held back as retention, which is not due yet; nothing once released. */
   retention: number;
+  /** Whether the retention has been released once the job is finished, making it due. */
+  retentionReleased: boolean;
   /** What is due now: the amount less the retention held back. */
   dueNow: number;
+  /** What the client owes right now: what is left to pay after any payments, less the retention held back. */
+  amountDue: number;
 }
 
 export interface NewLineItem {
@@ -349,6 +353,11 @@ export class InvoiceService {
   /** Sets the percentage of a draft invoice held back as retention, not due yet; zero holds none back. */
   applyRetention(projectId: number, invoiceId: number, retentionPct: number): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/retention`, { retentionPct });
+  }
+
+  /** Releases the retention held back on a sent invoice once the job is finished, so it becomes due. */
+  releaseRetention(projectId: number, invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/retention/release`, null);
   }
 
   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {

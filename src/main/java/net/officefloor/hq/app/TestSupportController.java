@@ -282,13 +282,16 @@ public class TestSupportController {
             BigDecimal lateFeePerDay = decimal(i.get("lateFeePerDay"));
             // A percentage may be held back as retention; it is not due yet but does not change the amount invoiced.
             BigDecimal retentionPct = decimal(i.get("retentionPct"));
+            // The retention may already have been released ("retentionReleased"), making it due.
+            boolean retentionReleased = Boolean.TRUE.equals(i.get("retentionReleased"));
             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, retention_pct, currency)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, retention_pct, retention_released, currency)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
                     surcharge, taxInclusive, taxExempt,
                     earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, retentionPct,
+                    retentionReleased,
                     i.get("currency") == null ? null : i.get("currency").toString());
             for (Map<String, Object> d : discounts) {
                 if (d.get("id") != null) {

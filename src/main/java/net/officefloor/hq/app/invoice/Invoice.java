@@ -104,6 +104,10 @@ public class Invoice {
     @Column(name = "retention_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal retentionPct = BigDecimal.ZERO.setScale(2);
 
+    /** Whether the retention has been released, once the job is finished, so it is now due. */
+    @Column(name = "retention_released", nullable = false)
+    private boolean retentionReleased;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private InvoiceStatus status = InvoiceStatus.DRAFT;
@@ -539,9 +543,21 @@ public class Invoice {
         return retentionPct;
     }
 
-    /** The amount held back as retention: the retention percentage of the amount invoiced. */
+    /** Releases the retention held back, so it becomes due. The percentage is kept on record. */
+    public void releaseRetention() {
+        this.retentionReleased = true;
+    }
+
+    public boolean isRetentionReleased() {
+        return retentionReleased;
+    }
+
+    /**
+     * The amount held back as retention: the retention percentage of the amount invoiced, or nothing once
+     * the retention has been released.
+     */
     public BigDecimal getRetention() {
-        return percentOf(amount, retentionPct);
+        return retentionReleased ? BigDecimal.ZERO.setScale(2) : percentOf(amount, retentionPct);
     }
 
     /** What is due now: the amount invoiced less the retention held back. */
