@@ -1,0 +1,259 @@
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index 3c4bb9c..cd926d3 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -8,12 +8,13 @@ import { ProjectTags } from '../tags/project-tags';
+ import { ProjectTasks } from '../tasks/project-tasks';
+ import { ProjectBudgetPanel } from './project-budget';
+ import { ProjectDates } from './project-dates';
++import { ProjectFileRef } from './project-file-ref';
+ import { ProjectService } from './project.service';
+ 
+-// A single project's page: its name, description, client and status, whether it is open or closed, whether it is billable, its start and end dates, its budget, its tags, its tasks, its notes, its invoices, and the invoices that recur every month.
++// A single project's page: its name, description, client and status, whether it is open or closed, whether it is billable, its start and end dates, its file reference, its budget, its tags, its tasks, its notes, its invoices, and the invoices that recur every month.
+ @Component({
+   selector: 'app-project-detail',
+-  imports: [RouterLink, ProjectBudgetPanel, ProjectDates, ProjectInvoices, ProjectRecurringInvoices, Notes, ProjectTags, ProjectTasks],
++  imports: [RouterLink, ProjectBudgetPanel, ProjectDates, ProjectFileRef, ProjectInvoices, ProjectRecurringInvoices, Notes, ProjectTags, ProjectTasks],
+   template: `
+     <a routerLink="/projects" data-testid="project-back">Back to jobs</a>
+     @if (project.error()) {
+@@ -55,6 +56,7 @@ import { ProjectService } from './project.service';
+         <p role="alert" data-testid="project-billable-error">{{ billableError() }}</p>
+       }
+       <app-project-dates [project]="p" (changed)="project.set($event)" />
++      <app-project-file-ref [project]="p" (changed)="project.set($event)" />
+       <app-project-budget [projectId]="projectId()" [currency]="p.currency" />
+       <app-project-tags [projectId]="projectId()" />
+       <app-project-tasks [projectId]="projectId()" />
+diff --git a/src/main/frontend/src/app/features/projects/project-file-ref.ts b/src/main/frontend/src/app/features/projects/project-file-ref.ts
+new file mode 100644
+index 0000000..4a3e090
+--- /dev/null
++++ b/src/main/frontend/src/app/features/projects/project-file-ref.ts
+@@ -0,0 +1,67 @@
++import { Component, effect, inject, input, output, signal } from '@angular/core';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { Project, ProjectService } from './project.service';
++
++// A job's file reference: shows it, and notes or clears it (leave it blank to clear it).
++@Component({
++  selector: 'app-project-file-ref',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="job-file-ref-heading" data-testid="job-file-ref-section">
++      <h2 id="job-file-ref-heading">File reference</h2>
++      @if (project().fileRef; as ref) {
++        <p data-testid="job-file-ref">{{ ref }}</p>
++      } @else {
++        <p data-testid="job-file-ref-none">No file reference noted.</p>
++      }
++
++      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="job-file-ref-form" novalidate>
++        <label for="job-file-ref-input">File reference</label>
++        <input
++          id="job-file-ref-input"
++          type="text"
++          maxlength="100"
++          formControlName="fileRef"
++          data-testid="job-file-ref-input"
++        />
++        <button type="submit" data-testid="job-file-ref-submit" [disabled]="saving()">Save file reference</button>
++        @if (saveError()) {
++          <p role="alert" data-testid="job-file-ref-save-error">{{ saveError() }}</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class ProjectFileRef {
++  private readonly service = inject(ProjectService);
++
++  readonly project = input.required<Project>();
++  /** Emits the job once its file reference has been saved. */
++  readonly changed = output<Project>();
++
++  protected readonly form = inject(NonNullableFormBuilder).group({ fileRef: ['', Validators.maxLength(100)] });
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  constructor() {
++    effect(() => {
++      this.form.setValue({ fileRef: this.project().fileRef ?? '' });
++    });
++  }
++
++  protected submit(): void {
++    const fileRef = this.form.getRawValue().fileRef.trim();
++    this.saving.set(true);
++    this.saveError.set(null);
++    this.service.setFileRef(this.project().id, fileRef || null).subscribe({
++      next: (updated) => {
++        this.changed.emit(updated);
++        this.saving.set(false);
++      },
++      error: () => {
++        this.saveError.set('Could not save the file reference.');
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index 991b203..f5d6c7a 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -33,6 +33,8 @@ export interface Project {
+   startDate: string | null;
+   /** The day work on the job ends (YYYY-MM-DD); null when not set. */
+   endDate: string | null;
++  /** A reference to a file kept elsewhere for the job (e.g. a document number); null when none was noted. */
++  fileRef: string | null;
+ }
+ 
+ /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
+@@ -95,6 +97,10 @@ export class ProjectService {
+     return this.http.put<Project>(`/api/projects/${id}/dates`, { startDate, endDate });
+   }
+ 
++  setFileRef(id: number, fileRef: string | null): Observable<Project> {
++    return this.http.put<Project>(`/api/projects/${id}/file-ref`, { fileRef });
++  }
++
+   budget(id: number): Observable<ProjectBudget> {
+     return this.http.get<ProjectBudget>(`/api/projects/${id}/budget`);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index c6b67bd..6780d1f 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -132,7 +132,7 @@ public class TestSupportController {
+         }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+             jdbc.update("INSERT INTO project (id, name, code, description, client_id, status, archived, budget, billable, closed,"
+-                    + " start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " start_date, end_date, file_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) p.get("id")).longValue(), p.get("name"), p.get("code"), p.get("description"),
+                     ((Number) p.get("clientId")).longValue(),
+                     p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString(),
+@@ -140,7 +140,8 @@ public class TestSupportController {
+                     p.get("budget") == null ? null : new BigDecimal(p.get("budget").toString()),
+                     !Boolean.FALSE.equals(p.get("billable")), Boolean.TRUE.equals(p.get("closed")),
+                     p.get("startDate") == null ? null : LocalDate.parse(p.get("startDate").toString()),
+-                    p.get("endDate") == null ? null : LocalDate.parse(p.get("endDate").toString()));
++                    p.get("endDate") == null ? null : LocalDate.parse(p.get("endDate").toString()),
++                    p.get("fileRef"));
+         }
+         for (Map<String, Object> t : rows(fixture, "tags")) {
+             jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+index af1eabe..63007d2 100644
+--- a/src/main/java/net/officefloor/hq/app/project/Project.java
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -53,6 +53,8 @@ public class Project {
+ 
+     private LocalDate endDate;
+ 
++    private String fileRef;
++
+     @ManyToMany
+     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
+             inverseJoinColumns = @JoinColumn(name = "tag_id"))
+@@ -151,6 +153,15 @@ public class Project {
+         this.endDate = endDate;
+     }
+ 
++    /** A reference to a file kept elsewhere for the job (e.g. a document number), or null when none was noted. */
++    public String getFileRef() {
++        return fileRef;
++    }
++
++    public void setFileRef(String fileRef) {
++        this.fileRef = fileRef;
++    }
++
+     /** The tags labelling this project; add or remove to tag or untag it. */
+     public Set<Tag> getTags() {
+         return tags;
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectController.java b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+index a715537..cae6155 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectController.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectController.java
+@@ -55,6 +55,11 @@ public class ProjectController {
+         return service.setDates(id, request.startDate(), request.endDate());
+     }
+ 
++    @PutMapping("/{id}/file-ref")
++    public ProjectResponse setFileRef(@PathVariable Long id, @Valid @RequestBody ProjectFileRefRequest request) {
++        return service.setFileRef(id, request.fileRef());
++    }
++
+     @GetMapping("/{id}/budget")
+     public ProjectBudgetResponse budget(@PathVariable Long id) {
+         return service.budget(id);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectFileRefRequest.java b/src/main/java/net/officefloor/hq/app/project/ProjectFileRefRequest.java
+new file mode 100644
+index 0000000..c13b92d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectFileRefRequest.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.project;
++
++import jakarta.validation.constraints.Size;
++
++/** Payload to note a file reference against a job; leave it out or blank to clear it. */
++public record ProjectFileRefRequest(@Size(max = 100) String fileRef) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+index b23315b..e994fba 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+@@ -4,13 +4,13 @@ import java.time.LocalDate;
+ 
+ public record ProjectResponse(Long id, String name, String code, Long clientId, String clientName, boolean archived,
+         ProjectStatus status, String currency, String description, boolean billable,
+-        boolean closed, LocalDate startDate, LocalDate endDate) {
++        boolean closed, LocalDate startDate, LocalDate endDate, String fileRef) {
+ 
+     public static ProjectResponse from(Project project) {
+         return new ProjectResponse(project.getId(), project.getName(), project.getCode(),
+                 project.getClient().getId(), project.getClient().getName(), project.isArchived(),
+                 project.getStatus(), project.getClient().getCurrency(), project.getDescription(),
+                 project.isBillable(), project.isClosed(),
+-                project.getStartDate(), project.getEndDate());
++                project.getStartDate(), project.getEndDate(), project.getFileRef());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index c510638..1411b33 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -182,6 +182,20 @@ public class ProjectService {
+         return ProjectResponse.from(project);
+     }
+ 
++    /** Notes (or, given none, clears) a job's file reference, recording the change in the audit log. */
++    @Transactional
++    public ProjectResponse setFileRef(Long id, String fileRef) {
++        String ref = fileRef == null || fileRef.isBlank() ? null : fileRef.trim();
++        Project project = projects.findByIdWithClient(id)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
++        if (!Objects.equals(project.getFileRef(), ref)) {
++            project.setFileRef(ref);
++            projects.flush();
++            audit.record("PROJECT_FILE_REF_SET id=" + id + " fileRef=" + (ref == null ? "none" : ref));
++        }
++        return ProjectResponse.from(project);
++    }
++
+     /** Closes a job so no new invoice can be raised on it, recording the closing in the audit log. */
+     @Transactional
+     public ProjectResponse close(Long id) {
+diff --git a/src/main/resources/db/migration/V84__project_file_ref.sql b/src/main/resources/db/migration/V84__project_file_ref.sql
+new file mode 100644
+index 0000000..f2e019b
+--- /dev/null
++++ b/src/main/resources/db/migration/V84__project_file_ref.sql
+@@ -0,0 +1,2 @@
++-- A job can note a reference to a file (e.g. a document number) kept elsewhere; unset when none was noted.
++ALTER TABLE project ADD COLUMN file_ref VARCHAR(100);
