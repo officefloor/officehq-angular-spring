@@ -1,0 +1,117 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 58d2784..a70c780 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -20,9 +20,12 @@ export interface Invoice {
+   dueDate: string;
+ }
+ 
+-/** An invoice as listed for its project, with how much is still left to pay after any payments. */
++/** An invoice as listed for its project, with what the client owes on it right now and the retention held back. */
+ export interface ProjectInvoice extends Invoice {
++  /** What the client owes right now: what is left to pay after any payments, less the retention held back. */
+   amountDue: number;
++  /** The amount held back as retention, not due yet; shown separately from what is due now. */
++  retention: number;
+   /** Whether a credit note has been put against the invoice. */
+   creditApplied: boolean;
+ }
+@@ -42,7 +45,7 @@ export interface InvoicePage {
+ }
+ 
+ /** An invoice as listed on a client's statement: its project's name and how much is left to pay. */
+-export interface StatementInvoice extends ProjectInvoice {
++export interface StatementInvoice extends Omit<ProjectInvoice, 'retention'> {
+   projectName: string;
+   /** The sales tax and levy on the invoice. */
+   tax: number;
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index 5734dfd..2e210bd 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -19,7 +19,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+   return issuedDate && dueDate && dueDate < issuedDate ? { dueBeforeIssued: true } : null;
+ }
+ 
+-// A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each is still left to pay, adds a
++// A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each the client owes right now (with any retention held back shown separately), adds a
+ // new draft (starting from the default tax rate in the settings), sends a draft and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
+ // opens onto its line items and payments. Invoices with a credit put against them are flagged.
+ @Component({
+@@ -124,7 +124,8 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+             <tr>
+               <th scope="col">Invoice</th>
+               <th scope="col">Amount</th>
+-              <th scope="col">Left to pay</th>
++              <th scope="col">Due now</th>
++              <th scope="col">Retained, not due yet</th>
+               <th scope="col">Status</th>
+               <th scope="col">Issued</th>
+               <th scope="col" [attr.aria-sort]="sortByDue() ? 'ascending' : null">
+@@ -153,6 +154,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+                 </td>
+                 <td data-testid="invoice-amount">{{ i.amount | money: i.currency }}</td>
+                 <td data-testid="invoice-due-amount">{{ i.amountDue | money: i.currency }}</td>
++                <td data-testid="invoice-retained-amount">{{ i.retention | money: i.currency }}</td>
+                 <td data-testid="invoice-status">
+                   {{ i.status }}
+                   @if (i.creditApplied) {
+@@ -191,7 +193,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+             <tr>
+               <th scope="row">Total</th>
+               <td data-testid="project-invoices-total">{{ totalCents() / 100 | money: currency() }}</td>
+-              <td colspan="5"></td>
++              <td colspan="6"></td>
+             </tr>
+           </tfoot>
+         </table>
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index dadb651..43cf2d2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -642,6 +642,18 @@ public class Invoice {
+         return status.isClosedUnpaid() ? BigDecimal.ZERO.setScale(2) : amount.subtract(paid).subtract(credited);
+     }
+ 
++    /**
++     * What the client owes on this invoice right now given the totals paid and credited against it: what is
++     * left to pay less the retention still held back, never below nothing on account of the retention.
++     */
++    public BigDecimal dueNow(BigDecimal paid, BigDecimal credited) {
++        BigDecimal left = amountDue(paid, credited);
++        if (left.signum() <= 0 || status.isClosedUnpaid()) {
++            return left;
++        }
++        return left.subtract(getRetention()).max(BigDecimal.ZERO.setScale(2));
++    }
++
+     /**
+      * This invoice's status given the totals paid and credited against it. Once sent, it is PAID when the
+      * payments and credit notes together clear the amount, PARTIAL once something has been paid or credited,
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+index aa2c48b..fd32673 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+@@ -4,17 +4,18 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
+ /**
+- * An invoice, with how much of it is still left to pay after the payments made and credit notes raised against
+- * it (nothing once void), and whether any credit has been put against it.
++ * An invoice, with how much of it the client owes right now after the payments made and credit notes raised
++ * against it (nothing once void), the amount held back as retention and not due yet (shown separately), and
++ * whether any credit has been put against it.
+  */
+ public record InvoiceResponse(Long id, Long projectId, String currency, BigDecimal amount, InvoiceStatus status,
+         LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue,
+-        boolean creditApplied) {
++        BigDecimal retention, boolean creditApplied) {
+ 
+     static InvoiceResponse from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
+         return new InvoiceResponse(invoice.getId(), invoice.getProject().getId(),
+                 invoice.getCurrency(), invoice.getAmount(),
+                 invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
+-                invoice.amountDue(paid, credited), credited.signum() > 0);
++                invoice.dueNow(paid, credited), invoice.getRetention(), credited.signum() > 0);
+     }
+ }
