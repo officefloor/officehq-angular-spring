@@ -1,0 +1,396 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 32b9948..9c39ed2 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -44,6 +44,8 @@ export interface Client {
+   earlyPaymentWindowDays: number | null;
+   /** What is left to pay on the client's sent, not yet fully paid invoices, in their currency. */
+   outstanding: number;
++  /** Whether the client is pinned to the top of the client list. */
++  pinned: boolean;
+ }
+ 
+ /** At-a-glance counts of what one client has. */
+@@ -53,7 +55,7 @@ export interface ClientSummary {
+   lifetimeBilled: number;
+ }
+ 
+-export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding'>;
++export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding' | 'pinned'>;
+ 
+ /** A segment clients are grouped into, and how many clients are in it. */
+ export interface ClientSegment {
+@@ -144,4 +146,14 @@ export class ClientService {
+   restore(id: number): Observable<Client> {
+     return this.http.post<Client>(`/api/clients/${id}/restore`, null);
+   }
++
++  /** Pins the client to the top of the client list. */
++  pin(id: number): Observable<Client> {
++    return this.http.post<Client>(`/api/clients/${id}/pin`, null);
++  }
++
++  /** Takes the client's pin off, returning it to its place in the list. */
++  unpin(id: number): Observable<Client> {
++    return this.http.post<Client>(`/api/clients/${id}/unpin`, null);
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 78ea647..25362d1 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { Component, computed, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { NgTemplateOutlet } from '@angular/common';
+ import { RouterLink } from '@angular/router';
+ import { ClientEditForm } from './client-edit-form';
+ import { ClientListExport } from './client-list-export';
+@@ -11,10 +12,10 @@ import { Client, ClientService } from './client.service';
+ // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
+ // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
+ // list and search unless the archived toggle is on, where it can be restored. A client's name or email
+-// can be corrected in place from its row. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first.
++// can be corrected in place from its row. Favourite clients can be pinned, which keeps them in a group at the top of the list. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first.
+ @Component({
+   selector: 'app-clients',
+-  imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm, ClientListExport, ClientSegments],
++  imports: [MoneyPipe, NgTemplateOutlet, ReactiveFormsModule, RouterLink, ClientEditForm, ClientListExport, ClientSegments],
+   styles: `
+     .key-account {
+       margin-inline-start: 0.5em;
+@@ -300,74 +301,98 @@ import { Client, ClientService } from './client.service';
+               <th scope="col"><span class="visually-hidden">Actions</span></th>
+             </tr>
+           </thead>
+-          <tbody>
+-            @for (c of filteredClients(); track c.id) {
+-              <tr [attr.data-testid]="'client-row-' + c.id">
+-                <td>
+-                  <span data-testid="client-name">{{ c.name }}</span>
+-                  @if (c.keyAccount) {
+-                    <span class="key-account" data-testid="client-key-account">Key account</span>
+-                  }
+-                  @if (c.segment) {
+-                    <span data-testid="client-segment">({{ c.segment }})</span>
+-                  }
+-                  @if (c.archived) {
+-                    <span [attr.data-testid]="'client-archived-' + c.id">(archived)</span>
+-                  }
+-                </td>
+-                <td data-testid="client-email">{{ c.email }}</td>
+-                <td data-testid="client-outstanding">{{ c.outstanding | money: c.currency }}</td>
+-                <td>
+-                  <a
+-                    [routerLink]="['/clients', c.id]"
+-                    [attr.data-testid]="'client-open-' + c.id"
+-                    [attr.aria-label]="'Open ' + c.name"
+-                    >Open</a
+-                  >
+-                  <button
+-                    type="button"
+-                    [attr.data-testid]="'client-edit-' + c.id"
+-                    [attr.aria-label]="'Edit ' + c.name"
+-                    [attr.aria-expanded]="editing() === c.id"
+-                    (click)="edit(c)"
+-                  >
+-                    Edit
+-                  </button>
+-                  @if (c.archived) {
+-                    <button
+-                      type="button"
+-                      [attr.data-testid]="'client-restore-' + c.id"
+-                      [attr.aria-label]="'Restore ' + c.name"
+-                      [disabled]="busy() === c.id"
+-                      (click)="restore(c)"
+-                    >
+-                      Restore
+-                    </button>
+-                  } @else {
+-                    <button
+-                      type="button"
+-                      [attr.data-testid]="'client-archive-' + c.id"
+-                      [attr.aria-label]="'Archive ' + c.name"
+-                      [disabled]="busy() === c.id"
+-                      (click)="archive(c)"
+-                    >
+-                      Archive
+-                    </button>
+-                  }
+-                </td>
++          @if (pinnedClients().length > 0) {
++            <tbody data-testid="pinned-clients" aria-label="Pinned clients">
++              <tr>
++                <th scope="colgroup" colspan="4">Pinned</th>
+               </tr>
+-              @if (editing() === c.id) {
+-                <tr [attr.data-testid]="'client-edit-row-' + c.id">
+-                  <td colspan="4">
+-                    <app-client-edit-form [client]="c" (saved)="onSaved($event)" (cancelled)="closeEdit(c)" />
+-                  </td>
+-                </tr>
++              @for (c of pinnedClients(); track c.id) {
++                <ng-container *ngTemplateOutlet="clientRow; context: { $implicit: c }" />
+               }
++            </tbody>
++          }
++          <tbody data-testid="unpinned-clients">
++            @for (c of unpinnedClients(); track c.id) {
++              <ng-container *ngTemplateOutlet="clientRow; context: { $implicit: c }" />
+             }
+           </tbody>
+         </table>
+       }
+     }
++
++    <ng-template #clientRow let-c>
++      <tr [attr.data-testid]="'client-row-' + c.id">
++        <td>
++          <span data-testid="client-name">{{ c.name }}</span>
++          @if (c.keyAccount) {
++            <span class="key-account" data-testid="client-key-account">Key account</span>
++          }
++          @if (c.segment) {
++            <span data-testid="client-segment">({{ c.segment }})</span>
++          }
++          @if (c.archived) {
++            <span [attr.data-testid]="'client-archived-' + c.id">(archived)</span>
++          }
++        </td>
++        <td data-testid="client-email">{{ c.email }}</td>
++        <td data-testid="client-outstanding">{{ c.outstanding | money: c.currency }}</td>
++        <td>
++          <button
++            type="button"
++            [attr.data-testid]="'client-pin-' + c.id"
++            [attr.aria-label]="(c.pinned ? 'Unpin ' : 'Pin ') + c.name"
++            [attr.aria-pressed]="c.pinned"
++            [disabled]="busy() === c.id"
++            (click)="togglePin(c)"
++          >
++            {{ c.pinned ? 'Unpin' : 'Pin' }}
++          </button>
++          <a
++            [routerLink]="['/clients', c.id]"
++            [attr.data-testid]="'client-open-' + c.id"
++            [attr.aria-label]="'Open ' + c.name"
++            >Open</a
++          >
++          <button
++            type="button"
++            [attr.data-testid]="'client-edit-' + c.id"
++            [attr.aria-label]="'Edit ' + c.name"
++            [attr.aria-expanded]="editing() === c.id"
++            (click)="edit(c)"
++          >
++            Edit
++          </button>
++          @if (c.archived) {
++            <button
++              type="button"
++              [attr.data-testid]="'client-restore-' + c.id"
++              [attr.aria-label]="'Restore ' + c.name"
++              [disabled]="busy() === c.id"
++              (click)="restore(c)"
++            >
++              Restore
++            </button>
++          } @else {
++            <button
++              type="button"
++              [attr.data-testid]="'client-archive-' + c.id"
++              [attr.aria-label]="'Archive ' + c.name"
++              [disabled]="busy() === c.id"
++              (click)="archive(c)"
++            >
++              Archive
++            </button>
++          }
++        </td>
++      </tr>
++      @if (editing() === c.id) {
++        <tr [attr.data-testid]="'client-edit-row-' + c.id">
++          <td colspan="4">
++            <app-client-edit-form [client]="c" (saved)="onSaved($event)" (cancelled)="closeEdit(c)" />
++          </td>
++        </tr>
++      }
++    </ng-template>
+   `,
+ })
+ export class Clients {
+@@ -383,6 +408,9 @@ export class Clients {
+     const filtered = q ? list.filter((c) => c.name.toLowerCase().includes(q)) : list;
+     return sortClients(filtered, this.sort());
+   });
++  // Pinned clients sit at the top of the list, in the chosen order; the rest follow beneath them.
++  protected readonly pinnedClients = computed(() => this.filteredClients().filter((c) => c.pinned));
++  protected readonly unpinnedClients = computed(() => this.filteredClients().filter((c) => !c.pinned));
+   protected readonly saving = signal(false);
+   protected readonly saveError = signal<string | null>(null);
+   protected readonly showArchived = signal(false);
+@@ -518,6 +546,24 @@ export class Clients {
+     });
+   }
+ 
++  protected togglePin(client: Client): void {
++    this.busy.set(client.id);
++    this.actionError.set(null);
++    const change = client.pinned ? this.service.unpin(client.id) : this.service.pin(client.id);
++    change.subscribe({
++      next: (updated) => {
++        this.clients.update((list) => list.map((c) => (c.id === updated.id ? updated : c)));
++        this.busy.set(null);
++        // The row moves between the pinned and unpinned groups; keep focus on its pin button.
++        setTimeout(() => document.querySelector<HTMLElement>(`[data-testid="client-pin-${client.id}"]`)?.focus());
++      },
++      error: () => {
++        this.actionError.set(`Could not ${client.pinned ? 'unpin' : 'pin'} ${client.name}. Please try again.`);
++        this.busy.set(null);
++      },
++    });
++  }
++
+   private load(): void {
+     this.service.list(this.showArchived()).subscribe((list) => this.clients.set(list));
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index f7e81a6..87c1641 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -119,8 +119,8 @@ public class TestSupportController {
+                     r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, billing_contact, segment, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days, early_payment_window_days, created_date)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, billing_contact, segment, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days, early_payment_window_days, created_date, pinned)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"), c.get("language"), c.get("accountManager"), c.get("billingContact"), c.get("segment"),
+                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
+                     Boolean.TRUE.equals(c.get("keyAccount")),
+@@ -132,7 +132,9 @@ public class TestSupportController {
+                     // The early-payment window, part of the client's payment terms.
+                     c.get("earlyPaymentWindowDays") == null ? null : ((Number) c.get("earlyPaymentWindowDays")).intValue(),
+                     // The day the client was taken on ("createdDate"); without one, today.
+-                    c.get("createdDate") == null ? LocalDate.now(clock) : LocalDate.parse(c.get("createdDate").toString()));
++                    c.get("createdDate") == null ? LocalDate.now(clock) : LocalDate.parse(c.get("createdDate").toString()),
++                    // Whether the client is pinned to the top of the client list ("pinned").
++                    Boolean.TRUE.equals(c.get("pinned")));
+             // When the client was contacted, each with a date and a note.
+             for (Map<String, Object> h : rows(c, "contactHistory")) {
+                 jdbc.update("INSERT INTO contact_history (id, client_id, contact_date, note) VALUES (?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index 73534fe..1611d96 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -60,6 +60,9 @@ public class Client {
+     /** Whether the client is one of the office's key accounts, marked out wherever they are listed. */
+     private boolean keyAccount;
+ 
++    /** Whether the client is pinned to the top of the client list. */
++    private boolean pinned;
++
+     /** The client's standard discount, a percentage each new invoice for them starts with; zero when none. */
+     @Column(name = "default_discount_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal defaultDiscountPct = BigDecimal.ZERO.setScale(2);
+@@ -198,6 +201,14 @@ public class Client {
+         this.keyAccount = keyAccount;
+     }
+ 
++    public boolean isPinned() {
++        return pinned;
++    }
++
++    public void setPinned(boolean pinned) {
++        this.pinned = pinned;
++    }
++
+     public BigDecimal getDefaultDiscountPct() {
+         return defaultDiscountPct;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index a26601c..7139281 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -110,6 +110,16 @@ public class ClientController {
+         return service.restore(id);
+     }
+ 
++    @PostMapping("/{id}/pin")
++    public ClientResponse pin(@PathVariable Long id) {
++        return service.pin(id);
++    }
++
++    @PostMapping("/{id}/unpin")
++    public ClientResponse unpin(@PathVariable Long id) {
++        return service.unpin(id);
++    }
++
+     @PostMapping("/{id}/merge")
+     public ClientResponse merge(@PathVariable Long id, @Valid @RequestBody ClientMergeRequest request) {
+         return service.merge(id, request.targetId());
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index b4a6e6d..8d2508c 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -4,7 +4,7 @@ import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+ public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, String language, String accountManager, String billingContact, String segment, boolean taxInclusive, boolean taxExempt, boolean keyAccount, BigDecimal defaultDiscountPct, boolean archived, PrimaryContact primaryContact,
+-        String currency, BigDecimal creditLimit, Integer paymentTermsDays, Integer earlyPaymentWindowDays, BigDecimal outstanding) {
++        String currency, BigDecimal creditLimit, Integer paymentTermsDays, Integer earlyPaymentWindowDays, BigDecimal outstanding, boolean pinned) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+     public record PrimaryContact(Long id, String name) {
+@@ -15,6 +15,6 @@ public record ClientResponse(Long id, String name, String email, String phone, S
+         Contact primary = client.getPrimaryContact();
+         return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.getLanguage(), client.getAccountManager(), client.getBillingContact(), client.getSegment(), client.isTaxInclusive(), client.isTaxExempt(), client.isKeyAccount(), client.getDefaultDiscountPct(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
+-                client.getCurrency(), client.getCreditLimit(), client.getPaymentTermsDays(), client.getEarlyPaymentWindowDays(), outstanding);
++                client.getCurrency(), client.getCreditLimit(), client.getPaymentTermsDays(), client.getEarlyPaymentWindowDays(), outstanding, client.isPinned());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index a5c0b3c..4ca3e7a 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -269,6 +269,28 @@ public class ClientService {
+         return respond(client);
+     }
+ 
++    /** Pins a client to the top of the client list, recording it in the audit log. */
++    @Transactional
++    public ClientResponse pin(Long id) {
++        return changePinned(id, true, "CLIENT_PINNED id=");
++    }
++
++    /** Takes a client's pin off, so it goes back to its place in the client list; recorded in the audit log. */
++    @Transactional
++    public ClientResponse unpin(Long id) {
++        return changePinned(id, false, "CLIENT_UNPINNED id=");
++    }
++
++    private ClientResponse changePinned(Long id, boolean pinned, String auditPrefix) {
++        Client client = find(id);
++        if (client.isPinned() != pinned) {
++            client.setPinned(pinned);
++            clients.flush();
++            audit.record(auditPrefix + id);
++        }
++        return respond(client);
++    }
++
+     /**
+      * Merges a duplicate client into the client it duplicates: the duplicate's projects (and so their
+      * invoices), contacts, contact history, emailed statements, payments, deposits and refunds all move to the kept client, which takes the
+diff --git a/src/main/resources/db/migration/V99__client_pinned.sql b/src/main/resources/db/migration/V99__client_pinned.sql
+new file mode 100644
+index 0000000..f5a9712
+--- /dev/null
++++ b/src/main/resources/db/migration/V99__client_pinned.sql
+@@ -0,0 +1,3 @@
++-- A client can be pinned, so the office's favourite clients sit at the top of the client list.
++-- Existing clients are not pinned.
++ALTER TABLE client ADD COLUMN pinned BOOLEAN DEFAULT FALSE NOT NULL;
