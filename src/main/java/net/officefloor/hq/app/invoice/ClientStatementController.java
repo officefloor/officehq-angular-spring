@@ -31,6 +31,14 @@ public class ClientStatementController {
         return service.balanceAsOf(clientId, asOf);
     }
 
+    /** The client's statement for a date range: the opening balance, the entries within it and the closing balance. */
+    @GetMapping("/range")
+    public ClientStatementRangeResponse range(@PathVariable Long clientId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return service.statementForRange(clientId, from, to);
+    }
+
     /** How old the client's debt is: what is current, 31 to 60 days overdue, and more than 60 days overdue. */
     @GetMapping("/aging")
     public ClientAgingResponse aging(@PathVariable Long clientId) {

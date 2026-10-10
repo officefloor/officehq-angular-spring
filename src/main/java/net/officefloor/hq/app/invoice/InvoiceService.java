@@ -148,6 +148,36 @@ public class InvoiceService {
     }
 
     /**
+     * A client's statement for the given date range (both ends included): the balance owed at the start of it, the
+     * entries dated within it in date order each carrying the running balance, and the balance owed at its end.
+     */
+    @Transactional(readOnly = true)
+    public ClientStatementRangeResponse statementForRange(Long clientId, LocalDate from, LocalDate to) {
+        if (to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The range must end on or after its start");
+        }
+        Client client = clients.findById(clientId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+        List<StatementEntry> dated = accountEntries(clientId, invoices.findByClientIdWithProject(clientId)).stream()
+                .filter(e -> e.date() != null)
+                .sorted(StatementEntry.DATE_ORDER)
+                .toList();
+        BigDecimal opening = dated.stream()
+                .filter(e -> e.date().isBefore(from))
+                .map(StatementEntry::change)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        BigDecimal balance = opening;
+        List<StatementEntry> within = new ArrayList<>();
+        for (StatementEntry entry : dated) {
+            if (!entry.date().isBefore(from) && !entry.date().isAfter(to)) {
+                balance = balance.add(entry.change());
+                within.add(entry.withBalance(balance));
+            }
+        }
+        return new ClientStatementRangeResponse(client.getId(), client.getCurrency(), from, to, opening, within, balance);
+    }
+
+    /**
      * How old a client's debt is as at today: what is left to pay on each owed invoice (not a draft, void or written
      * off) counted against how many days past its due date it is.
      */

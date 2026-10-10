@@ -119,6 +119,17 @@ export interface ClientBalanceAsOf {
   balance: number;
 }
 
+/** A client's statement for a date range: the balance owed at its start, the entries within it, and the balance owed at its end. */
+export interface ClientStatementRange {
+  clientId: number;
+  currency: CurrencyCode;
+  from: string;
+  to: string;
+  openingBalance: number;
+  entries: StatementEntry[];
+  closingBalance: number;
+}
+
 /** How old a client's debt is as at today: what is current (up to 30 days overdue), 31 to 60 days, and more than 60 days overdue. */
 export interface ClientAging {
   clientId: number;
@@ -288,6 +299,10 @@ export class InvoiceService {
 
   balanceAsOf(clientId: number, asOf: string): Observable<ClientBalanceAsOf> {
     return this.http.get<ClientBalanceAsOf>(`/api/clients/${clientId}/statement/balance`, { params: { asOf } });
+  }
+
+  statementForRange(clientId: number, from: string, to: string): Observable<ClientStatementRange> {
+    return this.http.get<ClientStatementRange>(`/api/clients/${clientId}/statement/range`, { params: { from, to } });
   }
 
   agingForClient(clientId: number): Observable<ClientAging> {

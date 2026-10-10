@@ -6,6 +6,8 @@ import { InvoiceService } from './invoice.service';
 
 // A client's statement: every invoice across the client's projects grouped by job, how much is left to
 // pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
+// It can be run for a chosen date range, giving the opening balance, the entries within the range with the running
+// balance, and the closing balance.
 // The balance owed as at a chosen past date can be looked up, counting only entries up to that date.
 // Every figure is in the client's own currency; at the foot the total owed is also given in the home currency.
 // It opens with the running account: invoices, payments, credit notes, deposits and refunds in date order with the
@@ -82,6 +84,65 @@ import { InvoiceService } from './invoice.service';
             <dt class="statement-grand-total">Grand total owed</dt>
             <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | money: s.currency }}</dd>
           </dl>
+        </section>
+        <section aria-labelledby="statement-range-heading" data-testid="statement-range">
+          <h2 id="statement-range-heading">Statement for a date range</h2>
+          <form class="statement-actions" (submit)="applyRange($event, rangeFrom.value, rangeTo.value)">
+            <label for="statement-range-from">From</label>
+            <input #rangeFrom id="statement-range-from" type="date" required data-testid="statement-range-from" />
+            <label for="statement-range-to">To</label>
+            <input #rangeTo id="statement-range-to" type="date" required data-testid="statement-range-to" />
+            <button type="submit" data-testid="statement-range-apply">Run statement</button>
+          </form>
+          @if (rangeInvalid()) {
+            <p role="alert" data-testid="statement-range-invalid">The end date must be on or after the start date.</p>
+          } @else if (statementRange.error()) {
+            <p role="alert" data-testid="statement-range-error">Could not load the statement for that range.</p>
+          } @else if (statementRange.value(); as r) {
+            <div aria-live="polite" data-testid="statement-range-result">
+              <dl class="statement-summary">
+                <dt>Opening balance at {{ r.from }}</dt>
+                <dd data-testid="statement-opening-balance">{{ r.openingBalance | money: r.currency }}</dd>
+                <dt>Closing balance at {{ r.to }}</dt>
+                <dd data-testid="statement-closing-balance">{{ r.closingBalance | money: r.currency }}</dd>
+              </dl>
+              @if (r.entries.length === 0) {
+                <p data-testid="statement-range-empty">Nothing on the account in this range.</p>
+              } @else {
+                <table data-testid="statement-range-table">
+                  <caption>Account from {{ r.from }} to {{ r.to }}</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Date</th>
+                      <th scope="col">Entry</th>
+                      <th scope="col" class="statement-money">Charges</th>
+                      <th scope="col" class="statement-money">Credits</th>
+                      <th scope="col" class="statement-money">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (e of r.entries; track e.kind + e.sourceId; let n = $index) {
+                      <tr [attr.data-testid]="'statement-range-row-' + (n + 1)" [attr.data-kind]="e.kind">
+                        <td data-testid="statement-range-entry-date">{{ e.date }}</td>
+                        <td data-testid="statement-range-entry-description">{{ e.description }}</td>
+                        <td class="statement-money" data-testid="statement-range-entry-charge">
+                          @if (e.charge !== null) {
+                            {{ e.charge | money: r.currency }}
+                          }
+                        </td>
+                        <td class="statement-money" data-testid="statement-range-entry-credit">
+                          @if (e.credit !== null) {
+                            {{ e.credit | money: r.currency }}
+                          }
+                        </td>
+                        <td class="statement-money" data-testid="statement-range-entry-balance">{{ e.balance | money: r.currency }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              }
+            </div>
+          }
         </section>
         <section aria-labelledby="statement-asof-heading" data-testid="statement-asof">
           <h2 id="statement-asof-heading">Balance as at a date</h2>
@@ -231,6 +292,28 @@ export class ClientStatement {
     },
     stream: ({ params }) => this.service.balanceAsOf(params.clientId, params.asOf),
   });
+
+  /** The date range the statement is run for; unset until one is applied. */
+  protected readonly range = signal<{ from: string; to: string } | undefined>(undefined);
+  protected readonly rangeInvalid = computed(() => {
+    const range = this.range();
+    return !!range && range.to < range.from;
+  });
+
+  protected readonly statementRange = rxResource({
+    params: () => {
+      const range = this.range();
+      return range && !this.rangeInvalid() ? { clientId: this.clientId(), ...range } : undefined;
+    },
+    stream: ({ params }) => this.service.statementForRange(params.clientId, params.from, params.to),
+  });
+
+  protected applyRange(event: Event, from: string, to: string): void {
+    event.preventDefault();
+    if (from && to) {
+      this.range.set({ from, to });
+    }
+  }
 
   protected applyAsOf(event: Event, value: string): void {
     event.preventDefault();
