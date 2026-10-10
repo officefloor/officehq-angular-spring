@@ -44,6 +44,8 @@ export interface Client {
   earlyPaymentWindowDays: number | null;
   /** What is left to pay on the client's sent, not yet fully paid invoices, in their currency. */
   outstanding: number;
+  /** Whether the client is pinned to the top of the client list. */
+  pinned: boolean;
 }
 
 /** At-a-glance counts of what one client has. */
@@ -53,7 +55,7 @@ export interface ClientSummary {
   lifetimeBilled: number;
 }
 
-export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding'>;
+export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding' | 'pinned'>;
 
 /** A segment clients are grouped into, and how many clients are in it. */
 export interface ClientSegment {
@@ -143,5 +145,15 @@ export class ClientService {
 
   restore(id: number): Observable<Client> {
     return this.http.post<Client>(`/api/clients/${id}/restore`, null);
+  }
+
+  /** Pins the client to the top of the client list. */
+  pin(id: number): Observable<Client> {
+    return this.http.post<Client>(`/api/clients/${id}/pin`, null);
+  }
+
+  /** Takes the client's pin off, returning it to its place in the list. */
+  unpin(id: number): Observable<Client> {
+    return this.http.post<Client>(`/api/clients/${id}/unpin`, null);
   }
 }

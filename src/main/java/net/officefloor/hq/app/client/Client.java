@@ -60,6 +60,9 @@ public class Client {
     /** Whether the client is one of the office's key accounts, marked out wherever they are listed. */
     private boolean keyAccount;
 
+    /** Whether the client is pinned to the top of the client list. */
+    private boolean pinned;
+
     /** The client's standard discount, a percentage each new invoice for them starts with; zero when none. */
     @Column(name = "default_discount_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal defaultDiscountPct = BigDecimal.ZERO.setScale(2);
@@ -196,6 +199,14 @@ public class Client {
 
     public void setKeyAccount(boolean keyAccount) {
         this.keyAccount = keyAccount;
+    }
+
+    public boolean isPinned() {
+        return pinned;
+    }
+
+    public void setPinned(boolean pinned) {
+        this.pinned = pinned;
     }
 
     public BigDecimal getDefaultDiscountPct() {

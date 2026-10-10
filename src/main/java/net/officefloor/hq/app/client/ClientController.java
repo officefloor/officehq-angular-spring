@@ -110,6 +110,16 @@ public class ClientController {
         return service.restore(id);
     }
 
+    @PostMapping("/{id}/pin")
+    public ClientResponse pin(@PathVariable Long id) {
+        return service.pin(id);
+    }
+
+    @PostMapping("/{id}/unpin")
+    public ClientResponse unpin(@PathVariable Long id) {
+        return service.unpin(id);
+    }
+
     @PostMapping("/{id}/merge")
     public ClientResponse merge(@PathVariable Long id, @Valid @RequestBody ClientMergeRequest request) {
         return service.merge(id, request.targetId());

@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { MoneyPipe } from '../currencies/money.pipe';
 import { Component, computed, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { ClientEditForm } from './client-edit-form';
 import { ClientListExport } from './client-list-export';
@@ -11,10 +12,10 @@ import { Client, ClientService } from './client.service';
 // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
 // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
 // list and search unless the archived toggle is on, where it can be restored. A client's name or email
-// can be corrected in place from its row. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first.
+// can be corrected in place from its row. Favourite clients can be pinned, which keeps them in a group at the top of the list. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first.
 @Component({
   selector: 'app-clients',
-  imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm, ClientListExport, ClientSegments],
+  imports: [MoneyPipe, NgTemplateOutlet, ReactiveFormsModule, RouterLink, ClientEditForm, ClientListExport, ClientSegments],
   styles: `
     .key-account {
       margin-inline-start: 0.5em;
@@ -300,74 +301,98 @@ import { Client, ClientService } from './client.service';
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
-          <tbody>
-            @for (c of filteredClients(); track c.id) {
-              <tr [attr.data-testid]="'client-row-' + c.id">
-                <td>
-                  <span data-testid="client-name">{{ c.name }}</span>
-                  @if (c.keyAccount) {
-                    <span class="key-account" data-testid="client-key-account">Key account</span>
-                  }
-                  @if (c.segment) {
-                    <span data-testid="client-segment">({{ c.segment }})</span>
-                  }
-                  @if (c.archived) {
-                    <span [attr.data-testid]="'client-archived-' + c.id">(archived)</span>
-                  }
-                </td>
-                <td data-testid="client-email">{{ c.email }}</td>
-                <td data-testid="client-outstanding">{{ c.outstanding | money: c.currency }}</td>
-                <td>
-                  <a
-                    [routerLink]="['/clients', c.id]"
-                    [attr.data-testid]="'client-open-' + c.id"
-                    [attr.aria-label]="'Open ' + c.name"
-                    >Open</a
-                  >
-                  <button
-                    type="button"
-                    [attr.data-testid]="'client-edit-' + c.id"
-                    [attr.aria-label]="'Edit ' + c.name"
-                    [attr.aria-expanded]="editing() === c.id"
-                    (click)="edit(c)"
-                  >
-                    Edit
-                  </button>
-                  @if (c.archived) {
-                    <button
-                      type="button"
-                      [attr.data-testid]="'client-restore-' + c.id"
-                      [attr.aria-label]="'Restore ' + c.name"
-                      [disabled]="busy() === c.id"
-                      (click)="restore(c)"
-                    >
-                      Restore
-                    </button>
-                  } @else {
-                    <button
-                      type="button"
-                      [attr.data-testid]="'client-archive-' + c.id"
-                      [attr.aria-label]="'Archive ' + c.name"
-                      [disabled]="busy() === c.id"
-                      (click)="archive(c)"
-                    >
-                      Archive
-                    </button>
-                  }
-                </td>
+          @if (pinnedClients().length > 0) {
+            <tbody data-testid="pinned-clients" aria-label="Pinned clients">
+              <tr>
+                <th scope="colgroup" colspan="4">Pinned</th>
               </tr>
-              @if (editing() === c.id) {
-                <tr [attr.data-testid]="'client-edit-row-' + c.id">
-                  <td colspan="4">
-                    <app-client-edit-form [client]="c" (saved)="onSaved($event)" (cancelled)="closeEdit(c)" />
-                  </td>
-                </tr>
+              @for (c of pinnedClients(); track c.id) {
+                <ng-container *ngTemplateOutlet="clientRow; context: { $implicit: c }" />
               }
+            </tbody>
+          }
+          <tbody data-testid="unpinned-clients">
+            @for (c of unpinnedClients(); track c.id) {
+              <ng-container *ngTemplateOutlet="clientRow; context: { $implicit: c }" />
             }
           </tbody>
         </table>
       }
     }
+
+    <ng-template #clientRow let-c>
+      <tr [attr.data-testid]="'client-row-' + c.id">
+        <td>
+          <span data-testid="client-name">{{ c.name }}</span>
+          @if (c.keyAccount) {
+            <span class="key-account" data-testid="client-key-account">Key account</span>
+          }
+          @if (c.segment) {
+            <span data-testid="client-segment">({{ c.segment }})</span>
+          }
+          @if (c.archived) {
+            <span [attr.data-testid]="'client-archived-' + c.id">(archived)</span>
+          }
+        </td>
+        <td data-testid="client-email">{{ c.email }}</td>
+        <td data-testid="client-outstanding">{{ c.outstanding | money: c.currency }}</td>
+        <td>
+          <button
+            type="button"
+            [attr.data-testid]="'client-pin-' + c.id"
+            [attr.aria-label]="(c.pinned ? 'Unpin ' : 'Pin ') + c.name"
+            [attr.aria-pressed]="c.pinned"
+            [disabled]="busy() === c.id"
+            (click)="togglePin(c)"
+          >
+            {{ c.pinned ? 'Unpin' : 'Pin' }}
+          </button>
+          <a
+            [routerLink]="['/clients', c.id]"
+            [attr.data-testid]="'client-open-' + c.id"
+            [attr.aria-label]="'Open ' + c.name"
+            >Open</a
+          >
+          <button
+            type="button"
+            [attr.data-testid]="'client-edit-' + c.id"
+            [attr.aria-label]="'Edit ' + c.name"
+            [attr.aria-expanded]="editing() === c.id"
+            (click)="edit(c)"
+          >
+            Edit
+          </button>
+          @if (c.archived) {
+            <button
+              type="button"
+              [attr.data-testid]="'client-restore-' + c.id"
+              [attr.aria-label]="'Restore ' + c.name"
+              [disabled]="busy() === c.id"
+              (click)="restore(c)"
+            >
+              Restore
+            </button>
+          } @else {
+            <button
+              type="button"
+              [attr.data-testid]="'client-archive-' + c.id"
+              [attr.aria-label]="'Archive ' + c.name"
+              [disabled]="busy() === c.id"
+              (click)="archive(c)"
+            >
+              Archive
+            </button>
+          }
+        </td>
+      </tr>
+      @if (editing() === c.id) {
+        <tr [attr.data-testid]="'client-edit-row-' + c.id">
+          <td colspan="4">
+            <app-client-edit-form [client]="c" (saved)="onSaved($event)" (cancelled)="closeEdit(c)" />
+          </td>
+        </tr>
+      }
+    </ng-template>
   `,
 })
 export class Clients {
@@ -383,6 +408,9 @@ export class Clients {
     const filtered = q ? list.filter((c) => c.name.toLowerCase().includes(q)) : list;
     return sortClients(filtered, this.sort());
   });
+  // Pinned clients sit at the top of the list, in the chosen order; the rest follow beneath them.
+  protected readonly pinnedClients = computed(() => this.filteredClients().filter((c) => c.pinned));
+  protected readonly unpinnedClients = computed(() => this.filteredClients().filter((c) => !c.pinned));
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
   protected readonly showArchived = signal(false);
@@ -513,6 +541,24 @@ export class Clients {
       },
       error: () => {
         this.actionError.set(`Could not restore ${client.name}. Please try again.`);
+        this.busy.set(null);
+      },
+    });
+  }
+
+  protected togglePin(client: Client): void {
+    this.busy.set(client.id);
+    this.actionError.set(null);
+    const change = client.pinned ? this.service.unpin(client.id) : this.service.pin(client.id);
+    change.subscribe({
+      next: (updated) => {
+        this.clients.update((list) => list.map((c) => (c.id === updated.id ? updated : c)));
+        this.busy.set(null);
+        // The row moves between the pinned and unpinned groups; keep focus on its pin button.
+        setTimeout(() => document.querySelector<HTMLElement>(`[data-testid="client-pin-${client.id}"]`)?.focus());
+      },
+      error: () => {
+        this.actionError.set(`Could not ${client.pinned ? 'unpin' : 'pin'} ${client.name}. Please try again.`);
         this.busy.set(null);
       },
     });

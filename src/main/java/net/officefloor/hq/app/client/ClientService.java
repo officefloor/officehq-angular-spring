@@ -269,6 +269,28 @@ public class ClientService {
         return respond(client);
     }
 
+    /** Pins a client to the top of the client list, recording it in the audit log. */
+    @Transactional
+    public ClientResponse pin(Long id) {
+        return changePinned(id, true, "CLIENT_PINNED id=");
+    }
+
+    /** Takes a client's pin off, so it goes back to its place in the client list; recorded in the audit log. */
+    @Transactional
+    public ClientResponse unpin(Long id) {
+        return changePinned(id, false, "CLIENT_UNPINNED id=");
+    }
+
+    private ClientResponse changePinned(Long id, boolean pinned, String auditPrefix) {
+        Client client = find(id);
+        if (client.isPinned() != pinned) {
+            client.setPinned(pinned);
+            clients.flush();
+            audit.record(auditPrefix + id);
+        }
+        return respond(client);
+    }
+
     /**
      * Merges a duplicate client into the client it duplicates: the duplicate's projects (and so their
      * invoices), contacts, contact history, emailed statements, payments, deposits and refunds all move to the kept client, which takes the
