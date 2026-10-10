@@ -1,0 +1,387 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 76c4c3c..4ebf2b0 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -34,7 +34,7 @@ export interface DashboardSummary {
+   /** Everything outstanding as one total in the home currency, each invoice converted at its issue date's rate; disputed and written-off invoices are left out. */
+   outstandingHome: number;
+   overdue: number;
+-  /** The currency the overdue amount is given in. */
++  /** The currency the dashboard's totals are given in: the chosen base currency, or the home currency while the base currency has no exchange rate. */
+   homeCurrency: CurrencyCode;
+   /** What is left to pay on overdue invoices plus the late fees and instalment interest they have built up, in the home currency. */
+   overdueAmount: number;
+@@ -67,6 +67,8 @@ export interface DashboardSummary {
+   billingTargetProgress: number | null;
+   /** How far what was billed this year is ahead of (positive) or behind (negative) the target; null when no target is set. */
+   billingTargetVariance: number | null;
++  /** The currency chosen for the dashboard's totals to be shown in. */
++  baseCurrency: CurrencyCode;
+ }
+ 
+ /** The tax charged on invoices issued on or between two dates, in the home currency. */
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index eafae1f..bf1c397 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -1,5 +1,7 @@
+ import { Component, inject, signal } from '@angular/core';
+ import { MoneyPipe } from '../currencies/money.pipe';
++import { CurrencyService } from '../currencies/currency.service';
++import { SettingsService } from '../settings/settings.service';
+ import { DashboardService, DashboardSummary } from './dashboard.service';
+ import { AgingReportPanel } from './aging-report';
+ import { OverdueTrendPanel } from './overdue-trend';
+@@ -15,7 +17,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // exchange rate from its own issue date (leaving out disputed and written-off invoices), and how many of those sent
+ // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+-// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, what share of all tasks are done, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected, and how what was billed this year tracks against the yearly billings target set in the settings, including how far ahead of or behind it billing is. An aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
++// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, what share of all tasks are done, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected, and how what was billed this year tracks against the yearly billings target set in the settings, including how far ahead of or behind it billing is. An aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here. The currency the totals are shown in can be chosen here.
+ @Component({
+   selector: 'app-dashboard',
+   imports: [MoneyPipe, AgingReportPanel, OverdueTrendPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
+@@ -25,6 +27,26 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+     @if (loadError()) {
+       <p role="alert" data-testid="dashboard-error">{{ loadError() }}</p>
+     } @else if (summary(); as s) {
++      <p>
++        <label for="dashboard-base-currency">Show totals in</label>
++        <select
++          #baseCurrencySelect
++          id="dashboard-base-currency"
++          data-testid="dashboard-base-currency-select"
++          [disabled]="savingBaseCurrency()"
++          (change)="chooseBaseCurrency(baseCurrencySelect.value)"
++        >
++          @for (c of currencies.list(); track c.code) {
++            <option [value]="c.code" [selected]="c.code === s.baseCurrency">{{ c.code }}</option>
++          }
++        </select>
++        @if (s.baseCurrency !== s.homeCurrency) {
++          <span data-testid="dashboard-base-currency-no-rate">No exchange rate for {{ s.baseCurrency }} yet, so totals are shown in {{ s.homeCurrency }}.</span>
++        }
++        @if (baseCurrencyError()) {
++          <span role="alert" data-testid="dashboard-base-currency-error">{{ baseCurrencyError() }}</span>
++        }
++      </p>
+       <dl data-testid="dashboard-summary">
+         <div>
+           <dt>Clients</dt>
+@@ -240,8 +262,13 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+   `,
+ })
+ export class Dashboard {
++  private readonly dashboard = inject(DashboardService);
++  private readonly settings = inject(SettingsService);
++  protected readonly currencies = inject(CurrencyService);
+   protected readonly summary = signal<DashboardSummary | null>(null);
+   protected readonly loadError = signal<string | null>(null);
++  protected readonly savingBaseCurrency = signal(false);
++  protected readonly baseCurrencyError = signal<string | null>(null);
+   protected readonly agingReportOpen = signal(false);
+   protected readonly overdueTrendOpen = signal(false);
+   protected readonly taxSummaryOpen = signal(false);
+@@ -254,11 +281,34 @@ export class Dashboard {
+   }
+ 
+   constructor() {
+-    inject(DashboardService)
+-      .summary()
+-      .subscribe({
+-        next: (s) => this.summary.set(s),
+-        error: () => this.loadError.set('Could not load the dashboard. Please try again.'),
+-      });
++    this.load();
++  }
++
++  /** Shows the totals in the chosen currency, then reloads them converted into it. */
++  protected chooseBaseCurrency(code: string): void {
++    const current = this.summary();
++    if (current) {
++      this.summary.set({ ...current, baseCurrency: code });
++    }
++    this.savingBaseCurrency.set(true);
++    this.baseCurrencyError.set(null);
++    this.settings.updateDashboardBaseCurrency(code).subscribe({
++      next: () => {
++        this.savingBaseCurrency.set(false);
++        this.load();
++      },
++      error: () => {
++        this.savingBaseCurrency.set(false);
++        this.baseCurrencyError.set('Could not change the currency. Please try again.');
++        this.load();
++      },
++    });
++  }
++
++  private load(): void {
++    this.dashboard.summary().subscribe({
++      next: (s) => this.summary.set(s),
++      error: () => this.loadError.set('Could not load the dashboard. Please try again.'),
++    });
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/settings/settings.service.ts b/src/main/frontend/src/app/features/settings/settings.service.ts
+index ec28847..cca2d71 100644
+--- a/src/main/frontend/src/app/features/settings/settings.service.ts
++++ b/src/main/frontend/src/app/features/settings/settings.service.ts
+@@ -12,6 +12,8 @@ export interface Settings {
+   revenueRecognitionBasis?: RecognitionBasis;
+   /** What the business aims to bill over the year, in the home currency; null when no target is set (read-only here). */
+   billingTarget?: number | null;
++  /** The currency the dashboard's totals are shown in (read-only here). */
++  dashboardBaseCurrency?: string;
+ }
+ 
+ /** When revenue counts: when an invoice is sent, or once it is paid. */
+@@ -34,4 +36,9 @@ export class SettingsService {
+   updateBillingTarget(billingTarget: number | null): Observable<Settings> {
+     return this.http.put<Settings>('/api/settings/billing-target', { billingTarget }, { keepalive: true });
+   }
++
++  /** Chooses the currency the dashboard's totals are shown in. */
++  updateDashboardBaseCurrency(baseCurrency: string): Observable<Settings> {
++    return this.http.put<Settings>('/api/settings/dashboard-base-currency', { baseCurrency }, { keepalive: true });
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index e8e2a70..aa5d094 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -87,7 +87,7 @@ public class TestSupportController {
+             jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+         }
+         jdbc.update("UPDATE app_settings SET default_tax_pct = 0, home_currency = 'USD',"
+-                + " revenue_recognition_basis = 'sent', billing_target = NULL,"
++                + " revenue_recognition_basis = 'sent', billing_target = NULL, dashboard_base_currency = NULL,"
+                 + " revenue_band_medium_from = 1000, revenue_band_high_from = 5000 WHERE id = 1");
+     }
+ 
+@@ -115,6 +115,10 @@ public class TestSupportController {
+             jdbc.update("UPDATE app_settings SET revenue_recognition_basis = ? WHERE id = 1",
+                     s.get("recognitionBasis").toString());
+         }
++        // App settings: "baseCurrency" is the currency the dashboard's totals are shown in.
++        if (fixture.get("settings") instanceof Map<?, ?> s && s.get("baseCurrency") != null) {
++            jdbc.update("UPDATE app_settings SET dashboard_base_currency = ? WHERE id = 1", s.get("baseCurrency").toString());
++        }
+         // App settings: "billingTarget" is what the business aims to bill over the year, in the home currency.
+         if (fixture.get("settings") instanceof Map<?, ?> s && s.get("billingTarget") != null) {
+             jdbc.update("UPDATE app_settings SET billing_target = ? WHERE id = 1", decimal(s.get("billingTarget")));
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+index 8748ce6..6869f8e 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+@@ -17,7 +17,9 @@ import java.util.List;
+  * today, in the home currency, and what was collected in the current week (Monday to today), in the home currency, and the share of all tasks that are done as a whole percentage (null when there are
+  * no tasks), and the yearly billings target in the home currency with what has been billed this year as a whole
+  * percentage of it, and how far what has been billed this year is ahead of (positive) or behind (negative) that
+- * target (all null when no target is set).
++ * target (all null when no target is set). The money totals are shown in {@code homeCurrency}: the chosen dashboard
++ * {@code baseCurrency}, converted from the home currency at today's rate, or the home currency itself while the base
++ * currency has no rate.
+  */
+ public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
+         BigDecimal outstandingHome, long overdue,
+@@ -25,7 +27,8 @@ public record DashboardResponse(long clients, long projects, List<CurrencyTotal>
+         long openTasks, long overdueTasks, Long averageDaysToPay, long newClientsThisMonth,
+         BigDecimal billingsThisMonth, Long collectionRate, BigDecimal billingsYearToDate,
+         BigDecimal collectedYearToDate, BigDecimal collectedThisWeek, Long taskCompletionRate,
+-        BigDecimal billingTarget, Long billingTargetProgress, BigDecimal billingTargetVariance) {
++        BigDecimal billingTarget, Long billingTargetProgress, BigDecimal billingTargetVariance,
++        String baseCurrency) {
+ 
+     /** What is still owed in one currency. */
+     public record CurrencyTotal(String currency, BigDecimal amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 1809107..58e43de 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -16,6 +16,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+ import java.util.TreeMap;
++import java.util.function.UnaryOperator;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.client.ClientService;
+@@ -117,13 +118,25 @@ public class DashboardService {
+                         .longValue();
+         BigDecimal billingTargetVariance = billingTarget == null ? null
+                 : billingsYearToDate.subtract(billingTarget).setScale(2, RoundingMode.HALF_UP);
+-        return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
+-                overdueBuckets, top, tasks.countByDoneFalse(), tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
+-                clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home),
+-                collectionRate(home), billingsYearToDate,
+-                collected(today.withDayOfYear(1), today, home),
+-                collected(today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)), today, home), taskCompletionRate(), billingTarget, billingTargetProgress,
+-                billingTargetVariance);
++        // The totals are shown in the chosen base currency, converted from the home currency at today's rate; when
++        // that is not possible (no rate for it yet) they stay in the home currency.
++        String base = settings.dashboardBaseCurrency();
++        String shownIn = fxRates.convert(home, base, today, BigDecimal.ONE).isPresent() ? base : home;
++        UnaryOperator<BigDecimal> shown = amount -> amount == null ? null
++                : fxRates.convert(home, shownIn, today, amount).orElseThrow();
++        top = top.stream().map(c -> new DashboardResponse.TopClient(c.id(), c.name(), c.currency(), c.outstanding(),
++                shown.apply(c.outstandingHome()))).toList();
++        overdueBuckets = new DashboardResponse.OverdueBuckets(shown.apply(overdueBuckets.days0To30()),
++                shown.apply(overdueBuckets.days31To60()), shown.apply(overdueBuckets.days60Plus()));
++        return new DashboardResponse(clients.count(), projects.count(), outstanding, shown.apply(outstandingHome), overdue,
++                shownIn, shown.apply(overdueAmount), overdueBuckets, top, tasks.countByDoneFalse(),
++                tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
++                clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)),
++                shown.apply(billings(today.withDayOfMonth(1), today, home)), collectionRate(home),
++                shown.apply(billingsYearToDate), shown.apply(collected(today.withDayOfYear(1), today, home)),
++                shown.apply(collected(today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)), today, home)),
++                taskCompletionRate(), shown.apply(billingTarget), billingTargetProgress,
++                shown.apply(billingTargetVariance), base);
+     }
+ 
+     /** The share of all tasks that are done, as a whole percentage. Null when there are no tasks. */
+diff --git a/src/main/java/net/officefloor/hq/app/settings/BaseCurrencyRequest.java b/src/main/java/net/officefloor/hq/app/settings/BaseCurrencyRequest.java
+new file mode 100644
+index 0000000..13cb1b0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/BaseCurrencyRequest.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.settings;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++
++/** Payload to choose the currency the dashboard's totals are shown in. */
++public record BaseCurrencyRequest(@NotBlank @Size(min = 3, max = 3) String baseCurrency) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/Settings.java b/src/main/java/net/officefloor/hq/app/settings/Settings.java
+index d295a07..7a7d963 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/Settings.java
++++ b/src/main/java/net/officefloor/hq/app/settings/Settings.java
+@@ -26,6 +26,10 @@ public class Settings {
+     @Column(name = "home_currency", nullable = false, length = 3)
+     private String homeCurrency = "USD";
+ 
++    /** The currency the dashboard's totals are shown in; null shows them in the home currency. */
++    @Column(name = "dashboard_base_currency", length = 3)
++    private String dashboardBaseCurrency;
++
+     /** When revenue counts: when an invoice is sent ("sent") or once it is paid ("paid"). */
+     @Column(name = "revenue_recognition_basis", nullable = false, length = 10)
+     private String revenueRecognitionBasis = RecognitionBasis.SENT;
+@@ -53,6 +57,15 @@ public class Settings {
+         return homeCurrency;
+     }
+ 
++    /** The currency the dashboard's totals are shown in: the chosen one, or else the home currency. */
++    public String getDashboardBaseCurrency() {
++        return dashboardBaseCurrency == null ? homeCurrency : dashboardBaseCurrency;
++    }
++
++    public void setDashboardBaseCurrency(String dashboardBaseCurrency) {
++        this.dashboardBaseCurrency = dashboardBaseCurrency;
++    }
++
+     public String getRevenueRecognitionBasis() {
+         return revenueRecognitionBasis;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 1172bf5..b2fe9e4 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -31,4 +31,9 @@ public class SettingsController {
+     public SettingsResponse updateBillingTarget(@Valid @RequestBody BillingTargetRequest request) {
+         return service.updateBillingTarget(request);
+     }
++
++    @PutMapping("/dashboard-base-currency")
++    public SettingsResponse updateDashboardBaseCurrency(@Valid @RequestBody BaseCurrencyRequest request) {
++        return service.updateDashboardBaseCurrency(request);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java b/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
+index 8e0f012..3cf608c 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
+@@ -3,10 +3,11 @@ package net.officefloor.hq.app.settings;
+ import java.math.BigDecimal;
+ 
+ public record SettingsResponse(BigDecimal defaultTaxPct, String homeCurrency, String revenueRecognitionBasis,
+-        BigDecimal billingTarget) {
++        BigDecimal billingTarget, String dashboardBaseCurrency) {
+ 
+     public static SettingsResponse from(Settings settings) {
+         return new SettingsResponse(settings.getDefaultTaxPct(), settings.getHomeCurrency(),
+-                settings.getRevenueRecognitionBasis(), settings.getBillingTarget());
++                settings.getRevenueRecognitionBasis(), settings.getBillingTarget(),
++                settings.getDashboardBaseCurrency());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 5f9e58d..7d26186 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -1,16 +1,25 @@
+ package net.officefloor.hq.app.settings;
+ 
+ import java.math.BigDecimal;
++import java.util.Locale;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.currency.CurrencyRepository;
++import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ @Service
+ public class SettingsService {
+ 
+     private final SettingsRepository settings;
++    private final CurrencyRepository currencies;
++    private final Audit audit;
+ 
+-    public SettingsService(SettingsRepository settings) {
++    public SettingsService(SettingsRepository settings, CurrencyRepository currencies, Audit audit) {
+         this.settings = settings;
++        this.currencies = currencies;
++        this.audit = audit;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -38,6 +47,26 @@ public class SettingsService {
+         return SettingsResponse.from(current);
+     }
+ 
++    /** Chooses the currency the dashboard's totals are shown in, recording it in the audit log. */
++    @Transactional
++    public SettingsResponse updateDashboardBaseCurrency(BaseCurrencyRequest request) {
++        String currency = request.baseCurrency().trim().toUpperCase(Locale.ROOT);
++        if (!currencies.existsById(currency)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown currency");
++        }
++        Settings current = find();
++        current.setDashboardBaseCurrency(currency);
++        settings.flush();
++        audit.record("DASHBOARD_BASE_CURRENCY_SET currency=" + currency);
++        return SettingsResponse.from(current);
++    }
++
++    /** The currency the dashboard's totals are shown in: the chosen one, or else the home currency. */
++    @Transactional(readOnly = true)
++    public String dashboardBaseCurrency() {
++        return find().getDashboardBaseCurrency();
++    }
++
+     /** What the business aims to bill over the year, in the home currency; null when no target is set. */
+     @Transactional(readOnly = true)
+     public BigDecimal billingTarget() {
+diff --git a/src/main/resources/db/migration/V107__dashboard_base_currency.sql b/src/main/resources/db/migration/V107__dashboard_base_currency.sql
+new file mode 100644
+index 0000000..67c23a4
+--- /dev/null
++++ b/src/main/resources/db/migration/V107__dashboard_base_currency.sql
+@@ -0,0 +1,4 @@
++-- The currency the dashboard's totals are shown in, converted from the home currency at the latest rate; null
++-- shows them in the home currency itself.
++ALTER TABLE app_settings ADD COLUMN dashboard_base_currency VARCHAR(3);
++ALTER TABLE app_settings ADD CONSTRAINT app_settings_dashboard_base_currency_fk FOREIGN KEY (dashboard_base_currency) REFERENCES currency (code);
