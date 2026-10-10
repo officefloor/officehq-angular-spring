@@ -1,0 +1,505 @@
+diff --git a/src/main/frontend/src/app/features/projects/project-detail.ts b/src/main/frontend/src/app/features/projects/project-detail.ts
+index c566efc..ee4bd76 100644
+--- a/src/main/frontend/src/app/features/projects/project-detail.ts
++++ b/src/main/frontend/src/app/features/projects/project-detail.ts
+@@ -3,16 +3,17 @@ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { ProjectInvoices } from '../invoices/project-invoices';
+ import { Notes } from '../notes/notes';
++import { ProjectRecurringInvoices } from '../recurring/project-recurring-invoices';
+ import { ProjectTags } from '../tags/project-tags';
+ import { ProjectTasks } from '../tasks/project-tasks';
+ import { ProjectBudgetPanel } from './project-budget';
+ import { ProjectDates } from './project-dates';
+ import { ProjectService } from './project.service';
+ 
+-// A single project's page: its name, description, client and status, whether it is open or closed, whether it is billable, its start and end dates, its budget, its tags, its tasks, its notes, and its invoices.
++// A single project's page: its name, description, client and status, whether it is open or closed, whether it is billable, its start and end dates, its budget, its tags, its tasks, its notes, its invoices, and the invoices that recur every month.
+ @Component({
+   selector: 'app-project-detail',
+-  imports: [RouterLink, ProjectBudgetPanel, ProjectDates, ProjectInvoices, Notes, ProjectTags, ProjectTasks],
++  imports: [RouterLink, ProjectBudgetPanel, ProjectDates, ProjectInvoices, ProjectRecurringInvoices, Notes, ProjectTags, ProjectTasks],
+   template: `
+     <a routerLink="/projects" data-testid="project-back">Back to jobs</a>
+     @if (project.error()) {
+@@ -59,6 +60,7 @@ import { ProjectService } from './project.service';
+       <app-project-tasks [projectId]="projectId()" />
+       <app-notes [projectId]="projectId()" />
+       <app-project-invoices [projectId]="projectId()" [currency]="p.currency" [closed]="p.closed" (invoiced)="budget()?.reload()" />
++      <app-project-recurring-invoices [projectId]="projectId()" [currency]="p.currency" />
+     }
+   `,
+ })
+diff --git a/src/main/frontend/src/app/features/recurring/project-recurring-invoices.ts b/src/main/frontend/src/app/features/recurring/project-recurring-invoices.ts
+new file mode 100644
+index 0000000..35f7898
+--- /dev/null
++++ b/src/main/frontend/src/app/features/recurring/project-recurring-invoices.ts
+@@ -0,0 +1,139 @@
++import { Component, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { RecurringInvoiceService } from './recurring-invoice.service';
++
++const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
++
++// The invoices on a project that repeat every month for a fixed amount, and a form to set up another.
++@Component({
++  selector: 'app-project-recurring-invoices',
++  imports: [MoneyPipe, ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="recurring-heading" data-testid="project-recurring">
++      <h2 id="recurring-heading">Recurring invoices</h2>
++      @if (recurring.error()) {
++        <p role="alert" data-testid="recurring-error">Could not load the recurring invoices.</p>
++      } @else if (recurring.hasValue()) {
++        @if (recurring.value().length === 0) {
++          <p data-testid="recurring-empty">No recurring invoices.</p>
++        } @else {
++          <table data-testid="recurring-list">
++            <thead>
++              <tr>
++                <th scope="col">Amount</th>
++                <th scope="col">Repeats</th>
++                <th scope="col">Next invoice</th>
++              </tr>
++            </thead>
++            <tbody>
++              @for (r of recurring.value(); track r.id) {
++                <tr [attr.data-testid]="'recurring-row-' + r.id">
++                  <td data-testid="recurring-amount">{{ r.amount | money: currency() }}</td>
++                  <td data-testid="recurring-frequency">{{ r.frequency }}</td>
++                  <td data-testid="recurring-next-date">{{ r.nextDate }}</td>
++                </tr>
++              }
++            </tbody>
++          </table>
++        }
++      }
++      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="recurring-form" novalidate>
++        <div>
++          <label for="recurring-amount">Amount each month</label>
++          <input
++            id="recurring-amount"
++            type="number"
++            inputmode="decimal"
++            min="0.01"
++            step="0.01"
++            formControlName="amount"
++            data-testid="recurring-form-amount"
++            [attr.aria-invalid]="invalid('amount')"
++            [attr.aria-describedby]="invalid('amount') ? 'recurring-amount-error' : null"
++          />
++          @if (invalid('amount')) {
++            <p id="recurring-amount-error" role="alert" data-testid="recurring-form-amount-error">
++              Enter an amount greater than zero with at most two decimal places.
++            </p>
++          }
++        </div>
++        <div>
++          <label for="recurring-next-date">First invoice date</label>
++          <input
++            id="recurring-next-date"
++            type="date"
++            formControlName="nextDate"
++            data-testid="recurring-form-next-date"
++            [attr.aria-invalid]="invalid('nextDate')"
++            [attr.aria-describedby]="invalid('nextDate') ? 'recurring-next-date-error' : null"
++          />
++          @if (invalid('nextDate')) {
++            <p id="recurring-next-date-error" role="alert" data-testid="recurring-form-next-date-error">
++              Enter the date of the first invoice.
++            </p>
++          }
++        </div>
++        <button type="submit" data-testid="recurring-form-submit" [disabled]="saving()">
++          Set up monthly invoice
++        </button>
++        @if (saveError()) {
++          <p role="alert" data-testid="recurring-form-error">{{ saveError() }}</p>
++        }
++        @if (saved()) {
++          <p role="status" data-testid="recurring-form-saved">Recurring invoice set up.</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class ProjectRecurringInvoices {
++  private readonly service = inject(RecurringInvoiceService);
++
++  readonly projectId = input.required<number>();
++  /** The project's currency; its recurring invoices are billed in it. */
++  readonly currency = input.required<string>();
++
++  protected readonly recurring = rxResource({
++    params: () => this.projectId(),
++    stream: ({ params }) => this.service.list(params),
++  });
++
++  protected readonly saving = signal(false);
++  protected readonly saved = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    nextDate: ['', [Validators.required]],
++  });
++
++  protected invalid(name: 'amount' | 'nextDate'): boolean {
++    const control = this.form.controls[name];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    this.saveError.set(null);
++    this.saved.set(false);
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    const { amount, nextDate } = this.form.getRawValue();
++    this.saving.set(true);
++    this.service.create(this.projectId(), { amount: Number(amount), frequency: 'MONTHLY', nextDate }).subscribe({
++      next: () => {
++        this.saving.set(false);
++        this.saved.set(true);
++        this.form.reset();
++        this.recurring.reload();
++      },
++      error: () => {
++        this.saving.set(false);
++        this.saveError.set('Could not set up the recurring invoice. Please try again.');
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts b/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts
+new file mode 100644
+index 0000000..ebdfd64
+--- /dev/null
++++ b/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts
+@@ -0,0 +1,35 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++/** How often a recurring invoice repeats. */
++export type RecurringFrequency = 'MONTHLY';
++
++/** An invoice on a project that repeats on a schedule for a fixed amount. */
++export interface RecurringInvoice {
++  id: number;
++  projectId: number;
++  amount: number;
++  frequency: RecurringFrequency;
++  /** ISO date (yyyy-MM-dd) the next invoice falls on. */
++  nextDate: string;
++}
++
++export interface NewRecurringInvoice {
++  amount: number;
++  frequency: RecurringFrequency;
++  nextDate: string;
++}
++
++@Injectable({ providedIn: 'root' })
++export class RecurringInvoiceService {
++  private readonly http = inject(HttpClient);
++
++  list(projectId: number): Observable<RecurringInvoice[]> {
++    return this.http.get<RecurringInvoice[]>(`/api/projects/${projectId}/recurring-invoices`);
++  }
++
++  create(projectId: number, recurring: NewRecurringInvoice): Observable<RecurringInvoice> {
++    return this.http.post<RecurringInvoice>(`/api/projects/${projectId}/recurring-invoices`, recurring);
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 0ec6346..16393c3 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -68,6 +68,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice_discount RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE recurring_invoice RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE fx_rate RESTART IDENTITY");
+@@ -159,6 +160,14 @@ public class TestSupportController {
+                     ((Number) n.get("id")).longValue(), n.get("targetType"),
+                     ((Number) n.get("targetId")).longValue(), n.get("text"), Timestamp.from(at));
+         }
++        // An invoice repeating for a fixed amount on a project, monthly unless it says otherwise.
++        for (Map<String, Object> r : rows(fixture, "recurring")) {
++            jdbc.update("INSERT INTO recurring_invoice (id, project_id, amount, frequency, next_date) VALUES (?, ?, ?, ?, ?)",
++                    ((Number) r.get("id")).longValue(), ((Number) r.get("projectId")).longValue(),
++                    new BigDecimal(r.get("amount").toString()),
++                    r.get("frequency") == null ? "MONTHLY" : r.get("frequency").toString(),
++                    LocalDate.parse(r.get("nextDate").toString()));
++        }
+         for (Map<String, Object> i : rows(fixture, "invoices")) {
+             // A missing date is filled in from the other one using the standard payment term; with
+             // neither given the invoice is issued today.
+@@ -354,6 +363,7 @@ public class TestSupportController {
+         restartIdentity("invoice_line_item");
+         restartIdentity("invoice_discount");
+         restartIdentity("invoice_instalment");
++        restartIdentity("recurring_invoice");
+         restartIdentity("task");
+         restartIdentity("task_checklist_item");
+         restartIdentity("tag");
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/ProjectRecurringInvoiceController.java b/src/main/java/net/officefloor/hq/app/recurring/ProjectRecurringInvoiceController.java
+new file mode 100644
+index 0000000..111437a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/recurring/ProjectRecurringInvoiceController.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app.recurring;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** Invoices on a project that repeat on a schedule for a fixed amount. */
++@RestController
++@RequestMapping("/api/projects/{projectId}/recurring-invoices")
++public class ProjectRecurringInvoiceController {
++
++    private final RecurringInvoiceService service;
++
++    public ProjectRecurringInvoiceController(RecurringInvoiceService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<RecurringInvoiceResponse> list(@PathVariable Long projectId) {
++        return service.list(projectId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public RecurringInvoiceResponse create(@PathVariable Long projectId,
++            @Valid @RequestBody RecurringInvoiceRequest request) {
++        return service.create(projectId, request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringFrequency.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringFrequency.java
+new file mode 100644
+index 0000000..e4a91d9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringFrequency.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.recurring;
++
++/** How often a recurring invoice repeats. */
++public enum RecurringFrequency {
++    MONTHLY
++}
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoice.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoice.java
+new file mode 100644
+index 0000000..928125a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoice.java
+@@ -0,0 +1,65 @@
++package net.officefloor.hq.app.recurring;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.EnumType;
++import jakarta.persistence.Enumerated;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** An invoice on a project that repeats on a schedule for a fixed amount, next falling on a given day. */
++@Entity
++@Table(name = "recurring_invoice")
++public class RecurringInvoice {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "project_id", nullable = false)
++    private Long projectId;
++
++    @Column(nullable = false, precision = 12, scale = 2)
++    private BigDecimal amount;
++
++    @Enumerated(EnumType.STRING)
++    @Column(nullable = false, length = 20)
++    private RecurringFrequency frequency;
++
++    @Column(name = "next_date", nullable = false)
++    private LocalDate nextDate;
++
++    protected RecurringInvoice() {
++    }
++
++    public RecurringInvoice(Long projectId, BigDecimal amount, RecurringFrequency frequency, LocalDate nextDate) {
++        this.projectId = projectId;
++        this.amount = amount.setScale(2);
++        this.frequency = frequency;
++        this.nextDate = nextDate;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getProjectId() {
++        return projectId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public RecurringFrequency getFrequency() {
++        return frequency;
++    }
++
++    public LocalDate getNextDate() {
++        return nextDate;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRepository.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRepository.java
+new file mode 100644
+index 0000000..39f18f2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.recurring;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface RecurringInvoiceRepository extends JpaRepository<RecurringInvoice, Long> {
++
++    /** A project's recurring invoices, soonest next first. */
++    List<RecurringInvoice> findByProjectIdOrderByNextDateAscIdAsc(Long projectId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRequest.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRequest.java
+new file mode 100644
+index 0000000..f6058e7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRequest.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.recurring;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** Payload to set up an invoice that repeats for a fixed amount, starting on the given day. */
++public record RecurringInvoiceRequest(
++        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
++        @NotNull RecurringFrequency frequency,
++        @NotNull LocalDate nextDate) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceResponse.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceResponse.java
+new file mode 100644
+index 0000000..db47e39
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceResponse.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.recurring;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++public record RecurringInvoiceResponse(Long id, Long projectId, BigDecimal amount, RecurringFrequency frequency,
++        LocalDate nextDate) {
++
++    static RecurringInvoiceResponse from(RecurringInvoice recurring) {
++        return new RecurringInvoiceResponse(recurring.getId(), recurring.getProjectId(), recurring.getAmount(),
++                recurring.getFrequency(), recurring.getNextDate());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java
+new file mode 100644
+index 0000000..c9561c2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java
+@@ -0,0 +1,47 @@
++package net.officefloor.hq.app.recurring;
++
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.project.ProjectRepository;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class RecurringInvoiceService {
++
++    private final RecurringInvoiceRepository recurring;
++    private final ProjectRepository projects;
++    private final Audit audit;
++
++    public RecurringInvoiceService(RecurringInvoiceRepository recurring, ProjectRepository projects, Audit audit) {
++        this.recurring = recurring;
++        this.projects = projects;
++        this.audit = audit;
++    }
++
++    @Transactional(readOnly = true)
++    public List<RecurringInvoiceResponse> list(Long projectId) {
++        requireProject(projectId);
++        return recurring.findByProjectIdOrderByNextDateAscIdAsc(projectId).stream()
++                .map(RecurringInvoiceResponse::from).toList();
++    }
++
++    /** Sets up an invoice on the project that repeats for a fixed amount, the first falling on the given day. */
++    @Transactional
++    public RecurringInvoiceResponse create(Long projectId, RecurringInvoiceRequest request) {
++        requireProject(projectId);
++        RecurringInvoice saved = recurring.saveAndFlush(
++                new RecurringInvoice(projectId, request.amount(), request.frequency(), request.nextDate()));
++        audit.record("RECURRING_INVOICE_CREATED id=" + saved.getId() + " project=" + projectId
++                + " amount=" + saved.getAmount().toPlainString() + " frequency=" + saved.getFrequency());
++        return RecurringInvoiceResponse.from(saved);
++    }
++
++    private void requireProject(Long projectId) {
++        if (!projects.existsById(projectId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
++        }
++    }
++}
+diff --git a/src/main/resources/db/migration/V76__create_recurring_invoice.sql b/src/main/resources/db/migration/V76__create_recurring_invoice.sql
+new file mode 100644
+index 0000000..b360f72
+--- /dev/null
++++ b/src/main/resources/db/migration/V76__create_recurring_invoice.sql
+@@ -0,0 +1,13 @@
++-- An invoice that repeats on a schedule for a fixed amount; the next one falls on next_date.
++CREATE TABLE recurring_invoice (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    project_id BIGINT         NOT NULL,
++    amount     DECIMAL(12, 2) NOT NULL,
++    frequency  VARCHAR(20)    NOT NULL,
++    next_date  DATE           NOT NULL,
++    CONSTRAINT recurring_invoice_project_fk FOREIGN KEY (project_id) REFERENCES project (id) ON DELETE CASCADE,
++    CONSTRAINT recurring_invoice_amount_positive CHECK (amount > 0),
++    CONSTRAINT recurring_invoice_frequency_known CHECK (frequency IN ('MONTHLY'))
++);
++
++CREATE INDEX recurring_invoice_project_idx ON recurring_invoice (project_id, next_date);
