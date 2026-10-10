@@ -4,7 +4,8 @@ import { MoneyPipe } from '../currencies/money.pipe';
 import { DashboardService } from './dashboard.service';
 
 // The tax charged over a chosen date range: the main (sales) tax and the levy, each totalled separately, on invoices
-// issued within it that were sent (drafts and cancelled invoices are left out), in the home currency.
+// issued within it that were sent (drafts and cancelled invoices are left out), in the home currency. Their sum is
+// the tax liability for the period: the tax collected that is owed on to the tax authority.
 @Component({
   selector: 'app-tax-summary',
   imports: [MoneyPipe],
@@ -49,8 +50,10 @@ import { DashboardService } from './dashboard.service';
           </dd>
           <dt>Levy</dt>
           <dd data-testid="tax-summary-levy">{{ t.levy | money: t.homeCurrency }}</dd>
-          <dt>Total tax charged</dt>
-          <dd data-testid="tax-summary-total">{{ t.total | money: t.homeCurrency }}</dd>
+          <dt>Tax liability (total tax collected)</dt>
+          <dd data-testid="tax-summary-total">
+            <span data-testid="tax-liability-total">{{ t.total | money: t.homeCurrency }}</span>
+          </dd>
         </dl>
       }
     </section>
