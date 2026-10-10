@@ -82,6 +82,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
           <dd data-testid="dashboard-overdue-60-plus">{{ s.overdueBuckets.days60Plus | money: s.homeCurrency }}</dd>
         </div>
         <div>
+          <dt>Open tasks</dt>
+          <dd data-testid="dashboard-open-tasks">{{ s.openTasks }}</dd>
+        </div>
+        <div>
           <dt>Overdue tasks</dt>
           <dd data-testid="dashboard-overdue-tasks-count">{{ s.overdueTasks }}</dd>
         </div>

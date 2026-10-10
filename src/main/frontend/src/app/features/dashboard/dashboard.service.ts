@@ -41,6 +41,8 @@ export interface DashboardSummary {
   /** The overdue amount split by how many days past due each invoice is. */
   overdueBuckets: OverdueBuckets;
   topClients: TopClient[];
+  /** How many tasks are not yet done. */
+  openTasks: number;
   /** How many tasks not yet done are past their due date. */
   overdueTasks: number;
   /** Average days from issue to final payment on paid invoices, rounded; null when no invoice has been paid. */

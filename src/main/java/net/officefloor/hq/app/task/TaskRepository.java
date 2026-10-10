@@ -13,6 +13,9 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
     /** Every task, grouped by job (in the order jobs were added) then in the order added. */
     List<Task> findAllByOrderByProjectIdAscIdAsc();
 
+    /** How many tasks are not yet done. */
+    long countByDoneFalse();
+
     /** How many tasks not yet done were due before the given date. */
     long countByDoneFalseAndDueDateBefore(LocalDate date);
 
