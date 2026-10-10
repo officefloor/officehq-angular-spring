@@ -1,0 +1,308 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 16415f5..363699c 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -415,6 +415,19 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 }
+               </tr>
+             }
++            @if (inv.rebate !== null) {
++              <tr data-testid="invoice-rebate-row">
++                <th scope="row" colspan="5">
++                  Settlement rebate of
++                  <span data-testid="invoice-rebate-pct">{{ inv.rebatePct | number: '1.0-2' : 'en-US' }}</span>% when paid
++                  before <span data-testid="invoice-rebate-due-date">{{ inv.dueDate }}</span>
++                </th>
++                <td data-testid="invoice-rebate">{{ inv.rebate | money: inv.currency }}</td>
++                @if (inv.status === 'DRAFT') {
++                  <td></td>
++                }
++              </tr>
++            }
+             @if (inv.lateFeePerDay > 0) {
+               <tr data-testid="invoice-late-fee-row">
+                 <th scope="row" colspan="5">
+@@ -729,6 +742,34 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+           }
+         </form>
+ 
++        <form [formGroup]="rebateForm" (ngSubmit)="applyRebate()" data-testid="rebate-form" novalidate>
++          <h2>Settlement rebate</h2>
++          <div>
++            <label for="rebate-pct">Percentage given back when paid before the due date</label>
++            <input
++              id="rebate-pct"
++              type="number"
++              inputmode="decimal"
++              min="0"
++              max="100"
++              step="0.01"
++              formControlName="rebatePct"
++              data-testid="rebate-form-pct"
++              [attr.aria-invalid]="rebateInvalid()"
++              [attr.aria-describedby]="rebateInvalid() ? 'rebate-pct-error' : null"
++            />
++            @if (rebateInvalid()) {
++              <p id="rebate-pct-error" role="alert" data-testid="rebate-form-pct-error">
++                Enter a percentage from 0 to 100 with at most two decimal places.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="rebate-form-submit" [disabled]="rebateSaving()">Apply settlement rebate</button>
++          @if (rebateError()) {
++            <p role="alert" data-testid="rebate-form-error">{{ rebateError() }}</p>
++          }
++        </form>
++
+         <form [formGroup]="lateFeeForm" (ngSubmit)="applyLateFee()" data-testid="late-fee-form" novalidate>
+           <h2>Late fee</h2>
+           <div>
+@@ -1350,6 +1391,45 @@ export class InvoiceDetailPage {
+       });
+   }
+ 
++  protected readonly rebateSaving = signal(false);
++  protected readonly rebateError = signal<string | null>(null);
++
++  protected readonly rebateForm = this.fb.group({
++    rebatePct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
++  });
++
++  // Starts the rebate field from the invoice's current offer whenever the invoice loads.
++  private readonly syncRebate = effect(() => {
++    if (this.invoice.hasValue()) {
++      this.rebateForm.setValue({ rebatePct: String(this.invoice.value().rebatePct) });
++    }
++  });
++
++  protected rebateInvalid(): boolean {
++    const control = this.rebateForm.controls.rebatePct;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected applyRebate(): void {
++    if (this.rebateForm.invalid) {
++      this.rebateForm.markAllAsTouched();
++      return;
++    }
++    this.rebateSaving.set(true);
++    this.rebateError.set(null);
++    const { rebatePct } = this.rebateForm.getRawValue();
++    this.service.applyRebate(this.projectIdNumber(), Number(this.invoiceId()), Number(rebatePct)).subscribe({
++      next: (updated) => {
++        this.invoice.set(updated);
++        this.rebateSaving.set(false);
++      },
++      error: () => {
++        this.rebateError.set('Could not apply the settlement rebate. Please try again.');
++        this.rebateSaving.set(false);
++      },
++    });
++  }
++
+   protected readonly lateFeeSaving = signal(false);
+   protected readonly lateFeeError = signal<string | null>(null);
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index b3f275f..d9e25da 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -195,6 +195,10 @@ export interface InvoiceDetail extends Invoice {
+   earlyPaymentBy: string | null;
+   /** The reduced amount to pay when settling early; null when no early-payment discount is offered. */
+   earlyPaymentAmount: number | null;
++  /** The percentage of the amount given back when paid before the due date; zero when no rebate is offered. */
++  rebatePct: number;
++  /** The settlement rebate for paying before the due date; null when none is offered. */
++  rebate: number | null;
+   lineItems: LineItem[];
+   /** The client's tax registration number; null when they are not tax registered. */
+   clientTaxNumber: string | null;
+@@ -361,6 +365,11 @@ export class InvoiceService {
+     });
+   }
+ 
++  /** Sets the settlement rebate offered on a draft invoice for paying before the due date; zero removes it. */
++  applyRebate(projectId: number, invoiceId: number, rebatePct: number): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/rebate`, { rebatePct });
++  }
++
+   /** Sets the late fee charged for each day a draft invoice is overdue once sent; zero charges none. */
+   applyLateFee(projectId: number, invoiceId: number, lateFeePerDay: number): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/late-fee`, { lateFeePerDay });
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 5521258..985fd91 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -311,6 +311,8 @@ public class TestSupportController {
+             // A minimum charge is billed instead when the net total comes out under it.
+             BigDecimal minimumCharge = decimal(i.get("minimumCharge"));
+             int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
++            // A settlement rebate offered for paying before the due date is just recorded; it does not change the amount owed.
++            BigDecimal rebatePct = decimal(i.get("rebatePct"));
+             // An invoice may be billed in its own currency ("currency"); without one it is in its client's.
+             // A late fee per day accrues once the invoice is overdue; it does not change the amount invoiced.
+             BigDecimal lateFeePerDay = decimal(i.get("lateFeePerDay"));
+@@ -323,12 +325,12 @@ public class TestSupportController {
+             // Part of the invoice may already have been written off as bad debt ("writeOff"), so it is no longer owed.
+             BigDecimal writeOff = decimal(i.get("writeOff"));
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " early_payment_pct, early_payment_days, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
+                     surcharge, taxInclusive, taxExempt,
+-                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
++                    earlyPaymentPct, earlyPaymentDays, rebatePct, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
+                     retentionReleased, writeOff,
+                     i.get("currency") == null ? null : i.get("currency").toString());
+             for (Map<String, Object> d : discounts) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 1ed3414..e886a5c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -96,6 +96,10 @@ public class Invoice {
+     @Column(name = "early_payment_days", nullable = false)
+     private int earlyPaymentDays;
+ 
++    /** The percentage of the amount given back when paid before the due date; zero when no rebate is offered. */
++    @Column(name = "rebate_pct", nullable = false, precision = 5, scale = 2)
++    private BigDecimal rebatePct = BigDecimal.ZERO.setScale(2);
++
+     /** The late fee charged for each day the invoice is overdue once sent; zero when none is charged. */
+     @Column(name = "late_fee_per_day", nullable = false, precision = 12, scale = 2)
+     private BigDecimal lateFeePerDay = BigDecimal.ZERO.setScale(2);
+@@ -386,6 +390,16 @@ public class Invoice {
+         return offersEarlyPayment() ? amount.subtract(percentOf(amount, earlyPaymentPct)) : null;
+     }
+ 
++    /** The percentage of the amount given back when paid before the due date; zero when none is offered. */
++    public BigDecimal getRebatePct() {
++        return rebatePct;
++    }
++
++    /** The settlement rebate for paying before the due date: the rebate percentage of the amount, to the cent; null when none is offered. */
++    public BigDecimal getRebate() {
++        return rebatePct.signum() > 0 ? percentOf(amount, rebatePct) : null;
++    }
++
+     public InvoiceStatus getStatus() {
+         return status;
+     }
+@@ -606,6 +620,14 @@ public class Invoice {
+         this.earlyPaymentDays = earlyPaymentDays;
+     }
+ 
++    /**
++     * Sets the settlement rebate offered on this invoice: the percentage of the amount given back if it is
++     * paid before the due date. It does not change the amount invoiced.
++     */
++    public void applyRebate(BigDecimal rebatePct) {
++        this.rebatePct = rebatePct.setScale(2, RoundingMode.HALF_UP);
++    }
++
+     /**
+      * The discount taken off one line, to the cent: the uncapped percentages together, plus its share of
+      * what the flat amounts and the capped percentages take off in proportion to what the line charges
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index 4044f2e..7b7e73e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -107,6 +107,12 @@ public class InvoiceController {
+         return service.applyEarlyPayment(projectId, invoiceId, request);
+     }
+ 
++    @PutMapping("/{invoiceId}/rebate")
++    public InvoiceDetailResponse applyRebate(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody RebateRequest request) {
++        return service.applyRebate(projectId, invoiceId, request);
++    }
++
+     @PutMapping("/{invoiceId}/late-fee")
+     public InvoiceDetailResponse applyLateFee(@PathVariable Long projectId, @PathVariable Long invoiceId,
+             @Valid @RequestBody LateFeeRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index b3e4550..5f7a8df 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -12,7 +12,9 @@ import java.util.List;
+  * (so they are worked back out rather than added on), whether the client is tax exempt (so
+  * there is no tax at all), the effective tax rate (the sales tax and levy together as a percentage of
+  * the total before tax), any early-payment discount offered (its percentage, the days after issue it
+- * must be paid within, the last day to pay, and the reduced amount; null when none is offered), and the
++ * must be paid within, the last day to pay, and the reduced amount; null when none is offered), any
++ * settlement rebate for paying before the due date (its percentage, and the rebate itself; null when none
++ * is offered), and the
+  * client's tax number (null when the client is not tax registered), the minimum charge, the net total
+  * before it, whether the minimum was billed because the net total came out under it, and the total
+  * savings (the line discounts and the invoice's discounts added together). A foreign invoice also gives
+@@ -31,6 +33,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+         BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
+         BigDecimal levyPct, BigDecimal levy, BigDecimal surcharge, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
+         BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
++        BigDecimal rebatePct, BigDecimal rebate,
+         InvoiceStatus status, LocalDate issuedDate,
+         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts,
+         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
+@@ -53,6 +56,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+                 invoice.getEffectiveTaxPct(),
+                 invoice.getEarlyPaymentPct(), invoice.getEarlyPaymentDays(), invoice.getEarlyPaymentBy(),
+                 invoice.getEarlyPaymentAmount(),
++                invoice.getRebatePct(), invoice.getRebate(),
+                 status, invoice.getIssuedDate(), invoice.getDueDate(),
+                 invoice.getLineItems().stream().map(LineItemResponse::from).toList(),
+                 invoice.getProject().getClient().getTaxNumber(),
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 5cc3c59..554ea30 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -397,6 +397,15 @@ public class InvoiceService {
+         return detail(invoice);
+     }
+ 
++    /** Sets the settlement rebate offered on a draft invoice for paying before the due date. */
++    @Transactional
++    public InvoiceDetailResponse applyRebate(Long projectId, Long invoiceId, RebateRequest request) {
++        Invoice invoice = findDraft(projectId, invoiceId);
++        invoice.applyRebate(request.rebatePct());
++        invoices.flush();
++        return detail(invoice);
++    }
++
+     /** Sets the late fee charged for each day a draft invoice is overdue once it has been sent. */
+     @Transactional
+     public InvoiceDetailResponse applyLateFee(Long projectId, Long invoiceId, LateFeeRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/RebateRequest.java b/src/main/java/net/officefloor/hq/app/invoice/RebateRequest.java
+new file mode 100644
+index 0000000..07ea824
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/RebateRequest.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.constraints.DecimalMax;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/**
++ * Payload to set the settlement rebate offered on a draft invoice: the percentage of the amount given back
++ * when it is paid before the due date; zero removes the offer.
++ */
++public record RebateRequest(
++        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal rebatePct) {
++}
+diff --git a/src/main/resources/db/migration/V87__invoice_settlement_rebate.sql b/src/main/resources/db/migration/V87__invoice_settlement_rebate.sql
+new file mode 100644
+index 0000000..da0752f
+--- /dev/null
++++ b/src/main/resources/db/migration/V87__invoice_settlement_rebate.sql
+@@ -0,0 +1,5 @@
++-- An invoice can offer a settlement rebate: a percentage of the amount given back when the client pays
++-- before the due date. Existing invoices offer none.
++ALTER TABLE invoice ADD COLUMN rebate_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
++
++ALTER TABLE invoice ADD CONSTRAINT invoice_rebate_pct_range CHECK (rebate_pct >= 0 AND rebate_pct <= 100);
