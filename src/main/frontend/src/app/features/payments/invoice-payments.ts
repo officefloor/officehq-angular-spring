@@ -5,6 +5,7 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { PaymentService } from './payment.service';
 import { CurrencyCode } from '../clients/client.service';
+import { CurrencyService } from '../currencies/currency.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
@@ -35,7 +36,14 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             @for (row of rows(); track row.payment.id) {
               <tr [attr.data-testid]="'payment-row-' + row.payment.id">
                 <td data-testid="payment-date">{{ row.payment.date }}</td>
-                <td data-testid="payment-amount">{{ row.payment.amount | money: currency() }}</td>
+                <td data-testid="payment-amount">
+                  {{ row.payment.amount | money: currency() }}
+                  @if (row.payment.paidCurrency && row.payment.paidAmount != null) {
+                    <span data-testid="payment-paid-in">
+                      (paid {{ row.payment.paidAmount | money: row.payment.paidCurrency }})
+                    </span>
+                  }
+                </td>
                 <td data-testid="payment-running-balance">{{ row.balanceCents / 100 | money: currency() }}</td>
               </tr>
             }
@@ -76,6 +84,20 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             }
           </div>
           <div>
+            <label for="payment-currency">Currency</label>
+            <select id="payment-currency" formControlName="currency" data-testid="payment-form-currency">
+              <option value="">{{ currency() }} (invoice currency)</option>
+              @for (c of otherCurrencies(); track c.code) {
+                <option [value]="c.code">{{ c.code }}</option>
+              }
+            </select>
+            @if (form.controls.currency.value) {
+              <p data-testid="payment-form-currency-hint">
+                Converted into {{ currency() }} at the exchange rate on the date paid.
+              </p>
+            }
+          </div>
+          <div>
             <label for="payment-date">Date paid</label>
             <input
               id="payment-date"
@@ -102,6 +124,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 })
 export class InvoicePayments {
   private readonly service = inject(PaymentService);
+  private readonly currencies = inject(CurrencyService);
 
   readonly projectId = input.required<number>();
   readonly invoiceId = input.required<number>();
@@ -144,12 +167,17 @@ export class InvoicePayments {
     });
   });
 
+  /** The currencies a payment can be received in besides the invoice's own. */
+  protected readonly otherCurrencies = computed(() => this.currencies.list().filter((c) => c.code !== this.currency()));
+
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
     date: ['', [Validators.required]],
+    /** Empty when paid in the invoice's currency. */
+    currency: [''],
   });
 
   protected invalid(name: 'amount' | 'date'): boolean {
@@ -164,8 +192,9 @@ export class InvoicePayments {
     }
     this.saving.set(true);
     this.saveError.set(null);
-    const { amount, date } = this.form.getRawValue();
-    this.service.record(this.projectId(), this.invoiceId(), { amount: Number(amount), date }).subscribe({
+    const { amount, date, currency } = this.form.getRawValue();
+    const payment = { amount: Number(amount), date, ...(currency ? { currency } : {}) };
+    this.service.record(this.projectId(), this.invoiceId(), payment).subscribe({
       next: (created) => {
         this.payments.update((list) =>
           [...(list ?? []), created].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id),
@@ -178,7 +207,9 @@ export class InvoicePayments {
         this.saveError.set(
           err.status === 409
             ? 'That payment is more than the balance due.'
-            : 'Could not record the payment. Please try again.',
+            : err.status === 400 && this.form.controls.currency.value
+              ? 'Could not convert the payment: there is no exchange rate for that currency on that date.'
+              : 'Could not record the payment. Please try again.',
         );
         this.saving.set(false);
       },

@@ -9,11 +9,17 @@ export interface Payment {
   amount: number;
   /** ISO date (yyyy-MM-dd) the payment was made. */
   date: string;
+  /** What was received when paid in another currency than the invoice's (converted on the payment's date); else null. */
+  paidAmount?: number | null;
+  /** The currency the payment was received in, when not the invoice's; else null. */
+  paidCurrency?: string | null;
 }
 
+/** A payment to record; `amount` is in `currency`, or the invoice's currency when none is given. */
 export interface NewPayment {
   amount: number;
   date: string;
+  currency?: string;
 }
 
 /**

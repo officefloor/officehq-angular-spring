@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -13,6 +14,7 @@ import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.credit.ClientCreditResponse;
 import net.officefloor.hq.app.credit.ClientCreditService;
 import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+import net.officefloor.hq.app.currency.CurrencyService;
 import net.officefloor.hq.app.deposit.DepositApplication;
 import net.officefloor.hq.app.deposit.DepositApplicationRepository;
 import net.officefloor.hq.app.deposit.DepositApplicationRequest;
@@ -37,12 +39,14 @@ public class PaymentService {
     private final ClientCreditService credit;
     private final ClientRepository clients;
     private final FxRateService fxRates;
+    private final CurrencyService currencies;
     private final Clock clock;
     private final Audit audit;
 
     public PaymentService(PaymentRepository payments, CreditNoteRepository creditNotes, InvoiceRepository invoices,
             ClientPaymentRepository clientPayments, DepositApplicationRepository depositApplications,
-            ClientCreditService credit, ClientRepository clients, FxRateService fxRates, Clock clock, Audit audit) {
+            ClientCreditService credit, ClientRepository clients, FxRateService fxRates, CurrencyService currencies,
+            Clock clock, Audit audit) {
         this.payments = payments;
         this.creditNotes = creditNotes;
         this.invoices = invoices;
@@ -51,6 +55,7 @@ public class PaymentService {
         this.credit = credit;
         this.clients = clients;
         this.fxRates = fxRates;
+        this.currencies = currencies;
         this.clock = clock;
         this.audit = audit;
     }
@@ -64,12 +69,30 @@ public class PaymentService {
     /**
      * Records a payment against an invoice that has been sent to the client and is still owing, and
      * works out the invoice's status from what has now been paid and credited. A payment may not take
-     * the total paid and credited beyond the invoice amount.
+     * the total paid and credited beyond the invoice amount. A payment made in another currency is
+     * converted into the invoice's currency at the rates in effect on the payment's date, and settles
+     * that much of the invoice.
      */
     @Transactional
     public PaymentResponse record(Long projectId, Long invoiceId, PaymentRequest request) {
         Invoice invoice = find(projectId, invoiceId);
-        return apply(invoice, request.amount(), () -> new Payment(invoice.getId(), request.amount(), request.date()));
+        String currency = request.currency() == null ? invoice.getCurrency()
+                : request.currency().trim().toUpperCase(Locale.ROOT);
+        if (currency.equals(invoice.getCurrency())) {
+            return apply(invoice, request.amount(),
+                    () -> new Payment(invoice.getId(), request.amount(), request.date()));
+        }
+        if (!currencies.exists(currency)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown currency");
+        }
+        BigDecimal settles = fxRates.convert(currency, invoice.getCurrency(), request.date(), request.amount())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "No exchange rate for " + currency + " to " + invoice.getCurrency() + " on " + request.date()));
+        if (settles.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The payment is too small to pay anything");
+        }
+        return apply(invoice, settles, () -> Payment.inForeignCurrency(invoice.getId(), settles, request.date(),
+                currency, request.amount()));
     }
 
     /**
@@ -213,7 +236,9 @@ public class PaymentService {
         Payment saved = payments.saveAndFlush(payment.get());
         invoice.applySettledTotals(paid, credited);
         invoices.flush();
-        audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount=" + saved.getAmount().toPlainString());
+        audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount=" + saved.getAmount().toPlainString()
+                + (saved.getPaidCurrency() == null ? ""
+                        : " paid=" + saved.getPaidAmount().toPlainString() + " " + saved.getPaidCurrency()));
         return PaymentResponse.from(saved);
     }
 

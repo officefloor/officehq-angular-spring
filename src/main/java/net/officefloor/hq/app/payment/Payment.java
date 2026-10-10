@@ -39,6 +39,14 @@ public class Payment {
     @Column(name = "share_amount", precision = 12, scale = 2)
     private BigDecimal shareAmount;
 
+    /** The currency the payment was received in, when not the invoice's; null when paid in the invoice's currency. */
+    @Column(name = "paid_currency", length = 3)
+    private String paidCurrency;
+
+    /** What was received, in {@link #paidCurrency}; null when paid in the invoice's currency. */
+    @Column(name = "paid_amount", precision = 12, scale = 2)
+    private BigDecimal paidAmount;
+
     protected Payment() {
     }
 
@@ -60,6 +68,18 @@ public class Payment {
     public Payment(Long invoiceId, BigDecimal amount, LocalDate date, Long clientPaymentId, BigDecimal shareAmount) {
         this(invoiceId, amount, date, clientPaymentId);
         this.shareAmount = shareAmount.setScale(2);
+    }
+
+    /**
+     * A payment received in another currency: {@code paidAmount} in {@code paidCurrency} was received and
+     * {@code amount} is what it settles on the invoice, converted into the invoice's currency.
+     */
+    public static Payment inForeignCurrency(Long invoiceId, BigDecimal amount, LocalDate date, String paidCurrency,
+            BigDecimal paidAmount) {
+        Payment payment = new Payment(invoiceId, amount, date);
+        payment.paidCurrency = paidCurrency;
+        payment.paidAmount = paidAmount.setScale(2);
+        return payment;
     }
 
     /** A share of a client's held deposits put toward an invoice. */
@@ -91,6 +111,14 @@ public class Payment {
 
     public BigDecimal getShareAmount() {
         return shareAmount;
+    }
+
+    public String getPaidCurrency() {
+        return paidCurrency;
+    }
+
+    public BigDecimal getPaidAmount() {
+        return paidAmount;
     }
 
     public Long getDepositApplicationId() {

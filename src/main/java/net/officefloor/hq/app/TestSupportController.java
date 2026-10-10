@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.currency.Currency;
+import net.officefloor.hq.app.fx.FxRateService;
 import net.officefloor.hq.app.invoice.InvoiceRequest;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.project.ProjectStatus;
@@ -36,9 +37,11 @@ public class TestSupportController {
     private final Audit audit;
     private final JdbcTemplate jdbc;
     private final TestClock clock;
+    private final FxRateService fxRates;
 
-    public TestSupportController(Audit audit, JdbcTemplate jdbc, TestClock clock) {
+    public TestSupportController(Audit audit, JdbcTemplate jdbc, TestClock clock, FxRateService fxRates) {
         this.audit = audit;
+        this.fxRates = fxRates;
         this.jdbc = jdbc;
         this.clock = clock;
     }
@@ -347,10 +350,25 @@ public class TestSupportController {
                         LocalDate.parse(n.get("date").toString()), Boolean.TRUE.equals(n.get("paid")));
             }
         }
+        // A payment in another currency ("currency") than its invoice's is converted into the invoice's currency at
+        // the rates in effect on its date, and settles that much of the invoice.
         for (Map<String, Object> p : rows(fixture, "payments")) {
-            jdbc.update("INSERT INTO payment (id, invoice_id, amount, paid_date) VALUES (?, ?, ?, ?)",
-                    ((Number) p.get("id")).longValue(), ((Number) p.get("invoiceId")).longValue(),
-                    new BigDecimal(p.get("amount").toString()), LocalDate.parse(p.get("date").toString()));
+            long invoiceId = ((Number) p.get("invoiceId")).longValue();
+            BigDecimal amount = new BigDecimal(p.get("amount").toString());
+            LocalDate date = LocalDate.parse(p.get("date").toString());
+            String invoiceCurrency = jdbc.queryForObject("SELECT COALESCE(i.currency, c.currency) FROM invoice i"
+                    + " JOIN project p ON p.id = i.project_id JOIN client c ON c.id = p.client_id WHERE i.id = ?",
+                    String.class, invoiceId);
+            String paidCurrency = p.get("currency") == null ? invoiceCurrency : p.get("currency").toString();
+            if (paidCurrency.equals(invoiceCurrency)) {
+                jdbc.update("INSERT INTO payment (id, invoice_id, amount, paid_date) VALUES (?, ?, ?, ?)",
+                        ((Number) p.get("id")).longValue(), invoiceId, amount, date);
+            } else {
+                BigDecimal settles = fxRates.convert(paidCurrency, invoiceCurrency, date, amount)
+                        .orElseThrow(() -> new IllegalArgumentException("No exchange rate for " + paidCurrency + " on " + date));
+                jdbc.update("INSERT INTO payment (id, invoice_id, amount, paid_date, paid_currency, paid_amount) VALUES (?, ?, ?, ?, ?, ?)",
+                        ((Number) p.get("id")).longValue(), invoiceId, settles, date, paidCurrency, amount);
+            }
         }
         for (Map<String, Object> c : rows(fixture, "creditNotes")) {
             jdbc.update("INSERT INTO credit_note (id, invoice_id, amount, issued_at) VALUES (?, ?, ?, ?)",
