@@ -1,0 +1,278 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 8a597e5..00476f9 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -128,6 +128,25 @@ export interface RevenueReport {
+   months: MonthRevenue[];
+ }
+ 
++/** The revenue billed on invoices issued on or between two dates, in the home currency. */
++export interface PeriodRevenue {
++  from: string;
++  to: string;
++  /** How many invoices the revenue came from. */
++  invoices: number;
++  total: number;
++}
++
++/** The revenue of two periods side by side, with the change from the first to the second. */
++export interface RevenueComparison {
++  homeCurrency: CurrencyCode;
++  a: PeriodRevenue;
++  b: PeriodRevenue;
++  change: number;
++  /** The change as a whole percentage of the first period's revenue; null when nothing was billed in it. */
++  changePercent: number | null;
++}
++
+ /** One instalment expected in, in its invoice's currency. */
+ export interface ForecastEntry {
+   id: number;
+@@ -198,6 +217,12 @@ export class DashboardService {
+     return this.http.get<RevenueReport>('/api/dashboard/revenue-report', { params });
+   }
+ 
++  /** The revenue of two periods, A and B, side by side. */
++  revenueComparison(a: { from: string; to: string }, b: { from: string; to: string }): Observable<RevenueComparison> {
++    const params = new HttpParams().set('aFrom', a.from).set('aTo', a.to).set('bFrom', b.from).set('bTo', b.to);
++    return this.http.get<RevenueComparison>('/api/dashboard/revenue-compare', { params });
++  }
++
+   agingReport(): Observable<AgingReport> {
+     return this.http.get<AgingReport>('/api/dashboard/aging-report');
+   }
+diff --git a/src/main/frontend/src/app/features/dashboard/revenue-compare.ts b/src/main/frontend/src/app/features/dashboard/revenue-compare.ts
+new file mode 100644
+index 0000000..87d3ca0
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/revenue-compare.ts
+@@ -0,0 +1,128 @@
++import { Component, inject, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { DashboardService } from './dashboard.service';
++
++interface Range {
++  from: string;
++  to: string;
++}
++
++// The revenue billed in two chosen periods side by side (worked out as the revenue report is), in the home currency,
++// with how much the second period's revenue changed from the first's.
++@Component({
++  selector: 'app-revenue-compare',
++  imports: [MoneyPipe],
++  styles: `
++    .revenue-compare-periods {
++      display: flex;
++      flex-wrap: wrap;
++      gap: 1rem;
++    }
++    .revenue-compare-periods fieldset {
++      display: flex;
++      flex-wrap: wrap;
++      align-items: center;
++      gap: 0.5rem;
++    }
++    .revenue-compare-table th,
++    .revenue-compare-table td {
++      padding: 0.25rem 0.75rem;
++      text-align: left;
++    }
++    .revenue-compare-table .amount {
++      text-align: right;
++    }
++  `,
++  template: `
++    <section aria-labelledby="revenue-compare-heading" data-testid="revenue-compare">
++      <h3 id="revenue-compare-heading">Compare periods</h3>
++      <form (submit)="apply($event, aFrom.value, aTo.value, bFrom.value, bTo.value)">
++        <div class="revenue-compare-periods">
++          <fieldset>
++            <legend>Period A</legend>
++            <label for="revenue-compare-a-from">From</label>
++            <input #aFrom id="revenue-compare-a-from" type="date" required data-testid="revenue-compare-a-from" />
++            <label for="revenue-compare-a-to">To</label>
++            <input #aTo id="revenue-compare-a-to" type="date" required data-testid="revenue-compare-a-to" />
++          </fieldset>
++          <fieldset>
++            <legend>Period B</legend>
++            <label for="revenue-compare-b-from">From</label>
++            <input #bFrom id="revenue-compare-b-from" type="date" required data-testid="revenue-compare-b-from" />
++            <label for="revenue-compare-b-to">To</label>
++            <input #bTo id="revenue-compare-b-to" type="date" required data-testid="revenue-compare-b-to" />
++          </fieldset>
++        </div>
++        <button type="submit" data-testid="revenue-compare-apply">Compare</button>
++      </form>
++      @if (rangeError()) {
++        <p role="alert" data-testid="revenue-compare-range-error">{{ rangeError() }}</p>
++      } @else if (comparison.error()) {
++        <p role="alert" data-testid="revenue-compare-error">Could not compare the periods.</p>
++      } @else if (comparison.value(); as c) {
++        <table class="revenue-compare-table" aria-labelledby="revenue-compare-heading" aria-live="polite"
++          data-testid="revenue-compare-result">
++          <thead>
++            <tr>
++              <th scope="col">Period</th>
++              <th scope="col">Dates</th>
++              <th scope="col" class="amount">Invoices</th>
++              <th scope="col" class="amount">Revenue</th>
++            </tr>
++          </thead>
++          <tbody>
++            <tr data-testid="revenue-compare-a">
++              <th scope="row">A</th>
++              <td data-testid="revenue-compare-a-period">{{ c.a.from }} to {{ c.a.to }}</td>
++              <td class="amount" data-testid="revenue-compare-a-invoices">{{ c.a.invoices }}</td>
++              <td class="amount" data-testid="revenue-compare-a-total">{{ c.a.total | money: c.homeCurrency }}</td>
++            </tr>
++            <tr data-testid="revenue-compare-b">
++              <th scope="row">B</th>
++              <td data-testid="revenue-compare-b-period">{{ c.b.from }} to {{ c.b.to }}</td>
++              <td class="amount" data-testid="revenue-compare-b-invoices">{{ c.b.invoices }}</td>
++              <td class="amount" data-testid="revenue-compare-b-total">{{ c.b.total | money: c.homeCurrency }}</td>
++            </tr>
++          </tbody>
++          <tfoot>
++            <tr>
++              <th scope="row" colspan="3">Change (B against A)</th>
++              <td class="amount">
++                <span data-testid="revenue-compare-change">{{ c.change | money: c.homeCurrency }}</span>
++                @if (c.changePercent !== null) {
++                  <span data-testid="revenue-compare-change-percent"> ({{ c.changePercent > 0 ? '+' : '' }}{{ c.changePercent }}%)</span>
++                }
++              </td>
++            </tr>
++          </tfoot>
++        </table>
++      }
++    </section>
++  `,
++})
++export class RevenueCompare {
++  private readonly service = inject(DashboardService);
++
++  /** The two chosen periods; nothing is compared until both are chosen. */
++  private readonly periods = signal<{ a: Range; b: Range } | undefined>(undefined);
++  protected readonly rangeError = signal<string | null>(null);
++
++  protected readonly comparison = rxResource({
++    params: () => this.periods(),
++    stream: ({ params }) => this.service.revenueComparison(params.a, params.b),
++  });
++
++  protected apply(event: Event, aFrom: string, aTo: string, bFrom: string, bTo: string): void {
++    event.preventDefault();
++    if (!aFrom || !aTo || !bFrom || !bTo) {
++      return;
++    }
++    if (aFrom > aTo || bFrom > bTo) {
++      this.rangeError.set('The start date of each period must not be after its end date.');
++      return;
++    }
++    this.rangeError.set(null);
++    this.periods.set({ a: { from: aFrom, to: aTo }, b: { from: bFrom, to: bTo } });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/dashboard/revenue-report.ts b/src/main/frontend/src/app/features/dashboard/revenue-report.ts
+index 5982074..0a169d9 100644
+--- a/src/main/frontend/src/app/features/dashboard/revenue-report.ts
++++ b/src/main/frontend/src/app/features/dashboard/revenue-report.ts
+@@ -2,13 +2,15 @@ import { Component, inject, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService } from './dashboard.service';
++import { RevenueCompare } from './revenue-compare';
+ 
+ // The revenue billed over a chosen date range (over all time until a range is chosen): the total of the invoices
+ // issued within it that were sent (drafts and cancelled invoices are left out), in the home currency, broken down
+-// by job so the highest-earning jobs show first, and month by month so the trend shows.
++// by job so the highest-earning jobs show first, and month by month so the trend shows. Two periods can also be
++// compared side by side.
+ @Component({
+   selector: 'app-revenue-report',
+-  imports: [MoneyPipe],
++  imports: [MoneyPipe, RevenueCompare],
+   styles: `
+     .revenue-report-range {
+       display: flex;
+@@ -114,6 +116,7 @@ import { DashboardService } from './dashboard.service';
+           <p data-testid="revenue-months-empty">No revenue billed in this period.</p>
+         }
+       }
++      <app-revenue-compare />
+     </section>
+   `,
+ })
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index 5f042d3..196e051 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -47,6 +47,16 @@ public class DashboardController {
+         return service.revenueReport(from, to);
+     }
+ 
++    /** The revenue billed in two periods (each on or between its dates), side by side. */
++    @GetMapping("/revenue-compare")
++    public RevenueComparisonResponse revenueComparison(
++            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate aFrom,
++            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate aTo,
++            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate bFrom,
++            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate bTo) {
++        return service.revenueComparison(aFrom, aTo, bFrom, bTo);
++    }
++
+     /** How old the debt across all clients is, in the home currency, split into age buckets. */
+     @GetMapping("/aging-report")
+     public AgingReportResponse agingReport() {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index f76c415..dd46a96 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -474,6 +474,23 @@ public class DashboardService {
+                 total.setScale(2, RoundingMode.HALF_UP), jobs, months);
+     }
+ 
++    /**
++     * The revenue billed in two periods side by side, each worked out as the revenue report over its dates, with the
++     * change from the first period to the second.
++     */
++    @Transactional(readOnly = true)
++    public RevenueComparisonResponse revenueComparison(LocalDate aFrom, LocalDate aTo, LocalDate bFrom,
++            LocalDate bTo) {
++        RevenueReportResponse a = revenueReport(aFrom, aTo);
++        RevenueReportResponse b = revenueReport(bFrom, bTo);
++        BigDecimal change = b.total().subtract(a.total());
++        Long changePercent = a.total().signum() == 0 ? null
++                : change.multiply(BigDecimal.valueOf(100)).divide(a.total(), 0, RoundingMode.HALF_UP).longValue();
++        return new RevenueComparisonResponse(a.homeCurrency(),
++                new RevenueComparisonResponse.Period(aFrom, aTo, a.invoices(), a.total()),
++                new RevenueComparisonResponse.Period(bFrom, bTo, b.invoices(), b.total()), change, changePercent);
++    }
++
+     /** The running revenue of one job while the revenue report is built. */
+     private static final class JobTally {
+         private final Long projectId;
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/RevenueComparisonResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/RevenueComparisonResponse.java
+new file mode 100644
+index 0000000..4755a39
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/RevenueComparisonResponse.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * The revenue billed in two periods side by side, in the home currency, with how much the second period's revenue
++ * changed from the first's (and by what whole percentage, null when nothing was billed in the first period).
++ */
++public record RevenueComparisonResponse(String homeCurrency, Period a, Period b, BigDecimal change,
++        Long changePercent) {
++
++    /** The revenue billed on invoices issued on or between two dates. */
++    public record Period(LocalDate from, LocalDate to, long invoices, BigDecimal total) {
++    }
++}
