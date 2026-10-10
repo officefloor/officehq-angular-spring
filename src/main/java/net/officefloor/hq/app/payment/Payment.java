@@ -35,6 +35,10 @@ public class Payment {
     @Column(name = "deposit_application_id")
     private Long depositApplicationId;
 
+    /** The share of the lump this was split from, in the lump's currency; null when not split from a lump. */
+    @Column(name = "share_amount", precision = 12, scale = 2)
+    private BigDecimal shareAmount;
+
     protected Payment() {
     }
 
@@ -47,6 +51,15 @@ public class Payment {
     public Payment(Long invoiceId, BigDecimal amount, LocalDate date, Long clientPaymentId) {
         this(invoiceId, amount, date);
         this.clientPaymentId = clientPaymentId;
+    }
+
+    /**
+     * A share of a lump payment: {@code shareAmount} is taken out of the lump (in its currency) and {@code amount}
+     * is what it settles on the invoice, converted into the invoice's currency.
+     */
+    public Payment(Long invoiceId, BigDecimal amount, LocalDate date, Long clientPaymentId, BigDecimal shareAmount) {
+        this(invoiceId, amount, date, clientPaymentId);
+        this.shareAmount = shareAmount.setScale(2);
     }
 
     /** A share of a client's held deposits put toward an invoice. */
@@ -74,6 +87,10 @@ public class Payment {
 
     public Long getClientPaymentId() {
         return clientPaymentId;
+    }
+
+    public BigDecimal getShareAmount() {
+        return shareAmount;
     }
 
     public Long getDepositApplicationId() {

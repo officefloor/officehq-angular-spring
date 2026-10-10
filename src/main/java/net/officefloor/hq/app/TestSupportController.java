@@ -277,15 +277,17 @@ public class TestSupportController {
             // A minimum charge is billed instead when the net total comes out under it.
             BigDecimal minimumCharge = decimal(i.get("minimumCharge"));
             int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
+            // An invoice may be billed in its own currency ("currency"); without one it is in its client's.
             // A late fee per day accrues once the invoice is overdue; it does not change the amount invoiced.
             BigDecimal lateFeePerDay = decimal(i.get("lateFeePerDay"));
             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, currency)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
                     surcharge, taxInclusive, taxExempt,
-                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay);
+                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay,
+                    i.get("currency") == null ? null : i.get("currency").toString());
             for (Map<String, Object> d : discounts) {
                 if (d.get("id") != null) {
                     jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount, discount_cap) VALUES (?, ?, ?, ?, ?)",

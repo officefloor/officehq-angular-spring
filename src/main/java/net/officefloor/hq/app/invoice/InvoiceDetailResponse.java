@@ -39,7 +39,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
     static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status, String homeCurrency, BigDecimal homeAmount,
             LocalDate today) {
         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
-                invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
+                invoice.getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
                 invoice.getLevyPct(), invoice.getLevy(), invoice.getSurcharge(), invoice.isTaxInclusive(), invoice.isTaxExempt(),

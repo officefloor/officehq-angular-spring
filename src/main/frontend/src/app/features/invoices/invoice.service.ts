@@ -10,7 +10,7 @@ export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 export interface Invoice {
   id: number;
   projectId: number;
-  /** The currency of the client the invoice is for; its money is in it. */
+  /** The currency the invoice is billed in (its own, or else its client's); its money is in it. */
   currency: CurrencyCode;
   amount: number;
   status: InvoiceStatus;

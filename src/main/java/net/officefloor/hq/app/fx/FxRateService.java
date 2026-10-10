@@ -70,4 +70,29 @@ public class FxRateService {
         return rates.findFirstByCurrencyAndRateDateLessThanEqualOrderByRateDateDesc(currency, date)
                 .map(r -> amount.multiply(r.getRate()).setScale(2, RoundingMode.HALF_UP));
     }
+
+    /**
+     * The amount converted from one currency into another at the rates in effect on the date, going through the
+     * home currency; empty when either foreign currency has no rate by then. The same currency converts as is.
+     */
+    @Transactional(readOnly = true)
+    public Optional<BigDecimal> convert(String from, String to, LocalDate date, BigDecimal amount) {
+        if (from.equals(to)) {
+            return Optional.of(amount.setScale(2, RoundingMode.HALF_UP));
+        }
+        Optional<BigDecimal> fromRate = rateToHome(from, date);
+        Optional<BigDecimal> toRate = rateToHome(to, date);
+        if (fromRate.isEmpty() || toRate.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(amount.multiply(fromRate.get()).divide(toRate.get(), 2, RoundingMode.HALF_UP));
+    }
+
+    /** How many units of the home currency one unit of the currency is worth on the date. */
+    private Optional<BigDecimal> rateToHome(String currency, LocalDate date) {
+        if (currency.equals(settings.homeCurrency())) {
+            return Optional.of(BigDecimal.ONE);
+        }
+        return rates.findFirstByCurrencyAndRateDateLessThanEqualOrderByRateDateDesc(currency, date).map(FxRate::getRate);
+    }
 }

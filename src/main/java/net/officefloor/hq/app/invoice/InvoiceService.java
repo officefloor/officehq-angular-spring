@@ -459,7 +459,7 @@ public class InvoiceService {
      */
     private InvoiceDetailResponse detail(Invoice invoice, InvoiceStatus status) {
         String home = settings.homeCurrency();
-        String currency = invoice.getProject().getClient().getCurrency();
+        String currency = invoice.getCurrency();
         BigDecimal homeAmount = currency.equals(home) ? null
                 : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount()).orElse(null);
         return InvoiceDetailResponse.from(invoice, status, home, homeAmount, LocalDate.now(clock));

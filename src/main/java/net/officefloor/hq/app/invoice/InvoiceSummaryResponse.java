@@ -9,7 +9,7 @@ public record InvoiceSummaryResponse(Long id, Long projectId, String projectName
 
     static InvoiceSummaryResponse from(Invoice invoice) {
         return new InvoiceSummaryResponse(invoice.getId(), invoice.getProject().getId(),
-                invoice.getProject().getName(), invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getStatus(),
+                invoice.getProject().getName(), invoice.getCurrency(), invoice.getAmount(), invoice.getStatus(),
                 invoice.getIssuedDate(), invoice.getDueDate());
     }
 }

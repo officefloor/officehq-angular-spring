@@ -151,8 +151,8 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
                     >#{{ i.id }}</a
                   >
                 </td>
-                <td data-testid="invoice-amount">{{ i.amount | money: currency() }}</td>
-                <td data-testid="invoice-due-amount">{{ i.amountDue | money: currency() }}</td>
+                <td data-testid="invoice-amount">{{ i.amount | money: i.currency }}</td>
+                <td data-testid="invoice-due-amount">{{ i.amountDue | money: i.currency }}</td>
                 <td data-testid="invoice-status">
                   {{ i.status }}
                   @if (i.creditApplied) {

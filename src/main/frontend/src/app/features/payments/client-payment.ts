@@ -25,7 +25,8 @@ export type PaymentSource = 'payment' | 'deposit';
 // add up to no more than the payment plus that credit, and whatever of the payment is left over is
 // kept as credit for the client. With the deposit source it
 // instead puts part of the client's held deposits toward those invoices, split the same way; the
-// shares may not add up to more than is held.
+// shares may not add up to more than is held. The payment and its shares are in the client's currency; a
+// share against an invoice in another currency is converted into it at the payment's date.
 @Component({
   selector: 'app-client-payment',
   imports: [MoneyPipe, ReactiveFormsModule],
@@ -106,7 +107,7 @@ export type PaymentSource = 'payment' | 'deposit';
                   <th scope="col">Invoice</th>
                   <th scope="col">Job</th>
                   <th scope="col">Balance due</th>
-                  <th scope="col">Pay</th>
+                  <th scope="col">Pay ({{ currency() }})</th>
                 </tr>
               </thead>
               <tbody>
@@ -114,7 +115,7 @@ export type PaymentSource = 'payment' | 'deposit';
                   <tr [attr.data-testid]="'payment-alloc-row-' + i.id">
                     <td>#{{ i.id }}</td>
                     <td>{{ i.projectName }}</td>
-                    <td data-testid="payment-alloc-due">{{ i.amountDue | money: currency() }}</td>
+                    <td data-testid="payment-alloc-due">{{ i.amountDue | money: i.currency }}</td>
                     <td>
                       <input
                         type="number"
@@ -266,7 +267,8 @@ export class ClientPaymentForm {
         this.saveError.set(`Enter the amount for invoice #${invoice.id} with at most two decimal places.`);
         return;
       }
-      if (cents > Math.round(invoice.amountDue * 100)) {
+      // A share against an invoice in another currency is converted at the payment's date by the server.
+      if (invoice.currency === this.currency() && cents > Math.round(invoice.amountDue * 100)) {
         this.saveError.set(`The amount for invoice #${invoice.id} is more than its balance due.`);
         return;
       }

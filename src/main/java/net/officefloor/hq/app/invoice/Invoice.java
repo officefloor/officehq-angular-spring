@@ -59,6 +59,10 @@ public class Invoice {
     @JoinColumn(name = "project_id", nullable = false)
     private Project project;
 
+    /** The currency the invoice is billed in when it differs from its client's; null means the client's currency. */
+    @Column(length = 3)
+    private String currency;
+
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount = BigDecimal.ZERO.setScale(2);
 
@@ -132,6 +136,11 @@ public class Invoice {
 
     public Project getProject() {
         return project;
+    }
+
+    /** The currency the invoice's money is in: its own, or else its client's. */
+    public String getCurrency() {
+        return currency != null ? currency : project.getClient().getCurrency();
     }
 
     public BigDecimal getAmount() {

@@ -13,7 +13,7 @@ public record InvoiceResponse(Long id, Long projectId, String currency, BigDecim
 
     static InvoiceResponse from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
         return new InvoiceResponse(invoice.getId(), invoice.getProject().getId(),
-                invoice.getProject().getClient().getCurrency(), invoice.getAmount(),
+                invoice.getCurrency(), invoice.getAmount(),
                 invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
                 invoice.amountDue(paid, credited), credited.signum() > 0);
     }

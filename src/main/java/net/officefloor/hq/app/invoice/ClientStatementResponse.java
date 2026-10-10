@@ -65,12 +65,12 @@ public record ClientStatementResponse(Long clientId, String clientName, String c
     }
 
     /** One invoice on a statement; its tax is the sales tax and levy on it. */
-    public record Line(Long id, Long projectId, String projectName, BigDecimal amount, InvoiceStatus status,
+    public record Line(Long id, Long projectId, String projectName, String currency, BigDecimal amount, InvoiceStatus status,
             LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue, BigDecimal tax) {
 
         static Line from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
             return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
-                    invoice.getAmount(), invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
+                    invoice.getCurrency(), invoice.getAmount(), invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
                     invoice.amountDue(paid, credited), invoice.getTax().add(invoice.getLevy()));
         }
     }

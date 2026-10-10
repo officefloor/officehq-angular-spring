@@ -17,6 +17,7 @@ import net.officefloor.hq.app.deposit.DepositApplication;
 import net.officefloor.hq.app.deposit.DepositApplicationRepository;
 import net.officefloor.hq.app.deposit.DepositApplicationRequest;
 import net.officefloor.hq.app.deposit.DepositApplicationResponse;
+import net.officefloor.hq.app.fx.FxRateService;
 import net.officefloor.hq.app.invoice.Invoice;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
@@ -35,12 +36,13 @@ public class PaymentService {
     private final DepositApplicationRepository depositApplications;
     private final ClientCreditService credit;
     private final ClientRepository clients;
+    private final FxRateService fxRates;
     private final Clock clock;
     private final Audit audit;
 
     public PaymentService(PaymentRepository payments, CreditNoteRepository creditNotes, InvoiceRepository invoices,
             ClientPaymentRepository clientPayments, DepositApplicationRepository depositApplications,
-            ClientCreditService credit, ClientRepository clients, Clock clock, Audit audit) {
+            ClientCreditService credit, ClientRepository clients, FxRateService fxRates, Clock clock, Audit audit) {
         this.payments = payments;
         this.creditNotes = creditNotes;
         this.invoices = invoices;
@@ -48,6 +50,7 @@ public class PaymentService {
         this.depositApplications = depositApplications;
         this.credit = credit;
         this.clients = clients;
+        this.fxRates = fxRates;
         this.clock = clock;
         this.audit = audit;
     }
@@ -77,11 +80,15 @@ public class PaymentService {
      * of the money received is left over is kept as credit for the client, so the money received
      * plus the credit used always equals the shares plus what is kept. Each invoice may appear
      * once, and each share is recorded as a payment against its own invoice under the same rules
-     * as a payment made on its own.
+     * as a payment made on its own. The lump and its shares are in the client's currency; a share
+     * against an invoice in another currency is converted into the invoice's currency at the rates
+     * in effect on the payment's date, so it settles the right amount of that invoice.
      */
     @Transactional
     public ClientPaymentResponse recordForClient(Long clientId, ClientPaymentRequest request) {
-        requireClient(clientId);
+        String currency = clients.findById(clientId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"))
+                .getCurrency();
         BigDecimal allocated = total(request.allocations(), ClientPaymentRequest.Allocation::amount).setScale(2);
         BigDecimal received = request.amount().setScale(2);
         BigDecimal fromDeposits = BigDecimal.ZERO.setScale(2);
@@ -102,8 +109,12 @@ public class PaymentService {
         ClientPayment lump = clientPayments.saveAndFlush(new ClientPayment(clientId, received, request.date(),
                 fromDeposits, fromCreditNotes, toCredit));
         List<PaymentResponse> shares = request.allocations().stream()
-                .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(),
-                        () -> new Payment(a.invoiceId(), a.amount(), request.date(), lump.getId())))
+                .map(a -> {
+                    Invoice invoice = findForClient(clientId, a.invoiceId());
+                    BigDecimal settles = settles(currency, invoice, request.date(), a.amount());
+                    return apply(invoice, settles,
+                            () -> new Payment(a.invoiceId(), settles, request.date(), lump.getId(), a.amount()));
+                })
                 .toList();
         audit.record("CLIENT_PAYMENT_RECORDED id=" + lump.getId() + " client=" + clientId
                 + " amount=" + lump.getAmount().toPlainString()
@@ -116,7 +127,8 @@ public class PaymentService {
     /**
      * Puts part of a client's held deposits toward several of their owing invoices, today. The
      * shares may not add up to more than is still held, each invoice may appear once, and each share
-     * is recorded as a payment against its own invoice under the same rules as a lump payment's.
+     * is recorded as a payment against its own invoice under the same rules as a lump payment's,
+     * converted into the invoice's currency at today's rates when it differs from the client's.
      */
     @Transactional
     public DepositApplicationResponse applyDeposits(Long clientId, DepositApplicationRequest request) {
@@ -131,13 +143,33 @@ public class PaymentService {
         LocalDate today = LocalDate.now(clock);
         DepositApplication application = depositApplications.saveAndFlush(
                 new DepositApplication(clientId, allocated, today));
+        String currency = clients.findById(clientId).orElseThrow().getCurrency();
         List<PaymentResponse> shares = request.allocations().stream()
-                .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(),
-                        () -> Payment.fromDeposits(a.invoiceId(), a.amount(), today, application.getId())))
+                .map(a -> {
+                    Invoice invoice = findForClient(clientId, a.invoiceId());
+                    BigDecimal settles = settles(currency, invoice, today, a.amount());
+                    return apply(invoice, settles,
+                            () -> Payment.fromDeposits(a.invoiceId(), settles, today, application.getId()));
+                })
                 .toList();
         audit.record("DEPOSIT_APPLIED id=" + application.getId() + " client=" + clientId
                 + " amount=" + application.getAmount().toPlainString());
         return DepositApplicationResponse.from(application, shares);
+    }
+
+    /**
+     * What a share in the client's currency settles on the invoice: the share converted into the invoice's currency
+     * at the rates in effect on the date. Refused when there is no rate by then or it converts to nothing.
+     */
+    private BigDecimal settles(String currency, Invoice invoice, LocalDate date, BigDecimal share) {
+        BigDecimal settles = fxRates.convert(currency, invoice.getCurrency(), date, share)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "No exchange rate for " + invoice.getCurrency() + " on " + date));
+        if (settles.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The share for invoice #" + invoice.getId() + " is too small to pay anything");
+        }
+        return settles;
     }
 
     private void requireClient(Long clientId) {
