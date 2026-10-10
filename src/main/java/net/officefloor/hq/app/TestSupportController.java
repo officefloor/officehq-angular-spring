@@ -382,7 +382,12 @@ public class TestSupportController {
         }
         // A payment in another currency ("currency") than its invoice's is converted into the invoice's currency at
         // the rates in effect on its date, and settles that much of the invoice.
+        List<Map<String, Object>> lumps = new ArrayList<>();
         for (Map<String, Object> p : rows(fixture, "payments")) {
+            if (p.get("allocations") != null) {
+                lumps.add(p);
+                continue;
+            }
             long invoiceId = ((Number) p.get("invoiceId")).longValue();
             BigDecimal amount = new BigDecimal(p.get("amount").toString());
             LocalDate date = LocalDate.parse(p.get("date").toString());
@@ -399,6 +404,11 @@ public class TestSupportController {
                 jdbc.update("INSERT INTO payment (id, invoice_id, amount, paid_date, paid_currency, paid_amount) VALUES (?, ?, ?, ?, ?, ?)",
                         ((Number) p.get("id")).longValue(), invoiceId, settles, date, paidCurrency, amount);
             }
+        }
+        // A lump payment from a client ("clientId"), split across their invoices ("allocations"); each share is an
+        // ordinary payment against its invoice, linked back to the lump. Whatever is not allocated is kept as credit.
+        for (Map<String, Object> p : lumps) {
+            seedClientPayment(p);
         }
         for (Map<String, Object> c : rows(fixture, "creditNotes")) {
             jdbc.update("INSERT INTO credit_note (id, invoice_id, amount, issued_at) VALUES (?, ?, ?, ?)",
@@ -432,8 +442,37 @@ public class TestSupportController {
         restartIdentity("tag");
         restartIdentity("note");
         restartIdentity("payment");
+        restartIdentity("client_payment");
         restartIdentity("credit_note");
         restartIdentity("deposit");
+    }
+
+    /** A lump payment and the share of it paid against each invoice, converted into the invoice's currency. */
+    private void seedClientPayment(Map<String, Object> p) {
+        long lumpId = ((Number) p.get("id")).longValue();
+        long clientId = ((Number) p.get("clientId")).longValue();
+        BigDecimal amount = new BigDecimal(p.get("amount").toString());
+        LocalDate date = LocalDate.parse(p.get("date").toString());
+        String clientCurrency = jdbc.queryForObject("SELECT currency FROM client WHERE id = ?", String.class, clientId);
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (Map<String, Object> a : rows(p, "allocations")) {
+            allocated = allocated.add(new BigDecimal(a.get("amount").toString()));
+        }
+        jdbc.update("INSERT INTO client_payment (id, client_id, amount, paid_date, to_credit) VALUES (?, ?, ?, ?, ?)",
+                lumpId, clientId, amount, date, amount.subtract(allocated).max(BigDecimal.ZERO));
+        for (Map<String, Object> a : rows(p, "allocations")) {
+            long invoiceId = ((Number) a.get("invoiceId")).longValue();
+            BigDecimal share = new BigDecimal(a.get("amount").toString());
+            String invoiceCurrency = jdbc.queryForObject("SELECT COALESCE(i.currency, c.currency) FROM invoice i"
+                    + " JOIN project p ON p.id = i.project_id JOIN client c ON c.id = p.client_id WHERE i.id = ?",
+                    String.class, invoiceId);
+            BigDecimal settles = fxRates.convert(clientCurrency, invoiceCurrency, date, share)
+                    .orElseThrow(() -> new IllegalArgumentException("No exchange rate for " + invoiceCurrency + " on " + date));
+            long paymentId = a.get("id") != null ? ((Number) a.get("id")).longValue()
+                    : jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM payment", Long.class);
+            jdbc.update("INSERT INTO payment (id, invoice_id, amount, paid_date, client_payment_id, share_amount)"
+                    + " VALUES (?, ?, ?, ?, ?, ?)", paymentId, invoiceId, settles, date, lumpId, share);
+        }
     }
 
     /** A task and the sub-items on its checklist. */

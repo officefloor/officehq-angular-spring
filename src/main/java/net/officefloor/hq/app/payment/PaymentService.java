@@ -95,6 +95,39 @@ public class PaymentService {
                 currency, request.amount()));
     }
 
+    /** A client's lump payments, newest first. */
+    @Transactional(readOnly = true)
+    public List<ClientPaymentSummaryResponse> listForClient(Long clientId) {
+        requireClient(clientId);
+        return clientPayments.findByClientIdOrderByDateDescIdDesc(clientId).stream()
+                .map(ClientPaymentSummaryResponse::from).toList();
+    }
+
+    /**
+     * The remittance note for one of a client's lump payments: each invoice it was split across, with the share of the
+     * lump put toward it (in the client's currency) and what that settled on the invoice (in the invoice's currency).
+     */
+    @Transactional(readOnly = true)
+    public RemittanceResponse remittance(Long clientId, Long clientPaymentId) {
+        String currency = clients.findById(clientId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"))
+                .getCurrency();
+        ClientPayment lump = clientPayments.findById(clientPaymentId)
+                .filter(p -> p.getClientId().equals(clientId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown payment"));
+        List<RemittanceResponse.Line> lines = payments.findByClientPaymentIdOrderByIdAsc(lump.getId()).stream()
+                .map(share -> {
+                    Invoice invoice = invoices.findById(share.getInvoiceId()).orElseThrow();
+                    return new RemittanceResponse.Line(invoice.getId(), invoice.getProject().getId(),
+                            invoice.getProject().getName(),
+                            share.getShareAmount() != null ? share.getShareAmount() : share.getAmount(),
+                            share.getAmount(), invoice.getCurrency());
+                })
+                .toList();
+        return new RemittanceResponse(lump.getId(), clientId, currency, lump.getAmount(), lump.getDate(),
+                lump.getFromDeposits(), lump.getFromCreditNotes(), lump.getToCredit(), lines);
+    }
+
     /**
      * Records one lump payment from a client split across several of their owing invoices. With
      * {@code useCredit} the client's credit is used up first (held deposits, then unused credit

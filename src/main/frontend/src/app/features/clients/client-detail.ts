@@ -9,6 +9,7 @@ import { ClientCredit } from '../credit/client-credit';
 import { ClientAging } from '../invoices/client-aging';
 import { ClientDeposits } from '../deposits/client-deposits';
 import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
+import { ClientRemittances } from '../payments/client-remittances';
 import { ClientProjects } from '../projects/client-projects';
 import { ClientCreditLimit } from './client-credit-limit';
 import { ClientCurrency } from './client-currency';
@@ -18,10 +19,10 @@ import { ClientExport } from './client-export';
 import { ClientMerge } from './client-merge';
 import { Client, ClientService } from './client.service';
 
-// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
+// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
 @Component({
   selector: 'app-client-detail',
-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
   styles: `
     .client-badges {
       display: flex;
@@ -164,6 +165,7 @@ import { Client, ClientService } from './client.service';
           <p role="status" data-testid="client-deposit-applied">Deposit applied.</p>
         }
       </div>
+      <app-client-remittances [clientId]="clientId()" [currency]="c.currency" />
       <app-client-credit [clientId]="clientId()" [currency]="c.currency" (refunded)="creditRefunded()" />
       <app-client-deposits [clientId]="clientId()" [currency]="c.currency" />
       <app-client-contacts
@@ -202,6 +204,7 @@ export class ClientDetail {
   protected readonly depositApplied = signal(false);
   private readonly paymentForm = viewChild(ClientPaymentForm);
   private readonly depositsPanel = viewChild(ClientDeposits);
+  private readonly remittancesPanel = viewChild(ClientRemittances);
   private readonly creditPanel = viewChild(ClientCredit);
   private readonly agingPanel = viewChild(ClientAging);
   private readonly mergePanel = viewChild(ClientMerge);
@@ -228,6 +231,7 @@ export class ClientDetail {
     this.depositsPanel()?.reload();
     this.creditPanel()?.reload();
     this.agingPanel()?.reload();
+    this.remittancesPanel()?.reload();
     this.client.reload();
   }
 

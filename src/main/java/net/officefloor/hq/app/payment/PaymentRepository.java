@@ -14,6 +14,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     /** An invoice's payments, oldest first. */
     List<Payment> findByInvoiceIdOrderByDateAscIdAsc(Long invoiceId);
 
+    /** The payments split from a lump payment, in the order they were recorded. */
+    List<Payment> findByClientPaymentIdOrderByIdAsc(Long clientPaymentId);
+
     /** Every payment against any of the given invoices. */
     List<Payment> findByInvoiceIdIn(Collection<Long> invoiceIds);
 

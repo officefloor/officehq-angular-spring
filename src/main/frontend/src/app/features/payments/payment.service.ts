@@ -45,6 +45,38 @@ export interface ClientPayment {
   allocations: Payment[];
 }
 
+/** A lump payment from a client, without the invoices it was split across. */
+export interface ClientPaymentSummary {
+  id: number;
+  clientId: number;
+  amount: number;
+  /** ISO date (yyyy-MM-dd) the payment was made. */
+  date: string;
+}
+
+/**
+ * A remittance note: a lump payment and the invoices it covered. Each line's `amount` is the share of the lump put
+ * toward that invoice, in the client's `currency`; `settled` is what it settled on the invoice, in `invoiceCurrency`.
+ */
+export interface Remittance {
+  id: number;
+  clientId: number;
+  currency: string;
+  amount: number;
+  date: string;
+  fromDeposits: number;
+  fromCreditNotes: number;
+  toCredit: number;
+  lines: {
+    invoiceId: number;
+    projectId: number;
+    projectName: string;
+    amount: number;
+    settled: number;
+    invoiceCurrency: string;
+  }[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class PaymentService {
   private readonly http = inject(HttpClient);
@@ -56,6 +88,16 @@ export class PaymentService {
 
   record(projectId: number, invoiceId: number, payment: NewPayment): Observable<Payment> {
     return this.http.post<Payment>(`/api/projects/${projectId}/invoices/${invoiceId}/payments`, payment);
+  }
+
+  /** A client's lump payments, newest first. */
+  listForClient(clientId: number): Observable<ClientPaymentSummary[]> {
+    return this.http.get<ClientPaymentSummary[]>(`/api/clients/${clientId}/payments`);
+  }
+
+  /** The remittance note for one of a client's lump payments. */
+  remittance(clientId: number, paymentId: number): Observable<Remittance> {
+    return this.http.get<Remittance>(`/api/clients/${clientId}/payments/${paymentId}/remittance`);
   }
 
   /** Records one lump payment from a client, split across the given invoices. */
