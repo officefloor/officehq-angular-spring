@@ -1,0 +1,400 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index c71922d..65550fe 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -10,7 +10,7 @@ export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+ export interface Invoice {
+   id: number;
+   projectId: number;
+-  /** The currency of the client the invoice is for; its money is in it. */
++  /** The currency the invoice is billed in (its own, or else its client's); its money is in it. */
+   currency: CurrencyCode;
+   amount: number;
+   status: InvoiceStatus;
+diff --git a/src/main/frontend/src/app/features/invoices/project-invoices.ts b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+index 89ab7bc..5734dfd 100644
+--- a/src/main/frontend/src/app/features/invoices/project-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/project-invoices.ts
+@@ -151,8 +151,8 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
+                     >#{{ i.id }}</a
+                   >
+                 </td>
+-                <td data-testid="invoice-amount">{{ i.amount | money: currency() }}</td>
+-                <td data-testid="invoice-due-amount">{{ i.amountDue | money: currency() }}</td>
++                <td data-testid="invoice-amount">{{ i.amount | money: i.currency }}</td>
++                <td data-testid="invoice-due-amount">{{ i.amountDue | money: i.currency }}</td>
+                 <td data-testid="invoice-status">
+                   {{ i.status }}
+                   @if (i.creditApplied) {
+diff --git a/src/main/frontend/src/app/features/payments/client-payment.ts b/src/main/frontend/src/app/features/payments/client-payment.ts
+index d49ce8f..602a862 100644
+--- a/src/main/frontend/src/app/features/payments/client-payment.ts
++++ b/src/main/frontend/src/app/features/payments/client-payment.ts
+@@ -25,7 +25,8 @@ export type PaymentSource = 'payment' | 'deposit';
+ // add up to no more than the payment plus that credit, and whatever of the payment is left over is
+ // kept as credit for the client. With the deposit source it
+ // instead puts part of the client's held deposits toward those invoices, split the same way; the
+-// shares may not add up to more than is held.
++// shares may not add up to more than is held. The payment and its shares are in the client's currency; a
++// share against an invoice in another currency is converted into it at the payment's date.
+ @Component({
+   selector: 'app-client-payment',
+   imports: [MoneyPipe, ReactiveFormsModule],
+@@ -106,7 +107,7 @@ export type PaymentSource = 'payment' | 'deposit';
+                   <th scope="col">Invoice</th>
+                   <th scope="col">Job</th>
+                   <th scope="col">Balance due</th>
+-                  <th scope="col">Pay</th>
++                  <th scope="col">Pay ({{ currency() }})</th>
+                 </tr>
+               </thead>
+               <tbody>
+@@ -114,7 +115,7 @@ export type PaymentSource = 'payment' | 'deposit';
+                   <tr [attr.data-testid]="'payment-alloc-row-' + i.id">
+                     <td>#{{ i.id }}</td>
+                     <td>{{ i.projectName }}</td>
+-                    <td data-testid="payment-alloc-due">{{ i.amountDue | money: currency() }}</td>
++                    <td data-testid="payment-alloc-due">{{ i.amountDue | money: i.currency }}</td>
+                     <td>
+                       <input
+                         type="number"
+@@ -266,7 +267,8 @@ export class ClientPaymentForm {
+         this.saveError.set(`Enter the amount for invoice #${invoice.id} with at most two decimal places.`);
+         return;
+       }
+-      if (cents > Math.round(invoice.amountDue * 100)) {
++      // A share against an invoice in another currency is converted at the payment's date by the server.
++      if (invoice.currency === this.currency() && cents > Math.round(invoice.amountDue * 100)) {
+         this.saveError.set(`The amount for invoice #${invoice.id} is more than its balance due.`);
+         return;
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index c721772..ef7532c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -277,15 +277,17 @@ public class TestSupportController {
+             // A minimum charge is billed instead when the net total comes out under it.
+             BigDecimal minimumCharge = decimal(i.get("minimumCharge"));
+             int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
++            // An invoice may be billed in its own currency ("currency"); without one it is in its client's.
+             // A late fee per day accrues once the invoice is overdue; it does not change the amount invoiced.
+             BigDecimal lateFeePerDay = decimal(i.get("lateFeePerDay"));
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, currency)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
+                     surcharge, taxInclusive, taxExempt,
+-                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay);
++                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay,
++                    i.get("currency") == null ? null : i.get("currency").toString());
+             for (Map<String, Object> d : discounts) {
+                 if (d.get("id") != null) {
+                     jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount, discount_cap) VALUES (?, ?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/fx/FxRateService.java b/src/main/java/net/officefloor/hq/app/fx/FxRateService.java
+index eb17f1a..d9b09c8 100644
+--- a/src/main/java/net/officefloor/hq/app/fx/FxRateService.java
++++ b/src/main/java/net/officefloor/hq/app/fx/FxRateService.java
+@@ -70,4 +70,29 @@ public class FxRateService {
+         return rates.findFirstByCurrencyAndRateDateLessThanEqualOrderByRateDateDesc(currency, date)
+                 .map(r -> amount.multiply(r.getRate()).setScale(2, RoundingMode.HALF_UP));
+     }
++
++    /**
++     * The amount converted from one currency into another at the rates in effect on the date, going through the
++     * home currency; empty when either foreign currency has no rate by then. The same currency converts as is.
++     */
++    @Transactional(readOnly = true)
++    public Optional<BigDecimal> convert(String from, String to, LocalDate date, BigDecimal amount) {
++        if (from.equals(to)) {
++            return Optional.of(amount.setScale(2, RoundingMode.HALF_UP));
++        }
++        Optional<BigDecimal> fromRate = rateToHome(from, date);
++        Optional<BigDecimal> toRate = rateToHome(to, date);
++        if (fromRate.isEmpty() || toRate.isEmpty()) {
++            return Optional.empty();
++        }
++        return Optional.of(amount.multiply(fromRate.get()).divide(toRate.get(), 2, RoundingMode.HALF_UP));
++    }
++
++    /** How many units of the home currency one unit of the currency is worth on the date. */
++    private Optional<BigDecimal> rateToHome(String currency, LocalDate date) {
++        if (currency.equals(settings.homeCurrency())) {
++            return Optional.of(BigDecimal.ONE);
++        }
++        return rates.findFirstByCurrencyAndRateDateLessThanEqualOrderByRateDateDesc(currency, date).map(FxRate::getRate);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+index b217825..945a412 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -65,12 +65,12 @@ public record ClientStatementResponse(Long clientId, String clientName, String c
+     }
+ 
+     /** One invoice on a statement; its tax is the sales tax and levy on it. */
+-    public record Line(Long id, Long projectId, String projectName, BigDecimal amount, InvoiceStatus status,
++    public record Line(Long id, Long projectId, String projectName, String currency, BigDecimal amount, InvoiceStatus status,
+             LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue, BigDecimal tax) {
+ 
+         static Line from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
+             return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
+-                    invoice.getAmount(), invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
++                    invoice.getCurrency(), invoice.getAmount(), invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
+                     invoice.amountDue(paid, credited), invoice.getTax().add(invoice.getLevy()));
+         }
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 23d245d..78cd5c1 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -59,6 +59,10 @@ public class Invoice {
+     @JoinColumn(name = "project_id", nullable = false)
+     private Project project;
+ 
++    /** The currency the invoice is billed in when it differs from its client's; null means the client's currency. */
++    @Column(length = 3)
++    private String currency;
++
+     @Column(nullable = false, precision = 12, scale = 2)
+     private BigDecimal amount = BigDecimal.ZERO.setScale(2);
+ 
+@@ -134,6 +138,11 @@ public class Invoice {
+         return project;
+     }
+ 
++    /** The currency the invoice's money is in: its own, or else its client's. */
++    public String getCurrency() {
++        return currency != null ? currency : project.getClient().getCurrency();
++    }
++
+     public BigDecimal getAmount() {
+         return amount;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index b1e2ad3..485301d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -39,7 +39,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+     static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status, String homeCurrency, BigDecimal homeAmount,
+             LocalDate today) {
+         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
+-                invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
++                invoice.getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
+                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
+                 invoice.getLevyPct(), invoice.getLevy(), invoice.getSurcharge(), invoice.isTaxInclusive(), invoice.isTaxExempt(),
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+index 1cdc63d..aa2c48b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceResponse.java
+@@ -13,7 +13,7 @@ public record InvoiceResponse(Long id, Long projectId, String currency, BigDecim
+ 
+     static InvoiceResponse from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
+         return new InvoiceResponse(invoice.getId(), invoice.getProject().getId(),
+-                invoice.getProject().getClient().getCurrency(), invoice.getAmount(),
++                invoice.getCurrency(), invoice.getAmount(),
+                 invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
+                 invoice.amountDue(paid, credited), credited.signum() > 0);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index d8b5186..466c43d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -459,7 +459,7 @@ public class InvoiceService {
+      */
+     private InvoiceDetailResponse detail(Invoice invoice, InvoiceStatus status) {
+         String home = settings.homeCurrency();
+-        String currency = invoice.getProject().getClient().getCurrency();
++        String currency = invoice.getCurrency();
+         BigDecimal homeAmount = currency.equals(home) ? null
+                 : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount()).orElse(null);
+         return InvoiceDetailResponse.from(invoice, status, home, homeAmount, LocalDate.now(clock));
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceSummaryResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceSummaryResponse.java
+index df04f46..a7d8255 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceSummaryResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceSummaryResponse.java
+@@ -9,7 +9,7 @@ public record InvoiceSummaryResponse(Long id, Long projectId, String projectName
+ 
+     static InvoiceSummaryResponse from(Invoice invoice) {
+         return new InvoiceSummaryResponse(invoice.getId(), invoice.getProject().getId(),
+-                invoice.getProject().getName(), invoice.getProject().getClient().getCurrency(), invoice.getAmount(), invoice.getStatus(),
++                invoice.getProject().getName(), invoice.getCurrency(), invoice.getAmount(), invoice.getStatus(),
+                 invoice.getIssuedDate(), invoice.getDueDate());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/payment/Payment.java b/src/main/java/net/officefloor/hq/app/payment/Payment.java
+index dc6246d..fcde2f6 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/payment/Payment.java
+@@ -35,6 +35,10 @@ public class Payment {
+     @Column(name = "deposit_application_id")
+     private Long depositApplicationId;
+ 
++    /** The share of the lump this was split from, in the lump's currency; null when not split from a lump. */
++    @Column(name = "share_amount", precision = 12, scale = 2)
++    private BigDecimal shareAmount;
++
+     protected Payment() {
+     }
+ 
+@@ -49,6 +53,15 @@ public class Payment {
+         this.clientPaymentId = clientPaymentId;
+     }
+ 
++    /**
++     * A share of a lump payment: {@code shareAmount} is taken out of the lump (in its currency) and {@code amount}
++     * is what it settles on the invoice, converted into the invoice's currency.
++     */
++    public Payment(Long invoiceId, BigDecimal amount, LocalDate date, Long clientPaymentId, BigDecimal shareAmount) {
++        this(invoiceId, amount, date, clientPaymentId);
++        this.shareAmount = shareAmount.setScale(2);
++    }
++
+     /** A share of a client's held deposits put toward an invoice. */
+     public static Payment fromDeposits(Long invoiceId, BigDecimal amount, LocalDate date, Long depositApplicationId) {
+         Payment payment = new Payment(invoiceId, amount, date);
+@@ -76,6 +89,10 @@ public class Payment {
+         return clientPaymentId;
+     }
+ 
++    public BigDecimal getShareAmount() {
++        return shareAmount;
++    }
++
+     public Long getDepositApplicationId() {
+         return depositApplicationId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+index 525bc04..bfc50dd 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+@@ -17,6 +17,7 @@ import net.officefloor.hq.app.deposit.DepositApplication;
+ import net.officefloor.hq.app.deposit.DepositApplicationRepository;
+ import net.officefloor.hq.app.deposit.DepositApplicationRequest;
+ import net.officefloor.hq.app.deposit.DepositApplicationResponse;
++import net.officefloor.hq.app.fx.FxRateService;
+ import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
+@@ -35,12 +36,13 @@ public class PaymentService {
+     private final DepositApplicationRepository depositApplications;
+     private final ClientCreditService credit;
+     private final ClientRepository clients;
++    private final FxRateService fxRates;
+     private final Clock clock;
+     private final Audit audit;
+ 
+     public PaymentService(PaymentRepository payments, CreditNoteRepository creditNotes, InvoiceRepository invoices,
+             ClientPaymentRepository clientPayments, DepositApplicationRepository depositApplications,
+-            ClientCreditService credit, ClientRepository clients, Clock clock, Audit audit) {
++            ClientCreditService credit, ClientRepository clients, FxRateService fxRates, Clock clock, Audit audit) {
+         this.payments = payments;
+         this.creditNotes = creditNotes;
+         this.invoices = invoices;
+@@ -48,6 +50,7 @@ public class PaymentService {
+         this.depositApplications = depositApplications;
+         this.credit = credit;
+         this.clients = clients;
++        this.fxRates = fxRates;
+         this.clock = clock;
+         this.audit = audit;
+     }
+@@ -77,11 +80,15 @@ public class PaymentService {
+      * of the money received is left over is kept as credit for the client, so the money received
+      * plus the credit used always equals the shares plus what is kept. Each invoice may appear
+      * once, and each share is recorded as a payment against its own invoice under the same rules
+-     * as a payment made on its own.
++     * as a payment made on its own. The lump and its shares are in the client's currency; a share
++     * against an invoice in another currency is converted into the invoice's currency at the rates
++     * in effect on the payment's date, so it settles the right amount of that invoice.
+      */
+     @Transactional
+     public ClientPaymentResponse recordForClient(Long clientId, ClientPaymentRequest request) {
+-        requireClient(clientId);
++        String currency = clients.findById(clientId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"))
++                .getCurrency();
+         BigDecimal allocated = total(request.allocations(), ClientPaymentRequest.Allocation::amount).setScale(2);
+         BigDecimal received = request.amount().setScale(2);
+         BigDecimal fromDeposits = BigDecimal.ZERO.setScale(2);
+@@ -102,8 +109,12 @@ public class PaymentService {
+         ClientPayment lump = clientPayments.saveAndFlush(new ClientPayment(clientId, received, request.date(),
+                 fromDeposits, fromCreditNotes, toCredit));
+         List<PaymentResponse> shares = request.allocations().stream()
+-                .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(),
+-                        () -> new Payment(a.invoiceId(), a.amount(), request.date(), lump.getId())))
++                .map(a -> {
++                    Invoice invoice = findForClient(clientId, a.invoiceId());
++                    BigDecimal settles = settles(currency, invoice, request.date(), a.amount());
++                    return apply(invoice, settles,
++                            () -> new Payment(a.invoiceId(), settles, request.date(), lump.getId(), a.amount()));
++                })
+                 .toList();
+         audit.record("CLIENT_PAYMENT_RECORDED id=" + lump.getId() + " client=" + clientId
+                 + " amount=" + lump.getAmount().toPlainString()
+@@ -116,7 +127,8 @@ public class PaymentService {
+     /**
+      * Puts part of a client's held deposits toward several of their owing invoices, today. The
+      * shares may not add up to more than is still held, each invoice may appear once, and each share
+-     * is recorded as a payment against its own invoice under the same rules as a lump payment's.
++     * is recorded as a payment against its own invoice under the same rules as a lump payment's,
++     * converted into the invoice's currency at today's rates when it differs from the client's.
+      */
+     @Transactional
+     public DepositApplicationResponse applyDeposits(Long clientId, DepositApplicationRequest request) {
+@@ -131,15 +143,35 @@ public class PaymentService {
+         LocalDate today = LocalDate.now(clock);
+         DepositApplication application = depositApplications.saveAndFlush(
+                 new DepositApplication(clientId, allocated, today));
++        String currency = clients.findById(clientId).orElseThrow().getCurrency();
+         List<PaymentResponse> shares = request.allocations().stream()
+-                .map(a -> apply(findForClient(clientId, a.invoiceId()), a.amount(),
+-                        () -> Payment.fromDeposits(a.invoiceId(), a.amount(), today, application.getId())))
++                .map(a -> {
++                    Invoice invoice = findForClient(clientId, a.invoiceId());
++                    BigDecimal settles = settles(currency, invoice, today, a.amount());
++                    return apply(invoice, settles,
++                            () -> Payment.fromDeposits(a.invoiceId(), settles, today, application.getId()));
++                })
+                 .toList();
+         audit.record("DEPOSIT_APPLIED id=" + application.getId() + " client=" + clientId
+                 + " amount=" + application.getAmount().toPlainString());
+         return DepositApplicationResponse.from(application, shares);
+     }
+ 
++    /**
++     * What a share in the client's currency settles on the invoice: the share converted into the invoice's currency
++     * at the rates in effect on the date. Refused when there is no rate by then or it converts to nothing.
++     */
++    private BigDecimal settles(String currency, Invoice invoice, LocalDate date, BigDecimal share) {
++        BigDecimal settles = fxRates.convert(currency, invoice.getCurrency(), date, share)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                        "No exchange rate for " + invoice.getCurrency() + " on " + date));
++        if (settles.signum() <= 0) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "The share for invoice #" + invoice.getId() + " is too small to pay anything");
++        }
++        return settles;
++    }
++
+     private void requireClient(Long clientId) {
+         if (!clients.existsById(clientId)) {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+diff --git a/src/main/resources/db/migration/V68__cross_currency_allocation.sql b/src/main/resources/db/migration/V68__cross_currency_allocation.sql
+new file mode 100644
+index 0000000..67e70ce
+--- /dev/null
++++ b/src/main/resources/db/migration/V68__cross_currency_allocation.sql
+@@ -0,0 +1,9 @@
++-- An invoice may be billed in a currency other than its client's; when currency is null the invoice is in
++-- the client's currency (and follows it if the client's currency changes).
++ALTER TABLE invoice ADD COLUMN currency VARCHAR(3);
++ALTER TABLE invoice ADD CONSTRAINT invoice_currency_fk FOREIGN KEY (currency) REFERENCES currency (code);
++
++-- A share of a lump payment made against an invoice in another currency is converted into the invoice's
++-- currency at the payment's date. The payment's amount is always in the invoice's currency; share_amount is
++-- the share as taken out of the lump, in the lump's currency (null when the payment was not split from a lump).
++ALTER TABLE payment ADD COLUMN share_amount DECIMAL(12, 2);
