@@ -9,11 +9,12 @@ import java.util.List;
  * (left to pay on overdue invoices plus the late fees and instalment interest they have built up) is one total in
  * the home currency, and is also split by how many days overdue each invoice is.
  * What is outstanding is also given as one grand total in the home currency, each invoice converted at the
- * exchange rate from its own issue date.
+ * exchange rate from its own issue date. Also how many tasks not yet done are past their due date.
  */
 public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
         BigDecimal outstandingHome, long overdue,
-        String homeCurrency, BigDecimal overdueAmount, OverdueBuckets overdueBuckets, List<TopClient> topClients) {
+        String homeCurrency, BigDecimal overdueAmount, OverdueBuckets overdueBuckets, List<TopClient> topClients,
+        long overdueTasks) {
 
     /** What is still owed in one currency. */
     public record CurrencyTotal(String currency, BigDecimal amount) {

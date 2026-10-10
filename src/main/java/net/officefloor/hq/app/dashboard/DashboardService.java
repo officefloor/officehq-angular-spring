@@ -26,6 +26,7 @@ import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.ProjectRepository;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.task.TaskRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +44,7 @@ public class DashboardService {
     private final SettingsService settings;
     private final FxRateService fxRates;
     private final InstalmentRepository instalments;
+    private final TaskRepository tasks;
     private final Clock clock;
 
     /** How many of the biggest debtors the dashboard lists. */
@@ -50,7 +52,8 @@ public class DashboardService {
 
     public DashboardService(ClientRepository clients, ProjectRepository projects, InvoiceRepository invoices,
             ClientService clientService, PaymentRepository payments, CreditNoteRepository creditNotes,
-            SettingsService settings, FxRateService fxRates, InstalmentRepository instalments, Clock clock) {
+            SettingsService settings, FxRateService fxRates, InstalmentRepository instalments, TaskRepository tasks,
+            Clock clock) {
         this.clients = clients;
         this.projects = projects;
         this.invoices = invoices;
@@ -60,13 +63,14 @@ public class DashboardService {
         this.settings = settings;
         this.fxRates = fxRates;
         this.instalments = instalments;
+        this.tasks = tasks;
         this.clock = clock;
     }
 
     /**
      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
      * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices are past their due date and
-     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out).
+     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date.
      */
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
@@ -96,7 +100,7 @@ public class DashboardService {
                         clientsInHome.get(c.id()).setScale(2, RoundingMode.HALF_UP)))
                 .toList();
         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
-                overdueBuckets, top);
+                overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today));
     }
 
     /**

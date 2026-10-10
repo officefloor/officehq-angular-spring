@@ -41,6 +41,8 @@ export interface DashboardSummary {
   /** The overdue amount split by how many days past due each invoice is. */
   overdueBuckets: OverdueBuckets;
   topClients: TopClient[];
+  /** How many tasks not yet done are past their due date. */
+  overdueTasks: number;
 }
 
 /** The tax charged on invoices issued on or between two dates, in the home currency. */
