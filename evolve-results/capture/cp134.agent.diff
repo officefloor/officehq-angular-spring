@@ -1,0 +1,295 @@
+diff --git a/src/main/frontend/src/app/features/instalments/instalment.service.ts b/src/main/frontend/src/app/features/instalments/instalment.service.ts
+index 021b052..f4c0dc5 100644
+--- a/src/main/frontend/src/app/features/instalments/instalment.service.ts
++++ b/src/main/frontend/src/app/features/instalments/instalment.service.ts
+@@ -9,6 +9,18 @@ export interface Instalment {
+   amount: number;
+   /** ISO date (yyyy-MM-dd) the instalment is due. */
+   date: string;
++  /** Whether the instalment has been paid. */
++  paid: boolean;
++}
++
++/** The earliest instalment of an invoice still to be paid. */
++export interface NextInstalment {
++  id: number;
++  amount: number;
++  /** ISO date (yyyy-MM-dd) it is due. */
++  date: string;
++  /** Whether its due date has already passed. */
++  overdue: boolean;
+ }
+ 
+ export interface NewInstalment {
+@@ -25,6 +37,11 @@ export class InstalmentService {
+     return this.http.get<Instalment[]>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments`);
+   }
+ 
++  /** The next instalment due on an invoice, or null when nothing more is due on its plan. */
++  next(projectId: number, invoiceId: number): Observable<NextInstalment | null> {
++    return this.http.get<NextInstalment | null>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments/next`);
++  }
++
+   schedule(projectId: number, invoiceId: number, instalment: NewInstalment): Observable<Instalment> {
+     return this.http.post<Instalment>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments`, instalment);
+   }
+diff --git a/src/main/frontend/src/app/features/instalments/invoice-instalments.ts b/src/main/frontend/src/app/features/instalments/invoice-instalments.ts
+index 2f38fa4..b9bc756 100644
+--- a/src/main/frontend/src/app/features/instalments/invoice-instalments.ts
++++ b/src/main/frontend/src/app/features/instalments/invoice-instalments.ts
+@@ -22,12 +22,25 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+         @if (instalments.value().length === 0) {
+           <p data-testid="invoice-instalments-empty">This invoice is not split into instalments.</p>
+         } @else {
++          @if (next.hasValue() && next.value(); as due) {
++            <p data-testid="instalment-next">
++              Next instalment due:
++              <strong data-testid="instalment-next-amount">{{ due.amount | money: currency() }}</strong>
++              on <span data-testid="instalment-next-date">{{ due.date }}</span>
++              @if (due.overdue) {
++                <span data-testid="instalment-next-overdue">(overdue)</span>
++              }
++            </p>
++          } @else if (next.hasValue()) {
++            <p data-testid="instalment-next-none">No further instalments are due.</p>
++          }
+           <table data-testid="invoice-instalments-table">
+             <caption>When each part of this invoice is due</caption>
+             <thead>
+               <tr>
+                 <th scope="col">Due</th>
+                 <th scope="col">Amount</th>
++                <th scope="col">Status</th>
+                 @if (canEdit()) {
+                   <th scope="col"><span class="visually-hidden">Actions</span></th>
+                 }
+@@ -38,6 +51,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                 <tr [attr.data-testid]="'instalment-row-' + n.id">
+                   <td data-testid="instalment-date">{{ n.date }}</td>
+                   <td data-testid="instalment-amount">{{ n.amount | money: currency() }}</td>
++                  <td data-testid="instalment-status">{{ n.paid ? 'Paid' : 'Unpaid' }}</td>
+                   @if (canEdit()) {
+                     <td>
+                       <button
+@@ -135,6 +149,11 @@ export class InvoiceInstalments {
+     stream: ({ params }) => this.service.list(params.projectId, params.invoiceId),
+   });
+ 
++  protected readonly next = rxResource({
++    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
++    stream: ({ params }) => this.service.next(params.projectId, params.invoiceId),
++  });
++
+   // Work in whole cents so the totals are exact.
+   protected readonly scheduledCents = computed(() =>
+     (this.instalments.hasValue() ? this.instalments.value() : []).reduce((sum, n) => sum + Math.round(n.amount * 100), 0),
+@@ -168,6 +187,7 @@ export class InvoiceInstalments {
+       next: () => {
+         // Reload so the schedule stays in due-date order.
+         this.instalments.reload();
++        this.next.reload();
+         this.form.reset();
+         this.saving.set(false);
+       },
+@@ -188,6 +208,7 @@ export class InvoiceInstalments {
+     this.service.remove(this.projectId(), this.invoiceId(), instalment.id).subscribe({
+       next: () => {
+         this.instalments.update((list) => (list ?? []).filter((n) => n.id !== instalment.id));
++        this.next.reload();
+         this.removing.set(null);
+       },
+       error: () => {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 082ab7b..031e57b 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -319,11 +319,11 @@ public class TestSupportController {
+                             Boolean.TRUE.equals(l.get("taxExempt")), lineDiscountPct(l));
+                 }
+             }
+-            // The scheduled instalments the invoice is split into, each an amount due on a date.
++            // The scheduled instalments the invoice is split into, each an amount due on a date and maybe paid.
+             for (Map<String, Object> n : rows(i, "instalments")) {
+-                jdbc.update("INSERT INTO invoice_instalment (id, invoice_id, amount, due_date) VALUES (?, ?, ?, ?)",
++                jdbc.update("INSERT INTO invoice_instalment (id, invoice_id, amount, due_date, paid) VALUES (?, ?, ?, ?, ?)",
+                         ((Number) n.get("id")).longValue(), invoiceId, new BigDecimal(n.get("amount").toString()),
+-                        LocalDate.parse(n.get("date").toString()));
++                        LocalDate.parse(n.get("date").toString()), Boolean.TRUE.equals(n.get("paid")));
+             }
+         }
+         for (Map<String, Object> p : rows(fixture, "payments")) {
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/Instalment.java b/src/main/java/net/officefloor/hq/app/instalment/Instalment.java
+index 23cdec0..0107176 100644
+--- a/src/main/java/net/officefloor/hq/app/instalment/Instalment.java
++++ b/src/main/java/net/officefloor/hq/app/instalment/Instalment.java
+@@ -27,6 +27,9 @@ public class Instalment {
+     @Column(name = "due_date", nullable = false)
+     private LocalDate dueDate;
+ 
++    @Column(nullable = false)
++    private boolean paid;
++
+     protected Instalment() {
+     }
+ 
+@@ -51,4 +54,8 @@ public class Instalment {
+     public LocalDate getDueDate() {
+         return dueDate;
+     }
++
++    public boolean isPaid() {
++        return paid;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentRepository.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentRepository.java
+index e1bcf9f..6861b90 100644
+--- a/src/main/java/net/officefloor/hq/app/instalment/InstalmentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentRepository.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.instalment;
+ 
+ import java.math.BigDecimal;
+ import java.util.List;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Query;
+ 
+@@ -10,6 +11,9 @@ public interface InstalmentRepository extends JpaRepository<Instalment, Long> {
+     /** An invoice's instalments, earliest due first. */
+     List<Instalment> findByInvoiceIdOrderByDueDateAscIdAsc(Long invoiceId);
+ 
++    /** The earliest-due instalment of an invoice that is still to be paid, if any. */
++    Optional<Instalment> findFirstByInvoiceIdAndPaidFalseOrderByDueDateAscIdAsc(Long invoiceId);
++
+     /** Total scheduled across an invoice's instalments (zero when there are none). */
+     @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Instalment i WHERE i.invoiceId = :invoiceId")
+     BigDecimal sumAmountByInvoiceId(Long invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentResponse.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentResponse.java
+index b4205d4..b8b06b5 100644
+--- a/src/main/java/net/officefloor/hq/app/instalment/InstalmentResponse.java
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentResponse.java
+@@ -3,10 +3,10 @@ package net.officefloor.hq.app.instalment;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
+-public record InstalmentResponse(Long id, Long invoiceId, BigDecimal amount, LocalDate date) {
++public record InstalmentResponse(Long id, Long invoiceId, BigDecimal amount, LocalDate date, boolean paid) {
+ 
+     static InstalmentResponse from(Instalment instalment) {
+         return new InstalmentResponse(instalment.getId(), instalment.getInvoiceId(), instalment.getAmount(),
+-                instalment.getDueDate());
++                instalment.getDueDate(), instalment.isPaid());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java
+index 5396487..830345c 100644
+--- a/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java
+@@ -1,7 +1,10 @@
+ package net.officefloor.hq.app.instalment;
+ 
+ import java.math.BigDecimal;
++import java.time.Clock;
++import java.time.LocalDate;
+ import java.util.List;
++import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+@@ -16,11 +19,13 @@ public class InstalmentService {
+ 
+     private final InstalmentRepository instalments;
+     private final InvoiceRepository invoices;
++    private final Clock clock;
+     private final Audit audit;
+ 
+-    public InstalmentService(InstalmentRepository instalments, InvoiceRepository invoices, Audit audit) {
++    public InstalmentService(InstalmentRepository instalments, InvoiceRepository invoices, Clock clock, Audit audit) {
+         this.instalments = instalments;
+         this.invoices = invoices;
++        this.clock = clock;
+         this.audit = audit;
+     }
+ 
+@@ -31,6 +36,22 @@ public class InstalmentService {
+                 .map(InstalmentResponse::from).toList();
+     }
+ 
++    /**
++     * The next instalment due on an invoice: the earliest one not yet paid. There is none once every
++     * instalment is paid, or when the invoice is no longer to be paid (paid, cancelled or written off).
++     */
++    @Transactional(readOnly = true)
++    public Optional<NextInstalmentResponse> next(Long projectId, Long invoiceId) {
++        Invoice invoice = find(projectId, invoiceId);
++        if (!isOpen(invoice)) {
++            return Optional.empty();
++        }
++        LocalDate today = LocalDate.now(clock);
++        return instalments.findFirstByInvoiceIdAndPaidFalseOrderByDueDateAscIdAsc(invoiceId)
++                .map(i -> new NextInstalmentResponse(i.getId(), i.getAmount(), i.getDueDate(),
++                        i.getDueDate().isBefore(today)));
++    }
++
+     /**
+      * Schedules an instalment of an invoice that is still to be paid. The instalments on an invoice may
+      * not add up to more than the invoice amount.
+@@ -61,6 +82,11 @@ public class InstalmentService {
+         audit.record("INSTALMENT_REMOVED invoice=" + invoiceId + " id=" + instalmentId);
+     }
+ 
++    private static boolean isOpen(Invoice invoice) {
++        return invoice.getStatus() != InvoiceStatus.VOID && invoice.getStatus() != InvoiceStatus.WRITTEN_OFF
++                && invoice.getStatus() != InvoiceStatus.PAID;
++    }
++
+     private static void requireOpen(Invoice invoice) {
+         if (invoice.getStatus() == InvoiceStatus.VOID) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been cancelled");
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InvoiceInstalmentController.java b/src/main/java/net/officefloor/hq/app/instalment/InvoiceInstalmentController.java
+index 427b3f9..2569abb 100644
+--- a/src/main/java/net/officefloor/hq/app/instalment/InvoiceInstalmentController.java
++++ b/src/main/java/net/officefloor/hq/app/instalment/InvoiceInstalmentController.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.instalment;
+ import jakarta.validation.Valid;
+ import java.util.List;
+ import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
+ import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -28,6 +29,13 @@ public class InvoiceInstalmentController {
+         return service.list(projectId, invoiceId);
+     }
+ 
++    /** The next instalment due on the invoice, or no content when nothing more is due on its plan. */
++    @GetMapping("/next")
++    public ResponseEntity<NextInstalmentResponse> next(@PathVariable Long projectId, @PathVariable Long invoiceId) {
++        return service.next(projectId, invoiceId).map(ResponseEntity::ok)
++                .orElseGet(() -> ResponseEntity.noContent().build());
++    }
++
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public InstalmentResponse schedule(@PathVariable Long projectId, @PathVariable Long invoiceId,
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/NextInstalmentResponse.java b/src/main/java/net/officefloor/hq/app/instalment/NextInstalmentResponse.java
+new file mode 100644
+index 0000000..dea7d0e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/instalment/NextInstalmentResponse.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.instalment;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** The earliest unpaid instalment of an invoice, and whether it is already past due as of today. */
++public record NextInstalmentResponse(Long id, BigDecimal amount, LocalDate date, boolean overdue) {
++}
+diff --git a/src/main/resources/db/migration/V72__instalment_paid.sql b/src/main/resources/db/migration/V72__instalment_paid.sql
+new file mode 100644
+index 0000000..78ee950
+--- /dev/null
++++ b/src/main/resources/db/migration/V72__instalment_paid.sql
+@@ -0,0 +1,2 @@
++-- An instalment is marked paid once it has been settled, so the next one due can be told apart.
++ALTER TABLE invoice_instalment ADD COLUMN paid BOOLEAN DEFAULT FALSE NOT NULL;
