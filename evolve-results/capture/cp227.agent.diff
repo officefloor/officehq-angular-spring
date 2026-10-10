@@ -1,0 +1,331 @@
+diff --git a/src/main/frontend/src/app/features/projects/project.service.ts b/src/main/frontend/src/app/features/projects/project.service.ts
+index 6cce6fc..1aef9e8 100644
+--- a/src/main/frontend/src/app/features/projects/project.service.ts
++++ b/src/main/frontend/src/app/features/projects/project.service.ts
+@@ -37,6 +37,8 @@ export interface Project {
+   fileRef: string | null;
+   /** The category the job is put into (e.g. "Web"); null when it has none. */
+   category: string | null;
++  /** What is still owed on the job's sent invoices after payments and credit notes; null where not worked out. */
++  outstanding: number | null;
+ }
+ 
+ /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
+diff --git a/src/main/frontend/src/app/features/projects/projects.ts b/src/main/frontend/src/app/features/projects/projects.ts
+index d7e9d48..627df66 100644
+--- a/src/main/frontend/src/app/features/projects/projects.ts
++++ b/src/main/frontend/src/app/features/projects/projects.ts
+@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+ import { Client, ClientService } from '../clients/client.service';
++import { MoneyPipe } from '../currencies/money.pipe';
+ import { Tag, TagService } from '../tags/tag.service';
+ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './project.service';
+ 
+@@ -14,10 +15,11 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+ // the projects at a chosen status. The tag and status filters combine, e.g. active projects with a
+ // given tag. Each project carries a short reference code, given when it is added, that no other
+ // project may share, and may carry an optional short description of the work. Jobs can be dragged
+-// into the order wanted, or moved up and down with buttons, and that order is kept.
++// into the order wanted, or moved up and down with buttons, and that order is kept. Each job shows what
++// is still outstanding on it: what is left to pay on its sent invoices.
+ @Component({
+   selector: 'app-projects',
+-  imports: [ReactiveFormsModule, RouterLink],
++  imports: [ReactiveFormsModule, RouterLink, MoneyPipe],
+   template: `
+     <h1>Jobs</h1>
+ 
+@@ -189,6 +191,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+             <th scope="col">Name</th>
+             <th scope="col">Client</th>
+             <th scope="col">Status</th>
++            <th scope="col">Outstanding</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+         </thead>
+@@ -251,6 +254,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+                   }
+                 </select>
+               </td>
++              <td data-testid="project-outstanding">{{ p.outstanding ?? 0 | money: p.currency }}</td>
+               <td>
+                 <a
+                   [routerLink]="['/projects', p.id]"
+diff --git a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java
+index 12bfda6..c85d1df 100644
+--- a/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java
++++ b/src/main/java/net/officefloor/hq/app/creditnote/CreditNoteRepository.java
+@@ -25,6 +25,11 @@ public interface CreditNoteRepository extends JpaRepository<CreditNote, Long> {
+             + " WHERE c.invoiceId = i.id AND i.status IN :statuses GROUP BY pr.client.id")
+     List<InvoiceRepository.ClientTotal> sumAmountByInvoiceStatusInPerClient(Collection<InvoiceStatus> statuses);
+ 
++    /** Total credited against invoices with any of the given statuses, per project; projects with none are left out. */
++    @Query("SELECT i.project.id AS projectId, SUM(c.amount) AS total FROM CreditNote c, Invoice i"
++            + " WHERE c.invoiceId = i.id AND i.status IN :statuses GROUP BY i.project.id")
++    List<InvoiceRepository.ProjectTotal> sumAmountByInvoiceStatusInPerProject(Collection<InvoiceStatus> statuses);
++
+     /** Total credited against each of the given invoices; invoices with no credit notes are left out. */
+     @Query("SELECT c.invoiceId AS invoiceId, SUM(c.amount) AS credited FROM CreditNote c"
+             + " WHERE c.invoiceId IN :invoiceIds GROUP BY c.invoiceId")
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+index 5d04c6e..362bcb7 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -53,6 +53,18 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+             + " WHERE i.status IN :statuses GROUP BY p.client.id")
+     List<ClientTotal> sumAmountByStatusInPerClient(Collection<InvoiceStatus> statuses);
+ 
++    /** Sum of the invoice amounts with any of the given statuses, per project; projects with none are left out. */
++    @Query("SELECT i.project.id AS projectId, SUM(i.amount) AS total FROM Invoice i"
++            + " WHERE i.status IN :statuses GROUP BY i.project.id")
++    List<ProjectTotal> sumAmountByStatusInPerProject(Collection<InvoiceStatus> statuses);
++
++    /** A total of money for one project. */
++    interface ProjectTotal {
++        Long getProjectId();
++
++        BigDecimal getTotal();
++    }
++
+     /** A total of money for one client. */
+     interface ClientTotal {
+         Long getClientId();
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+index 6ef3dff..89bd33d 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+@@ -41,6 +41,11 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
+             + " WHERE p.invoiceId = i.id AND i.status IN :statuses GROUP BY pr.client.id")
+     List<InvoiceRepository.ClientTotal> sumAmountByInvoiceStatusInPerClient(Collection<InvoiceStatus> statuses);
+ 
++    /** Total paid against invoices with any of the given statuses, per project; projects with none are left out. */
++    @Query("SELECT i.project.id AS projectId, SUM(p.amount) AS total FROM Payment p, Invoice i"
++            + " WHERE p.invoiceId = i.id AND i.status IN :statuses GROUP BY i.project.id")
++    List<InvoiceRepository.ProjectTotal> sumAmountByInvoiceStatusInPerProject(Collection<InvoiceStatus> statuses);
++
+     /** Total paid against each of the given invoices; invoices with no payments are left out. */
+     @Query("SELECT p.invoiceId AS invoiceId, SUM(p.amount) AS paid FROM Payment p"
+             + " WHERE p.invoiceId IN :invoiceIds GROUP BY p.invoiceId")
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+index a1ed279..6b65ba9 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectResponse.java
+@@ -1,16 +1,24 @@
+ package net.officefloor.hq.app.project;
+ 
++import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
++/** A job; {@code outstanding} is what is still owed on its sent invoices, or null where it is not worked out. */
+ public record ProjectResponse(Long id, String name, String code, Long clientId, String clientName, boolean archived,
+         ProjectStatus status, String currency, String description, boolean billable,
+-        boolean closed, LocalDate startDate, LocalDate endDate, String fileRef, String category) {
++        boolean closed, LocalDate startDate, LocalDate endDate, String fileRef, String category,
++        BigDecimal outstanding) {
+ 
+     public static ProjectResponse from(Project project) {
++        return from(project, null);
++    }
++
++    public static ProjectResponse from(Project project, BigDecimal outstanding) {
+         return new ProjectResponse(project.getId(), project.getName(), project.getCode(),
+                 project.getClient().getId(), project.getClient().getName(), project.isArchived(),
+                 project.getStatus(), project.getClient().getCurrency(), project.getDescription(),
+                 project.isBillable(), project.isClosed(),
+-                project.getStartDate(), project.getEndDate(), project.getFileRef(), project.getCategory());
++                project.getStartDate(), project.getEndDate(), project.getFileRef(), project.getCategory(),
++                outstanding);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectService.java b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+index 1734110..d347bb1 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectService.java
+@@ -13,9 +13,11 @@ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.Client;
+ import net.officefloor.hq.app.client.ClientRepository;
++import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+ import net.officefloor.hq.app.invoice.Invoice;
+ import net.officefloor.hq.app.invoice.InvoiceRepository;
+ import net.officefloor.hq.app.invoice.InvoiceStatus;
++import net.officefloor.hq.app.payment.PaymentRepository;
+ import java.util.Locale;
+ import java.util.Objects;
+ import org.springframework.dao.DataIntegrityViolationException;
+@@ -30,13 +32,17 @@ public class ProjectService {
+     private final ProjectRepository projects;
+     private final ClientRepository clients;
+     private final InvoiceRepository invoices;
++    private final PaymentRepository payments;
++    private final CreditNoteRepository creditNotes;
+     private final Audit audit;
+ 
+     public ProjectService(ProjectRepository projects, ClientRepository clients, InvoiceRepository invoices,
+-            Audit audit) {
++            PaymentRepository payments, CreditNoteRepository creditNotes, Audit audit) {
+         this.projects = projects;
+         this.clients = clients;
+         this.invoices = invoices;
++        this.payments = payments;
++        this.creditNotes = creditNotes;
+         this.audit = audit;
+     }
+ 
+@@ -53,8 +59,7 @@ public class ProjectService {
+             found = includeArchived ? projects.findAllByTagIdWithClient(tagId)
+                     : projects.findActiveByTagIdWithClient(tagId);
+         }
+-        return found.stream().filter(p -> status == null || p.getStatus() == status).map(ProjectResponse::from)
+-                .toList();
++        return respond(found.stream().filter(p -> status == null || p.getStatus() == status).toList());
+     }
+ 
+     /**
+@@ -67,15 +72,15 @@ public class ProjectService {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+         }
+         if (includeAll) {
+-            return projects.findAllByClientIdWithClient(clientId).stream().map(ProjectResponse::from).toList();
++            return respond(projects.findAllByClientIdWithClient(clientId));
+         }
+-        return projects.findActiveByClientIdWithClient(clientId).stream()
+-                .filter(p -> p.getStatus() == ProjectStatus.ACTIVE).map(ProjectResponse::from).toList();
++        return respond(projects.findActiveByClientIdWithClient(clientId).stream()
++                .filter(p -> p.getStatus() == ProjectStatus.ACTIVE).toList());
+     }
+ 
+     @Transactional(readOnly = true)
+     public ProjectResponse get(Long id) {
+-        return projects.findByIdWithClient(id).map(ProjectResponse::from)
++        return projects.findByIdWithClient(id).map(this::respond)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+     }
+ 
+@@ -100,7 +105,7 @@ public class ProjectService {
+             project.setBillable(request.billable());
+         }
+         try {
+-            return ProjectResponse.from(projects.saveAndFlush(project));
++            return respond(projects.saveAndFlush(project));
+         } catch (DataIntegrityViolationException e) {
+             // Lost a race with a concurrent add of the same code; the unique constraint caught it.
+             if (String.valueOf(e.getMessage()).toUpperCase().contains("PROJECT_CODE_UQ")) {
+@@ -136,6 +141,35 @@ public class ProjectService {
+         audit.record("PROJECTS_REORDERED ids=" + ids.stream().map(String::valueOf).collect(Collectors.joining(",")));
+     }
+ 
++    private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
++
++    /** The given projects, each with what is still owed on it. */
++    private List<ProjectResponse> respond(List<Project> found) {
++        Map<Long, BigDecimal> owed = outstandingByProject();
++        return found.stream().map(p -> ProjectResponse.from(p, owed.getOrDefault(p.getId(), ZERO))).toList();
++    }
++
++    private ProjectResponse respond(Project project) {
++        return ProjectResponse.from(project, outstandingByProject().getOrDefault(project.getId(), ZERO));
++    }
++
++    /**
++     * What is still owed on each project: what is left to pay on its sent invoices that are not yet fully
++     * paid, after the payments and credit notes against them. Projects owing nothing are left out.
++     */
++    private Map<Long, BigDecimal> outstandingByProject() {
++        List<InvoiceStatus> owing = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL);
++        Map<Long, BigDecimal> owed = new HashMap<>();
++        invoices.sumAmountByStatusInPerProject(owing).forEach(t -> owed.merge(t.getProjectId(), t.getTotal(),
++                BigDecimal::add));
++        payments.sumAmountByInvoiceStatusInPerProject(owing).forEach(t -> owed.merge(t.getProjectId(),
++                t.getTotal().negate(), BigDecimal::add));
++        creditNotes.sumAmountByInvoiceStatusInPerProject(owing).forEach(t -> owed.merge(t.getProjectId(),
++                t.getTotal().negate(), BigDecimal::add));
++        owed.replaceAll((id, amount) -> amount.setScale(2, RoundingMode.HALF_UP));
++        return owed;
++    }
++
+     private static ResponseStatusException codeTaken() {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "A job with this code already exists");
+     }
+@@ -190,7 +224,7 @@ public class ProjectService {
+             projects.flush();
+             audit.record("PROJECT_STATUS_CHANGED id=" + id + " status=" + status);
+         }
+-        return ProjectResponse.from(project);
++        return respond(project);
+     }
+ 
+     /** Marks a project billable or non-billable, recording the change in the audit log. */
+@@ -203,7 +237,7 @@ public class ProjectService {
+             projects.flush();
+             audit.record("PROJECT_BILLABLE_SET id=" + id + " billable=" + billable);
+         }
+-        return ProjectResponse.from(project);
++        return respond(project);
+     }
+ 
+     /**
+@@ -223,7 +257,7 @@ public class ProjectService {
+             audit.record("PROJECT_DATES_SET id=" + id + " start=" + (startDate == null ? "none" : startDate)
+                     + " end=" + (endDate == null ? "none" : endDate));
+         }
+-        return ProjectResponse.from(project);
++        return respond(project);
+     }
+ 
+     /** Notes (or, given none, clears) a job's file reference, recording the change in the audit log. */
+@@ -237,7 +271,7 @@ public class ProjectService {
+             projects.flush();
+             audit.record("PROJECT_FILE_REF_SET id=" + id + " fileRef=" + (ref == null ? "none" : ref));
+         }
+-        return ProjectResponse.from(project);
++        return respond(project);
+     }
+ 
+     /** Puts a job into (or, given none, takes it out of) a category, recording the change in the audit log. */
+@@ -251,7 +285,7 @@ public class ProjectService {
+             projects.flush();
+             audit.record("PROJECT_CATEGORY_SET id=" + id + " category=" + (value == null ? "none" : value));
+         }
+-        return ProjectResponse.from(project);
++        return respond(project);
+     }
+ 
+     /** Closes a job so no new invoice can be raised on it, recording the closing in the audit log. */
+@@ -264,7 +298,7 @@ public class ProjectService {
+             projects.flush();
+             audit.record("PROJECT_CLOSED id=" + id);
+         }
+-        return ProjectResponse.from(project);
++        return respond(project);
+     }
+ 
+     /** Reopens a closed job so invoices can be raised on it again, recording the reopening in the audit log. */
+@@ -277,7 +311,7 @@ public class ProjectService {
+             projects.flush();
+             audit.record("PROJECT_REOPENED id=" + id);
+         }
+-        return ProjectResponse.from(project);
++        return respond(project);
+     }
+ 
+     /**
+@@ -293,7 +327,7 @@ public class ProjectService {
+             projects.flush();
+             audit.record("PROJECT_ARCHIVED id=" + id);
+         }
+-        return ProjectResponse.from(project);
++        return respond(project);
+     }
+ 
+     /** Brings an archived project back onto the project lists, recording it in the audit log. */
+@@ -306,6 +340,6 @@ public class ProjectService {
+             projects.flush();
+             audit.record("PROJECT_RESTORED id=" + id);
+         }
+-        return ProjectResponse.from(project);
++        return respond(project);
+     }
+ }
