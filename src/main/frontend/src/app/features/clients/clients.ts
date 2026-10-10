@@ -4,16 +4,17 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ClientEditForm } from './client-edit-form';
+import { ClientListExport } from './client-list-export';
 import { ClientSegments } from './client-segments';
 import { Client, ClientService } from './client.service';
 
 // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
 // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
 // list and search unless the archived toggle is on, where it can be restored. A client's name or email
-// can be corrected in place from its row. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment. The list can be sorted by name, by how much each client owes, or with key accounts first.
+// can be corrected in place from its row. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first.
 @Component({
   selector: 'app-clients',
-  imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm, ClientSegments],
+  imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm, ClientListExport, ClientSegments],
   styles: `
     .key-account {
       margin-inline-start: 0.5em;
@@ -245,6 +246,8 @@ import { Client, ClientService } from './client.service';
         </section>
       }
     </div>
+
+    <app-client-list-export [includeArchived]="showArchived()" />
 
     @if (actionError()) {
       <p role="alert" data-testid="client-archive-error">{{ actionError() }}</p>

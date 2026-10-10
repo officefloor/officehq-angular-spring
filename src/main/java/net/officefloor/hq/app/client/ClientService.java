@@ -378,15 +378,27 @@ public class ClientService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
     }
 
+    /** The client list as a small CSV file: a header row, then one row of name, email and phone per client, in the order added. */
+    @Transactional(readOnly = true)
+    public ClientListExport exportList(boolean includeArchived) {
+        List<Client> found = includeArchived ? clients.findAll(Sort.by("id")) : clients.findByArchivedFalseOrderById();
+        StringBuilder text = new StringBuilder("name,email,phone\r\n");
+        found.forEach(client -> text.append(contactRow(client)));
+        return new ClientListExport(found.size(), text.toString());
+    }
+
     /** The client's contact details as a small CSV file: a header row, then one row of name, email and phone. */
     @Transactional(readOnly = true)
     public String exportContactDetails(Long id) {
-        Client client = find(id);
+        return "name,email,phone\r\n" + contactRow(find(id));
+    }
+
+    /** One CSV row of the client's name, email and phone. */
+    private static String contactRow(Client client) {
         String phone = client.getPhone();
         // A phone number made only of the usual characters may start with '+' and is safe as it is.
         String phoneField = phone != null && phone.matches("[0-9 +()\\-.]*") ? csv(phone) : csv(neutralise(phone));
-        return "name,email,phone\r\n"
-                + csv(neutralise(client.getName())) + "," + csv(neutralise(client.getEmail())) + "," + phoneField + "\r\n";
+        return csv(neutralise(client.getName())) + "," + csv(neutralise(client.getEmail())) + "," + phoneField + "\r\n";
     }
 
     /** Stops a value a spreadsheet would read as a formula from being run when the file is opened. */

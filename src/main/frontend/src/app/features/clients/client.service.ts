@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 
 /** A currency a client can be billed in, by ISO 4217 code; the known ones come from the currency service. */
 export type CurrencyCode = string;
@@ -61,6 +61,12 @@ export interface ClientSegment {
   count: number;
 }
 
+/** The exported client list file and how many clients it holds. */
+export interface ClientListExport {
+  count: number;
+  csv: string;
+}
+
 /** Where a client's contact details file is downloaded from. */
 export function exportUrl(id: number): string {
   return `/api/clients/${id}/export`;
@@ -85,6 +91,13 @@ export class ClientService {
 
   summary(id: number): Observable<ClientSummary> {
     return this.http.get<ClientSummary>(`/api/clients/${id}/summary`);
+  }
+
+  /** The client list as a CSV file, with how many clients it holds. */
+  exportList(includeArchived = false): Observable<ClientListExport> {
+    return this.http
+      .get('/api/clients/export', { params: { includeArchived }, observe: 'response', responseType: 'text' })
+      .pipe(map((res) => ({ count: Number(res.headers.get('X-Export-Count') ?? 0), csv: res.body ?? '' })));
   }
 
   /** The client's contact details as the CSV file the export downloads. */

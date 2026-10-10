@@ -39,6 +39,17 @@ public class ClientController {
         return service.segments();
     }
 
+    /** Downloads the client list as a CSV file; the X-Export-Count header says how many clients it holds. */
+    @GetMapping(value = "/export", produces = "text/csv")
+    public ResponseEntity<String> exportList(@RequestParam(defaultValue = "false") boolean includeArchived) {
+        ClientListExport export = service.exportList(includeArchived);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename("clients.csv").build().toString())
+                .header("X-Export-Count", String.valueOf(export.count()))
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .body(export.csv());
+    }
+
     @GetMapping("/{id}")
     public ClientResponse get(@PathVariable Long id) {
         return service.get(id);
