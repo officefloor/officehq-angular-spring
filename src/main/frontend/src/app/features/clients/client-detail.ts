@@ -162,6 +162,7 @@ import { Client, ClientService } from './client.service';
         [clientId]="clientId()"
         (contactAdded)="contactAdded()"
         (primaryChanged)="primaryChanged($event)"
+        (contactArchived)="contactArchived($event)"
       />
       <app-client-contact-history [clientId]="clientId()" />
       <app-client-projects [clientId]="clientId()" />
@@ -231,6 +232,14 @@ export class ClientDetail {
     // The first contact added becomes the main contact.
     if (!this.client.value()?.primaryContact) {
       this.client.reload();
+    }
+  }
+
+  protected contactArchived(contact: Contact): void {
+    this.summary.reload();
+    // An archived contact is no longer the main contact.
+    if (this.client.value()?.primaryContact?.id === contact.id) {
+      this.client.update((c) => c && { ...c, primaryContact: null });
     }
   }
 

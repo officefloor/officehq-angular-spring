@@ -29,6 +29,8 @@ public class Contact {
 
     private String role;
 
+    private boolean archived;
+
     protected Contact() {
     }
 
@@ -57,5 +59,13 @@ public class Contact {
 
     public String getRole() {
         return role;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
     }
 }

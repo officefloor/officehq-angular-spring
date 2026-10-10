@@ -132,12 +132,12 @@ public class TestSupportController {
             }
         }
         for (Map<String, Object> c : rows(fixture, "contacts")) {
-            jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
-                    ((Number) c.get("id")).longValue(), ((Number) c.get("clientId")).longValue(),
-                    c.get("name"), c.get("email"), c.get("role"));
-            if (Boolean.TRUE.equals(c.get("primary"))) {
-                jdbc.update("UPDATE client SET primary_contact_id = ? WHERE id = ?",
-                        ((Number) c.get("id")).longValue(), ((Number) c.get("clientId")).longValue());
+            seedContact(c, ((Number) c.get("clientId")).longValue());
+        }
+        // Contacts may also be nested under their client.
+        for (Map<String, Object> client : rows(fixture, "clients")) {
+            for (Map<String, Object> c : rows(client, "contacts")) {
+                seedContact(c, ((Number) client.get("id")).longValue());
             }
         }
         for (Map<String, Object> p : rows(fixture, "projects")) {
@@ -469,6 +469,16 @@ public class TestSupportController {
     private static BigDecimal lineDiscountPct(Map<String, Object> lineItem) {
         return lineItem.get("discountPct") == null ? BigDecimal.ZERO
                 : new BigDecimal(lineItem.get("discountPct").toString());
+    }
+
+    private void seedContact(Map<String, Object> c, long clientId) {
+        jdbc.update("INSERT INTO contact (id, client_id, name, email, role, archived) VALUES (?, ?, ?, ?, ?, ?)",
+                ((Number) c.get("id")).longValue(), clientId, c.get("name"), c.get("email"), c.get("role"),
+                Boolean.TRUE.equals(c.get("archived")));
+        if (Boolean.TRUE.equals(c.get("primary"))) {
+            jdbc.update("UPDATE client SET primary_contact_id = ? WHERE id = ?", ((Number) c.get("id")).longValue(),
+                    clientId);
+        }
     }
 
     private static List<Map<String, Object>> rows(Map<String, Object> fixture, String key) {

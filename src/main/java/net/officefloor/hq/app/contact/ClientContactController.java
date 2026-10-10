@@ -38,4 +38,10 @@ public class ClientContactController {
     public ContactResponse makePrimary(@PathVariable Long clientId, @PathVariable Long contactId) {
         return service.makePrimary(clientId, contactId);
     }
+
+    /** Archives this contact: it drops off the client's contact list but the record is kept. */
+    @PostMapping("/{contactId}/archive")
+    public ContactResponse archive(@PathVariable Long clientId, @PathVariable Long contactId) {
+        return service.archive(clientId, contactId);
+    }
 }

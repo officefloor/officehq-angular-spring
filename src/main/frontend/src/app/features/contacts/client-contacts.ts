@@ -82,6 +82,9 @@ type ContactField = 'name' | 'email' | 'role';
           @if (primaryError()) {
             <p role="alert" data-testid="contact-primary-error">{{ primaryError() }}</p>
           }
+          @if (archiveError()) {
+            <p role="alert" data-testid="contact-archive-error">{{ archiveError() }}</p>
+          }
           <table data-testid="client-contacts-table">
             <caption>Contacts for this client</caption>
             <thead>
@@ -90,6 +93,7 @@ type ContactField = 'name' | 'email' | 'role';
                 <th scope="col">Email</th>
                 <th scope="col">Role</th>
                 <th scope="col">Main contact</th>
+                <th scope="col"><span class="visually-hidden">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -110,6 +114,17 @@ type ContactField = 'name' | 'email' | 'role';
                       {{ c.primary ? 'Main contact' : 'Make main contact' }}
                     </button>
                   </td>
+                  <td>
+                    <button
+                      type="button"
+                      [attr.data-testid]="'contact-archive-' + c.id"
+                      [attr.aria-label]="'Archive ' + c.name"
+                      [disabled]="archiving()"
+                      (click)="archive(c)"
+                    >
+                      Archive
+                    </button>
+                  </td>
                 </tr>
               }
             </tbody>
@@ -127,6 +142,8 @@ export class ClientContacts {
   readonly contactAdded = output<Contact>();
   /** Emits the contact that has just become the client's main contact. */
   readonly primaryChanged = output<Contact>();
+  /** Emits each contact once it has been archived. */
+  readonly contactArchived = output<Contact>();
 
   protected readonly contacts = rxResource({
     params: () => this.clientId(),
@@ -136,6 +153,8 @@ export class ClientContacts {
   protected readonly saveError = signal<string | null>(null);
   protected readonly choosingPrimary = signal(false);
   protected readonly primaryError = signal<string | null>(null);
+  protected readonly archiving = signal(false);
+  protected readonly archiveError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -169,6 +188,22 @@ export class ClientContacts {
       error: () => {
         this.primaryError.set('Could not change the main contact. Please try again.');
         this.choosingPrimary.set(false);
+      },
+    });
+  }
+
+  protected archive(contact: Contact): void {
+    this.archiving.set(true);
+    this.archiveError.set(null);
+    this.service.archive(this.clientId(), contact.id).subscribe({
+      next: (archived) => {
+        this.contacts.update((list) => list?.filter((c) => c.id !== archived.id));
+        this.contactArchived.emit(archived);
+        this.archiving.set(false);
+      },
+      error: () => {
+        this.archiveError.set('Could not archive the contact. Please try again.');
+        this.archiving.set(false);
       },
     });
   }

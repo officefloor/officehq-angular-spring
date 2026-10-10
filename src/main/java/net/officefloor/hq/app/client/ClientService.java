@@ -69,7 +69,7 @@ public class ClientService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
         }
         BigDecimal billed = invoices.sumAmountByClientIdAndStatusIn(id, BILLED).setScale(2, RoundingMode.HALF_UP);
-        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientId(id), billed);
+        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientIdAndArchivedFalse(id), billed);
     }
 
     /** Adds a client; its email, once trimmed, must not already belong to another client. */

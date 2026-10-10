@@ -27,7 +27,7 @@ public class ContactService {
         if (!clients.existsById(clientId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
         }
-        return contacts.findByClientIdOrderById(clientId).stream().map(ContactResponse::from).toList();
+        return contacts.findByClientIdAndArchivedFalseOrderById(clientId).stream().map(ContactResponse::from).toList();
     }
 
     @Transactional
@@ -48,12 +48,36 @@ public class ContactService {
     public ContactResponse makePrimary(Long clientId, Long contactId) {
         Contact contact = contacts.findByIdAndClientId(contactId, clientId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown contact"));
+        if (contact.isArchived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "An archived contact cannot be the main contact");
+        }
         Client client = contact.getClient();
         Contact current = client.getPrimaryContact();
         if (current == null || !current.getId().equals(contactId)) {
             client.setPrimaryContact(contact);
             clients.flush();
             audit.record("CLIENT_PRIMARY_CONTACT_SET id=" + clientId + " contactId=" + contactId);
+        }
+        return ContactResponse.from(contact);
+    }
+
+    /**
+     * Archives one of a client's contacts: it drops off the client's contact list but is kept, and the
+     * archiving is recorded in the audit log. An archived contact is no longer the client's main contact.
+     */
+    @Transactional
+    public ContactResponse archive(Long clientId, Long contactId) {
+        Contact contact = contacts.findByIdAndClientId(contactId, clientId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown contact"));
+        if (!contact.isArchived()) {
+            contact.setArchived(true);
+            Client client = contact.getClient();
+            Contact primary = client.getPrimaryContact();
+            if (primary != null && primary.getId().equals(contactId)) {
+                client.setPrimaryContact(null);
+            }
+            contacts.flush();
+            audit.record("CONTACT_ARCHIVED id=" + contactId + " clientId=" + clientId);
         }
         return ContactResponse.from(contact);
     }

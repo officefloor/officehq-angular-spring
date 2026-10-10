@@ -29,4 +29,9 @@ export class ContactService {
   makePrimary(clientId: number, contactId: number): Observable<Contact> {
     return this.http.post<Contact>(`/api/clients/${clientId}/contacts/${contactId}/primary`, null);
   }
+
+  /** Archives a contact: it drops off the client's contact list but the record is kept. */
+  archive(clientId: number, contactId: number): Observable<Contact> {
+    return this.http.post<Contact>(`/api/clients/${clientId}/contacts/${contactId}/archive`, null);
+  }
 }
