@@ -494,8 +494,9 @@ public class InvoiceService {
 
     /**
      * Writes off part of a sent or part-paid invoice as bad debt, so that part no longer counts toward what is
-     * owed while the rest still does, and records the part given up in the audit log. Writing off everything
-     * still owed writes off the whole invoice.
+     * owed while the rest still does, and records the part given up in the audit log. The invoice's status is then
+     * worked out from what is still owed after the write-off. Writing off everything still owed writes off the
+     * whole invoice.
      */
     @Transactional
     public InvoiceDetailResponse writeOffPart(Long projectId, Long invoiceId, PartialWriteOffRequest request) {
@@ -516,10 +517,11 @@ public class InvoiceService {
             return writeOff(projectId, invoiceId);
         }
         invoice.writeOffPart(request.amount());
+        invoice.applySettledTotals(paid, credited);
         invoices.flush();
         audit.record("INVOICE_PART_WRITTEN_OFF id=" + invoice.getId() + " amount="
                 + request.amount().setScale(2).toPlainString());
-        return detail(invoice, invoice.statusFor(paid, credited));
+        return detail(invoice);
     }
 
     private InvoiceResponse toResponse(Invoice invoice) {

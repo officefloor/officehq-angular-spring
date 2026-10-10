@@ -716,8 +716,9 @@ public class Invoice {
     }
 
     /**
-     * Works out this sent invoice's status from the totals paid and credited against it: PAID once the
-     * payments and credit notes cover the amount, PARTIAL once something has been settled, otherwise still SENT.
+     * Works out this sent invoice's status from what is still owed on it after the totals paid and credited against
+     * it and any part written off: PAID once nothing is left, PARTIAL once something has been settled, otherwise
+     * still SENT.
      */
     public void applySettledTotals(BigDecimal paid, BigDecimal credited) {
         if (status == InvoiceStatus.DRAFT || status.isClosedUnpaid()) {
