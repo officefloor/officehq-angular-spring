@@ -27,6 +27,9 @@ public class Instalment {
     @Column(name = "due_date", nullable = false)
     private LocalDate dueDate;
 
+    @Column(nullable = false)
+    private boolean paid;
+
     protected Instalment() {
     }
 
@@ -50,5 +53,9 @@ public class Instalment {
 
     public LocalDate getDueDate() {
         return dueDate;
+    }
+
+    public boolean isPaid() {
+        return paid;
     }
 }

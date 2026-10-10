@@ -3,6 +3,7 @@ package net.officefloor.hq.app.instalment;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,6 +27,13 @@ public class InvoiceInstalmentController {
     @GetMapping
     public List<InstalmentResponse> list(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.list(projectId, invoiceId);
+    }
+
+    /** The next instalment due on the invoice, or no content when nothing more is due on its plan. */
+    @GetMapping("/next")
+    public ResponseEntity<NextInstalmentResponse> next(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+        return service.next(projectId, invoiceId).map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     @PostMapping

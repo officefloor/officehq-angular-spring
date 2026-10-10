@@ -22,12 +22,25 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
         @if (instalments.value().length === 0) {
           <p data-testid="invoice-instalments-empty">This invoice is not split into instalments.</p>
         } @else {
+          @if (next.hasValue() && next.value(); as due) {
+            <p data-testid="instalment-next">
+              Next instalment due:
+              <strong data-testid="instalment-next-amount">{{ due.amount | money: currency() }}</strong>
+              on <span data-testid="instalment-next-date">{{ due.date }}</span>
+              @if (due.overdue) {
+                <span data-testid="instalment-next-overdue">(overdue)</span>
+              }
+            </p>
+          } @else if (next.hasValue()) {
+            <p data-testid="instalment-next-none">No further instalments are due.</p>
+          }
           <table data-testid="invoice-instalments-table">
             <caption>When each part of this invoice is due</caption>
             <thead>
               <tr>
                 <th scope="col">Due</th>
                 <th scope="col">Amount</th>
+                <th scope="col">Status</th>
                 @if (canEdit()) {
                   <th scope="col"><span class="visually-hidden">Actions</span></th>
                 }
@@ -38,6 +51,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                 <tr [attr.data-testid]="'instalment-row-' + n.id">
                   <td data-testid="instalment-date">{{ n.date }}</td>
                   <td data-testid="instalment-amount">{{ n.amount | money: currency() }}</td>
+                  <td data-testid="instalment-status">{{ n.paid ? 'Paid' : 'Unpaid' }}</td>
                   @if (canEdit()) {
                     <td>
                       <button
@@ -135,6 +149,11 @@ export class InvoiceInstalments {
     stream: ({ params }) => this.service.list(params.projectId, params.invoiceId),
   });
 
+  protected readonly next = rxResource({
+    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
+    stream: ({ params }) => this.service.next(params.projectId, params.invoiceId),
+  });
+
   // Work in whole cents so the totals are exact.
   protected readonly scheduledCents = computed(() =>
     (this.instalments.hasValue() ? this.instalments.value() : []).reduce((sum, n) => sum + Math.round(n.amount * 100), 0),
@@ -168,6 +187,7 @@ export class InvoiceInstalments {
       next: () => {
         // Reload so the schedule stays in due-date order.
         this.instalments.reload();
+        this.next.reload();
         this.form.reset();
         this.saving.set(false);
       },
@@ -188,6 +208,7 @@ export class InvoiceInstalments {
     this.service.remove(this.projectId(), this.invoiceId(), instalment.id).subscribe({
       next: () => {
         this.instalments.update((list) => (list ?? []).filter((n) => n.id !== instalment.id));
+        this.next.reload();
         this.removing.set(null);
       },
       error: () => {

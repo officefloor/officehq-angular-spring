@@ -1,7 +1,10 @@
 package net.officefloor.hq.app.instalment;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.invoice.Invoice;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
@@ -16,11 +19,13 @@ public class InstalmentService {
 
     private final InstalmentRepository instalments;
     private final InvoiceRepository invoices;
+    private final Clock clock;
     private final Audit audit;
 
-    public InstalmentService(InstalmentRepository instalments, InvoiceRepository invoices, Audit audit) {
+    public InstalmentService(InstalmentRepository instalments, InvoiceRepository invoices, Clock clock, Audit audit) {
         this.instalments = instalments;
         this.invoices = invoices;
+        this.clock = clock;
         this.audit = audit;
     }
 
@@ -29,6 +34,22 @@ public class InstalmentService {
         find(projectId, invoiceId);
         return instalments.findByInvoiceIdOrderByDueDateAscIdAsc(invoiceId).stream()
                 .map(InstalmentResponse::from).toList();
+    }
+
+    /**
+     * The next instalment due on an invoice: the earliest one not yet paid. There is none once every
+     * instalment is paid, or when the invoice is no longer to be paid (paid, cancelled or written off).
+     */
+    @Transactional(readOnly = true)
+    public Optional<NextInstalmentResponse> next(Long projectId, Long invoiceId) {
+        Invoice invoice = find(projectId, invoiceId);
+        if (!isOpen(invoice)) {
+            return Optional.empty();
+        }
+        LocalDate today = LocalDate.now(clock);
+        return instalments.findFirstByInvoiceIdAndPaidFalseOrderByDueDateAscIdAsc(invoiceId)
+                .map(i -> new NextInstalmentResponse(i.getId(), i.getAmount(), i.getDueDate(),
+                        i.getDueDate().isBefore(today)));
     }
 
     /**
@@ -59,6 +80,11 @@ public class InstalmentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown instalment"));
         instalments.delete(instalment);
         audit.record("INSTALMENT_REMOVED invoice=" + invoiceId + " id=" + instalmentId);
+    }
+
+    private static boolean isOpen(Invoice invoice) {
+        return invoice.getStatus() != InvoiceStatus.VOID && invoice.getStatus() != InvoiceStatus.WRITTEN_OFF
+                && invoice.getStatus() != InvoiceStatus.PAID;
     }
 
     private static void requireOpen(Invoice invoice) {

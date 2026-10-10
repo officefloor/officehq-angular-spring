@@ -319,11 +319,11 @@ public class TestSupportController {
                             Boolean.TRUE.equals(l.get("taxExempt")), lineDiscountPct(l));
                 }
             }
-            // The scheduled instalments the invoice is split into, each an amount due on a date.
+            // The scheduled instalments the invoice is split into, each an amount due on a date and maybe paid.
             for (Map<String, Object> n : rows(i, "instalments")) {
-                jdbc.update("INSERT INTO invoice_instalment (id, invoice_id, amount, due_date) VALUES (?, ?, ?, ?)",
+                jdbc.update("INSERT INTO invoice_instalment (id, invoice_id, amount, due_date, paid) VALUES (?, ?, ?, ?, ?)",
                         ((Number) n.get("id")).longValue(), invoiceId, new BigDecimal(n.get("amount").toString()),
-                        LocalDate.parse(n.get("date").toString()));
+                        LocalDate.parse(n.get("date").toString()), Boolean.TRUE.equals(n.get("paid")));
             }
         }
         for (Map<String, Object> p : rows(fixture, "payments")) {
