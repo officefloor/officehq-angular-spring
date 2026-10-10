@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import net.officefloor.hq.app.currency.MoneyRule;
 
 /**
  * A client's statement: all of their invoices, each with the project it is for and how much is left
@@ -88,10 +89,11 @@ public record ClientStatementResponse(Long clientId, String clientName, String c
     public record Line(Long id, Long projectId, String projectName, String currency, BigDecimal amount, InvoiceStatus status,
             LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue, BigDecimal tax) {
 
-        static Line from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
+        /** The invoice's figures, each rounded by its currency's rule as the invoice itself shows them. */
+        static Line from(Invoice invoice, BigDecimal paid, BigDecimal credited, MoneyRule rule) {
             return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
-                    invoice.getCurrency(), invoice.getAmount(), invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
-                    invoice.amountDue(paid, credited), invoice.getTax().add(invoice.getLevy()));
+                    invoice.getCurrency(), rule.round(invoice.getAmount()), invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
+                    rule.round(invoice.amountDue(paid, credited)), rule.round(invoice.getTax()).add(rule.round(invoice.getLevy())));
         }
     }
 }

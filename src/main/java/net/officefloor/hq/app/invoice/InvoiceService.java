@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.Client;
@@ -19,6 +20,8 @@ import net.officefloor.hq.app.client.ClientRepository;
 import net.officefloor.hq.app.client.ClientService;
 import net.officefloor.hq.app.creditnote.CreditNote;
 import net.officefloor.hq.app.creditnote.CreditNoteRepository;
+import net.officefloor.hq.app.currency.CurrencyService;
+import net.officefloor.hq.app.currency.MoneyRule;
 import net.officefloor.hq.app.deposit.Deposit;
 import net.officefloor.hq.app.deposit.DepositRepository;
 import net.officefloor.hq.app.fx.FxRateService;
@@ -52,14 +55,16 @@ public class InvoiceService {
     private final FxRateService fxRates;
     private final InstalmentRepository instalments;
     private final ClientService clientService;
+    private final CurrencyService currencies;
     private final Audit audit;
     private final Clock clock;
 
     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
             CreditNoteRepository creditNotes, ClientRepository clients, DepositRepository deposits,
             RefundRepository refunds, SettingsService settings, FxRateService fxRates, InstalmentRepository instalments,
-            ClientService clientService, Audit audit, Clock clock) {
+            ClientService clientService, CurrencyService currencies, Audit audit, Clock clock) {
         this.clientService = clientService;
+        this.currencies = currencies;
         this.invoices = invoices;
         this.projects = projects;
         this.clients = clients;
@@ -121,14 +126,16 @@ public class InvoiceService {
         List<Invoice> found = invoices.findByClientIdWithProject(clientId);
         Map<Long, BigDecimal> paid = paidByInvoice(found);
         Map<Long, BigDecimal> credited = creditedByInvoice(found);
+        Function<String, MoneyRule> rules = moneyRules();
         List<ClientStatementResponse.Line> lines = found.stream()
                 .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO),
-                        credited.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                        credited.getOrDefault(i.getId(), BigDecimal.ZERO), rules.apply(i.getCurrency())))
                 .toList();
         String home = settings.homeCurrency();
+        MoneyRule homeRule = rules.apply(home);
         return ClientStatementResponse.from(client.getId(), client.getName(), client.getCurrency(), lines,
-                accountEntries(clientId, found), home, l -> l.issuedDate() == null ? Optional.empty()
-                        : fxRates.convert(client.getCurrency(), home, l.issuedDate(), l.amountDue()));
+                accountEntries(clientId, found, rules), home, l -> l.issuedDate() == null ? Optional.empty()
+                        : fxRates.convert(l.currency(), home, l.issuedDate(), l.amountDue()).map(homeRule::round));
     }
 
     /**
@@ -140,7 +147,7 @@ public class InvoiceService {
         Client client = clients.findById(clientId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
         List<Invoice> found = invoices.findByClientIdWithProject(clientId);
-        BigDecimal balance = accountEntries(clientId, found).stream()
+        BigDecimal balance = accountEntries(clientId, found, moneyRules()).stream()
                 .filter(e -> e.date() != null && !e.date().isAfter(asOf))
                 .map(StatementEntry::change)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
@@ -158,7 +165,7 @@ public class InvoiceService {
         }
         Client client = clients.findById(clientId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
-        List<StatementEntry> dated = accountEntries(clientId, invoices.findByClientIdWithProject(clientId)).stream()
+        List<StatementEntry> dated = accountEntries(clientId, invoices.findByClientIdWithProject(clientId), moneyRules()).stream()
                 .filter(e -> e.date() != null)
                 .sorted(StatementEntry.DATE_ORDER)
                 .toList();
@@ -189,6 +196,7 @@ public class InvoiceService {
         List<Invoice> found = invoices.findByClientIdWithProject(clientId);
         Map<Long, BigDecimal> paid = paidByInvoice(found);
         Map<Long, BigDecimal> credited = creditedByInvoice(found);
+        Function<String, MoneyRule> rules = moneyRules();
         BigDecimal current = BigDecimal.ZERO.setScale(2);
         BigDecimal days30To60 = BigDecimal.ZERO.setScale(2);
         BigDecimal days60Plus = BigDecimal.ZERO.setScale(2);
@@ -199,7 +207,7 @@ public class InvoiceService {
             if (status == InvoiceStatus.DRAFT || status.isClosedUnpaid()) {
                 continue;
             }
-            BigDecimal due = invoice.amountDue(invoicePaid, invoiceCredited);
+            BigDecimal due = rules.apply(invoice.getCurrency()).round(invoice.amountDue(invoicePaid, invoiceCredited));
             if (due.signum() <= 0) {
                 continue;
             }
@@ -221,9 +229,13 @@ public class InvoiceService {
     /**
      * The entries on a client's running account. Drafts have not been sent and void invoices were cancelled, so
      * neither is charged. A payment made out of held deposits is left out, as the deposit was already credited
-     * when it was paid in.
+     * when it was paid in. Each amount is rounded by the rule of the currency it is in, as the invoice is, so the
+     * balances add up to the cent.
      */
-    private List<StatementEntry> accountEntries(Long clientId, List<Invoice> found) {
+    private List<StatementEntry> accountEntries(Long clientId, List<Invoice> found, Function<String, MoneyRule> rules) {
+        MoneyRule clientRule = clients.findById(clientId).map(c -> rules.apply(c.getCurrency())).orElse(MoneyRule.CENTS);
+        Map<Long, MoneyRule> invoiceRules = new HashMap<>();
+        found.forEach(i -> invoiceRules.put(i.getId(), rules.apply(i.getCurrency())));
         List<StatementEntry> entries = new ArrayList<>();
         List<Long> sent = new ArrayList<>();
         Map<Long, String> poNumbers = new HashMap<>();
@@ -237,7 +249,7 @@ public class InvoiceService {
             }
             if (invoice.getStatus() != InvoiceStatus.VOID) {
                 entries.add(StatementEntry.charge(StatementEntry.Kind.INVOICE, invoice.getId(), invoice.getId(),
-                        invoice.getIssuedDate(), "Invoice #" + invoice.getId(), invoice.getAmount(),
+                        invoice.getIssuedDate(), "Invoice #" + invoice.getId(), invoiceRules.get(invoice.getId()).round(invoice.getAmount()),
                         invoice.getPoNumber()));
             }
         }
@@ -245,26 +257,34 @@ public class InvoiceService {
             for (Payment payment : payments.findByInvoiceIdIn(sent)) {
                 if (payment.getDepositApplicationId() == null) {
                     entries.add(StatementEntry.credit(StatementEntry.Kind.PAYMENT, payment.getId(), payment.getInvoiceId(),
-                            payment.getDate(), "Payment on invoice #" + payment.getInvoiceId(), payment.getAmount(),
+                            payment.getDate(), "Payment on invoice #" + payment.getInvoiceId(),
+                            invoiceRules.get(payment.getInvoiceId()).round(payment.getAmount()),
                             poNumbers.get(payment.getInvoiceId())));
                 }
             }
             for (CreditNote note : creditNotes.findByInvoiceIdIn(sent)) {
                 entries.add(StatementEntry.credit(StatementEntry.Kind.CREDIT_NOTE, note.getId(), note.getInvoiceId(),
                         LocalDate.ofInstant(note.getIssuedAt(), ZoneOffset.UTC),
-                        "Credit note on invoice #" + note.getInvoiceId(), note.getAmount(),
+                        "Credit note on invoice #" + note.getInvoiceId(),
+                        invoiceRules.get(note.getInvoiceId()).round(note.getAmount()),
                         poNumbers.get(note.getInvoiceId())));
             }
         }
         for (Deposit deposit : deposits.findByClientIdOrderByDateAscIdAsc(clientId)) {
             entries.add(StatementEntry.credit(StatementEntry.Kind.DEPOSIT, deposit.getId(), null, deposit.getDate(),
-                    "Deposit", deposit.getAmount(), null));
+                    "Deposit", clientRule.round(deposit.getAmount()), null));
         }
         for (Refund refund : refunds.findByClientIdOrderByDateDescIdDesc(clientId)) {
             entries.add(StatementEntry.charge(StatementEntry.Kind.REFUND, refund.getId(), null, refund.getDate(),
-                    "Refund", refund.getAmount(), null));
+                    "Refund", clientRule.round(refund.getAmount()), null));
         }
         return entries;
+    }
+
+    /** Looks up each currency's rounding rule once per request. */
+    private Function<String, MoneyRule> moneyRules() {
+        Map<String, MoneyRule> known = new HashMap<>();
+        return code -> known.computeIfAbsent(code, currencies::ruleFor);
     }
 
     private Map<Long, BigDecimal> paidByInvoice(List<Invoice> found) {

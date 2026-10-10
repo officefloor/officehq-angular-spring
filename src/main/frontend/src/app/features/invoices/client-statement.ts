@@ -10,7 +10,8 @@ import { StatementEmailAction } from './statement-email';
 // It can be run for a chosen date range, giving the opening balance, the entries within the range with the running
 // balance, and the closing balance.
 // The balance owed as at a chosen past date can be looked up, counting only entries up to that date.
-// Every figure is in the client's own currency; at the foot the total owed is also given in the home currency.
+// Each invoice is shown in its own currency and every figure is rounded by the same currency rule as the invoice
+// (the server rounds each one before adding them up), so the totals match the invoices to the cent. At the foot the total owed is also given in the home currency.
 // It opens with the running account: invoices, payments, credit notes, deposits and refunds in date order with the
 // balance owed after each.
 // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
@@ -257,9 +258,9 @@ import { StatementEmailAction } from './statement-email';
                     <td data-testid="statement-invoice-status">{{ i.status }}</td>
                     <td data-testid="statement-invoice-issued">{{ i.issuedDate }}</td>
                     <td data-testid="statement-invoice-due">{{ i.dueDate }}</td>
-                    <td data-testid="statement-invoice-amount">{{ i.amount | money: s.currency }}</td>
-                    <td data-testid="statement-invoice-tax">{{ i.tax | money: s.currency }}</td>
-                    <td data-testid="statement-invoice-due-amount">{{ i.amountDue | money: s.currency }}</td>
+                    <td data-testid="statement-invoice-amount">{{ i.amount | money: i.currency }}</td>
+                    <td data-testid="statement-invoice-tax">{{ i.tax | money: i.currency }}</td>
+                    <td data-testid="statement-invoice-due-amount">{{ i.amountDue | money: i.currency }}</td>
                   </tr>
                 }
                 <tr>

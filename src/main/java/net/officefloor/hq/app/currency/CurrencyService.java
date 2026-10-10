@@ -33,6 +33,12 @@ public class CurrencyService {
         return code != null && currencies.existsById(code);
     }
 
+    /** The rule the currency's amounts are rounded by; whole cents for an unknown currency. */
+    @Transactional(readOnly = true)
+    public MoneyRule ruleFor(String code) {
+        return code == null ? MoneyRule.CENTS : currencies.findById(code).map(MoneyRule::of).orElse(MoneyRule.CENTS);
+    }
+
     /** Changes the step a currency's amounts are rounded to, recording the change in the audit log. */
     @Transactional
     public CurrencyResponse changeRounding(String code, CurrencyRoundingRequest request) {
