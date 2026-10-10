@@ -73,7 +73,7 @@ public class DashboardService {
     /**
      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
      * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices (not disputed) are past their due date and
-     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date, and how many clients were taken on this month.
+     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}; disputed and written-off invoices left out), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date, and how many clients were taken on this month.
      */
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
@@ -91,7 +91,9 @@ public class DashboardService {
         long overdue = invoices.countByStatusInAndDueDateBefore(owing, today);
         String home = settings.homeCurrency();
         Map<Invoice, BigDecimal> owedInHome = inHome(invoices.findByStatusInWithClient(owing), home, today, false);
-        BigDecimal outstandingHome = sum(owedInHome);
+        // The grand total leaves out disputed invoices (written-off ones are already not owing).
+        BigDecimal outstandingHome = owedInHome.entrySet().stream().filter(e -> !e.getKey().isDisputed())
+                .map(Map.Entry::getValue).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
         Map<Invoice, BigDecimal> overdueInHome = inHome(invoices.findByStatusInAndDueDateBefore(owing, today), home, today, true);
         BigDecimal overdueAmount = sum(overdueInHome);
         DashboardResponse.OverdueBuckets overdueBuckets = buckets(overdueInHome, today);

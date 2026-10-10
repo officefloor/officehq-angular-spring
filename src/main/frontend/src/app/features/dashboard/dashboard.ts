@@ -11,7 +11,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 // Dashboard page: how many clients and projects there are (and how many clients were taken on this month), and the total still owed in each currency
 // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
 // counted), plus one grand total of it in the home currency with each invoice converted at the
-// exchange rate from its own issue date, and how many of those sent
+// exchange rate from its own issue date (leaving out disputed and written-off invoices), and how many of those sent
 // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
 // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
 // converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, and the average number of days clients take to pay (issue date to final payment on paid invoices). An aging report across all clients, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
@@ -46,7 +46,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
           }
         </div>
         <div>
-          <dt>Outstanding in {{ s.homeCurrency }} (converted at each invoice's date)</dt>
+          <dt>Outstanding in {{ s.homeCurrency }} (converted at each invoice's date, excluding disputed and written-off)</dt>
           <dd data-testid="dashboard-outstanding-home"><span data-testid="kpi-outstanding">{{ s.outstandingHome | money: s.homeCurrency }}</span></dd>
         </div>
         <div>
