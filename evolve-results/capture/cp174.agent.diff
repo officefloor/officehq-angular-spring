@@ -1,0 +1,409 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index 2fa9709..0814190 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -3,6 +3,7 @@ import { MoneyPipe } from '../currencies/money.pipe';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { RouterLink } from '@angular/router';
+ import { InvoiceService } from './invoice.service';
++import { StatementEmailAction } from './statement-email';
+ 
+ // A client's statement: every invoice across the client's projects grouped by job, how much is left to
+ // pay on each, a subtotal still owed and the tax per job, the tax across the statement, and the total the client still owes. Drafts are listed but do not count towards what is owed.
+@@ -14,11 +15,12 @@ import { InvoiceService } from './invoice.service';
+ // balance owed after each.
+ // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
+ // with the app's navigation and the page's controls left off the printed copy.
+-// Under the summary, the balance owed is broken down by age as at today: current (up to 30 days overdue), 31 to 60
++// Under the summary, the statement can be emailed to the client, with a note kept of each time it was sent.
++// Below that, the balance owed is broken down by age as at today: current (up to 30 days overdue), 31 to 60
+ // days, and more than 60 days overdue.
+ @Component({
+   selector: 'app-client-statement',
+-  imports: [MoneyPipe, RouterLink],
++  imports: [MoneyPipe, RouterLink, StatementEmailAction],
+   styles: `
+     .statement-actions {
+       display: flex;
+@@ -87,6 +89,7 @@ import { InvoiceService } from './invoice.service';
+             <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | money: s.currency }}</dd>
+           </dl>
+         </section>
++        <app-statement-email [clientId]="clientId()" />
+         <section aria-labelledby="statement-aging-heading" data-testid="statement-aging">
+           <h2 id="statement-aging-heading">Balance by age</h2>
+           @if (aging.error()) {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index ebeeff1..a077220 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -119,6 +119,14 @@ export interface ClientBalanceAsOf {
+   balance: number;
+ }
+ 
++/** A note that a client's statement was emailed: the address it went to and when. */
++export interface StatementEmail {
++  id: number;
++  clientId: number;
++  email: string;
++  sentAt: string;
++}
++
+ /** A client's statement for a date range: the balance owed at its start, the entries within it, and the balance owed at its end. */
+ export interface ClientStatementRange {
+   clientId: number;
+@@ -305,6 +313,14 @@ export class InvoiceService {
+     return this.http.get<ClientStatementRange>(`/api/clients/${clientId}/statement/range`, { params: { from, to } });
+   }
+ 
++  statementEmails(clientId: number): Observable<StatementEmail[]> {
++    return this.http.get<StatementEmail[]>(`/api/clients/${clientId}/statement/emails`);
++  }
++
++  emailStatement(clientId: number): Observable<StatementEmail> {
++    return this.http.post<StatementEmail>(`/api/clients/${clientId}/statement/emails`, {});
++  }
++
+   agingForClient(clientId: number): Observable<ClientAging> {
+     return this.http.get<ClientAging>(`/api/clients/${clientId}/statement/aging`);
+   }
+diff --git a/src/main/frontend/src/app/features/invoices/statement-email.ts b/src/main/frontend/src/app/features/invoices/statement-email.ts
+new file mode 100644
+index 0000000..a4d42e8
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/statement-email.ts
+@@ -0,0 +1,79 @@
++import { Component, inject, input, signal } from '@angular/core';
++import { DatePipe } from '@angular/common';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { InvoiceService, StatementEmail } from './invoice.service';
++
++// Emails a client their statement and keeps a note of it: a confirmation of where it went, and the list of
++// every time it has been emailed, newest first.
++@Component({
++  selector: 'app-statement-email',
++  imports: [DatePipe],
++  styles: `
++    @media print {
++      :host {
++        display: none;
++      }
++    }
++  `,
++  template: `
++    <section aria-labelledby="statement-email-heading" data-testid="statement-email-section">
++      <h2 id="statement-email-heading">Email statement</h2>
++      <button type="button" data-testid="statement-email" [disabled]="sending()" (click)="send()">
++        Email statement to client
++      </button>
++      <div aria-live="polite">
++        @if (sent(); as s) {
++          <p data-testid="statement-email-confirm">
++            Statement emailed to <span data-testid="statement-email-to">{{ s.email }}</span>.
++          </p>
++        } @else if (failed()) {
++          <p role="alert" data-testid="statement-email-error">Could not email the statement.</p>
++        }
++      </div>
++      @if (history.value(); as h) {
++        @if (h.length === 0) {
++          <p data-testid="statement-email-history-empty">The statement has not been emailed yet.</p>
++        } @else {
++          <ul data-testid="statement-email-history">
++            @for (e of h; track e.id) {
++              <li [attr.data-testid]="'statement-email-history-' + e.id">
++                Emailed to {{ e.email }} on {{ e.sentAt | date: 'medium' }}
++              </li>
++            }
++          </ul>
++        }
++      }
++    </section>
++  `,
++})
++export class StatementEmailAction {
++  private readonly service = inject(InvoiceService);
++
++  readonly clientId = input.required<number>();
++
++  protected readonly sending = signal(false);
++  protected readonly sent = signal<StatementEmail | undefined>(undefined);
++  protected readonly failed = signal(false);
++
++  protected readonly history = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.service.statementEmails(params),
++  });
++
++  protected send(): void {
++    this.sending.set(true);
++    this.failed.set(false);
++    this.sent.set(undefined);
++    this.service.emailStatement(this.clientId()).subscribe({
++      next: (s) => {
++        this.sent.set(s);
++        this.sending.set(false);
++        this.history.reload();
++      },
++      error: () => {
++        this.failed.set(true);
++        this.sending.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 4495937..8c29591 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -61,6 +61,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE task_checklist_item RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE statement_email RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE contact_history RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+index 2afc093..b3ed673 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+@@ -36,6 +36,11 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+     @Query("UPDATE ContactHistoryEntry h SET h.clientId = :to WHERE h.clientId = :from")
+     int moveContactHistory(Long from, Long to);
+ 
++    /** Moves the notes of every statement emailed to one client over to another. */
++    @Modifying(flushAutomatically = true, clearAutomatically = true)
++    @Query("UPDATE StatementEmail s SET s.clientId = :to WHERE s.clientId = :from")
++    int moveStatementEmails(Long from, Long to);
++
+     /** Moves every lump payment of one client over to another. */
+     @Modifying(flushAutomatically = true, clearAutomatically = true)
+     @Query("UPDATE ClientPayment p SET p.clientId = :to WHERE p.clientId = :from")
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 6ab27aa..506c3e1 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -250,7 +250,7 @@ public class ClientService {
+ 
+     /**
+      * Merges a duplicate client into the client it duplicates: the duplicate's projects (and so their
+-     * invoices), contacts, contact history, payments, deposits and refunds all move to the kept client, which takes the
++     * invoices), contacts, contact history, emailed statements, payments, deposits and refunds all move to the kept client, which takes the
+      * duplicate's main contact if it has none of its own, and the duplicate is then removed. Both must
+      * be billed in the same currency, so no money changes currency. Recorded in the audit log.
+      */
+@@ -273,6 +273,7 @@ public class ClientService {
+         clients.moveProjects(id, targetId);
+         clients.moveContacts(id, targetId);
+         clients.moveContactHistory(id, targetId);
++        clients.moveStatementEmails(id, targetId);
+         clients.moveClientPayments(id, targetId);
+         clients.moveDeposits(id, targetId);
+         clients.moveDepositApplications(id, targetId);
+diff --git a/src/main/java/net/officefloor/hq/app/statementemail/StatementEmail.java b/src/main/java/net/officefloor/hq/app/statementemail/StatementEmail.java
+new file mode 100644
+index 0000000..909e58f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statementemail/StatementEmail.java
+@@ -0,0 +1,53 @@
++package net.officefloor.hq.app.statementemail;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.Instant;
++
++/** One time a client's statement was emailed: the address it went to and when. */
++@Entity
++@Table(name = "statement_email")
++public class StatementEmail {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "client_id", nullable = false)
++    private Long clientId;
++
++    @Column(nullable = false)
++    private String email;
++
++    @Column(name = "sent_at", nullable = false)
++    private Instant sentAt;
++
++    protected StatementEmail() {
++    }
++
++    public StatementEmail(Long clientId, String email, Instant sentAt) {
++        this.clientId = clientId;
++        this.email = email;
++        this.sentAt = sentAt;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++
++    public Instant getSentAt() {
++        return sentAt;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statementemail/StatementEmailController.java b/src/main/java/net/officefloor/hq/app/statementemail/StatementEmailController.java
+new file mode 100644
+index 0000000..c34c2b2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statementemail/StatementEmailController.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app.statementemail;
++
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** Emailing a client their statement, and the note of each time it was sent. */
++@RestController
++@RequestMapping("/api/clients/{clientId}/statement/emails")
++public class StatementEmailController {
++
++    private final StatementEmailService service;
++
++    public StatementEmailController(StatementEmailService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<StatementEmailResponse> list(@PathVariable Long clientId) {
++        return service.listForClient(clientId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public StatementEmailResponse email(@PathVariable Long clientId) {
++        return service.email(clientId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statementemail/StatementEmailRepository.java b/src/main/java/net/officefloor/hq/app/statementemail/StatementEmailRepository.java
+new file mode 100644
+index 0000000..4118f0a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statementemail/StatementEmailRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.statementemail;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface StatementEmailRepository extends JpaRepository<StatementEmail, Long> {
++
++    /** When the client's statement was emailed, newest first. */
++    List<StatementEmail> findByClientIdOrderBySentAtDescIdDesc(Long clientId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statementemail/StatementEmailResponse.java b/src/main/java/net/officefloor/hq/app/statementemail/StatementEmailResponse.java
+new file mode 100644
+index 0000000..8731ae6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statementemail/StatementEmailResponse.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.statementemail;
++
++import java.time.Instant;
++
++/** A note that a client's statement was emailed. */
++public record StatementEmailResponse(Long id, Long clientId, String email, Instant sentAt) {
++
++    static StatementEmailResponse from(StatementEmail sent) {
++        return new StatementEmailResponse(sent.getId(), sent.getClientId(), sent.getEmail(), sent.getSentAt());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statementemail/StatementEmailService.java b/src/main/java/net/officefloor/hq/app/statementemail/StatementEmailService.java
+new file mode 100644
+index 0000000..ae40f40
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statementemail/StatementEmailService.java
+@@ -0,0 +1,53 @@
++package net.officefloor.hq.app.statementemail;
++
++import java.time.Clock;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.client.Client;
++import net.officefloor.hq.app.client.ClientRepository;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class StatementEmailService {
++
++    private final StatementEmailRepository sent;
++    private final ClientRepository clients;
++    private final Audit audit;
++    private final Clock clock;
++
++    public StatementEmailService(StatementEmailRepository sent, ClientRepository clients, Audit audit, Clock clock) {
++        this.sent = sent;
++        this.clients = clients;
++        this.audit = audit;
++        this.clock = clock;
++    }
++
++    /** When the client's statement was emailed, newest first. */
++    @Transactional(readOnly = true)
++    public List<StatementEmailResponse> listForClient(Long clientId) {
++        requireClient(clientId);
++        return sent.findByClientIdOrderBySentAtDescIdDesc(clientId).stream()
++                .map(StatementEmailResponse::from).toList();
++    }
++
++    /** Emails the client their statement, keeping a note of it and recording it in the audit log. */
++    @Transactional
++    public StatementEmailResponse email(Long clientId) {
++        Client client = requireClient(clientId);
++        String email = client.getEmail();
++        if (email == null || email.isBlank()) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "The client has no email address");
++        }
++        StatementEmail saved = sent.saveAndFlush(new StatementEmail(clientId, email, clock.instant()));
++        audit.record("STATEMENT_EMAILED client=" + clientId);
++        return StatementEmailResponse.from(saved);
++    }
++
++    private Client requireClient(Long clientId) {
++        return clients.findById(clientId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
++    }
++}
+diff --git a/src/main/resources/db/migration/V93__statement_email.sql b/src/main/resources/db/migration/V93__statement_email.sql
+new file mode 100644
+index 0000000..8e5b1ea
+--- /dev/null
++++ b/src/main/resources/db/migration/V93__statement_email.sql
+@@ -0,0 +1,10 @@
++-- A note of each time a client's statement was emailed to them: the address it went to and when.
++CREATE TABLE statement_email (
++    id        BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    client_id BIGINT       NOT NULL,
++    email     VARCHAR(255) NOT NULL,
++    sent_at   TIMESTAMP    NOT NULL,
++    CONSTRAINT statement_email_client_fk FOREIGN KEY (client_id) REFERENCES client (id)
++);
++
++CREATE INDEX statement_email_client_idx ON statement_email (client_id, sent_at);
