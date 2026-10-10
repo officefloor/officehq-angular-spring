@@ -110,11 +110,14 @@ public class DashboardService {
         Long billingTargetProgress = billingTarget == null ? null
                 : billingsYearToDate.multiply(BigDecimal.valueOf(100)).divide(billingTarget, 0, RoundingMode.HALF_UP)
                         .longValue();
+        BigDecimal billingTargetVariance = billingTarget == null ? null
+                : billingsYearToDate.subtract(billingTarget).setScale(2, RoundingMode.HALF_UP);
         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
                 overdueBuckets, top, tasks.countByDoneFalse(), tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
                 clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home),
                 collectionRate(home), billingsYearToDate,
-                collected(today.withDayOfYear(1), today, home), taskCompletionRate(), billingTarget, billingTargetProgress);
+                collected(today.withDayOfYear(1), today, home), taskCompletionRate(), billingTarget, billingTargetProgress,
+                billingTargetVariance);
     }
 
     /** The share of all tasks that are done, as a whole percentage. Null when there are no tasks. */

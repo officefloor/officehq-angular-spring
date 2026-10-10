@@ -63,6 +63,8 @@ export interface DashboardSummary {
   billingTarget: number | null;
   /** What has been billed this year as a whole percentage of the target; null when no target is set. */
   billingTargetProgress: number | null;
+  /** How far what was billed this year is ahead of (positive) or behind (negative) the target; null when no target is set. */
+  billingTargetVariance: number | null;
 }
 
 /** The tax charged on invoices issued on or between two dates, in the home currency. */
