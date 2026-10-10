@@ -1,0 +1,247 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/aging-report.ts b/src/main/frontend/src/app/features/dashboard/aging-report.ts
+index 07eddc8..37d78f7 100644
+--- a/src/main/frontend/src/app/features/dashboard/aging-report.ts
++++ b/src/main/frontend/src/app/features/dashboard/aging-report.ts
+@@ -1,13 +1,28 @@
+-import { Component, inject } from '@angular/core';
++import { Component, computed, inject, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
++import { RouterLink } from '@angular/router';
+ import { MoneyPipe } from '../currencies/money.pipe';
+-import { DashboardService } from './dashboard.service';
++import { AgingBucket, AgingReport, DashboardService } from './dashboard.service';
++
++interface BucketView {
++  bucket: AgingBucket;
++  key: string;
++  label: string;
++  amount: (r: AgingReport) => number;
++}
++
++const BUCKETS: BucketView[] = [
++  { bucket: 'CURRENT', key: 'current', label: 'Current (up to 30 days overdue)', amount: (r) => r.current },
++  { bucket: 'DAYS_30_60', key: '30-60', label: '31 to 60 days overdue', amount: (r) => r.days30To60 },
++  { bucket: 'DAYS_60_PLUS', key: '60-plus', label: 'More than 60 days overdue', amount: (r) => r.days60Plus },
++];
+ 
+ // An aging report across all clients: what is left to pay on sent invoices, in the home currency, split by how many
+ // days past due each invoice is — current (not yet due, or up to 30 days overdue), 31 to 60 days, and more than 60.
++// Clicking a bucket lists the invoices that make it up.
+ @Component({
+   selector: 'app-aging-report',
+-  imports: [MoneyPipe],
++  imports: [MoneyPipe, RouterLink],
+   styles: `
+     .aging-report-figures {
+       display: grid;
+@@ -18,6 +33,19 @@ import { DashboardService } from './dashboard.service';
+       margin: 0;
+       text-align: right;
+     }
++    .aging-bucket-open {
++      font: inherit;
++      text-align: left;
++      padding: 0;
++      background: none;
++      border: none;
++      color: inherit;
++      text-decoration: underline;
++      cursor: pointer;
++    }
++    .aging-detail td.amount {
++      text-align: right;
++    }
+   `,
+   template: `
+     <section aria-labelledby="aging-report-heading" data-testid="aging-report">
+@@ -26,16 +54,69 @@ import { DashboardService } from './dashboard.service';
+         <p role="alert" data-testid="aging-report-error">Could not load the aging report.</p>
+       } @else if (report.value(); as r) {
+         <dl class="aging-report-figures">
+-          <dt>Current (up to 30 days overdue)</dt>
+-          <dd data-testid="aging-report-current">{{ r.current | money: r.homeCurrency }}</dd>
+-          <dt>31 to 60 days overdue</dt>
+-          <dd data-testid="aging-report-30-60">{{ r.days30To60 | money: r.homeCurrency }}</dd>
+-          <dt>More than 60 days overdue</dt>
+-          <dd data-testid="aging-report-60-plus">{{ r.days60Plus | money: r.homeCurrency }}</dd>
++          @for (b of buckets; track b.bucket) {
++            <dt>
++              <button
++                type="button"
++                class="aging-bucket-open"
++                [attr.data-testid]="'aging-bucket-' + b.key + '-open'"
++                [attr.aria-expanded]="selected() === b.bucket"
++                aria-controls="aging-detail"
++                (click)="toggle(b.bucket)"
++              >
++                {{ b.label }}
++              </button>
++            </dt>
++            <dd [attr.data-testid]="'aging-report-' + b.key">{{ b.amount(r) | money: r.homeCurrency }}</dd>
++          }
+           <dt>Total outstanding</dt>
+           <dd data-testid="aging-report-total">{{ r.total | money: r.homeCurrency }}</dd>
+         </dl>
+         <p data-testid="aging-report-asof">As at {{ r.asOf }}</p>
++
++        <div id="aging-detail" aria-live="polite">
++          @if (selectedView(); as b) {
++            <section class="aging-detail" data-testid="aging-detail" [attr.aria-label]="b.label + ' invoices'">
++              <h3 data-testid="aging-detail-heading">{{ b.label }}</h3>
++              @if (linesFor(r, b.bucket); as lines) {
++                @if (lines.length) {
++                  <table data-testid="aging-detail-table">
++                    <thead>
++                      <tr>
++                        <th scope="col">Invoice</th>
++                        <th scope="col">Client</th>
++                        <th scope="col">Due date</th>
++                        <th scope="col">Days overdue</th>
++                        <th scope="col">Outstanding ({{ r.homeCurrency }})</th>
++                      </tr>
++                    </thead>
++                    <tbody>
++                      @for (line of lines; track line.invoiceId) {
++                        <tr [attr.data-testid]="'aging-detail-row-' + line.invoiceId">
++                          <td>
++                            <a
++                              [routerLink]="['/projects', line.projectId, 'invoices', line.invoiceId]"
++                              data-testid="aging-detail-invoice"
++                              >#{{ line.invoiceId }}</a
++                            >
++                          </td>
++                          <td data-testid="aging-detail-client">{{ line.clientName }}</td>
++                          <td data-testid="aging-detail-due">{{ line.dueDate ?? '—' }}</td>
++                          <td data-testid="aging-detail-days">{{ line.daysOverdue }}</td>
++                          <td class="amount" data-testid="aging-detail-amount">
++                            {{ line.amount | money: r.homeCurrency }}
++                          </td>
++                        </tr>
++                      }
++                    </tbody>
++                  </table>
++                } @else {
++                  <p data-testid="aging-detail-empty">No invoices in this bucket.</p>
++                }
++              }
++            </section>
++          }
++        </div>
+       } @else {
+         <p data-testid="aging-report-loading">Loading…</p>
+       }
+@@ -45,5 +126,17 @@ import { DashboardService } from './dashboard.service';
+ export class AgingReportPanel {
+   private readonly service = inject(DashboardService);
+ 
++  protected readonly buckets = BUCKETS;
+   protected readonly report = rxResource({ stream: () => this.service.agingReport() });
++  protected readonly selected = signal<AgingBucket | null>(null);
++
++  protected readonly selectedView = computed(() => BUCKETS.find((b) => b.bucket === this.selected()));
++
++  protected linesFor(r: AgingReport, bucket: AgingBucket) {
++    return r.invoices.filter((line) => line.bucket === bucket);
++  }
++
++  protected toggle(bucket: AgingBucket): void {
++    this.selected.update((current) => (current === bucket ? null : bucket));
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 941baeb..cb56698 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -148,6 +148,22 @@ export interface AgingReport {
+   days30To60: number;
+   days60Plus: number;
+   total: number;
++  invoices: AgingReportLine[];
++}
++
++/** The age bucket an invoice falls in on the aging report. */
++export type AgingBucket = 'CURRENT' | 'DAYS_30_60' | 'DAYS_60_PLUS';
++
++/** One invoice behind the aging report: what is left to pay on it in the home currency, and its bucket. */
++export interface AgingReportLine {
++  invoiceId: number;
++  projectId: number;
++  clientId: number;
++  clientName: string;
++  dueDate: string | null;
++  daysOverdue: number;
++  bucket: AgingBucket;
++  amount: number;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/AgingReportResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/AgingReportResponse.java
+index 8e2d92f..c7adaa0 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/AgingReportResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/AgingReportResponse.java
+@@ -2,12 +2,23 @@ package net.officefloor.hq.app.dashboard;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.List;
+ 
+ /**
+  * How old the debt across all clients is as at today, in the home currency: what is left to pay on sent invoices
+  * split by how many days past due each one is — current (not yet due, or up to 30 days overdue), 31 to 60 days, and
+- * more than 60 days — with the total of them.
++ * more than 60 days — with the total of them, and the invoices that make up each bucket.
+  */
+ public record AgingReportResponse(LocalDate asOf, String homeCurrency, BigDecimal current, BigDecimal days30To60,
+-        BigDecimal days60Plus, BigDecimal total) {
++        BigDecimal days60Plus, BigDecimal total, List<Line> invoices) {
++
++    /** The age bucket an invoice falls in. */
++    public enum Bucket {
++        CURRENT, DAYS_30_60, DAYS_60_PLUS
++    }
++
++    /** One invoice behind the report: what is left to pay on it in the home currency, and which bucket it is in. */
++    public record Line(Long invoiceId, Long projectId, Long clientId, String clientName, LocalDate dueDate,
++            long daysOverdue, Bucket bucket, BigDecimal amount) {
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 9a49aff..d2782f3 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -118,8 +118,24 @@ public class DashboardService {
+         Map<Invoice, BigDecimal> owedInHome = inHome(
+                 invoices.findByStatusInWithClient(List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL)), home, today, false);
+         DashboardResponse.OverdueBuckets aged = buckets(owedInHome, today);
++        List<AgingReportResponse.Line> lines = owedInHome.entrySet().stream().map(e -> {
++            Invoice invoice = e.getKey();
++            long days = daysOverdue(invoice, today);
++            AgingReportResponse.Bucket bucket = days > 60 ? AgingReportResponse.Bucket.DAYS_60_PLUS
++                    : days > 30 ? AgingReportResponse.Bucket.DAYS_30_60 : AgingReportResponse.Bucket.CURRENT;
++            return new AgingReportResponse.Line(invoice.getId(), invoice.getProject().getId(),
++                    invoice.getProject().getClient().getId(), invoice.getProject().getClient().getName(),
++                    invoice.getDueDate(), Math.max(0, days), bucket, e.getValue().setScale(2, RoundingMode.HALF_UP));
++        }).sorted(Comparator.comparingLong(AgingReportResponse.Line::daysOverdue).reversed()
++                .thenComparing(AgingReportResponse.Line::invoiceId)).toList();
+         return new AgingReportResponse(today, home, aged.days0To30(), aged.days31To60(), aged.days60Plus(),
+-                sum(owedInHome));
++                sum(owedInHome), lines);
++    }
++
++    /** How many days past its due date an invoice is as at today; one without a due date is not overdue. */
++    private static long daysOverdue(Invoice invoice, LocalDate today) {
++        LocalDate dueDate = invoice.getDueDate();
++        return dueDate == null ? 0 : ChronoUnit.DAYS.between(dueDate, today);
+     }
+ 
+     /**
+@@ -131,8 +147,7 @@ public class DashboardService {
+         BigDecimal days31To60 = BigDecimal.ZERO;
+         BigDecimal days60Plus = BigDecimal.ZERO;
+         for (Map.Entry<Invoice, BigDecimal> e : overdueInHome.entrySet()) {
+-            LocalDate dueDate = e.getKey().getDueDate();
+-            long days = dueDate == null ? 0 : ChronoUnit.DAYS.between(dueDate, today);
++            long days = daysOverdue(e.getKey(), today);
+             if (days > 60) {
+                 days60Plus = days60Plus.add(e.getValue());
+             } else if (days > 30) {
