@@ -6,14 +6,15 @@ import java.util.List;
 
 /**
  * A simple cash-flow forecast: the money expected in from instalments still to be paid on invoices that have been
- * sent, earliest due first, each in its invoice's currency, and all of them together as one total in the home
- * currency (each converted at the exchange rate from its invoice's issue date). Also what can be expected to be
+ * sent, earliest due first, each in its invoice's currency, and all of them together as one total in {@code homeCurrency} (each converted into the
+ * home currency at the exchange rate from its invoice's issue date, then into the dashboard's chosen base currency at
+ * today's rate, or left in the home currency while the base currency has no rate). Also what can be expected to be
  * collected in the next 30 days (see {@link Window}).
  */
 public record ForecastResponse(String homeCurrency, List<Entry> entries, BigDecimal total, Window next30Days) {
 
     /**
-     * What falls due on or between two dates, in the home currency: on a sent invoice paid by instalments, its unpaid
+     * What falls due on or between two dates, in {@code homeCurrency}: on a sent invoice paid by instalments, its unpaid
      * instalments due in the window; on any other sent invoice, what is left to pay on it when it is due in the window.
      */
     public record Window(LocalDate from, LocalDate to, BigDecimal total) {

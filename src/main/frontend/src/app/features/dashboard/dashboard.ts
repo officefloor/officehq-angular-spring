@@ -209,7 +209,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 
     <app-upcoming-recurring-invoices />
 
-    <app-cash-flow-forecast />
+    <app-cash-flow-forecast [totalsVersion]="totalsVersion()" />
 
     <button
       type="button"
@@ -285,6 +285,8 @@ export class Dashboard {
   protected readonly loadError = signal<string | null>(null);
   protected readonly savingBaseCurrency = signal(false);
   protected readonly baseCurrencyError = signal<string | null>(null);
+  /** Bumped once a new base currency is saved, so the panels showing totals reload them in it. */
+  protected readonly totalsVersion = signal(0);
   protected readonly agingReportOpen = signal(false);
   protected readonly overdueTrendOpen = signal(false);
   protected readonly taxSummaryOpen = signal(false);
@@ -311,6 +313,7 @@ export class Dashboard {
     this.settings.updateDashboardBaseCurrency(code).subscribe({
       next: () => {
         this.savingBaseCurrency.set(false);
+        this.totalsVersion.update((v) => v + 1);
         this.load();
       },
       error: () => {

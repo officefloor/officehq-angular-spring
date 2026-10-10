@@ -1,11 +1,11 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, input } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { MoneyPipe } from '../currencies/money.pipe';
 import { DashboardService } from './dashboard.service';
 
 // A simple cash-flow forecast: the money expected in from instalments still to be paid on sent invoices,
-// earliest due first, with the total in the home currency, and what can be expected to be collected in the next 30 days.
+// earliest due first, with the total in the dashboard's chosen base currency, and what can be expected to be collected in the next 30 days.
 @Component({
   selector: 'app-cash-flow-forecast',
   imports: [MoneyPipe, RouterLink],
@@ -60,5 +60,8 @@ import { DashboardService } from './dashboard.service';
 export class CashFlowForecast {
   private readonly service = inject(DashboardService);
 
-  protected readonly forecast = rxResource({ stream: () => this.service.forecast() });
+  /** Bumped by the dashboard whenever the currency its totals are shown in changes, to reload them in it. */
+  readonly totalsVersion = input(0);
+
+  protected readonly forecast = rxResource({ params: () => this.totalsVersion(), stream: () => this.service.forecast() });
 }

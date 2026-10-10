@@ -116,14 +116,9 @@ public class DashboardService {
         Long billingTargetProgress = billingTarget == null ? null
                 : billingsYearToDate.multiply(BigDecimal.valueOf(100)).divide(billingTarget, 0, RoundingMode.HALF_UP)
                         .longValue();
-        BigDecimal billingTargetVariance = billingTarget == null ? null
-                : billingsYearToDate.subtract(billingTarget).setScale(2, RoundingMode.HALF_UP);
-        // The totals are shown in the chosen base currency, converted from the home currency at today's rate; when
-        // that is not possible (no rate for it yet) they stay in the home currency.
         String base = settings.dashboardBaseCurrency();
-        String shownIn = fxRates.convert(home, base, today, BigDecimal.ONE).isPresent() ? base : home;
-        UnaryOperator<BigDecimal> shown = amount -> amount == null ? null
-                : fxRates.convert(home, shownIn, today, amount).orElseThrow();
+        String shownIn = shownIn(home, today);
+        UnaryOperator<BigDecimal> shown = shown(home, shownIn, today);
         Map<Long, BigDecimal> overdueByClient = new HashMap<>();
         Map<Long, String> overdueClientNames = new HashMap<>();
         overdueInHome.forEach((invoice, amount) -> {
@@ -143,15 +138,36 @@ public class DashboardService {
                 shown.apply(c.outstandingHome()))).toList();
         overdueBuckets = new DashboardResponse.OverdueBuckets(shown.apply(overdueBuckets.days0To30()),
                 shown.apply(overdueBuckets.days31To60()), shown.apply(overdueBuckets.days60Plus()));
+        // Totals built from converted parts add up from those parts, so they never disagree with them by a rounding.
+        BigDecimal overdueShown = shownIn.equals(home) ? overdueAmount
+                : overdueBuckets.days0To30().add(overdueBuckets.days31To60()).add(overdueBuckets.days60Plus());
+        BigDecimal billingsYearToDateShown = shown.apply(billingsYearToDate);
+        BigDecimal billingTargetShown = shown.apply(billingTarget);
+        BigDecimal billingTargetVarianceShown = billingTarget == null ? null
+                : billingsYearToDateShown.subtract(billingTargetShown);
         return new DashboardResponse(clients.count(), projects.count(), outstanding, shown.apply(outstandingHome), overdue,
-                shownIn, shown.apply(overdueAmount), overdueBuckets, top, tasks.countByDoneFalse(),
+                shownIn, overdueShown, overdueBuckets, top, tasks.countByDoneFalse(),
                 tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
                 clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)),
                 shown.apply(billings(today.withDayOfMonth(1), today, home)), collectionRate(home),
-                shown.apply(billingsYearToDate), shown.apply(collected(today.withDayOfYear(1), today, home)),
+                billingsYearToDateShown, shown.apply(collected(today.withDayOfYear(1), today, home)),
                 shown.apply(collected(today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)), today, home)),
-                taskCompletionRate(), shown.apply(billingTarget), billingTargetProgress,
-                shown.apply(billingTargetVariance), base, topOverdue);
+                taskCompletionRate(), billingTargetShown, billingTargetProgress,
+                billingTargetVarianceShown, base, topOverdue);
+    }
+
+    /**
+     * The currency the dashboard's totals are shown in: the chosen base currency when it can be converted into from
+     * the home currency at today's rate, otherwise (no rate for it yet) the home currency itself.
+     */
+    private String shownIn(String home, LocalDate today) {
+        String base = settings.dashboardBaseCurrency();
+        return fxRates.convert(home, base, today, BigDecimal.ONE).isPresent() ? base : home;
+    }
+
+    /** Converts a home-currency total into the shown currency at today's rate, as every dashboard total is. */
+    private UnaryOperator<BigDecimal> shown(String home, String shownIn, LocalDate today) {
+        return amount -> amount == null ? null : fxRates.convert(home, shownIn, today, amount).orElseThrow();
     }
 
     /** The share of all tasks that are done, as a whole percentage. Null when there are no tasks. */
@@ -455,9 +471,9 @@ public class DashboardService {
 
     /**
      * The money expected in from scheduled instalments: every instalment not yet paid on an invoice that has been
-     * sent and is not yet fully paid, earliest due first, with the total in the home currency. A foreign instalment
-     * converts at the exchange rate from its invoice's issue date; one whose currency has no rate by then is still
-     * listed but left out of the total.
+     * sent and is not yet fully paid, earliest due first, with the totals in the dashboard's shown currency (see
+     * {@link #shownIn}). A foreign instalment converts at the exchange rate from its invoice's issue date; one whose
+     * currency has no rate by then is still listed but left out of the total.
      */
     @Transactional(readOnly = true)
     public ForecastResponse forecast() {
@@ -481,8 +497,13 @@ public class DashboardService {
                     invoice.getProject().getClient().getName()));
         }
         LocalDate today = LocalDate.now(clock);
-        return new ForecastResponse(home, entries, total.setScale(2, RoundingMode.HALF_UP),
-                dueWithin(List.copyOf(open.values()), today, today.plusDays(FORECAST_DAYS), home));
+        // The totals are shown in the dashboard's chosen base currency, as the dashboard's other totals are.
+        String shownIn = shownIn(home, today);
+        UnaryOperator<BigDecimal> shown = shown(home, shownIn, today);
+        ForecastResponse.Window next30Days = dueWithin(List.copyOf(open.values()), today,
+                today.plusDays(FORECAST_DAYS), home);
+        return new ForecastResponse(shownIn, entries, shown.apply(total.setScale(2, RoundingMode.HALF_UP)),
+                new ForecastResponse.Window(next30Days.from(), next30Days.to(), shown.apply(next30Days.total())));
     }
 
     /** How many days ahead the forecast of what can be collected looks. */
