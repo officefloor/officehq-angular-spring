@@ -80,6 +80,16 @@ public class DashboardController {
         return service.agingReport();
     }
 
+    /** Downloads the aging report as a CSV file. */
+    @GetMapping(value = "/aging-report/export", produces = "text/csv")
+    public ResponseEntity<String> exportAgingReport() {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename("aging-report.csv").build().toString())
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .body(service.agingReportCsv());
+    }
+
     /** What was overdue at the close of each recent month, in the home currency, ending with the current month. */
     @GetMapping("/overdue-trend")
     public OverdueTrendResponse overdueTrend() {

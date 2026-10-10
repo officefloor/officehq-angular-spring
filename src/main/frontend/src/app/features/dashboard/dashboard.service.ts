@@ -274,6 +274,11 @@ export class DashboardService {
     return this.http.get<AgingReport>('/api/dashboard/aging-report');
   }
 
+  /** The aging report as the CSV file the export downloads. */
+  exportAgingReport(): Observable<string> {
+    return this.http.get('/api/dashboard/aging-report/export', { responseType: 'text' });
+  }
+
   forecast(): Observable<Forecast> {
     return this.http.get<Forecast>('/api/dashboard/forecast');
   }

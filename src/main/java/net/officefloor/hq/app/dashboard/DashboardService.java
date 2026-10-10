@@ -654,6 +654,28 @@ public class DashboardService {
         return text.toString();
     }
 
+    /**
+     * The aging report as a small CSV file: a header row, one row of invoice, client, due date, days overdue, bucket
+     * and outstanding amount per invoice (in the report's order), then a row per bucket and a total row. Amounts are
+     * in the home currency.
+     */
+    @Transactional(readOnly = true)
+    public String agingReportCsv() {
+        AgingReportResponse report = agingReport();
+        StringBuilder text = new StringBuilder("invoice,client,due date,days overdue,bucket,outstanding\r\n");
+        for (AgingReportResponse.Line line : report.invoices()) {
+            text.append(line.invoiceId()).append(',').append(csv(neutralise(line.clientName()))).append(',')
+                    .append(line.dueDate() == null ? "" : line.dueDate().toString()).append(',')
+                    .append(line.daysOverdue()).append(',').append(line.bucket()).append(',')
+                    .append(line.amount().toPlainString()).append("\r\n");
+        }
+        text.append("Current,,,,,").append(report.current().toPlainString()).append("\r\n");
+        text.append("31 to 60 days,,,,,").append(report.days30To60().toPlainString()).append("\r\n");
+        text.append("More than 60 days,,,,,").append(report.days60Plus().toPlainString()).append("\r\n");
+        text.append("Total,,,,,").append(report.total().toPlainString()).append("\r\n");
+        return text.toString();
+    }
+
     /** Stops a value a spreadsheet would read as a formula from being run when the file is opened. */
     private static String neutralise(String value) {
         if (value != null && !value.isEmpty() && "=+-@\t\r".indexOf(value.charAt(0)) >= 0) {

@@ -19,7 +19,7 @@ const BUCKETS: BucketView[] = [
 
 // An aging report across all clients: what is left to pay on sent invoices, in the home currency, split by how many
 // days past due each invoice is — current (not yet due, or up to 30 days overdue), 31 to 60 days, and more than 60.
-// Clicking a bucket lists the invoices that make it up.
+// Clicking a bucket lists the invoices that make it up. The report can be exported to a CSV file.
 @Component({
   selector: 'app-aging-report',
   imports: [MoneyPipe, RouterLink],
@@ -73,6 +73,18 @@ const BUCKETS: BucketView[] = [
           <dd data-testid="aging-report-total">{{ r.total | money: r.homeCurrency }}</dd>
         </dl>
         <p data-testid="aging-report-asof">As at {{ r.asOf }}</p>
+        <p>
+          <button type="button" data-testid="aging-export" [disabled]="exporting()" (click)="export()">
+            Export aging report
+          </button>
+        </p>
+        <div role="status">
+          @if (exportError()) {
+            <p data-testid="aging-export-error">Could not export the aging report.</p>
+          } @else if (exported()) {
+            <p data-testid="export-confirm">Exported the aging report to {{ exportFilename }}.</p>
+          }
+        </div>
 
         <div id="aging-detail" aria-live="polite">
           @if (selectedView(); as b) {
@@ -132,6 +144,29 @@ export class AgingReportPanel {
 
   protected readonly selectedView = computed(() => BUCKETS.find((b) => b.bucket === this.selected()));
 
+  protected readonly exportFilename = 'aging-report.csv';
+  protected readonly exporting = signal(false);
+  protected readonly exported = signal(false);
+  protected readonly exportError = signal(false);
+
+  /** Downloads the aging report as a CSV file and confirms it. */
+  protected export(): void {
+    this.exporting.set(true);
+    this.exported.set(false);
+    this.exportError.set(false);
+    this.service.exportAgingReport().subscribe({
+      next: (csv) => {
+        download(csv, this.exportFilename);
+        this.exported.set(true);
+        this.exporting.set(false);
+      },
+      error: () => {
+        this.exportError.set(true);
+        this.exporting.set(false);
+      },
+    });
+  }
+
   protected linesFor(r: AgingReport, bucket: AgingBucket) {
     return r.invoices.filter((line) => line.bucket === bucket);
   }
@@ -139,4 +174,14 @@ export class AgingReportPanel {
   protected toggle(bucket: AgingBucket): void {
     this.selected.update((current) => (current === bucket ? null : bucket));
   }
+}
+
+/** Saves the text as a file through the browser. */
+function download(text: string, filename: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url));
 }
