@@ -1,0 +1,481 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 0e3babb..3bde2ea 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -3,6 +3,7 @@ import { MoneyPipe } from '../currencies/money.pipe';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { Router, RouterLink } from '@angular/router';
+ import { ClientContacts } from '../contacts/client-contacts';
++import { ClientContactHistory } from '../contact-history/client-contact-history';
+ import { Contact } from '../contacts/contact.service';
+ import { ClientCredit } from '../credit/client-credit';
+ import { ClientAging } from '../invoices/client-aging';
+@@ -16,10 +17,10 @@ import { ClientExport } from './client-export';
+ import { ClientMerge } from './client-merge';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, preferred language, account manager, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the projects being done for them, and a form to merge this client into a duplicate of it.
++// A single client's page: their name, email, phone number, preferred language, account manager, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientContacts, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
++  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -160,6 +161,7 @@ import { Client, ClientService } from './client.service';
+         (contactAdded)="contactAdded()"
+         (primaryChanged)="primaryChanged($event)"
+       />
++      <app-client-contact-history [clientId]="clientId()" />
+       <app-client-projects [clientId]="clientId()" />
+       <app-client-merge [client]="c" (merged)="clientMerged($event)" />
+     }
+diff --git a/src/main/frontend/src/app/features/contact-history/client-contact-history.ts b/src/main/frontend/src/app/features/contact-history/client-contact-history.ts
+new file mode 100644
+index 0000000..f97a65c
+--- /dev/null
++++ b/src/main/frontend/src/app/features/contact-history/client-contact-history.ts
+@@ -0,0 +1,119 @@
++import { Component, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { ContactHistoryService } from './contact-history.service';
++
++// The history of when a client was contacted, newest first, with a form to record another contact.
++@Component({
++  selector: 'app-client-contact-history',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="contact-history-heading" data-testid="contact-history">
++      <h2 id="contact-history-heading">Contact history</h2>
++      @if (history.error()) {
++        <p role="alert" data-testid="contact-history-error">Could not load the contact history.</p>
++      } @else if (history.hasValue()) {
++        @if (history.value().length === 0) {
++          <p data-testid="contact-history-empty">No contact recorded yet.</p>
++        } @else {
++          <ul data-testid="contact-history-list">
++            @for (h of history.value(); track h.id) {
++              <li [attr.data-testid]="'contact-history-row-' + h.id">
++                <span data-testid="contact-history-date">{{ h.date }}</span>:
++                <span data-testid="contact-history-note">{{ h.note }}</span>
++              </li>
++            }
++          </ul>
++        }
++      }
++      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="contact-history-form" novalidate>
++        <div>
++          <label for="contact-history-date">Date contacted</label>
++          <input
++            id="contact-history-date"
++            type="date"
++            formControlName="date"
++            data-testid="contact-history-form-date"
++            [attr.aria-invalid]="invalid('date')"
++            [attr.aria-describedby]="invalid('date') ? 'contact-history-date-error' : null"
++          />
++          @if (invalid('date')) {
++            <p id="contact-history-date-error" role="alert" data-testid="contact-history-form-date-error">
++              Enter the date of the contact.
++            </p>
++          }
++        </div>
++        <div>
++          <label for="contact-history-note">Note</label>
++          <input
++            id="contact-history-note"
++            type="text"
++            maxlength="1000"
++            formControlName="note"
++            data-testid="contact-history-form-note"
++            [attr.aria-invalid]="invalid('note')"
++            [attr.aria-describedby]="invalid('note') ? 'contact-history-note-error' : null"
++          />
++          @if (invalid('note')) {
++            <p id="contact-history-note-error" role="alert" data-testid="contact-history-form-note-error">
++              Enter a note about the contact.
++            </p>
++          }
++        </div>
++        <button type="submit" data-testid="contact-history-form-submit" [disabled]="saving()">Record contact</button>
++        @if (saveError()) {
++          <p role="alert" data-testid="contact-history-form-error">{{ saveError() }}</p>
++        }
++        @if (saved()) {
++          <p role="status" data-testid="contact-history-form-recorded">Contact recorded.</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class ClientContactHistory {
++  private readonly service = inject(ContactHistoryService);
++
++  readonly clientId = input.required<number>();
++
++  protected readonly history = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.service.list(params),
++  });
++
++  protected readonly saving = signal(false);
++  protected readonly saved = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    date: ['', [Validators.required]],
++    note: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(1000)]],
++  });
++
++  protected invalid(name: 'date' | 'note'): boolean {
++    const control = this.form.controls[name];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    this.saveError.set(null);
++    this.saved.set(false);
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.service.record(this.clientId(), this.form.getRawValue()).subscribe({
++      next: () => {
++        this.saving.set(false);
++        this.saved.set(true);
++        this.form.reset();
++        this.history.reload();
++      },
++      error: () => {
++        this.saving.set(false);
++        this.saveError.set('Could not record the contact. Please try again.');
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/contact-history/contact-history.service.ts b/src/main/frontend/src/app/features/contact-history/contact-history.service.ts
+new file mode 100644
+index 0000000..f8edfc4
+--- /dev/null
++++ b/src/main/frontend/src/app/features/contact-history/contact-history.service.ts
+@@ -0,0 +1,28 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++/** One time a client was contacted. */
++export interface ContactHistoryEntry {
++  id: number;
++  clientId: number;
++  /** ISO date (yyyy-MM-dd) of the contact. */
++  date: string;
++  note: string;
++}
++
++export type NewContactHistoryEntry = Pick<ContactHistoryEntry, 'date' | 'note'>;
++
++@Injectable({ providedIn: 'root' })
++export class ContactHistoryService {
++  private readonly http = inject(HttpClient);
++
++  /** When the client was contacted, newest first. */
++  list(clientId: number): Observable<ContactHistoryEntry[]> {
++    return this.http.get<ContactHistoryEntry[]>(`/api/clients/${clientId}/contact-history`);
++  }
++
++  record(clientId: number, entry: NewContactHistoryEntry): Observable<ContactHistoryEntry> {
++    return this.http.post<ContactHistoryEntry>(`/api/clients/${clientId}/contact-history`, entry);
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 50cbd6c..5521258 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -61,6 +61,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE task_checklist_item RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE contact_history RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
+@@ -121,6 +122,12 @@ public class TestSupportController {
+                     decimal(c.get("defaultDiscountPct")),
+                     c.get("creditLimit") == null ? null : decimal(c.get("creditLimit")),
+                     c.get("paymentTermsDays") == null ? null : ((Number) c.get("paymentTermsDays")).intValue());
++            // When the client was contacted, each with a date and a note.
++            for (Map<String, Object> h : rows(c, "contactHistory")) {
++                jdbc.update("INSERT INTO contact_history (id, client_id, contact_date, note) VALUES (?, ?, ?, ?)",
++                        ((Number) h.get("id")).longValue(), ((Number) c.get("id")).longValue(),
++                        LocalDate.parse(h.get("date").toString()), h.get("note"));
++            }
+         }
+         for (Map<String, Object> c : rows(fixture, "contacts")) {
+             jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
+@@ -390,6 +397,7 @@ public class TestSupportController {
+         // Continue generated ids after the explicitly seeded ones.
+         restartIdentity("client");
+         restartIdentity("contact");
++        restartIdentity("contact_history");
+         restartIdentity("project");
+         restartIdentity("invoice");
+         restartIdentity("invoice_line_item");
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+index a264f97..2afc093 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+@@ -31,6 +31,11 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+     @Query("UPDATE Contact c SET c.client.id = :to WHERE c.client.id = :from")
+     int moveContacts(Long from, Long to);
+ 
++    /** Moves the whole contact history of one client over to another. */
++    @Modifying(flushAutomatically = true, clearAutomatically = true)
++    @Query("UPDATE ContactHistoryEntry h SET h.clientId = :to WHERE h.clientId = :from")
++    int moveContactHistory(Long from, Long to);
++
+     /** Moves every lump payment of one client over to another. */
+     @Modifying(flushAutomatically = true, clearAutomatically = true)
+     @Query("UPDATE ClientPayment p SET p.clientId = :to WHERE p.clientId = :from")
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index eb36345..b6f9d32 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -216,7 +216,7 @@ public class ClientService {
+ 
+     /**
+      * Merges a duplicate client into the client it duplicates: the duplicate's projects (and so their
+-     * invoices), contacts, payments, deposits and refunds all move to the kept client, which takes the
++     * invoices), contacts, contact history, payments, deposits and refunds all move to the kept client, which takes the
+      * duplicate's main contact if it has none of its own, and the duplicate is then removed. Both must
+      * be billed in the same currency, so no money changes currency. Recorded in the audit log.
+      */
+@@ -238,6 +238,7 @@ public class ClientService {
+         source.setPrimaryContact(null);
+         clients.moveProjects(id, targetId);
+         clients.moveContacts(id, targetId);
++        clients.moveContactHistory(id, targetId);
+         clients.moveClientPayments(id, targetId);
+         clients.moveDeposits(id, targetId);
+         clients.moveDepositApplications(id, targetId);
+diff --git a/src/main/java/net/officefloor/hq/app/contacthistory/ClientContactHistoryController.java b/src/main/java/net/officefloor/hq/app/contacthistory/ClientContactHistoryController.java
+new file mode 100644
+index 0000000..1416287
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/contacthistory/ClientContactHistoryController.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app.contacthistory;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The history of when a client was contacted. */
++@RestController
++@RequestMapping("/api/clients/{clientId}/contact-history")
++public class ClientContactHistoryController {
++
++    private final ContactHistoryService service;
++
++    public ClientContactHistoryController(ContactHistoryService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<ContactHistoryResponse> list(@PathVariable Long clientId) {
++        return service.listForClient(clientId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public ContactHistoryResponse record(@PathVariable Long clientId,
++            @Valid @RequestBody ContactHistoryRequest request) {
++        return service.record(clientId, request);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryEntry.java b/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryEntry.java
+new file mode 100644
+index 0000000..5c2a002
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryEntry.java
+@@ -0,0 +1,53 @@
++package net.officefloor.hq.app.contacthistory;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** One time a client was contacted: the date and a note of what it was about. */
++@Entity
++@Table(name = "contact_history")
++public class ContactHistoryEntry {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "client_id", nullable = false)
++    private Long clientId;
++
++    @Column(name = "contact_date", nullable = false)
++    private LocalDate date;
++
++    @Column(nullable = false)
++    private String note;
++
++    protected ContactHistoryEntry() {
++    }
++
++    public ContactHistoryEntry(Long clientId, LocalDate date, String note) {
++        this.clientId = clientId;
++        this.date = date;
++        this.note = note;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public LocalDate getDate() {
++        return date;
++    }
++
++    public String getNote() {
++        return note;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryRepository.java b/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryRepository.java
+new file mode 100644
+index 0000000..a1cbac2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.contacthistory;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface ContactHistoryRepository extends JpaRepository<ContactHistoryEntry, Long> {
++
++    /** A client's contact history, newest first; same-day entries latest-recorded first. */
++    List<ContactHistoryEntry> findByClientIdOrderByDateDescIdDesc(Long clientId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryRequest.java b/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryRequest.java
+new file mode 100644
+index 0000000..059e21f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryRequest.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.contacthistory;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++
++/** Payload to record that a client was contacted. */
++public record ContactHistoryRequest(@NotNull LocalDate date, @NotBlank @Size(max = 1000) String note) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryResponse.java b/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryResponse.java
+new file mode 100644
+index 0000000..d2eebd5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryResponse.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.contacthistory;
++
++import java.time.LocalDate;
++
++/** One entry in a client's contact history. */
++public record ContactHistoryResponse(Long id, Long clientId, LocalDate date, String note) {
++
++    static ContactHistoryResponse from(ContactHistoryEntry entry) {
++        return new ContactHistoryResponse(entry.getId(), entry.getClientId(), entry.getDate(), entry.getNote());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryService.java b/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryService.java
+new file mode 100644
+index 0000000..37eae13
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/contacthistory/ContactHistoryService.java
+@@ -0,0 +1,47 @@
++package net.officefloor.hq.app.contacthistory;
++
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.client.ClientRepository;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class ContactHistoryService {
++
++    private final ContactHistoryRepository history;
++    private final ClientRepository clients;
++    private final Audit audit;
++
++    public ContactHistoryService(ContactHistoryRepository history, ClientRepository clients, Audit audit) {
++        this.history = history;
++        this.clients = clients;
++        this.audit = audit;
++    }
++
++    /** When the client was contacted, newest first. */
++    @Transactional(readOnly = true)
++    public List<ContactHistoryResponse> listForClient(Long clientId) {
++        requireClient(clientId);
++        return history.findByClientIdOrderByDateDescIdDesc(clientId).stream()
++                .map(ContactHistoryResponse::from).toList();
++    }
++
++    /** Records that the client was contacted, noting it in the audit log. */
++    @Transactional
++    public ContactHistoryResponse record(Long clientId, ContactHistoryRequest request) {
++        requireClient(clientId);
++        ContactHistoryEntry saved = history.saveAndFlush(
++                new ContactHistoryEntry(clientId, request.date(), request.note().trim()));
++        audit.record("CLIENT_CONTACT_RECORDED id=" + clientId + " entryId=" + saved.getId());
++        return ContactHistoryResponse.from(saved);
++    }
++
++    private void requireClient(Long clientId) {
++        if (!clients.existsById(clientId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
++        }
++    }
++}
+diff --git a/src/main/resources/db/migration/V86__client_contact_history.sql b/src/main/resources/db/migration/V86__client_contact_history.sql
+new file mode 100644
+index 0000000..15e732f
+--- /dev/null
++++ b/src/main/resources/db/migration/V86__client_contact_history.sql
+@@ -0,0 +1,10 @@
++-- A record of each time a client was contacted: when, and a short note of what it was about.
++CREATE TABLE contact_history (
++    id           BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    client_id    BIGINT        NOT NULL,
++    contact_date DATE          NOT NULL,
++    note         VARCHAR(1000) NOT NULL,
++    CONSTRAINT contact_history_client_fk FOREIGN KEY (client_id) REFERENCES client (id)
++);
++
++CREATE INDEX contact_history_client_idx ON contact_history (client_id, contact_date);
