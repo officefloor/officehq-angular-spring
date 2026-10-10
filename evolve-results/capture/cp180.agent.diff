@@ -1,0 +1,79 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 0c45517..53335ae 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -9,7 +9,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
+ // counted), plus one grand total of it in the home currency with each invoice converted at the
+ // exchange rate from its own issue date, and how many of those sent
+-// invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees and
++// invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+ // converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. A tax summary for a chosen date range can be opened from here.
+ @Component({
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 47754d0..3e3efe5 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -325,18 +325,19 @@ public class TestSupportController {
+             // The retention may already have been released ("retentionReleased"), making it due.
+             boolean retentionReleased = Boolean.TRUE.equals(i.get("retentionReleased"));
+             // Part of the invoice may already have been written off as bad debt ("writeOff"), so it is no longer owed.
+-            // It may carry the client's purchase-order number ("poNumber").
++            // It may carry the client's purchase-order number ("poNumber"), and may be disputed by the client ("disputed").
+             BigDecimal writeOff = decimal(i.get("writeOff"));
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+-                    + " early_payment_pct, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency, po_number)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " early_payment_pct, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency, po_number, disputed)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
+                     surcharge, taxInclusive, taxExempt,
+                     earlyPaymentPct, rebatePct, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
+                     retentionReleased, writeOff,
+                     i.get("currency") == null ? null : i.get("currency").toString(),
+-                    i.get("poNumber") == null ? null : i.get("poNumber").toString());
++                    i.get("poNumber") == null ? null : i.get("poNumber").toString(),
++                    Boolean.TRUE.equals(i.get("disputed")));
+             for (Map<String, Object> d : discounts) {
+                 if (d.get("id") != null) {
+                     jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount, discount_cap) VALUES (?, ?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index fcdebae..b8d5e23 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -69,7 +69,7 @@ public class DashboardService {
+ 
+     /**
+      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
+-     * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices are past their due date and
++     * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices (not disputed) are past their due date and
+      * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date.
+      */
+     @Transactional(readOnly = true)
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+index 76d5176..5d04c6e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -64,13 +64,16 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+     @Query("SELECT i FROM Invoice i JOIN FETCH i.project p JOIN FETCH p.client WHERE i.status IN :statuses ORDER BY i.id")
+     List<Invoice> findByStatusInWithClient(Collection<InvoiceStatus> statuses);
+ 
+-    /** Invoices with any of the given statuses whose due date is before the given date, with their project and client. */
++    /**
++     * Invoices with any of the given statuses whose due date is before the given date, with their project and client.
++     * A disputed invoice is left out: it still counts as owed but is kept out of the overdue chase.
++     */
+     @Query("SELECT i FROM Invoice i JOIN FETCH i.project p JOIN FETCH p.client"
+-            + " WHERE i.status IN :statuses AND i.dueDate < :date ORDER BY i.id")
++            + " WHERE i.status IN :statuses AND i.dueDate < :date AND i.disputed = false ORDER BY i.id")
+     List<Invoice> findByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);
+ 
+-    /** Number of invoices with any of the given statuses whose due date is before the given date. */
+-    @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status IN :statuses AND i.dueDate < :date")
++    /** Number of invoices with any of the given statuses whose due date is before the given date, leaving out disputed ones. */
++    @Query("SELECT COUNT(i) FROM Invoice i WHERE i.status IN :statuses AND i.dueDate < :date AND i.disputed = false")
+     long countByStatusInAndDueDateBefore(Collection<InvoiceStatus> statuses, LocalDate date);
+ 
+     /** Invoices with any of the given statuses issued on or between the given dates, with their project and client. */
