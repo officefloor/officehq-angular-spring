@@ -21,7 +21,7 @@ import { ClientExport } from './client-export';
 import { ClientMerge } from './client-merge';
 import { Client, ClientService } from './client.service';
 
-// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement (and to the full account statement), how old their debt is, a one-screen financial summary (billed, paid, outstanding and overdue), a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them (net of credits and write-offs), their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
+// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, the total they still owe (the same figure as the foot of their statement), a link to their statement (and to the full account statement), how old their debt is, a one-screen financial summary (billed, paid, outstanding and overdue), a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them (net of credits and write-offs), their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
 @Component({
   selector: 'app-client-detail',
   imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, Notes, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging, ClientFinancialSummaryPanel],
@@ -136,6 +136,9 @@ import { Client, ClientService } from './client.service';
           </li>
         </ul>
       }
+      <p>
+        Total owed: <strong data-testid="client-outstanding-total">{{ c.outstanding | money: c.currency }}</strong>
+      </p>
       <p>
         <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="client-statement-open">View statement</a>
       </p>
