@@ -1,0 +1,94 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 444007e..0db674b 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -21,7 +21,7 @@ import { ClientExport } from './client-export';
+ import { ClientMerge } from './client-merge';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a one-screen financial summary (billed, paid, outstanding and overdue), a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them (net of credits and write-offs), their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
++// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement (and to the full account statement), how old their debt is, a one-screen financial summary (billed, paid, outstanding and overdue), a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them (net of credits and write-offs), their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+   imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, Notes, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging, ClientFinancialSummaryPanel],
+@@ -139,6 +139,9 @@ import { Client, ClientService } from './client.service';
+       <p>
+         <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="client-statement-open">View statement</a>
+       </p>
++      <p>
++        <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="statement-print-view">Full account statement</a>
++      </p>
+       <p>
+         <button
+           type="button"
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index ee9cd12..9564f50 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -16,7 +16,7 @@ import { StatementEmailAction } from './statement-email';
+ // (the server rounds each one before adding them up), so the totals match the invoices to the cent. At the foot the total owed is also given in the home currency.
+ // It opens with the running account: invoices, payments, credit notes, deposits and refunds in date order with the
+ // balance owed after each.
+-// It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
++// It is laid out to print cleanly: a summary of what was invoiced, what was paid (and how much of that was credit notes) and the grand total owed,
+ // with the app's navigation and the page's controls left off the printed copy.
+ // Under the summary, the statement can be emailed to the client, with a note kept of each time it was sent.
+ // Below that, the balance owed is broken down by age as at today: current (up to 30 days overdue), 31 to 60
+@@ -116,6 +116,8 @@ import { StatementEmailAction } from './statement-email';
+               <dd data-testid="client-statement-tax-total">{{ s.tax | money: s.currency }}</dd>
+               <dt>Less paid</dt>
+               <dd data-testid="statement-total-paid">{{ s.paid | money: s.currency }}</dd>
++              <dt>Of which credited</dt>
++              <dd data-testid="statement-credits-total">{{ s.credited | money: s.currency }}</dd>
+               <dt class="statement-grand-total">Grand total owed</dt>
+               <dd class="statement-grand-total" data-testid="statement-grand-total">{{ s.outstanding | money: s.currency }}</dd>
+             </dl>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 16d20d2..39aea55 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -111,6 +111,8 @@ export interface ClientStatement {
+   homeCurrency: CurrencyCode;
+   /** The total still owed converted into the home currency, each invoice at its issue-date rate; null without a rate. */
+   homeOutstanding: number | null;
++  /** The total of the credit notes on the account. */
++  credited: number;
+ }
+ 
+ /** What a client owed as at the end of a chosen day (negative when in credit). */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+index acea25a..e47f58d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -20,11 +20,11 @@ import net.officefloor.hq.app.currency.MoneyRule;
+  * levy) on each job and across the whole statement, again leaving out drafts and void invoices. All of it
+  * is in the client's currency, with the total still owed also converted into the home currency at the foot (each
+  * invoice at the rate on its issue date; null when a rate is missing). Finally it gives the running account: every invoice, payment, credit note, deposit and
+- * refund in date order, each with the balance owed once it is counted.
++ * refund in date order, each with the balance owed once it is counted, and the total of the credit notes on it.
+  */
+ public record ClientStatementResponse(Long clientId, String clientName, String currency, List<Line> invoices, List<Job> jobs,
+         BigDecimal invoiced, BigDecimal paid, BigDecimal outstanding, BigDecimal tax, List<StatementEntry> entries,
+-        String homeCurrency, BigDecimal homeOutstanding) {
++        String homeCurrency, BigDecimal homeOutstanding, BigDecimal credited) {
+ 
+     static ClientStatementResponse from(Long clientId, String clientName, String currency, List<Line> invoices,
+             List<StatementEntry> entries, String homeCurrency, Function<Line, Optional<BigDecimal>> toHome) {
+@@ -37,7 +37,16 @@ public record ClientStatementResponse(Long clientId, String clientName, String c
+         BigDecimal invoiced = sum(invoices, Line::amount);
+         return new ClientStatementResponse(clientId, clientName, currency, invoices, jobs, invoiced,
+                 invoiced.subtract(outstanding), outstanding, sum(invoices, Line::tax), runningBalance(entries), homeCurrency,
+-                homeOwed(invoices, toHome));
++                homeOwed(invoices, toHome), credited(entries));
++    }
++
++    /** The total of the credit notes on the account. */
++    private static BigDecimal credited(List<StatementEntry> entries) {
++        return entries.stream()
++                .filter(e -> e.kind() == StatementEntry.Kind.CREDIT_NOTE)
++                .map(StatementEntry::credit)
++                .reduce(BigDecimal.ZERO, BigDecimal::add)
++                .setScale(2, RoundingMode.HALF_UP);
+     }
+ 
+     /** What is left to pay across the owed invoices, each converted into the home currency; null if any cannot be. */
