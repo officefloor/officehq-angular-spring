@@ -1,0 +1,572 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 3bde2ea..cc4dfc2 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -13,6 +13,7 @@ import { ClientProjects } from '../projects/client-projects';
+ import { ClientCreditLimit } from './client-credit-limit';
+ import { ClientCurrency } from './client-currency';
+ import { ClientPaymentTerms } from './client-payment-terms';
++import { ClientEarlyPaymentWindow } from './client-early-payment-window';
+ import { ClientExport } from './client-export';
+ import { ClientMerge } from './client-merge';
+ import { Client, ClientService } from './client.service';
+@@ -20,7 +21,7 @@ import { Client, ClientService } from './client.service';
+ // A single client's page: their name, email, phone number, preferred language, account manager, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
++  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -103,6 +104,7 @@ import { Client, ClientService } from './client.service';
+       <app-client-currency [client]="c" (changed)="currencyChanged($event)" />
+       <app-client-credit-limit [client]="c" (changed)="creditLimitChanged($event)" />
+       <app-client-payment-terms [client]="c" (changed)="paymentTermsChanged($event)" />
++      <app-client-early-payment-window [client]="c" (changed)="paymentTermsChanged($event)" />
+       @if (summary.hasValue()) {
+         <ul class="client-badges" aria-label="At a glance" data-testid="client-badges">
+           <li>
+diff --git a/src/main/frontend/src/app/features/clients/client-early-payment-window.ts b/src/main/frontend/src/app/features/clients/client-early-payment-window.ts
+new file mode 100644
+index 0000000..76978b2
+--- /dev/null
++++ b/src/main/frontend/src/app/features/clients/client-early-payment-window.ts
+@@ -0,0 +1,83 @@
++import { Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
++import { Client, ClientService } from './client.service';
++
++// Part of a client's payment terms: the number of days after issue within which paying an invoice earns its
++// early-payment discount, with a form to set it (within the payment terms) or remove it.
++@Component({
++  selector: 'app-client-early-payment-window',
++  template: `
++    <p>
++      Early-payment window:
++      @if (client().earlyPaymentWindowDays !== null) {
++        <span data-testid="client-early-payment-window">{{ client().earlyPaymentWindowDays }} days</span>
++      } @else {
++        <span data-testid="client-early-payment-window-none">None agreed</span>
++      }
++    </p>
++    @if (maxDays() !== null) {
++      <form (submit)="$event.preventDefault(); save()">
++        <label for="client-early-payment-window-input">Early-payment window (days, blank for none)</label>
++        <input
++          id="client-early-payment-window-input"
++          type="number"
++          min="0"
++          [max]="maxDays()"
++          step="1"
++          data-testid="client-early-payment-window-input"
++          [value]="days()"
++          (input)="days.set($any($event.target).value)"
++          [attr.aria-invalid]="invalid()"
++          [attr.aria-describedby]="invalid() ? 'client-early-payment-window-invalid' : null"
++        />
++        <button type="submit" data-testid="client-early-payment-window-save" [disabled]="saving()">Save early-payment window</button>
++        @if (invalid()) {
++          <p id="client-early-payment-window-invalid" role="alert" data-testid="client-early-payment-window-invalid">
++            The early-payment window must be a whole number of days from 0 to {{ maxDays() }}, within the payment terms.
++          </p>
++        }
++        @if (saveError()) {
++          <p role="alert" data-testid="client-early-payment-window-error">{{ saveError() }}</p>
++        }
++      </form>
++    } @else {
++      <p data-testid="client-early-payment-window-needs-terms">Agree payment terms to set an early-payment window.</p>
++    }
++  `,
++})
++export class ClientEarlyPaymentWindow {
++  private readonly service = inject(ClientService);
++
++  readonly client = input.required<Client>();
++  /** Emits the client once their early-payment window has been saved. */
++  readonly changed = output<Client>();
++
++  /** The longest window allowed: the client's payment terms; null when they have none. */
++  protected readonly maxDays = computed(() => this.client().paymentTermsDays);
++  protected readonly days = linkedSignal(() => this.client().earlyPaymentWindowDays?.toString() ?? '');
++  protected readonly invalid = signal(false);
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected save(): void {
++    const max = this.maxDays();
++    const text = this.days().toString().trim();
++    const days = text === '' ? null : Number(text);
++    if (max === null || (days !== null && (!Number.isInteger(days) || days < 0 || days > max))) {
++      this.invalid.set(true);
++      return;
++    }
++    this.invalid.set(false);
++    this.saveError.set(null);
++    this.saving.set(true);
++    this.service.changeEarlyPaymentWindow(this.client().id, days).subscribe({
++      next: (client) => {
++        this.saving.set(false);
++        this.changed.emit(client);
++      },
++      error: () => {
++        this.saving.set(false);
++        this.saveError.set('Could not save the early-payment window. Please try again.');
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index e3dcc9e..6fd83cf 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -36,6 +36,8 @@ export interface Client {
+   creditLimit: number | null;
+   /** The number of days the client has to pay an invoice (e.g. 30 for net 30); null when no terms are agreed. */
+   paymentTermsDays: number | null;
++  /** Part of the payment terms: the days after issue within which paying earns an invoice's early-payment discount; null when not agreed. */
++  earlyPaymentWindowDays: number | null;
+   /** What is left to pay on the client's sent, not yet fully paid invoices, in their currency. */
+   outstanding: number;
+ }
+@@ -47,7 +49,7 @@ export interface ClientSummary {
+   lifetimeBilled: number;
+ }
+ 
+-export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'outstanding'>;
++export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding'>;
+ 
+ /** Where a client's contact details file is downloaded from. */
+ export function exportUrl(id: number): string {
+@@ -97,6 +99,11 @@ export class ClientService {
+     return this.http.put<Client>(`/api/clients/${id}/payment-terms`, { paymentTermsDays });
+   }
+ 
++  /** Sets the early-payment window in the client's payment terms; null removes it. */
++  changeEarlyPaymentWindow(id: number, earlyPaymentWindowDays: number | null): Observable<Client> {
++    return this.http.put<Client>(`/api/clients/${id}/early-payment-window`, { earlyPaymentWindowDays });
++  }
++
+   /** Merges the client into another one, which keeps everything the client had; the client is removed. */
+   merge(id: number, targetId: number): Observable<Client> {
+     return this.http.post<Client>(`/api/clients/${id}/merge`, { targetId });
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 443fd68..ce5b54c 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -25,7 +25,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // When the net total comes out under the invoice's minimum charge, the minimum is billed instead and marked as applied.
+ // A foreign invoice also shows its original amount in the client's currency alongside its total in the home currency, converted at the exchange rate from its issue date.
+ // It also shows the total savings: every line discount and invoice discount added together.
+-// When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the set number of days.
++// When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the client's early-payment window.
+ // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+@@ -726,25 +726,16 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+               </p>
+             }
+           </div>
+-          <div>
+-            <label for="early-pay-days">Paid within this many days of issue</label>
+-            <input
+-              id="early-pay-days"
+-              type="number"
+-              inputmode="numeric"
+-              min="0"
+-              step="1"
+-              formControlName="earlyPaymentDays"
+-              data-testid="early-pay-form-days"
+-              [attr.aria-invalid]="earlyPayInvalid('earlyPaymentDays')"
+-              [attr.aria-describedby]="earlyPayInvalid('earlyPaymentDays') ? 'early-pay-days-error' : null"
+-            />
+-            @if (earlyPayInvalid('earlyPaymentDays')) {
+-              <p id="early-pay-days-error" role="alert" data-testid="early-pay-form-days-error">
+-                Enter a whole number of days from 0 to 3650.
+-              </p>
++          <p>
++            Paid within
++            @if (inv.earlyPaymentDays > 0) {
++              <span data-testid="early-pay-form-days">{{ inv.earlyPaymentDays }}</span> days of issue, the client's
++              early-payment window.
++            } @else {
++              the client's early-payment window, which is not agreed yet:
++              <span data-testid="early-pay-form-days-none">set it in their payment terms</span> to offer the discount.
+             }
+-          </div>
++          </p>
+           <button type="submit" data-testid="early-pay-form-submit" [disabled]="earlyPaySaving()">Apply early-payment discount</button>
+           @if (earlyPayError()) {
+             <p role="alert" data-testid="early-pay-form-error">{{ earlyPayError() }}</p>
+@@ -1359,7 +1350,6 @@ export class InvoiceDetailPage {
+ 
+   protected readonly earlyPayForm = this.fb.group({
+     earlyPaymentPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
+-    earlyPaymentDays: ['', [Validators.required, Validators.min(0), Validators.max(3650), Validators.pattern(/^\d+$/)]],
+   });
+ 
+   // Starts the early-payment fields from the invoice's current offer whenever the invoice loads.
+@@ -1368,12 +1358,11 @@ export class InvoiceDetailPage {
+       const inv = this.invoice.value();
+       this.earlyPayForm.setValue({
+         earlyPaymentPct: String(inv.earlyPaymentPct),
+-        earlyPaymentDays: String(inv.earlyPaymentDays),
+       });
+     }
+   });
+ 
+-  protected earlyPayInvalid(name: 'earlyPaymentPct' | 'earlyPaymentDays'): boolean {
++  protected earlyPayInvalid(name: 'earlyPaymentPct'): boolean {
+     const control = this.earlyPayForm.controls[name];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -1385,9 +1374,9 @@ export class InvoiceDetailPage {
+     }
+     this.earlyPaySaving.set(true);
+     this.earlyPayError.set(null);
+-    const { earlyPaymentPct, earlyPaymentDays } = this.earlyPayForm.getRawValue();
++    const { earlyPaymentPct } = this.earlyPayForm.getRawValue();
+     this.service
+-      .applyEarlyPayment(this.projectIdNumber(), Number(this.invoiceId()), Number(earlyPaymentPct), Number(earlyPaymentDays))
++      .applyEarlyPayment(this.projectIdNumber(), Number(this.invoiceId()), Number(earlyPaymentPct))
+       .subscribe({
+         next: (updated) => {
+           this.invoice.set(updated);
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 6dd830e..293ab14 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -189,7 +189,7 @@ export interface InvoiceDetail extends Invoice {
+   effectiveTaxPct: number;
+   /** The percentage taken off when paid early; zero when no early-payment discount is offered. */
+   earlyPaymentPct: number;
+-  /** How many days after being issued it must be paid within to get the early-payment discount. */
++  /** How many days after being issued it must be paid within to get the early-payment discount: the client's early-payment window; zero when they have none. */
+   earlyPaymentDays: number;
+   /** The last day to pay to get the early-payment discount; null when none is offered. */
+   earlyPaymentBy: string | null;
+@@ -359,11 +359,10 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/minimum-charge`, { minimumCharge });
+   }
+ 
+-  /** Sets the early-payment discount offered on a draft invoice; zero for either removes the offer. */
+-  applyEarlyPayment(projectId: number, invoiceId: number, earlyPaymentPct: number, earlyPaymentDays: number): Observable<InvoiceDetail> {
++  /** Sets the early-payment discount offered on a draft invoice, earned within the client's early-payment window; zero removes the offer. */
++  applyEarlyPayment(projectId: number, invoiceId: number, earlyPaymentPct: number): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/early-payment`, {
+       earlyPaymentPct,
+-      earlyPaymentDays,
+     });
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index e571b12..6b75f25 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -112,8 +112,8 @@ public class TestSupportController {
+                     r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days, early_payment_window_days)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"), c.get("language"), c.get("accountManager"),
+                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
+                     Boolean.TRUE.equals(c.get("keyAccount")),
+@@ -121,7 +121,9 @@ public class TestSupportController {
+                     c.get("currency") == null ? Currency.DEFAULT : c.get("currency").toString(),
+                     decimal(c.get("defaultDiscountPct")),
+                     c.get("creditLimit") == null ? null : decimal(c.get("creditLimit")),
+-                    c.get("paymentTermsDays") == null ? null : ((Number) c.get("paymentTermsDays")).intValue());
++                    c.get("paymentTermsDays") == null ? null : ((Number) c.get("paymentTermsDays")).intValue(),
++                    // The early-payment window, part of the client's payment terms.
++                    c.get("earlyPaymentWindowDays") == null ? null : ((Number) c.get("earlyPaymentWindowDays")).intValue());
+             // When the client was contacted, each with a date and a note.
+             for (Map<String, Object> h : rows(c, "contactHistory")) {
+                 jdbc.update("INSERT INTO contact_history (id, client_id, contact_date, note) VALUES (?, ?, ?, ?)",
+@@ -310,7 +312,6 @@ public class TestSupportController {
+                     : new BigDecimal(i.get("surcharge").toString());
+             // A minimum charge is billed instead when the net total comes out under it.
+             BigDecimal minimumCharge = decimal(i.get("minimumCharge"));
+-            int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
+             // A settlement rebate offered for paying before the due date is just recorded; it does not change the amount owed.
+             BigDecimal rebatePct = decimal(i.get("rebatePct"));
+             // An invoice may be billed in its own currency ("currency"); without one it is in its client's.
+@@ -325,12 +326,12 @@ public class TestSupportController {
+             // Part of the invoice may already have been written off as bad debt ("writeOff"), so it is no longer owed.
+             BigDecimal writeOff = decimal(i.get("writeOff"));
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+-                    + " early_payment_pct, early_payment_days, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " early_payment_pct, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
+                     surcharge, taxInclusive, taxExempt,
+-                    earlyPaymentPct, earlyPaymentDays, rebatePct, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
++                    earlyPaymentPct, rebatePct, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
+                     retentionReleased, writeOff,
+                     i.get("currency") == null ? null : i.get("currency").toString());
+             for (Map<String, Object> d : discounts) {
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index f79cf22..58609de 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -64,6 +64,12 @@ public class Client {
+     /** The number of days the client has to pay an invoice (e.g. 30 for net 30); none when no terms are agreed. */
+     private Integer paymentTermsDays;
+ 
++    /**
++     * Part of the client's payment terms: the number of days after an invoice is issued within which paying it
++     * earns its early-payment discount; within the payment terms, and none when not agreed.
++     */
++    private Integer earlyPaymentWindowDays;
++
+     /** The currency the client is billed in; all of their money is in it. */
+     @Column(nullable = false)
+     private String currency = Currency.DEFAULT;
+@@ -189,6 +195,14 @@ public class Client {
+         this.paymentTermsDays = paymentTermsDays;
+     }
+ 
++    public Integer getEarlyPaymentWindowDays() {
++        return earlyPaymentWindowDays;
++    }
++
++    public void setEarlyPaymentWindowDays(Integer earlyPaymentWindowDays) {
++        this.earlyPaymentWindowDays = earlyPaymentWindowDays;
++    }
++
+     public String getCurrency() {
+         return currency;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index 279ee44..0b4f2b4 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -78,6 +78,11 @@ public class ClientController {
+         return service.changePaymentTerms(id, request.paymentTermsDays());
+     }
+ 
++    @PutMapping("/{id}/early-payment-window")
++    public ClientResponse changeEarlyPaymentWindow(@PathVariable Long id, @Valid @RequestBody ClientEarlyPaymentWindowRequest request) {
++        return service.changeEarlyPaymentWindow(id, request.earlyPaymentWindowDays());
++    }
++
+     @PostMapping("/{id}/archive")
+     public ClientResponse archive(@PathVariable Long id) {
+         return service.archive(id);
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientEarlyPaymentWindowRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientEarlyPaymentWindowRequest.java
+new file mode 100644
+index 0000000..9fe21d9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientEarlyPaymentWindowRequest.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.client;
++
++import jakarta.validation.constraints.Max;
++import jakarta.validation.constraints.Min;
++
++/**
++ * Payload to set the early-payment window in a client's payment terms: the days after issue within which an invoice
++ * must be paid to earn its early-payment discount; null removes it.
++ */
++public record ClientEarlyPaymentWindowRequest(@Min(0) @Max(365) Integer earlyPaymentWindowDays) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index 0fc3c0f..76c7bb2 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -4,7 +4,7 @@ import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+ public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, String language, String accountManager, boolean taxInclusive, boolean taxExempt, boolean keyAccount, BigDecimal defaultDiscountPct, boolean archived, PrimaryContact primaryContact,
+-        String currency, BigDecimal creditLimit, Integer paymentTermsDays, BigDecimal outstanding) {
++        String currency, BigDecimal creditLimit, Integer paymentTermsDays, Integer earlyPaymentWindowDays, BigDecimal outstanding) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+     public record PrimaryContact(Long id, String name) {
+@@ -15,6 +15,6 @@ public record ClientResponse(Long id, String name, String email, String phone, S
+         Contact primary = client.getPrimaryContact();
+         return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.getLanguage(), client.getAccountManager(), client.isTaxInclusive(), client.isTaxExempt(), client.isKeyAccount(), client.getDefaultDiscountPct(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
+-                client.getCurrency(), client.getCreditLimit(), client.getPaymentTermsDays(), outstanding);
++                client.getCurrency(), client.getCreditLimit(), client.getPaymentTermsDays(), client.getEarlyPaymentWindowDays(), outstanding);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index b6f9d32..92c5a24 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -173,16 +173,50 @@ public class ClientService {
+         return respond(client);
+     }
+ 
+-    /** Sets the number of days a client has to pay an invoice, or removes their payment terms; recorded in the audit log. */
++    /**
++     * Sets the number of days a client has to pay an invoice, or removes their payment terms; recorded in the audit log.
++     * An early-payment window longer than the new terms is cut back to them, and removed along with the terms.
++     */
+     @Transactional
+     public ClientResponse changePaymentTerms(Long id, Integer paymentTermsDays) {
+         Client client = find(id);
+         client.setPaymentTermsDays(paymentTermsDays);
++        Integer window = client.getEarlyPaymentWindowDays();
++        Integer cappedWindow = window == null || paymentTermsDays == null ? null : Math.min(window, paymentTermsDays);
++        client.setEarlyPaymentWindowDays(cappedWindow);
+         clients.flush();
+         audit.record("CLIENT_PAYMENT_TERMS_SET id=" + id + " days=" + (paymentTermsDays == null ? "none" : paymentTermsDays));
++        if (window != null && !window.equals(cappedWindow)) {
++            recordEarlyPaymentWindow(id, cappedWindow);
++        }
++        return respond(client);
++    }
++
++    /**
++     * Sets the early-payment window in a client's payment terms: the days after issue within which an invoice must be
++     * paid to earn its early-payment discount, or removes it; recorded in the audit log. It must lie within the terms.
++     */
++    @Transactional
++    public ClientResponse changeEarlyPaymentWindow(Long id, Integer earlyPaymentWindowDays) {
++        Client client = find(id);
++        if (earlyPaymentWindowDays != null) {
++            if (client.getPaymentTermsDays() == null) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Agree payment terms before an early-payment window");
++            }
++            if (earlyPaymentWindowDays > client.getPaymentTermsDays()) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The early-payment window must be within the payment terms");
++            }
++        }
++        client.setEarlyPaymentWindowDays(earlyPaymentWindowDays);
++        clients.flush();
++        recordEarlyPaymentWindow(id, earlyPaymentWindowDays);
+         return respond(client);
+     }
+ 
++    private void recordEarlyPaymentWindow(Long id, Integer earlyPaymentWindowDays) {
++        audit.record("CLIENT_EARLY_PAYMENT_WINDOW_SET id=" + id + " days=" + (earlyPaymentWindowDays == null ? "none" : earlyPaymentWindowDays));
++    }
++
+     private static ResponseStatusException emailTaken() {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "A client with this email already exists");
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/EarlyPaymentRequest.java b/src/main/java/net/officefloor/hq/app/invoice/EarlyPaymentRequest.java
+index 5ed01d2..9833fe0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/EarlyPaymentRequest.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/EarlyPaymentRequest.java
+@@ -3,16 +3,13 @@ package net.officefloor.hq.app.invoice;
+ import jakarta.validation.constraints.DecimalMax;
+ import jakarta.validation.constraints.DecimalMin;
+ import jakarta.validation.constraints.Digits;
+-import jakarta.validation.constraints.Max;
+-import jakarta.validation.constraints.Min;
+ import jakarta.validation.constraints.NotNull;
+ import java.math.BigDecimal;
+ 
+ /**
+  * Payload to set the early-payment discount offered on a draft invoice: the percentage taken off if it is
+- * paid within the given number of days of being issued; zero for either removes the offer.
++ * paid within the client's early-payment window (part of their payment terms); zero removes the offer.
+  */
+ public record EarlyPaymentRequest(
+-        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal earlyPaymentPct,
+-        @NotNull @Min(0) @Max(3650) Integer earlyPaymentDays) {
++        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal earlyPaymentPct) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 0554a59..1687577 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -92,10 +92,6 @@ public class Invoice {
+     @Column(name = "early_payment_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal earlyPaymentPct = BigDecimal.ZERO.setScale(2);
+ 
+-    /** How many days after being issued the invoice must be paid within to get the early-payment discount. */
+-    @Column(name = "early_payment_days", nullable = false)
+-    private int earlyPaymentDays;
+-
+     /** The percentage of the amount given back when paid before the due date; zero when no rebate is offered. */
+     @Column(name = "rebate_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal rebatePct = BigDecimal.ZERO.setScale(2);
+@@ -371,19 +367,23 @@ public class Invoice {
+         return earlyPaymentPct;
+     }
+ 
+-    /** How many days after being issued the invoice must be paid within to get the early-payment discount. */
++    /**
++     * How many days after being issued the invoice must be paid within to get the early-payment discount:
++     * the early-payment window in its client's payment terms; zero when the client has none.
++     */
+     public int getEarlyPaymentDays() {
+-        return earlyPaymentDays;
++        Integer window = project.getClient().getEarlyPaymentWindowDays();
++        return window != null ? window : 0;
+     }
+ 
+-    /** Whether an early-payment discount is offered: a percentage off when paid within some days. */
++    /** Whether an early-payment discount is offered: a percentage off when paid within the client's early-payment window. */
+     public boolean offersEarlyPayment() {
+-        return earlyPaymentPct.signum() > 0 && earlyPaymentDays > 0;
++        return earlyPaymentPct.signum() > 0 && getEarlyPaymentDays() > 0;
+     }
+ 
+     /** The last day the invoice can be paid to get the early-payment discount; null when none is offered. */
+     public LocalDate getEarlyPaymentBy() {
+-        return offersEarlyPayment() ? issuedDate.plusDays(earlyPaymentDays) : null;
++        return offersEarlyPayment() ? issuedDate.plusDays(getEarlyPaymentDays()) : null;
+     }
+ 
+     /**
+@@ -648,12 +648,11 @@ public class Invoice {
+     }
+ 
+     /**
+-     * Sets the early-payment discount offered on this invoice: the percentage taken off if it is paid
+-     * within the given number of days of being issued. It does not change the amount owed.
++     * Sets the early-payment discount offered on this invoice: the percentage taken off what is owed if it is
++     * paid within its client's early-payment window. It does not change the amount owed.
+      */
+-    public void applyEarlyPayment(BigDecimal earlyPaymentPct, int earlyPaymentDays) {
++    public void applyEarlyPayment(BigDecimal earlyPaymentPct) {
+         this.earlyPaymentPct = earlyPaymentPct.setScale(2, RoundingMode.HALF_UP);
+-        this.earlyPaymentDays = earlyPaymentDays;
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 554ea30..823df4b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -392,7 +392,7 @@ public class InvoiceService {
+     @Transactional
+     public InvoiceDetailResponse applyEarlyPayment(Long projectId, Long invoiceId, EarlyPaymentRequest request) {
+         Invoice invoice = findDraft(projectId, invoiceId);
+-        invoice.applyEarlyPayment(request.earlyPaymentPct(), request.earlyPaymentDays());
++        invoice.applyEarlyPayment(request.earlyPaymentPct());
+         invoices.flush();
+         return detail(invoice);
+     }
+diff --git a/src/main/resources/db/migration/V89__early_payment_window_from_client_terms.sql b/src/main/resources/db/migration/V89__early_payment_window_from_client_terms.sql
+new file mode 100644
+index 0000000..c609db8
+--- /dev/null
++++ b/src/main/resources/db/migration/V89__early_payment_window_from_client_terms.sql
+@@ -0,0 +1,17 @@
++-- The early-payment discount window is now part of a client's payment terms rather than a fixed number of
++-- days set on each invoice: an invoice offering an early-payment discount must be paid within its client's
++-- early-payment window of being issued. The window lies within the client's payment terms, so it needs terms.
++ALTER TABLE client ADD COLUMN early_payment_window_days INTEGER;
++
++-- Carry over the longest window a client's invoices offered, kept within their payment terms.
++UPDATE client c SET early_payment_window_days = (
++    SELECT LEAST(MAX(i.early_payment_days), c.payment_terms_days)
++    FROM invoice i JOIN project p ON p.id = i.project_id
++    WHERE p.client_id = c.id AND i.early_payment_days > 0)
++WHERE c.payment_terms_days IS NOT NULL;
++
++ALTER TABLE client ADD CONSTRAINT client_early_payment_window_within_terms CHECK (early_payment_window_days IS NULL
++    OR (early_payment_window_days BETWEEN 0 AND 365 AND payment_terms_days IS NOT NULL AND early_payment_window_days <= payment_terms_days));
++
++ALTER TABLE invoice DROP CONSTRAINT invoice_early_payment_days_non_negative;
++ALTER TABLE invoice DROP COLUMN early_payment_days;
