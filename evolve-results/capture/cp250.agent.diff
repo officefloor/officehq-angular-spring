@@ -1,0 +1,253 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 5dc1b57..3c9f090 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -236,6 +236,23 @@ export interface AgingReportLine {
+   amount: number;
+ }
+ 
++/** What one client still owes, counted by the same rule as the dashboard's outstanding figure. */
++export interface ReconciliationClient {
++  id: number;
++  name: string;
++  balance: number;
++}
++
++/** Every client's balance and their total, checked against the dashboard's outstanding figure. */
++export interface Reconciliation {
++  currency: CurrencyCode;
++  clients: ReconciliationClient[];
++  total: number;
++  outstanding: number;
++  difference: number;
++  balanced: boolean;
++}
++
+ /** What was overdue at the close of one month (as at today for the current month), in the home currency. */
+ export interface OverdueTrendMonth {
+   /** The month as yyyy-MM. */
+@@ -291,6 +308,10 @@ export class DashboardService {
+     return this.http.get<AgingReport>('/api/dashboard/aging-report');
+   }
+ 
++  reconciliation(): Observable<Reconciliation> {
++    return this.http.get<Reconciliation>('/api/dashboard/reconciliation');
++  }
++
+   /** The aging report as the CSV file the export downloads. */
+   exportAgingReport(): Observable<string> {
+     return this.http.get('/api/dashboard/aging-report/export', { responseType: 'text' });
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 89cbcc7..c26c0ce 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -4,6 +4,7 @@ import { CurrencyService } from '../currencies/currency.service';
+ import { SettingsService } from '../settings/settings.service';
+ import { DashboardService, DashboardSummary } from './dashboard.service';
+ import { AgingReportPanel } from './aging-report';
++import { ReconciliationPanel } from './reconciliation';
+ import { OverdueTrendPanel } from './overdue-trend';
+ import { CashFlowForecast } from './cash-flow-forecast';
+ import { RevenueReport } from './revenue-report';
+@@ -17,10 +18,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // exchange rate from its own issue date (leaving out disputed and written-off invoices), and what is tied up in disputed invoices, and how many of those sent
+ // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+-// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the top five clients with the most overdue (including late fees and interest), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, what share of all tasks are done, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected, and how what was billed this year tracks against the yearly billings target set in the settings, including how far ahead of or behind it billing is. An aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here. The currency the totals are shown in can be chosen here.
++// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the top five clients with the most overdue (including late fees and interest), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, what share of all tasks are done, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected, and how what was billed this year tracks against the yearly billings target set in the settings, including how far ahead of or behind it billing is. A reconciliation proving every client's balance adds up to the outstanding total, an aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here. The currency the totals are shown in can be chosen here.
+ @Component({
+   selector: 'app-dashboard',
+-  imports: [MoneyPipe, AgingReportPanel, OverdueTrendPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
++  imports: [MoneyPipe, AgingReportPanel, ReconciliationPanel, OverdueTrendPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
+   template: `
+     <h1>Dashboard</h1>
+ 
+@@ -219,6 +220,19 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ 
+     <app-cash-flow-forecast [totalsVersion]="totalsVersion()" />
+ 
++    <button
++      type="button"
++      data-testid="reconciliation-open"
++      aria-controls="reconciliation"
++      [attr.aria-expanded]="reconciliationOpen()"
++      (click)="reconciliationOpen.set(!reconciliationOpen())"
++    >
++      {{ reconciliationOpen() ? 'Hide reconciliation' : 'Reconciliation' }}
++    </button>
++    @if (reconciliationOpen()) {
++      <app-reconciliation id="reconciliation" [totalsVersion]="totalsVersion()" />
++    }
++
+     <button
+       type="button"
+       data-testid="aging-report-open"
+@@ -295,6 +309,7 @@ export class Dashboard {
+   protected readonly baseCurrencyError = signal<string | null>(null);
+   /** Bumped once a new base currency is saved, so the panels showing totals reload them in it. */
+   protected readonly totalsVersion = signal(0);
++  protected readonly reconciliationOpen = signal(false);
+   protected readonly agingReportOpen = signal(false);
+   protected readonly overdueTrendOpen = signal(false);
+   protected readonly taxSummaryOpen = signal(false);
+diff --git a/src/main/frontend/src/app/features/dashboard/reconciliation.ts b/src/main/frontend/src/app/features/dashboard/reconciliation.ts
+new file mode 100644
+index 0000000..2cf302a
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/reconciliation.ts
+@@ -0,0 +1,74 @@
++import { Component, inject, input } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { DashboardService } from './dashboard.service';
++
++// A reconciliation proving the books balance: every client's balance (by the same rule as the dashboard's outstanding
++// figure, so disputed and written-off invoices are left out), their total, and the outstanding figure it is checked
++// against, with whether the two agree and by how much they differ if not.
++@Component({
++  selector: 'app-reconciliation',
++  imports: [MoneyPipe],
++  styles: `
++    td.amount,
++    tfoot td {
++      text-align: right;
++    }
++  `,
++  template: `
++    <section aria-labelledby="reconciliation-heading" data-testid="reconciliation">
++      <h2 id="reconciliation-heading">Reconciliation</h2>
++      @if (report.error()) {
++        <p role="alert" data-testid="reconciliation-error">Could not load the reconciliation.</p>
++      } @else if (report.value(); as r) {
++        <table data-testid="reconciliation-table">
++          <thead>
++            <tr>
++              <th scope="col">Client</th>
++              <th scope="col">Balance ({{ r.currency }})</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (c of r.clients; track c.id) {
++              <tr [attr.data-testid]="'reconciliation-client-row-' + c.id">
++                <th scope="row" data-testid="reconciliation-client-name">{{ c.name }}</th>
++                <td class="amount" data-testid="reconciliation-client-balance">{{ c.balance | money: r.currency }}</td>
++              </tr>
++            } @empty {
++              <tr>
++                <td colspan="2" data-testid="reconciliation-empty">No clients yet.</td>
++              </tr>
++            }
++          </tbody>
++          <tfoot>
++            <tr>
++              <th scope="row">Sum of client balances</th>
++              <td data-testid="reconciliation-total">{{ r.total | money: r.currency }}</td>
++            </tr>
++            <tr>
++              <th scope="row">Total outstanding</th>
++              <td data-testid="reconciliation-outstanding">{{ r.outstanding | money: r.currency }}</td>
++            </tr>
++            <tr>
++              <th scope="row">Difference</th>
++              <td data-testid="reconciliation-difference">{{ r.difference | money: r.currency }}</td>
++            </tr>
++          </tfoot>
++        </table>
++        <p role="status">
++          <strong data-testid="reconciliation-balanced">{{ r.balanced ? 'Balanced' : 'Out of balance' }}</strong>
++        </p>
++      } @else {
++        <p data-testid="reconciliation-loading">Loading…</p>
++      }
++    </section>
++  `,
++})
++export class ReconciliationPanel {
++  private readonly service = inject(DashboardService);
++
++  /** Bumped by the dashboard whenever the currency its totals are shown in changes, to reload them in it. */
++  readonly totalsVersion = input(0);
++
++  protected readonly report = rxResource({ params: () => this.totalsVersion(), stream: () => this.service.reconciliation() });
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index bdf291c..a5501b3 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -74,6 +74,12 @@ public class DashboardController {
+         return service.revenueComparison(aFrom, aTo, bFrom, bTo);
+     }
+ 
++    /** Every client's balance, their total, and whether it equals the dashboard's outstanding figure. */
++    @GetMapping("/reconciliation")
++    public ReconciliationResponse reconciliation() {
++        return service.reconciliation();
++    }
++
+     /** How old the debt across all clients is, in the home currency, split into age buckets. */
+     @GetMapping("/aging-report")
+     public AgingReportResponse agingReport() {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 07400c0..b885a21 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -318,6 +318,37 @@ public class DashboardService {
+                 sum(owedInHome), lines);
+     }
+ 
++    /**
++     * Reconciles the client balances with the dashboard's outstanding figure: what each client still owes (by the
++     * same rule as the outstanding figure, see {@link #countsInKpis} and {@link #inHome}), shown in the dashboard's
++     * currency, and their total checked against the outstanding figure worked out independently, as the dashboard
++     * does. Every client is listed, those owing nothing at zero.
++     */
++    @Transactional(readOnly = true)
++    public ReconciliationResponse reconciliation() {
++        LocalDate today = LocalDate.now(clock);
++        String home = settings.homeCurrency();
++        String shownIn = shownIn(home, today);
++        UnaryOperator<BigDecimal> shown = shown(home, shownIn, today);
++        Map<Invoice, BigDecimal> owedInHome = inHome(
++                invoices.findByStatusInWithClient(List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL)), home, today, false);
++        Map<Long, BigDecimal> byClient = new HashMap<>();
++        owedInHome.entrySet().stream().filter(e -> countsInKpis(e.getKey()))
++                .forEach(e -> byClient.merge(e.getKey().getProject().getClient().getId(), e.getValue(), BigDecimal::add));
++        List<ReconciliationResponse.ClientBalance> balances = clients.findAll().stream()
++                .map(c -> new ReconciliationResponse.ClientBalance(c.getId(), c.getName(), shown.apply(
++                        byClient.getOrDefault(c.getId(), BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP))))
++                .sorted(Comparator.comparing(ReconciliationResponse.ClientBalance::name)
++                        .thenComparing(ReconciliationResponse.ClientBalance::id))
++                .toList();
++        BigDecimal total = balances.stream().map(ReconciliationResponse.ClientBalance::balance)
++                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
++        BigDecimal outstanding = shown.apply(owedInHome.entrySet().stream().filter(e -> countsInKpis(e.getKey()))
++                .map(Map.Entry::getValue).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP));
++        BigDecimal difference = total.subtract(outstanding);
++        return new ReconciliationResponse(shownIn, balances, total, outstanding, difference, difference.signum() == 0);
++    }
++
+     /** How many months the overdue trend covers, the current month included. */
+     static final int OVERDUE_TREND_MONTHS = 6;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/ReconciliationResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/ReconciliationResponse.java
+new file mode 100644
+index 0000000..a09eff7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/ReconciliationResponse.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++import java.util.List;
++
++/**
++ * Proves the books balance: every client's balance in the currency the dashboard's totals are shown in, the total
++ * of those balances, and the dashboard's outstanding figure it is checked against, with any difference between them.
++ */
++public record ReconciliationResponse(String currency, List<ClientBalance> clients, BigDecimal total,
++        BigDecimal outstanding, BigDecimal difference, boolean balanced) {
++
++    /** What one client still owes, counted by the same rule as the dashboard's outstanding figure. */
++    public record ClientBalance(Long id, String name, BigDecimal balance) {
++    }
++}
