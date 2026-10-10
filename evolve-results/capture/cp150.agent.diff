@@ -1,0 +1,318 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 9c88889..715389f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -47,6 +47,29 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+             Write off as bad debt
+           </button>
+         </p>
++        <form [formGroup]="partialWriteOffForm" (ngSubmit)="writeOffPart()" data-testid="invoice-partial-write-off-form" novalidate>
++          <label for="partial-write-off-amount">Write off part as bad debt</label>
++          <input
++            id="partial-write-off-amount"
++            type="number"
++            inputmode="decimal"
++            min="0.01"
++            step="0.01"
++            formControlName="amount"
++            data-testid="invoice-partial-write-off-amount"
++            [attr.aria-invalid]="partialWriteOffInvalid()"
++            [attr.aria-describedby]="partialWriteOffInvalid() ? 'partial-write-off-amount-error' : null"
++          />
++          <button type="submit" [disabled]="writingOffPart()" data-testid="invoice-partial-write-off-submit">Write off part</button>
++          @if (partialWriteOffInvalid()) {
++            <p id="partial-write-off-amount-error" role="alert" data-testid="invoice-partial-write-off-amount-error">
++              Enter an amount above zero with at most two decimal places.
++            </p>
++          }
++          @if (partialWriteOffError()) {
++            <p role="alert" data-testid="invoice-partial-write-off-error">{{ partialWriteOffError() }}</p>
++          }
++        </form>
+       }
+       @if (writeOffError()) {
+         <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
+@@ -418,6 +441,15 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 }
+               </tr>
+             }
++            @if (inv.writeOffAmount > 0) {
++              <tr data-testid="invoice-write-off-row">
++                <th scope="row" colspan="5">Written off as bad debt</th>
++                <td data-testid="invoice-write-off-amount">{{ inv.writeOffAmount | money: inv.currency }}</td>
++                @if (inv.status === 'DRAFT') {
++                  <td></td>
++                }
++              </tr>
++            }
+             <tr data-testid="invoice-due-amount-row">
+               <th scope="row" colspan="5">Owed now (after payments and credits)</th>
+               <td data-testid="invoice-due-amount">{{ inv.amountDue | money: inv.currency }}</td>
+@@ -930,6 +962,41 @@ export class InvoiceDetailPage {
+     });
+   }
+ 
++  protected readonly writingOffPart = signal(false);
++  protected readonly partialWriteOffError = signal<string | null>(null);
++
++  protected readonly partialWriteOffForm = this.fb.group({
++    amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++  });
++
++  protected partialWriteOffInvalid(): boolean {
++    const control = this.partialWriteOffForm.controls.amount;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  // Writes part of the invoice off as bad debt: that part stops counting as owed, the rest still does.
++  protected writeOffPart(): void {
++    if (this.partialWriteOffForm.invalid) {
++      this.partialWriteOffForm.markAllAsTouched();
++      return;
++    }
++    this.writingOffPart.set(true);
++    this.partialWriteOffError.set(null);
++    this.service
++      .writeOffPart(this.projectIdNumber(), Number(this.invoiceId()), Number(this.partialWriteOffForm.getRawValue().amount))
++      .subscribe({
++        next: (updated) => {
++          this.invoice.set(updated);
++          this.partialWriteOffForm.reset();
++          this.writingOffPart.set(false);
++        },
++        error: () => {
++          this.partialWriteOffError.set('Could not write off that amount. It cannot be more than is still owed.');
++          this.writingOffPart.set(false);
++        },
++      });
++  }
++
+   protected readonly releasingRetention = signal(false);
+   protected readonly releaseRetentionError = signal<string | null>(null);
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index cbc0890..3c00d5e 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -223,7 +223,9 @@ export interface InvoiceDetail extends Invoice {
+   retentionReleased: boolean;
+   /** What is due now: the amount less the retention held back. */
+   dueNow: number;
+-  /** What the client owes right now: what is left to pay after any payments, less the retention held back. */
++  /** The part of the invoice written off as bad debt, no longer owed; zero when none has been written off. */
++  writeOffAmount: number;
++  /** What the client owes right now: what is left to pay after any payments and part written off, less the retention held back. */
+   amountDue: number;
+ }
+ 
+@@ -374,6 +376,11 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/write-off`, null);
+   }
+ 
++  /** Writes off part of a sent or part-paid invoice as bad debt; the rest is still owed. */
++  writeOffPart(projectId: number, invoiceId: number, amount: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/write-off-part`, { amount });
++  }
++
+   /** Cancels a sent invoice so it is no longer owed; it then reads VOID. */
+   cancel(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/cancel`, null);
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 2b1ff94..60e2ffe 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -304,14 +304,16 @@ public class TestSupportController {
+             BigDecimal retentionPct = decimal(i.get("retentionPct"));
+             // The retention may already have been released ("retentionReleased"), making it due.
+             boolean retentionReleased = Boolean.TRUE.equals(i.get("retentionReleased"));
++            // Part of the invoice may already have been written off as bad debt ("writeOff"), so it is no longer owed.
++            BigDecimal writeOff = decimal(i.get("writeOff"));
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, currency)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
+                     surcharge, taxInclusive, taxExempt,
+                     earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
+-                    retentionReleased,
++                    retentionReleased, writeOff,
+                     i.get("currency") == null ? null : i.get("currency").toString());
+             for (Map<String, Object> d : discounts) {
+                 if (d.get("id") != null) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index b379acc..dc430eb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -111,6 +111,10 @@ public class Invoice {
+     @Column(name = "retention_released", nullable = false)
+     private boolean retentionReleased;
+ 
++    /** The part of the invoice written off as bad debt, no longer owed; zero when none has been written off. */
++    @Column(name = "write_off_amount", nullable = false, precision = 12, scale = 2)
++    private BigDecimal writeOffAmount = BigDecimal.ZERO.setScale(2);
++
+     @Enumerated(EnumType.STRING)
+     @Column(nullable = false, length = 16)
+     private InvoiceStatus status = InvoiceStatus.DRAFT;
+@@ -665,9 +669,22 @@ public class Invoice {
+         this.status = InvoiceStatus.WRITTEN_OFF;
+     }
+ 
+-    /** What is left to pay on this invoice given the totals paid and credited against it; nothing once it is void or written off. */
++    /** Writes part of this invoice off as bad debt, so that part is no longer owed while the rest still is. */
++    public void writeOffPart(BigDecimal part) {
++        this.writeOffAmount = writeOffAmount.add(part).setScale(2, RoundingMode.HALF_UP);
++    }
++
++    public BigDecimal getWriteOffAmount() {
++        return writeOffAmount;
++    }
++
++    /**
++     * What is left to pay on this invoice given the totals paid and credited against it, less any part written
++     * off; nothing once it is void or written off.
++     */
+     public BigDecimal amountDue(BigDecimal paid, BigDecimal credited) {
+-        return status.isClosedUnpaid() ? BigDecimal.ZERO.setScale(2) : amount.subtract(paid).subtract(credited);
++        return status.isClosedUnpaid() ? BigDecimal.ZERO.setScale(2)
++                : amount.subtract(paid).subtract(credited).subtract(writeOffAmount);
+     }
+ 
+     /**
+@@ -684,14 +701,14 @@ public class Invoice {
+ 
+     /**
+      * This invoice's status given the totals paid and credited against it. Once sent, it is PAID when the
+-     * payments and credit notes together clear the amount, PARTIAL once something has been paid or credited,
+-     * otherwise still SENT. Drafts, void and written-off invoices keep their status, as does one marked paid by hand.
++     * payments, credit notes and any part written off together clear the amount, PARTIAL once something has been
++     * paid, credited or written off, otherwise still SENT. Drafts, void and written-off invoices keep their status, as does one marked paid by hand.
+      */
+     public InvoiceStatus statusFor(BigDecimal paid, BigDecimal credited) {
+         if (status == InvoiceStatus.DRAFT || status.isClosedUnpaid()) {
+             return status;
+         }
+-        BigDecimal settled = paid.add(credited);
++        BigDecimal settled = paid.add(credited).add(writeOffAmount);
+         if (settled.compareTo(amount) >= 0 || (status == InvoiceStatus.PAID && settled.signum() == 0)) {
+             return InvoiceStatus.PAID;
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index c02359d..4044f2e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -134,6 +134,12 @@ public class InvoiceController {
+         return service.writeOff(projectId, invoiceId);
+     }
+ 
++    @PostMapping("/{invoiceId}/write-off-part")
++    public InvoiceDetailResponse writeOffPart(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody PartialWriteOffRequest request) {
++        return service.writeOffPart(projectId, invoiceId, request);
++    }
++
+     @PostMapping("/{invoiceId}/cancel")
+     public InvoiceResponse cancel(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.cancel(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 3c7331e..b70425f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -21,8 +21,8 @@ import java.util.List;
+  * fee charged per day overdue, the days the invoice is overdue as of today (only while sent and still
+  * owed), and the late fee that has accrued over them. The percentage held back as retention, the amount
+  * it holds back (not due yet, nothing once released), whether it has been released, and what is due now
+- * without it. What the client owes right now after the payments and credit notes against it, less any
+- * retention still held back.
++ * without it. The part written off as bad debt. What the client owes right now after the payments and credit notes against it, less any
++ * part written off and any retention still held back.
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+@@ -34,7 +34,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
+         String homeCurrency, BigDecimal homeAmount,
+         BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee,
+-        BigDecimal retentionPct, BigDecimal retention, boolean retentionReleased, BigDecimal dueNow, BigDecimal amountDue) {
++        BigDecimal retentionPct, BigDecimal retention, boolean retentionReleased, BigDecimal dueNow, BigDecimal writeOffAmount, BigDecimal amountDue) {
+ 
+     /**
+      * The invoice with the given status, as worked out from what has been paid and credited against it, and
+@@ -59,6 +59,6 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+                 invoice.getTotalSavings(), homeCurrency, homeAmount,
+                 invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today),
+                 invoice.getRetentionPct(), invoice.getRetention(), invoice.isRetentionReleased(), invoice.getDueNow(),
+-                amountDue);
++                invoice.getWriteOffAmount(), amountDue);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 8171a45..93c152e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -492,6 +492,36 @@ public class InvoiceService {
+         return detail(invoice);
+     }
+ 
++    /**
++     * Writes off part of a sent or part-paid invoice as bad debt, so that part no longer counts toward what is
++     * owed while the rest still does, and records the part given up in the audit log. Writing off everything
++     * still owed writes off the whole invoice.
++     */
++    @Transactional
++    public InvoiceDetailResponse writeOffPart(Long projectId, Long invoiceId, PartialWriteOffRequest request) {
++        Invoice invoice = find(projectId, invoiceId);
++        BigDecimal paid = payments.sumAmountByInvoiceId(invoiceId);
++        BigDecimal credited = creditNotes.sumAmountByInvoiceId(invoiceId);
++        if (!invoice.statusFor(paid, credited).isOwing()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "Only a sent invoice with something still owed can be written off");
++        }
++        BigDecimal balance = invoice.amountDue(paid, credited);
++        int comparison = request.amount().compareTo(balance);
++        if (comparison > 0) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
++                    "Cannot write off more than is still owed");
++        }
++        if (comparison == 0) {
++            return writeOff(projectId, invoiceId);
++        }
++        invoice.writeOffPart(request.amount());
++        invoices.flush();
++        audit.record("INVOICE_PART_WRITTEN_OFF id=" + invoice.getId() + " amount="
++                + request.amount().setScale(2).toPlainString());
++        return detail(invoice, invoice.statusFor(paid, credited));
++    }
++
+     private InvoiceResponse toResponse(Invoice invoice) {
+         return InvoiceResponse.from(invoice, payments.sumAmountByInvoiceId(invoice.getId()),
+                 creditNotes.sumAmountByInvoiceId(invoice.getId()));
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/PartialWriteOffRequest.java b/src/main/java/net/officefloor/hq/app/invoice/PartialWriteOffRequest.java
+new file mode 100644
+index 0000000..25c9764
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/PartialWriteOffRequest.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++
++/** Payload to write off part of a sent or part-paid invoice as bad debt: the amount given up. */
++public record PartialWriteOffRequest(
++        @NotNull @DecimalMin(value = "0", inclusive = false) @Digits(integer = 10, fraction = 2) BigDecimal amount) {
++}
+diff --git a/src/main/resources/db/migration/V81__invoice_partial_write_off.sql b/src/main/resources/db/migration/V81__invoice_partial_write_off.sql
+new file mode 100644
+index 0000000..e2d21ec
+--- /dev/null
++++ b/src/main/resources/db/migration/V81__invoice_partial_write_off.sql
+@@ -0,0 +1,4 @@
++-- Part of a sent or part-paid invoice can be written off as bad debt. The written-off part is no longer
++-- owed; the rest still is. Existing invoices have nothing written off.
++ALTER TABLE invoice ADD COLUMN write_off_amount DECIMAL(12, 2) NOT NULL DEFAULT 0;
++ALTER TABLE invoice ADD CONSTRAINT invoice_write_off_amount_not_negative CHECK (write_off_amount >= 0);
