@@ -9,6 +9,7 @@ import { Notes } from '../notes/notes';
 import { InvoicePayments } from '../payments/invoice-payments';
 import { InvoiceCreditNotes } from '../credit-notes/invoice-credit-notes';
 import { CreditNoteService } from '../credit-notes/credit-note.service';
+import { InvoiceInstalments } from '../instalments/invoice-instalments';
 import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
@@ -28,7 +29,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
-  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, Notes],
+  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, Notes],
   template: `
     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
     @if (invoice.error()) {
@@ -844,6 +845,14 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
           }
         </form>
       }
+
+      <app-invoice-instalments
+        [projectId]="projectIdNumber()"
+        [invoiceId]="inv.id"
+        [invoiceAmount]="inv.amount"
+        [currency]="inv.currency"
+        [canEdit]="inv.status === 'DRAFT' || inv.status === 'SENT' || inv.status === 'PARTIAL'"
+      />
 
       <app-invoice-payments
         [projectId]="projectIdNumber()"

@@ -64,6 +64,7 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE refund RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE deposit_application RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE deposit RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE invoice_instalment RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice_discount RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
@@ -318,6 +319,12 @@ public class TestSupportController {
                             Boolean.TRUE.equals(l.get("taxExempt")), lineDiscountPct(l));
                 }
             }
+            // The scheduled instalments the invoice is split into, each an amount due on a date.
+            for (Map<String, Object> n : rows(i, "instalments")) {
+                jdbc.update("INSERT INTO invoice_instalment (id, invoice_id, amount, due_date) VALUES (?, ?, ?, ?)",
+                        ((Number) n.get("id")).longValue(), invoiceId, new BigDecimal(n.get("amount").toString()),
+                        LocalDate.parse(n.get("date").toString()));
+            }
         }
         for (Map<String, Object> p : rows(fixture, "payments")) {
             jdbc.update("INSERT INTO payment (id, invoice_id, amount, paid_date) VALUES (?, ?, ?, ?)",
@@ -342,6 +349,7 @@ public class TestSupportController {
         restartIdentity("invoice");
         restartIdentity("invoice_line_item");
         restartIdentity("invoice_discount");
+        restartIdentity("invoice_instalment");
         restartIdentity("task");
         restartIdentity("task_checklist_item");
         restartIdentity("tag");
