@@ -1,0 +1,736 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index a71073e..5dc1b57 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -92,11 +92,9 @@ export interface TaxSummary {
+   /** How many invoices the tax came from. */
+   invoices: number;
+   tax: number;
+-  /** The levy (second tax). */
+-  levy: number;
+   /** The net of the manual tax adjustments dated within the range. */
+   adjustments: number;
+-  /** The tax, levy and adjustments together. */
++  /** The tax and adjustments together. */
+   total: number;
+ }
+ 
+diff --git a/src/main/frontend/src/app/features/dashboard/tax-summary.ts b/src/main/frontend/src/app/features/dashboard/tax-summary.ts
+index 83c5089..d6b0ebd 100644
+--- a/src/main/frontend/src/app/features/dashboard/tax-summary.ts
++++ b/src/main/frontend/src/app/features/dashboard/tax-summary.ts
+@@ -4,9 +4,8 @@ import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService } from './dashboard.service';
+ import { TaxAdjustments } from '../tax-adjustments/tax-adjustments';
+ 
+-// The tax charged over a chosen date range: the main (sales) tax and the levy, each totalled separately, on invoices
+-// issued within it that were sent (drafts and cancelled invoices are left out), in the home currency. Their sum is
+-// the tax collected; netted with the manual tax adjustments dated within the period it gives the tax liability: what
++// The tax charged over a chosen date range: the main (sales) tax on invoices issued within it that were sent (drafts
++// and cancelled invoices are left out), in the home currency. That is the tax collected; netted with the manual tax adjustments dated within the period it gives the tax liability: what
+ // is owed on to the tax authority.
+ @Component({
+   selector: 'app-tax-summary',
+@@ -50,8 +49,6 @@ import { TaxAdjustments } from '../tax-adjustments/tax-adjustments';
+           <dd data-testid="tax-summary-tax">
+             <span data-testid="tax-summary-primary">{{ t.tax | money: t.homeCurrency }}</span>
+           </dd>
+-          <dt>Levy</dt>
+-          <dd data-testid="tax-summary-levy">{{ t.levy | money: t.homeCurrency }}</dd>
+           <dt>Adjustments</dt>
+           <dd data-testid="tax-summary-adjustments">{{ t.adjustments | money: t.homeCurrency }}</dd>
+           <dt>Tax liability (tax collected, after adjustments)</dt>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index b1e5b72..278dec3 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -19,16 +19,16 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ 
+ // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
+ // amount, their subtotal, each discount on it (a percentage or a flat amount) as its own negative line and what they take off combined before tax, the taxable amount (leaving out tax-free lines), any
+-// sales tax added on it after the discount, any levy (a second tax) added on the same base, the effective tax rate
+-// (the tax and levy as a percentage of the total before tax), any flat surcharge (such as a handling fee, added after tax and
+-// never taxed), the total before tax, and the final total including both taxes (also shown as the total after tax).
+-// For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
++// sales tax added on it after the discount, the effective tax rate
++// (the tax as a percentage of the total before tax), any flat surcharge (such as a handling fee, added after tax and
++// never taxed), the total before tax, and the final total including the tax (also shown as the total after tax).
++// For a client whose prices already include tax, the tax is instead shown as worked back out of the price; the total is unchanged.
+ // When the net total comes out under the invoice's minimum charge, the minimum is billed instead and marked as applied.
+ // A foreign invoice also shows its original amount in the client's currency alongside its total in the home currency, converted at the exchange rate from its issue date.
+ // It also shows the client's purchase-order number, which can be put on or cleared at any time.
+ // It also shows the total savings: every line discount and invoice discount added together.
+ // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the client's early-payment window.
+-// Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
++// Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+   imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, InvoicePoNumber, Notes],
+@@ -312,15 +312,6 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 <td></td>
+               }
+             </tr>
+-            <tr>
+-              <th scope="row" colspan="5" data-testid="invoice-tax-levy-label">
+-                Levy (<span data-testid="invoice-tax-levy-pct">{{ inv.levyPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
+-              </th>
+-              <td data-testid="invoice-tax-levy">{{ inv.levy | money: inv.currency }}</td>
+-              @if (inv.status === 'DRAFT') {
+-                <td></td>
+-              }
+-            </tr>
+             <tr>
+               <th scope="row" colspan="5">Surcharge</th>
+               <td data-testid="invoice-surcharge">{{ inv.surcharge | money: inv.currency }}</td>
+@@ -329,7 +320,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+               }
+             </tr>
+             <tr>
+-              <th scope="row" colspan="5">Effective tax rate (tax and levy as a share of the total before tax)</th>
++              <th scope="row" colspan="5">Effective tax rate (tax as a share of the total before tax)</th>
+               <td data-testid="invoice-effective-tax-rate">{{ inv.effectiveTaxPct | number: '1.2-2' : 'en-US' }}%</td>
+               @if (inv.status === 'DRAFT') {
+                 <td></td>
+@@ -625,34 +616,6 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+           }
+         </form>
+ 
+-        <form [formGroup]="levyForm" (ngSubmit)="applyLevy()" data-testid="levy-form" novalidate>
+-          <h2>Levy</h2>
+-          <div>
+-            <label for="levy-pct">Levy percentage added on top of the sales tax</label>
+-            <input
+-              id="levy-pct"
+-              type="number"
+-              inputmode="decimal"
+-              min="0"
+-              max="100"
+-              step="0.01"
+-              formControlName="levyPct"
+-              data-testid="levy-form-pct"
+-              [attr.aria-invalid]="levyInvalid()"
+-              [attr.aria-describedby]="levyInvalid() ? 'levy-pct-error' : null"
+-            />
+-            @if (levyInvalid()) {
+-              <p id="levy-pct-error" role="alert" data-testid="levy-form-pct-error">
+-                Enter a percentage from 0 to 100 with at most two decimal places.
+-              </p>
+-            }
+-          </div>
+-          <button type="submit" data-testid="levy-form-submit" [disabled]="levySaving()">Apply levy</button>
+-          @if (levyError()) {
+-            <p role="alert" data-testid="levy-form-error">{{ levyError() }}</p>
+-          }
+-        </form>
+-
+         <form [formGroup]="surchargeForm" (ngSubmit)="applySurcharge()" data-testid="surcharge-form" novalidate>
+           <h2>Surcharge</h2>
+           <div>
+@@ -1231,45 +1194,6 @@ export class InvoiceDetailPage {
+     });
+   }
+ 
+-  protected readonly levySaving = signal(false);
+-  protected readonly levyError = signal<string | null>(null);
+-
+-  protected readonly levyForm = this.fb.group({
+-    levyPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
+-  });
+-
+-  // Starts the levy field from the invoice's current rate whenever the invoice loads.
+-  private readonly syncLevy = effect(() => {
+-    if (this.invoice.hasValue()) {
+-      this.levyForm.setValue({ levyPct: String(this.invoice.value().levyPct) });
+-    }
+-  });
+-
+-  protected levyInvalid(): boolean {
+-    const control = this.levyForm.controls.levyPct;
+-    return control.invalid && (control.touched || control.dirty);
+-  }
+-
+-  protected applyLevy(): void {
+-    if (this.levyForm.invalid) {
+-      this.levyForm.markAllAsTouched();
+-      return;
+-    }
+-    this.levySaving.set(true);
+-    this.levyError.set(null);
+-    const levyPct = Number(this.levyForm.getRawValue().levyPct);
+-    this.service.applyLevy(this.projectIdNumber(), Number(this.invoiceId()), levyPct).subscribe({
+-      next: (updated) => {
+-        this.invoice.set(updated);
+-        this.levySaving.set(false);
+-      },
+-      error: () => {
+-        this.levyError.set('Could not apply the levy. Please try again.');
+-        this.levySaving.set(false);
+-      },
+-    });
+-  }
+-
+   protected readonly surchargeSaving = signal(false);
+   protected readonly surchargeError = signal<string | null>(null);
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 39aea55..12382cb 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -54,7 +54,7 @@ export interface InvoicePage {
+ /** An invoice as listed on a client's statement: its project's name and how much is left to pay. */
+ export interface StatementInvoice extends Omit<ProjectInvoice, 'retention'> {
+   projectName: string;
+-  /** The sales tax and levy on the invoice. */
++  /** The sales tax on the invoice. */
+   tax: number;
+ }
+ 
+@@ -210,12 +210,11 @@ export interface InvoiceDiscount {
+ /**
+  * A single invoice with the line items it is built from: their subtotal, each of its discounts (a
+  * percentage or flat amount) and what they take off together, and the sales tax percentage, the taxable base it is charged on (the taxable
+- * lines after the discount, leaving out tax-free ones) and what it adds, and the levy (a second tax)
+- * percentage and what it adds on that same base, and any flat surcharge (such as a handling fee) added
+- * after tax; its amount is the subtotal less the discount plus the tax plus the levy plus the surcharge.
++ * lines after the discount, leaving out tax-free ones) and what it adds, and any flat surcharge (such as a
++ * handling fee) added after tax; its amount is the subtotal less the discount plus the tax plus the surcharge.
+  */
+ export interface InvoiceDetail extends Invoice {
+-  /** The total before tax: the amount less the sales tax and levy. */
++  /** The total before tax: the amount less the sales tax. */
+   totalExTax: number;
+   subtotal: number;
+   /** The percentage discounts added up; zero when there are none. */
+@@ -229,15 +228,13 @@ export interface InvoiceDetail extends Invoice {
+   taxPct: number;
+   taxableBase: number;
+   tax: number;
+-  levyPct: number;
+-  levy: number;
+   /** A flat amount (such as a handling fee) added to the total after tax; zero when there is none. */
+   surcharge: number;
+-  /** Whether the prices already include the tax and levy, so they are worked back out rather than added on. */
++  /** Whether the prices already include the tax, so it is worked back out rather than added on. */
+   taxInclusive: boolean;
+-  /** Whether the client is tax exempt, so the invoice carries no tax or levy whatever its lines say. */
++  /** Whether the client is tax exempt, so the invoice carries no tax whatever its lines say. */
+   taxExempt: boolean;
+-  /** The overall tax rate that ended up on the invoice: the tax and levy as a percentage of the total before tax. */
++  /** The overall tax rate that ended up on the invoice: the tax as a percentage of the total before tax. */
+   effectiveTaxPct: number;
+   /** The percentage taken off when paid early; zero when no early-payment discount is offered. */
+   earlyPaymentPct: number;
+@@ -414,11 +411,6 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/tax`, { taxPct });
+   }
+ 
+-  /** Sets the levy (second tax) percentage added to a draft invoice on top of its sales tax; zero removes the levy. */
+-  applyLevy(projectId: number, invoiceId: number, levyPct: number): Observable<InvoiceDetail> {
+-    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/levy`, { levyPct });
+-  }
+-
+   /** Sets the flat surcharge (such as a handling fee) added to a draft invoice; zero removes it. */
+   applySurcharge(projectId: number, invoiceId: number, surcharge: number): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/surcharge`, { surcharge });
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index b6912f3..64b266b 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -264,13 +264,11 @@ public class TestSupportController {
+             }
+             BigDecimal taxPct = i.get("taxPct") == null ? BigDecimal.ZERO
+                     : new BigDecimal(i.get("taxPct").toString());
+-            BigDecimal levyPct = i.get("levyPct") == null ? BigDecimal.ZERO
+-                    : new BigDecimal(i.get("levyPct").toString());
+             // Each line is rounded to the cent first and the rounded lines are added up. A discount takes a
+-            // percentage off the subtotal; sales tax and a levy each add their percentage of every taxable
+-            // line after its discount, rounded per line and then added up. The amount is the discounted
+-            // subtotal plus the tax plus the levy.
+-            // An invoice for a tax-exempt client carries no tax or levy on any line.
++            // percentage off the subtotal; sales tax adds its percentage of every taxable line after its
++            // discount, rounded per line and then added up. The amount is the discounted subtotal plus the tax.
++            // The levy (second tax) has been scrapped, so a fixture's levyPct is ignored.
++            // An invoice for a tax-exempt client carries no tax on any line.
+             long projectId = ((Number) i.get("projectId")).longValue();
+             Map<String, Object> client = jdbc.queryForMap(
+                     "SELECT c.tax_inclusive, c.tax_exempt, c.default_discount_pct FROM project p JOIN client c ON c.id = p.client_id WHERE p.id = ?",
+@@ -338,7 +336,6 @@ public class TestSupportController {
+             BigDecimal flatDiscount = subtotal.subtract(left).subtract(pctDiscount);
+             BigDecimal sharedDiscount = flatDiscount.add(cappedDiscount);
+             BigDecimal tax = BigDecimal.ZERO.setScale(2);
+-            BigDecimal levy = BigDecimal.ZERO.setScale(2);
+             for (int n = 0; n < lineItems.size(); n++) {
+                 BigDecimal line = lines.get(n);
+                 if (!taxExempt && !Boolean.TRUE.equals(lineItems.get(n).get("taxExempt"))) {
+@@ -348,12 +345,11 @@ public class TestSupportController {
+                             line.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
+                             .subtract(flatShare);
+                     tax = tax.add(base.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+-                    levy = levy.add(base.multiply(levyPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+                 }
+             }
+             BigDecimal discount = pctDiscount.add(flatDiscount);
+             BigDecimal discounted = subtotal.subtract(discount);
+-            // An invoice for a tax-inclusive client already has the taxes inside its prices, so its amount is
++            // An invoice for a tax-inclusive client already has the tax inside its prices, so its amount is
+             // just the discounted subtotal.
+             // An early-payment discount offered is just recorded; it does not change the amount owed.
+             BigDecimal earlyPaymentPct = i.get("earlyPaymentPct") == null ? BigDecimal.ZERO
+@@ -377,11 +373,11 @@ public class TestSupportController {
+             // Part of the invoice may already have been written off as bad debt ("writeOff"), so it is no longer owed.
+             // It may carry the client's purchase-order number ("poNumber"), and may be disputed by the client ("disputed").
+             BigDecimal writeOff = decimal(i.get("writeOff"));
+-            jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
++            jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, surcharge, tax_inclusive, tax_exempt,"
+                     + " early_payment_pct, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency, po_number, disputed)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+-                    (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
++                    (taxInclusive ? discounted : discounted.add(tax)).add(surcharge).max(minimumCharge), taxPct,
+                     surcharge, taxInclusive, taxExempt,
+                     earlyPaymentPct, rebatePct, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
+                     retentionReleased, writeOff,
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index d58fabd..07400c0 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -552,7 +552,7 @@ public class DashboardService {
+     }
+ 
+     /**
+-     * The tax charged over a period, in the home currency: the sales tax and levy on every invoice issued on or
++     * The tax charged over a period, in the home currency: the sales tax on every invoice issued on or
+      * between the given dates that was actually charged (sent, whether paid or not, or later written off; drafts
+      * and cancelled invoices are left out). A foreign invoice converts at the exchange rate from its issue date;
+      * one whose currency has no rate by then cannot be converted and is left out. The manual tax adjustments dated
+@@ -568,26 +568,21 @@ public class DashboardService {
+                 InvoiceStatus.WRITTEN_OFF);
+         String home = settings.homeCurrency();
+         BigDecimal tax = BigDecimal.ZERO;
+-        BigDecimal levy = BigDecimal.ZERO;
+         long count = 0;
+         for (Invoice invoice : invoices.findByStatusInAndIssuedDateBetween(charged, from, to)) {
+             String currency = invoice.getProject().getClient().getCurrency();
+             if (currency.equals(home)) {
+                 tax = tax.add(invoice.getTax());
+-                levy = levy.add(invoice.getLevy());
+                 count++;
+                 continue;
+             }
+             var inHomeTax = fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getTax());
+-            var inHomeLevy = fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getLevy());
+-            if (inHomeTax.isPresent() && inHomeLevy.isPresent()) {
++            if (inHomeTax.isPresent()) {
+                 tax = tax.add(inHomeTax.get());
+-                levy = levy.add(inHomeLevy.get());
+                 count++;
+             }
+         }
+         tax = tax.setScale(2, RoundingMode.HALF_UP);
+-        levy = levy.setScale(2, RoundingMode.HALF_UP);
+         BigDecimal adjustments = BigDecimal.ZERO.setScale(2);
+         for (TaxAdjustment adjustment : taxAdjustments.findByAdjustmentDateBetween(from, to)) {
+             if (adjustment.getCurrency().equals(home)) {
+@@ -599,7 +594,7 @@ public class DashboardService {
+             }
+         }
+         adjustments = adjustments.setScale(2, RoundingMode.HALF_UP);
+-        return new TaxSummaryResponse(from, to, home, count, tax, levy, adjustments, tax.add(levy).add(adjustments));
++        return new TaxSummaryResponse(from, to, home, count, tax, adjustments, tax.add(adjustments));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/TaxSummaryResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/TaxSummaryResponse.java
+index 8009fcf..8027fd5 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/TaxSummaryResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/TaxSummaryResponse.java
+@@ -4,10 +4,10 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
+ /**
+- * The tax charged on invoices issued on or between two dates, in the home currency: the sales tax and the levy
+- * (second tax) separately, the net of the manual tax adjustments dated within the period, and the total owed
+- * (tax, levy and adjustments together), with how many invoices they came from.
++ * The tax charged on invoices issued on or between two dates, in the home currency: the sales tax, the net of the
++ * manual tax adjustments dated within the period, and the total owed (tax and adjustments together), with how many
++ * invoices they came from.
+  */
+ public record TaxSummaryResponse(LocalDate from, LocalDate to, String homeCurrency, long invoices, BigDecimal tax,
+-        BigDecimal levy, BigDecimal adjustments, BigDecimal total) {
++        BigDecimal adjustments, BigDecimal total) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+index e47f58d..a9d2cd8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -16,8 +16,7 @@ import net.officefloor.hq.app.currency.MoneyRule;
+  * to pay, the same invoices grouped by job with what is owed on each job, and the total still owed
+  * (what is left to pay across their sent invoices; drafts and void ones are not owed). For the printable
+  * summary it also gives the total invoiced on those owed invoices and how much of that has been paid,
+- * so the total still owed is what was invoiced less what was paid. It also shows the tax (sales tax and
+- * levy) on each job and across the whole statement, again leaving out drafts and void invoices. All of it
++ * so the total still owed is what was invoiced less what was paid. It also shows the sales tax on each job and across the whole statement, again leaving out drafts and void invoices. All of it
+  * is in the client's currency, with the total still owed also converted into the home currency at the foot (each
+  * invoice at the rate on its issue date; null when a rate is missing). Finally it gives the running account: every invoice, payment, credit note, deposit and
+  * refund in date order, each with the balance owed once it is counted, and the total of the credit notes on it.
+@@ -94,7 +93,7 @@ public record ClientStatementResponse(Long clientId, String clientName, String c
+     public record Job(Long projectId, String projectName, List<Line> invoices, BigDecimal subtotal, BigDecimal tax) {
+     }
+ 
+-    /** One invoice on a statement; its tax is the sales tax and levy on it. */
++    /** One invoice on a statement; its tax is the sales tax on it. */
+     public record Line(Long id, Long projectId, String projectName, String currency, BigDecimal amount, InvoiceStatus status,
+             LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue, BigDecimal tax) {
+ 
+@@ -102,7 +101,7 @@ public record ClientStatementResponse(Long clientId, String clientName, String c
+         static Line from(Invoice invoice, BigDecimal paid, BigDecimal credited, MoneyRule rule) {
+             return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
+                     invoice.getCurrency(), rule.round(invoice.getAmount()), invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
+-                    rule.round(invoice.amountDue(paid, credited)), rule.round(invoice.getTax()).add(rule.round(invoice.getLevy())));
++                    rule.round(invoice.amountDue(paid, credited)), rule.round(invoice.getTax()));
+         }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 9a08255..0f5987e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -29,20 +29,20 @@ import net.officefloor.hq.app.project.Project;
+  * their sum before tax, each either a percentage or a flat amount (the percentages each taking their share
+  * of the subtotal first (a percentage capped at a maximum never taking off more than that), then the flat amounts, shared across the lines in proportion to what each
+  * charges; together never more than the subtotal), then add a percentage sales tax on what is left of the taxable lines only
+- * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
+- * its stored amount is always that subtotal less the discount plus the tax plus the levy, plus any flat
++ * (tax-free lines are never taxed);
++ * its stored amount is always that subtotal less the discount plus the tax, plus any flat
+  * surcharge (such as a handling fee), which is added on last and is never taxed.
+  * <p>
+  * Every figure is worked out line by line: each line is rounded to the cent first and the rounded lines
+- * are then added up, and the tax and levy are likewise worked out and rounded on each taxable line before
++ * are then added up, and the tax is likewise worked out and rounded on each taxable line before
+  * being added up, so the totals are sums of rounded lines rather than a rounded sum.
+  * <p>
+- * A tax-inclusive invoice (for a client whose prices already include tax) instead works the tax and
+- * levy back out of the taxable lines after the discount: they are inside the price, so its amount is
++ * A tax-inclusive invoice (for a client whose prices already include tax) instead works the tax
++ * back out of the taxable lines after the discount: they are inside the price, so its amount is
+  * just the subtotal less the discount (plus any surcharge), and the taxable base is what is left once they are taken out.
+  * <p>
+- * A tax-exempt invoice (for a tax-exempt client) has no taxable lines at all: it carries no tax or levy
+- * whatever its lines or rates say, so its amount is the subtotal less the discount (plus any surcharge).
++ * A tax-exempt invoice (for a tax-exempt client) has no taxable lines at all: it carries no tax
++ * whatever its lines or rate say, so its amount is the subtotal less the discount (plus any surcharge).
+  * <p>
+  * An invoice can carry a minimum charge: when its net total (everything above, worked out as usual) comes
+  * out under it, the minimum is billed instead, and the invoice records that the minimum was applied.
+@@ -69,9 +69,6 @@ public class Invoice {
+     @Column(name = "tax_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal taxPct = BigDecimal.ZERO.setScale(2);
+ 
+-    @Column(name = "levy_pct", nullable = false, precision = 5, scale = 2)
+-    private BigDecimal levyPct = BigDecimal.ZERO.setScale(2);
+-
+     /** A flat amount (such as a handling fee) added to the total after tax; zero when there is none. */
+     @Column(nullable = false, precision = 12, scale = 2)
+     private BigDecimal surcharge = BigDecimal.ZERO.setScale(2);
+@@ -80,11 +77,11 @@ public class Invoice {
+     @Column(name = "minimum_charge", nullable = false, precision = 12, scale = 2)
+     private BigDecimal minimumCharge = BigDecimal.ZERO.setScale(2);
+ 
+-    /** Whether the prices already include the tax and levy, so they are backed out rather than added on. */
++    /** Whether the prices already include the tax, so it is backed out rather than added on. */
+     @Column(name = "tax_inclusive", nullable = false)
+     private boolean taxInclusive;
+ 
+-    /** Whether the invoice is for a tax-exempt client, so it carries no tax or levy whatever its lines say. */
++    /** Whether the invoice is for a tax-exempt client, so it carries no tax whatever its lines say. */
+     @Column(name = "tax_exempt", nullable = false)
+     private boolean taxExempt;
+ 
+@@ -175,16 +172,16 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The total before tax: the amount owed less the sales tax and levy, whether they were added on or
+-     * are included in the prices.
++     * The total before tax: the amount owed less the sales tax, whether it was added on or is included
++     * in the prices.
+      */
+     public BigDecimal getTotalExTax() {
+-        return amount.subtract(getTax()).subtract(getLevy());
++        return amount.subtract(getTax());
+     }
+ 
+     /**
+-     * The overall tax rate that actually ended up on the invoice: the sales tax and levy together as a
+-     * percentage of the total before tax, to two decimal places. It is below the headline rates when some
++     * The overall tax rate that actually ended up on the invoice: the sales tax as a percentage of the
++     * total before tax, to two decimal places. It is below the headline rates when some
+      * lines are tax-free, and zero when there is nothing before tax to charge it on.
+      */
+     public BigDecimal getEffectiveTaxPct() {
+@@ -192,7 +189,7 @@ public class Invoice {
+         if (totalExTax.signum() == 0) {
+             return BigDecimal.ZERO.setScale(2);
+         }
+-        return getTax().add(getLevy()).multiply(BigDecimal.valueOf(100)).divide(totalExTax, 2, RoundingMode.HALF_UP);
++        return getTax().multiply(BigDecimal.valueOf(100)).divide(totalExTax, 2, RoundingMode.HALF_UP);
+     }
+ 
+     /** The discounts on this invoice, in the order they were added. */
+@@ -281,7 +278,7 @@ public class Invoice {
+         return taxPct;
+     }
+ 
+-    /** Whether the prices already include the tax and levy, so they are worked back out rather than added on. */
++    /** Whether the prices already include the tax, so it is worked back out rather than added on. */
+     public boolean isTaxInclusive() {
+         return taxInclusive;
+     }
+@@ -294,11 +291,11 @@ public class Invoice {
+     /**
+      * What the sales tax is charged on: the taxable lines (leaving out tax-free ones) less the discount
+      * taken off them, to the cent. On a tax-inclusive invoice that is what is left of them once the tax
+-     * and levy inside them are taken out.
++     * inside them is taken out.
+      */
+     public BigDecimal getTaxableBase() {
+         BigDecimal gross = getDiscountedTaxable();
+-        return taxInclusive ? gross.subtract(getTax()).subtract(getLevy()) : gross;
++        return taxInclusive ? gross.subtract(getTax()) : gross;
+     }
+ 
+     /**
+@@ -309,19 +306,6 @@ public class Invoice {
+         return sumOverTaxableLines(this::taxOn);
+     }
+ 
+-    /** The levy (second tax) percentage added on top of the sales tax; zero when there is no levy. */
+-    public BigDecimal getLevyPct() {
+-        return levyPct;
+-    }
+-
+-    /**
+-     * How much levy is added on the taxable base (or is inside it, when tax-inclusive): the levy on each
+-     * taxable line rounded to the cent, added up.
+-     */
+-    public BigDecimal getLevy() {
+-        return sumOverTaxableLines(this::levyOn);
+-    }
+-
+     /** The flat amount (such as a handling fee) added to the total after tax; zero when there is none. */
+     public BigDecimal getSurcharge() {
+         return surcharge;
+@@ -333,12 +317,12 @@ public class Invoice {
+     }
+ 
+     /**
+-     * What the invoice comes to before any minimum charge: the subtotal less the discount plus the tax and
+-     * levy (unless they are inside the prices), plus the surcharge.
++     * What the invoice comes to before any minimum charge: the subtotal less the discount plus the tax
++     * (unless it is inside the prices), plus the surcharge.
+      */
+     public BigDecimal getNetTotal() {
+         BigDecimal discounted = getSubtotal().subtract(getDiscount());
+-        return (taxInclusive ? discounted : discounted.add(getTax()).add(getLevy())).add(surcharge);
++        return (taxInclusive ? discounted : discounted.add(getTax())).add(surcharge);
+     }
+ 
+     /** Whether the net total came out under the minimum charge, so the minimum is billed instead. */
+@@ -363,10 +347,10 @@ public class Invoice {
+ 
+     /**
+      * The part of a tax-inclusive price that is the given percentage, worked back out of it: the price
+-     * divided in proportion to the sales tax and levy rates it includes (e.g. 20% tax in 120 is 20).
++     * divided in proportion to the sales tax rate it includes (e.g. 20% tax in 120 is 20).
+      */
+     private BigDecimal includedIn(BigDecimal price, BigDecimal pct) {
+-        BigDecimal grossPct = BigDecimal.valueOf(100).add(taxPct).add(levyPct);
++        BigDecimal grossPct = BigDecimal.valueOf(100).add(taxPct);
+         return price.multiply(pct).divide(grossPct, 2, RoundingMode.HALF_UP);
+     }
+ 
+@@ -572,12 +556,6 @@ public class Invoice {
+         recalculateAmount();
+     }
+ 
+-    /** Sets the levy (second tax) percentage added to this invoice and reworks its amount to match. */
+-    public void applyLevy(BigDecimal levyPct) {
+-        this.levyPct = levyPct.setScale(2, RoundingMode.HALF_UP);
+-        recalculateAmount();
+-    }
+-
+     /** Sets the flat surcharge (such as a handling fee) added to this invoice and reworks its amount to match. */
+     public void applySurcharge(BigDecimal surcharge) {
+         this.surcharge = surcharge.setScale(2, RoundingMode.HALF_UP);
+@@ -706,11 +684,6 @@ public class Invoice {
+         return taxInclusive ? includedIn(line, taxPct) : percentOf(line, taxPct);
+     }
+ 
+-    /** The levy on one discounted taxable line (or inside it, when tax-inclusive), to the cent. */
+-    private BigDecimal levyOn(BigDecimal line) {
+-        return taxInclusive ? includedIn(line, levyPct) : percentOf(line, levyPct);
+-    }
+-
+     private static BigDecimal percentOf(BigDecimal base, BigDecimal pct) {
+         return base.multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index a04bf34..a24b5ba 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -83,12 +83,6 @@ public class InvoiceController {
+         return service.applyTax(projectId, invoiceId, request);
+     }
+ 
+-    @PutMapping("/{invoiceId}/levy")
+-    public InvoiceDetailResponse applyLevy(@PathVariable Long projectId, @PathVariable Long invoiceId,
+-            @Valid @RequestBody LevyRequest request) {
+-        return service.applyLevy(projectId, invoiceId, request);
+-    }
+-
+     @PutMapping("/{invoiceId}/surcharge")
+     public InvoiceDetailResponse applySurcharge(@PathVariable Long projectId, @PathVariable Long invoiceId,
+             @Valid @RequestBody SurchargeRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index e023000..87115ec 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -7,10 +7,9 @@ import java.util.List;
+ /**
+  * A single invoice together with the line items it is built from: their subtotal, each discount on it
+  * (with what it takes off), the percentage discounts and flat amount discounts added up, and what they all take off together, the sales tax percentage, the taxable base it is charged on (the
+- * taxable lines after the discount) and what it adds, the levy (second tax) percentage and what it adds
+- * on the same base, any flat surcharge (such as a handling fee) added after tax, the amount owed including both taxes and the surcharge, the total before tax, whether the prices already include the taxes
+- * (so they are worked back out rather than added on), whether the client is tax exempt (so
+- * there is no tax at all), the effective tax rate (the sales tax and levy together as a percentage of
++ * taxable lines after the discount) and what it adds, any flat surcharge (such as a handling fee) added after tax, the amount owed including the tax and the surcharge, the total before tax, whether the prices already include the tax
++ * (so it is worked back out rather than added on), whether the client is tax exempt (so
++ * there is no tax at all), the effective tax rate (the sales tax as a percentage of
+  * the total before tax), any early-payment discount offered (its percentage, the days after issue it
+  * must be paid within, the last day to pay, and the reduced amount; null when none is offered), any
+  * settlement rebate for paying before the due date (its percentage, and the rebate itself; null when none
+@@ -33,7 +32,7 @@ import java.util.List;
+ public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+         BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discount, BigDecimal taxPct, BigDecimal taxableBase, BigDecimal tax,
+-        BigDecimal levyPct, BigDecimal levy, BigDecimal surcharge, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
++        BigDecimal surcharge, boolean taxInclusive, boolean taxExempt, BigDecimal effectiveTaxPct,
+         BigDecimal earlyPaymentPct, int earlyPaymentDays, LocalDate earlyPaymentBy, BigDecimal earlyPaymentAmount,
+         BigDecimal rebatePct, BigDecimal rebate, BigDecimal rebatedAmount,
+         InvoiceStatus status, LocalDate issuedDate,
+@@ -54,7 +53,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+                 invoice.getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
+                 invoice.getTaxPct(), invoice.getTaxableBase(), invoice.getTax(),
+-                invoice.getLevyPct(), invoice.getLevy(), invoice.getSurcharge(), invoice.isTaxInclusive(), invoice.isTaxExempt(),
++                invoice.getSurcharge(), invoice.isTaxInclusive(), invoice.isTaxExempt(),
+                 invoice.getEffectiveTaxPct(),
+                 invoice.getEarlyPaymentPct(), invoice.getEarlyPaymentDays(), invoice.getEarlyPaymentBy(),
+                 invoice.getEarlyPaymentAmount(),
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index ee3efc9..632c2d0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -487,15 +487,6 @@ public class InvoiceService {
+         return detail(invoice);
+     }
+ 
+-    /** Sets the levy (second tax) percentage on a draft invoice and reworks the invoice amount to match. */
+-    @Transactional
+-    public InvoiceDetailResponse applyLevy(Long projectId, Long invoiceId, LevyRequest request) {
+-        Invoice invoice = findDraft(projectId, invoiceId);
+-        invoice.applyLevy(request.levyPct());
+-        invoices.flush();
+-        return detail(invoice);
+-    }
+-
+     /** Sets the flat surcharge on a draft invoice and reworks the invoice amount to match. */
+     @Transactional
+     public InvoiceDetailResponse applySurcharge(Long projectId, Long invoiceId, SurchargeRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LevyRequest.java b/src/main/java/net/officefloor/hq/app/invoice/LevyRequest.java
+deleted file mode 100644
+index 5a3a418..0000000
+--- a/src/main/java/net/officefloor/hq/app/invoice/LevyRequest.java
++++ /dev/null
+@@ -1,12 +0,0 @@
+-package net.officefloor.hq.app.invoice;
+-
+-import jakarta.validation.constraints.DecimalMax;
+-import jakarta.validation.constraints.DecimalMin;
+-import jakarta.validation.constraints.Digits;
+-import jakarta.validation.constraints.NotNull;
+-import java.math.BigDecimal;
+-
+-/** Payload to set the levy (second tax) percentage added to a draft invoice; zero removes the levy. */
+-public record LevyRequest(
+-        @NotNull @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal levyPct) {
+-}
+diff --git a/src/main/resources/db/migration/V109__remove_invoice_levy.sql b/src/main/resources/db/migration/V109__remove_invoice_levy.sql
+new file mode 100644
+index 0000000..435ef87
+--- /dev/null
++++ b/src/main/resources/db/migration/V109__remove_invoice_levy.sql
+@@ -0,0 +1,61 @@
++-- The levy (the second tax) is scrapped: invoices carry only the one sales tax again, and every total
++-- works out as if the levy never existed. An invoice that added a levy on top has it taken back out of
++-- its stored amount (never below its minimum charge): the levy on each taxable line after its share of
++-- the discounts, rounded to the cent and added up, just as it was charged. A tax-inclusive invoice owes
++-- the same (the levy was inside its prices, and now only the sales tax is worked back out of them), and
++-- a tax-exempt invoice never carried a levy.
++CREATE VIEW invoice_levy_line_v109 AS
++    SELECT l.invoice_id,
++           l.tax_exempt,
++           ROUND(l.qty * l.unit_price, 2) - ROUND(ROUND(l.qty * l.unit_price, 2) * l.discount_pct / 100, 2) AS line_amount
++    FROM invoice_line_item l;
++
++CREATE VIEW invoice_levy_subtotal_v109 AS
++    SELECT i.id AS invoice_id,
++           COALESCE((SELECT SUM(v.line_amount) FROM invoice_levy_line_v109 v WHERE v.invoice_id = i.id), 0) AS subtotal
++    FROM invoice i;
++
++-- The uncapped percentages each line takes off itself, and what the flat amounts and capped percentages
++-- take off the subtotal together, shared across the lines in proportion to what each charges.
++CREATE VIEW invoice_levy_discount_v109 AS
++    SELECT s.invoice_id,
++           s.subtotal,
++           LEAST(COALESCE((SELECT SUM(d.discount_pct) FROM invoice_discount d WHERE d.invoice_id = s.invoice_id
++                             AND d.discount_pct > 0
++                             AND (d.discount_cap IS NULL OR ROUND(s.subtotal * d.discount_pct / 100, 2) <= d.discount_cap)), 0),
++                 100) AS uncapped_pct,
++           COALESCE((SELECT SUM(CASE WHEN d.discount_pct > 0 THEN d.discount_cap ELSE d.discount_amount END)
++                     FROM invoice_discount d WHERE d.invoice_id = s.invoice_id
++                       AND (d.discount_pct = 0
++                            OR (d.discount_cap IS NOT NULL AND ROUND(s.subtotal * d.discount_pct / 100, 2) > d.discount_cap))), 0)
++               AS shared_wanted
++    FROM invoice_levy_subtotal_v109 s;
++
++ALTER TABLE invoice ADD COLUMN rework_levy DECIMAL(14, 2);
++
++UPDATE invoice i SET rework_levy = (
++    SELECT COALESCE(SUM(ROUND(
++               (v.line_amount
++                - ROUND(v.line_amount * d.uncapped_pct / 100, 2)
++                - CASE WHEN d.subtotal = 0 THEN 0
++                       ELSE ROUND(LEAST(d.shared_wanted,
++                                        GREATEST(d.subtotal - ROUND(d.subtotal * d.uncapped_pct / 100, 2), 0))
++                                  * v.line_amount / d.subtotal, 2) END)
++               * i.levy_pct / 100, 2)), 0)
++    FROM invoice_levy_line_v109 v JOIN invoice_levy_discount_v109 d ON d.invoice_id = v.invoice_id
++    WHERE v.invoice_id = i.id AND NOT v.tax_exempt)
++WHERE i.levy_pct > 0
++  AND NOT i.tax_inclusive
++  AND NOT i.tax_exempt;
++
++UPDATE invoice SET amount = GREATEST(amount - rework_levy, minimum_charge)
++WHERE rework_levy IS NOT NULL AND rework_levy > 0;
++
++ALTER TABLE invoice DROP COLUMN rework_levy;
++
++DROP VIEW invoice_levy_discount_v109;
++DROP VIEW invoice_levy_subtotal_v109;
++DROP VIEW invoice_levy_line_v109;
++
++ALTER TABLE invoice DROP CONSTRAINT invoice_levy_pct_range;
++ALTER TABLE invoice DROP COLUMN levy_pct;
