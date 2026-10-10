@@ -6,7 +6,7 @@ import { RevenueCompare } from './revenue-compare';
 
 // The revenue billed over a chosen date range (over all time until a range is chosen): the total of the invoices
 // issued within it that were sent (drafts and cancelled invoices are left out), in the home currency, broken down
-// by job so the highest-earning jobs show first, and month by month so the trend shows. The report on show can be
+// by job so the highest-earning jobs show first (non-billable jobs are left out), and month by month so the trend shows. The report on show can be
 // exported to a CSV file. Two periods can also be compared side by side.
 @Component({
   selector: 'app-revenue-report',

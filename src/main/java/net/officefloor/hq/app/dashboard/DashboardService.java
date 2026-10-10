@@ -593,7 +593,7 @@ public class DashboardService {
      * the invoices issued in the range that were sent (drafts and cancelled invoices are left out) or, when the
      * settings count revenue once paid, only those fully paid, each converted
      * into the home currency at its issue date's rate (an invoice that cannot be converted is left out). The revenue
-     * is also broken down by job (project), highest-earning first, and by the month each invoice was issued in, earliest first, to show the trend.
+     * is also broken down by job (project), highest-earning first (non-billable jobs are left out of the breakdown), and by the month each invoice was issued in, earliest first, to show the trend.
      */
     @Transactional(readOnly = true)
     public RevenueReportResponse revenueReport(LocalDate from, LocalDate to) {
@@ -621,8 +621,10 @@ public class DashboardService {
             total = total.add(inHome.get());
             count++;
             var project = invoice.getProject();
-            byJob.computeIfAbsent(project.getId(),
-                    id -> new JobTally(id, project.getName(), project.getClient().getName())).add(inHome.get());
+            if (project.isBillable()) {
+                byJob.computeIfAbsent(project.getId(),
+                        id -> new JobTally(id, project.getName(), project.getClient().getName())).add(inHome.get());
+            }
             byMonth.computeIfAbsent(YearMonth.from(invoice.getIssuedDate()), MonthTally::new).add(inHome.get());
         }
         List<RevenueReportResponse.MonthRevenue> months = byMonth.values().stream().map(MonthTally::toResponse)
