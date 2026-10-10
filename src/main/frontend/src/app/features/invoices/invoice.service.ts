@@ -20,9 +20,12 @@ export interface Invoice {
   dueDate: string;
 }
 
-/** An invoice as listed for its project, with how much is still left to pay after any payments. */
+/** An invoice as listed for its project, with what the client owes on it right now and the retention held back. */
 export interface ProjectInvoice extends Invoice {
+  /** What the client owes right now: what is left to pay after any payments, less the retention held back. */
   amountDue: number;
+  /** The amount held back as retention, not due yet; shown separately from what is due now. */
+  retention: number;
   /** Whether a credit note has been put against the invoice. */
   creditApplied: boolean;
 }
@@ -42,7 +45,7 @@ export interface InvoicePage {
 }
 
 /** An invoice as listed on a client's statement: its project's name and how much is left to pay. */
-export interface StatementInvoice extends ProjectInvoice {
+export interface StatementInvoice extends Omit<ProjectInvoice, 'retention'> {
   projectName: string;
   /** The sales tax and levy on the invoice. */
   tax: number;

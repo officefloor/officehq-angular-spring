@@ -19,7 +19,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
   return issuedDate && dueDate && dueDate < issuedDate ? { dueBeforeIssued: true } : null;
 }
 
-// A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each is still left to pay, adds a
+// A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each the client owes right now (with any retention held back shown separately), adds a
 // new draft (starting from the default tax rate in the settings), sends a draft and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
 // opens onto its line items and payments. Invoices with a credit put against them are flagged.
 @Component({
@@ -124,7 +124,8 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
             <tr>
               <th scope="col">Invoice</th>
               <th scope="col">Amount</th>
-              <th scope="col">Left to pay</th>
+              <th scope="col">Due now</th>
+              <th scope="col">Retained, not due yet</th>
               <th scope="col">Status</th>
               <th scope="col">Issued</th>
               <th scope="col" [attr.aria-sort]="sortByDue() ? 'ascending' : null">
@@ -153,6 +154,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
                 </td>
                 <td data-testid="invoice-amount">{{ i.amount | money: i.currency }}</td>
                 <td data-testid="invoice-due-amount">{{ i.amountDue | money: i.currency }}</td>
+                <td data-testid="invoice-retained-amount">{{ i.retention | money: i.currency }}</td>
                 <td data-testid="invoice-status">
                   {{ i.status }}
                   @if (i.creditApplied) {
@@ -191,7 +193,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
             <tr>
               <th scope="row">Total</th>
               <td data-testid="project-invoices-total">{{ totalCents() / 100 | money: currency() }}</td>
-              <td colspan="5"></td>
+              <td colspan="6"></td>
             </tr>
           </tfoot>
         </table>

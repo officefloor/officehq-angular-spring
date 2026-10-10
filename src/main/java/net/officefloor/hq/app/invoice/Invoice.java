@@ -643,6 +643,18 @@ public class Invoice {
     }
 
     /**
+     * What the client owes on this invoice right now given the totals paid and credited against it: what is
+     * left to pay less the retention still held back, never below nothing on account of the retention.
+     */
+    public BigDecimal dueNow(BigDecimal paid, BigDecimal credited) {
+        BigDecimal left = amountDue(paid, credited);
+        if (left.signum() <= 0 || status.isClosedUnpaid()) {
+            return left;
+        }
+        return left.subtract(getRetention()).max(BigDecimal.ZERO.setScale(2));
+    }
+
+    /**
      * This invoice's status given the totals paid and credited against it. Once sent, it is PAID when the
      * payments and credit notes together clear the amount, PARTIAL once something has been paid or credited,
      * otherwise still SENT. Drafts, void and written-off invoices keep their status, as does one marked paid by hand.
