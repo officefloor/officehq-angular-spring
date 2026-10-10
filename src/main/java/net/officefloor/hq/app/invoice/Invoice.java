@@ -111,6 +111,10 @@ public class Invoice {
     @Column(name = "retention_released", nullable = false)
     private boolean retentionReleased;
 
+    /** The part of the invoice written off as bad debt, no longer owed; zero when none has been written off. */
+    @Column(name = "write_off_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal writeOffAmount = BigDecimal.ZERO.setScale(2);
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private InvoiceStatus status = InvoiceStatus.DRAFT;
@@ -665,9 +669,22 @@ public class Invoice {
         this.status = InvoiceStatus.WRITTEN_OFF;
     }
 
-    /** What is left to pay on this invoice given the totals paid and credited against it; nothing once it is void or written off. */
+    /** Writes part of this invoice off as bad debt, so that part is no longer owed while the rest still is. */
+    public void writeOffPart(BigDecimal part) {
+        this.writeOffAmount = writeOffAmount.add(part).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public BigDecimal getWriteOffAmount() {
+        return writeOffAmount;
+    }
+
+    /**
+     * What is left to pay on this invoice given the totals paid and credited against it, less any part written
+     * off; nothing once it is void or written off.
+     */
     public BigDecimal amountDue(BigDecimal paid, BigDecimal credited) {
-        return status.isClosedUnpaid() ? BigDecimal.ZERO.setScale(2) : amount.subtract(paid).subtract(credited);
+        return status.isClosedUnpaid() ? BigDecimal.ZERO.setScale(2)
+                : amount.subtract(paid).subtract(credited).subtract(writeOffAmount);
     }
 
     /**
@@ -684,14 +701,14 @@ public class Invoice {
 
     /**
      * This invoice's status given the totals paid and credited against it. Once sent, it is PAID when the
-     * payments and credit notes together clear the amount, PARTIAL once something has been paid or credited,
-     * otherwise still SENT. Drafts, void and written-off invoices keep their status, as does one marked paid by hand.
+     * payments, credit notes and any part written off together clear the amount, PARTIAL once something has been
+     * paid, credited or written off, otherwise still SENT. Drafts, void and written-off invoices keep their status, as does one marked paid by hand.
      */
     public InvoiceStatus statusFor(BigDecimal paid, BigDecimal credited) {
         if (status == InvoiceStatus.DRAFT || status.isClosedUnpaid()) {
             return status;
         }
-        BigDecimal settled = paid.add(credited);
+        BigDecimal settled = paid.add(credited).add(writeOffAmount);
         if (settled.compareTo(amount) >= 0 || (status == InvoiceStatus.PAID && settled.signum() == 0)) {
             return InvoiceStatus.PAID;
         }

@@ -21,8 +21,8 @@ import java.util.List;
  * fee charged per day overdue, the days the invoice is overdue as of today (only while sent and still
  * owed), and the late fee that has accrued over them. The percentage held back as retention, the amount
  * it holds back (not due yet, nothing once released), whether it has been released, and what is due now
- * without it. What the client owes right now after the payments and credit notes against it, less any
- * retention still held back.
+ * without it. The part written off as bad debt. What the client owes right now after the payments and credit notes against it, less any
+ * part written off and any retention still held back.
  */
 public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
         BigDecimal subtotal,
@@ -34,7 +34,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
         String homeCurrency, BigDecimal homeAmount,
         BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee,
-        BigDecimal retentionPct, BigDecimal retention, boolean retentionReleased, BigDecimal dueNow, BigDecimal amountDue) {
+        BigDecimal retentionPct, BigDecimal retention, boolean retentionReleased, BigDecimal dueNow, BigDecimal writeOffAmount, BigDecimal amountDue) {
 
     /**
      * The invoice with the given status, as worked out from what has been paid and credited against it, and
@@ -59,6 +59,6 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
                 invoice.getTotalSavings(), homeCurrency, homeAmount,
                 invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today),
                 invoice.getRetentionPct(), invoice.getRetention(), invoice.isRetentionReleased(), invoice.getDueNow(),
-                amountDue);
+                invoice.getWriteOffAmount(), amountDue);
     }
 }

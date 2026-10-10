@@ -223,7 +223,9 @@ export interface InvoiceDetail extends Invoice {
   retentionReleased: boolean;
   /** What is due now: the amount less the retention held back. */
   dueNow: number;
-  /** What the client owes right now: what is left to pay after any payments, less the retention held back. */
+  /** The part of the invoice written off as bad debt, no longer owed; zero when none has been written off. */
+  writeOffAmount: number;
+  /** What the client owes right now: what is left to pay after any payments and part written off, less the retention held back. */
   amountDue: number;
 }
 
@@ -372,6 +374,11 @@ export class InvoiceService {
   /** Writes off a sent or part-paid invoice as bad debt so it is no longer owed; it then reads WRITTEN_OFF. */
   writeOff(projectId: number, invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/write-off`, null);
+  }
+
+  /** Writes off part of a sent or part-paid invoice as bad debt; the rest is still owed. */
+  writeOffPart(projectId: number, invoiceId: number, amount: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/write-off-part`, { amount });
   }
 
   /** Cancels a sent invoice so it is no longer owed; it then reads VOID. */

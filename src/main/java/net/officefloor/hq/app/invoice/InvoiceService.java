@@ -492,6 +492,36 @@ public class InvoiceService {
         return detail(invoice);
     }
 
+    /**
+     * Writes off part of a sent or part-paid invoice as bad debt, so that part no longer counts toward what is
+     * owed while the rest still does, and records the part given up in the audit log. Writing off everything
+     * still owed writes off the whole invoice.
+     */
+    @Transactional
+    public InvoiceDetailResponse writeOffPart(Long projectId, Long invoiceId, PartialWriteOffRequest request) {
+        Invoice invoice = find(projectId, invoiceId);
+        BigDecimal paid = payments.sumAmountByInvoiceId(invoiceId);
+        BigDecimal credited = creditNotes.sumAmountByInvoiceId(invoiceId);
+        if (!invoice.statusFor(paid, credited).isOwing()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a sent invoice with something still owed can be written off");
+        }
+        BigDecimal balance = invoice.amountDue(paid, credited);
+        int comparison = request.amount().compareTo(balance);
+        if (comparison > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "Cannot write off more than is still owed");
+        }
+        if (comparison == 0) {
+            return writeOff(projectId, invoiceId);
+        }
+        invoice.writeOffPart(request.amount());
+        invoices.flush();
+        audit.record("INVOICE_PART_WRITTEN_OFF id=" + invoice.getId() + " amount="
+                + request.amount().setScale(2).toPlainString());
+        return detail(invoice, invoice.statusFor(paid, credited));
+    }
+
     private InvoiceResponse toResponse(Invoice invoice) {
         return InvoiceResponse.from(invoice, payments.sumAmountByInvoiceId(invoice.getId()),
                 creditNotes.sumAmountByInvoiceId(invoice.getId()));

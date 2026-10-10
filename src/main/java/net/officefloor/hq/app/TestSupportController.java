@@ -304,14 +304,16 @@ public class TestSupportController {
             BigDecimal retentionPct = decimal(i.get("retentionPct"));
             // The retention may already have been released ("retentionReleased"), making it due.
             boolean retentionReleased = Boolean.TRUE.equals(i.get("retentionReleased"));
+            // Part of the invoice may already have been written off as bad debt ("writeOff"), so it is no longer owed.
+            BigDecimal writeOff = decimal(i.get("writeOff"));
             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, currency)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
                     surcharge, taxInclusive, taxExempt,
                     earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
-                    retentionReleased,
+                    retentionReleased, writeOff,
                     i.get("currency") == null ? null : i.get("currency").toString());
             for (Map<String, Object> d : discounts) {
                 if (d.get("id") != null) {

@@ -47,6 +47,29 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
             Write off as bad debt
           </button>
         </p>
+        <form [formGroup]="partialWriteOffForm" (ngSubmit)="writeOffPart()" data-testid="invoice-partial-write-off-form" novalidate>
+          <label for="partial-write-off-amount">Write off part as bad debt</label>
+          <input
+            id="partial-write-off-amount"
+            type="number"
+            inputmode="decimal"
+            min="0.01"
+            step="0.01"
+            formControlName="amount"
+            data-testid="invoice-partial-write-off-amount"
+            [attr.aria-invalid]="partialWriteOffInvalid()"
+            [attr.aria-describedby]="partialWriteOffInvalid() ? 'partial-write-off-amount-error' : null"
+          />
+          <button type="submit" [disabled]="writingOffPart()" data-testid="invoice-partial-write-off-submit">Write off part</button>
+          @if (partialWriteOffInvalid()) {
+            <p id="partial-write-off-amount-error" role="alert" data-testid="invoice-partial-write-off-amount-error">
+              Enter an amount above zero with at most two decimal places.
+            </p>
+          }
+          @if (partialWriteOffError()) {
+            <p role="alert" data-testid="invoice-partial-write-off-error">{{ partialWriteOffError() }}</p>
+          }
+        </form>
       }
       @if (writeOffError()) {
         <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
@@ -413,6 +436,15 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               <tr data-testid="invoice-due-now-row">
                 <th scope="row" colspan="5">Due now</th>
                 <td data-testid="invoice-due-now">{{ inv.dueNow | money: inv.currency }}</td>
+                @if (inv.status === 'DRAFT') {
+                  <td></td>
+                }
+              </tr>
+            }
+            @if (inv.writeOffAmount > 0) {
+              <tr data-testid="invoice-write-off-row">
+                <th scope="row" colspan="5">Written off as bad debt</th>
+                <td data-testid="invoice-write-off-amount">{{ inv.writeOffAmount | money: inv.currency }}</td>
                 @if (inv.status === 'DRAFT') {
                   <td></td>
                 }
@@ -928,6 +960,41 @@ export class InvoiceDetailPage {
         this.writingOff.set(false);
       },
     });
+  }
+
+  protected readonly writingOffPart = signal(false);
+  protected readonly partialWriteOffError = signal<string | null>(null);
+
+  protected readonly partialWriteOffForm = this.fb.group({
+    amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+  });
+
+  protected partialWriteOffInvalid(): boolean {
+    const control = this.partialWriteOffForm.controls.amount;
+    return control.invalid && (control.touched || control.dirty);
+  }
+
+  // Writes part of the invoice off as bad debt: that part stops counting as owed, the rest still does.
+  protected writeOffPart(): void {
+    if (this.partialWriteOffForm.invalid) {
+      this.partialWriteOffForm.markAllAsTouched();
+      return;
+    }
+    this.writingOffPart.set(true);
+    this.partialWriteOffError.set(null);
+    this.service
+      .writeOffPart(this.projectIdNumber(), Number(this.invoiceId()), Number(this.partialWriteOffForm.getRawValue().amount))
+      .subscribe({
+        next: (updated) => {
+          this.invoice.set(updated);
+          this.partialWriteOffForm.reset();
+          this.writingOffPart.set(false);
+        },
+        error: () => {
+          this.partialWriteOffError.set('Could not write off that amount. It cannot be more than is still owed.');
+          this.writingOffPart.set(false);
+        },
+      });
   }
 
   protected readonly releasingRetention = signal(false);

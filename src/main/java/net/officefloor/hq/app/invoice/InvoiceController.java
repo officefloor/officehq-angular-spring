@@ -134,6 +134,12 @@ public class InvoiceController {
         return service.writeOff(projectId, invoiceId);
     }
 
+    @PostMapping("/{invoiceId}/write-off-part")
+    public InvoiceDetailResponse writeOffPart(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @Valid @RequestBody PartialWriteOffRequest request) {
+        return service.writeOffPart(projectId, invoiceId, request);
+    }
+
     @PostMapping("/{invoiceId}/cancel")
     public InvoiceResponse cancel(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.cancel(projectId, invoiceId);
