@@ -1,0 +1,233 @@
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index 5fe3be5..ac0e1f8 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -34,6 +34,10 @@ export const routes: Routes = [
+     data: { section: 'projects', label: 'Jobs', order: 2 },
+     loadComponent: () => import('./features/projects/projects').then((m) => m.Projects),
+   },
++  {
++    path: 'projects/tasks-by-job',
++    loadComponent: () => import('./features/tasks/tasks-by-job').then((m) => m.TasksByJob),
++  },
+   {
+     path: 'invoices',
+     data: { section: 'invoices', label: 'Invoices', order: 3 },
+diff --git a/src/main/frontend/src/app/features/projects/projects.ts b/src/main/frontend/src/app/features/projects/projects.ts
+index a979c04..02d44df 100644
+--- a/src/main/frontend/src/app/features/projects/projects.ts
++++ b/src/main/frontend/src/app/features/projects/projects.ts
+@@ -20,6 +20,10 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
+   template: `
+     <h1>Jobs</h1>
+ 
++    <p>
++      <a routerLink="/projects/tasks-by-job" data-testid="tasks-by-job-open">Tasks by job</a>
++    </p>
++
+     <form [formGroup]="form" (ngSubmit)="submit()" data-testid="project-form" novalidate>
+       <div>
+         <label for="project-name">Name</label>
+diff --git a/src/main/frontend/src/app/features/tasks/task.service.ts b/src/main/frontend/src/app/features/tasks/task.service.ts
+index b108077..2da4437 100644
+--- a/src/main/frontend/src/app/features/tasks/task.service.ts
++++ b/src/main/frontend/src/app/features/tasks/task.service.ts
+@@ -22,6 +22,13 @@ export interface Task {
+   checklist: ChecklistItem[];
+ }
+ 
++export interface TaskGroup {
++  projectId: number;
++  projectName: string;
++  projectCode: string;
++  tasks: Task[];
++}
++
+ @Injectable({ providedIn: "root" })
+ export class TaskService {
+   private readonly http = inject(HttpClient);
+@@ -30,6 +37,10 @@ export class TaskService {
+     return this.http.get<Task[]>(`/api/projects/${projectId}/tasks`);
+   }
+ 
++  listByJob(): Observable<TaskGroup[]> {
++    return this.http.get<TaskGroup[]>("/api/tasks/by-job");
++  }
++
+   create(
+     projectId: number,
+     title: string,
+diff --git a/src/main/frontend/src/app/features/tasks/tasks-by-job.ts b/src/main/frontend/src/app/features/tasks/tasks-by-job.ts
+new file mode 100644
+index 0000000..0362d13
+--- /dev/null
++++ b/src/main/frontend/src/app/features/tasks/tasks-by-job.ts
+@@ -0,0 +1,65 @@
++import { Component, inject, signal } from '@angular/core';
++import { RouterLink } from '@angular/router';
++import { TaskGroup, TaskService } from './task.service';
++
++// Tasks by job: every task, listed under the job it belongs to. Jobs without tasks, and archived
++// jobs, are left off. Each job heading opens the job's detail page.
++@Component({
++  selector: 'app-tasks-by-job',
++  imports: [RouterLink],
++  template: `
++    <h1>Tasks by job</h1>
++    <p><a routerLink="/projects" data-testid="tasks-by-job-back">Back to jobs</a></p>
++
++    @if (error()) {
++      <p role="alert" data-testid="tasks-by-job-error">{{ error() }}</p>
++    } @else if (loaded() && groups().length === 0) {
++      <p data-testid="tasks-by-job-empty">No tasks yet.</p>
++    } @else {
++      @for (g of groups(); track g.projectId) {
++        <section
++          [attr.data-testid]="'task-group-' + g.projectId"
++          [attr.aria-labelledby]="'task-group-heading-' + g.projectId"
++        >
++          <h2 [id]="'task-group-heading-' + g.projectId">
++            <a
++              [routerLink]="['/projects', g.projectId]"
++              [attr.data-testid]="'task-group-name-' + g.projectId"
++              >{{ g.projectCode }} — {{ g.projectName }}</a
++            >
++            <span [attr.data-testid]="'task-group-count-' + g.projectId">
++              ({{ g.tasks.length }} {{ g.tasks.length === 1 ? 'task' : 'tasks' }})</span
++            >
++          </h2>
++          <ul>
++            @for (t of g.tasks; track t.id) {
++              <li [attr.data-testid]="'task-row-' + t.id">
++                <span data-testid="task-title">{{ t.title }}</span>
++                @if (t.done) {
++                  <span data-testid="task-done"> (done)</span>
++                }
++              </li>
++            }
++          </ul>
++        </section>
++      }
++    }
++  `,
++})
++export class TasksByJob {
++  private readonly service = inject(TaskService);
++
++  protected readonly groups = signal<TaskGroup[]>([]);
++  protected readonly loaded = signal(false);
++  protected readonly error = signal<string | null>(null);
++
++  constructor() {
++    this.service.listByJob().subscribe({
++      next: (list) => {
++        this.groups.set(list);
++        this.loaded.set(true);
++      },
++      error: () => this.error.set('Could not load tasks. Please try again.'),
++    });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/ChecklistItemRepository.java b/src/main/java/net/officefloor/hq/app/task/ChecklistItemRepository.java
+index 4100b76..620323e 100644
+--- a/src/main/java/net/officefloor/hq/app/task/ChecklistItemRepository.java
++++ b/src/main/java/net/officefloor/hq/app/task/ChecklistItemRepository.java
+@@ -9,6 +9,9 @@ public interface ChecklistItemRepository extends JpaRepository<ChecklistItem, Lo
+     /** The checklist items of all a project's tasks, in the order they were added. */
+     List<ChecklistItem> findByTaskProjectIdOrderById(Long projectId);
+ 
++    /** Every checklist item, in the order they were added. */
++    List<ChecklistItem> findAllByOrderById();
++
+     /** A task's checklist items, in the order they were added. */
+     List<ChecklistItem> findByTaskIdOrderById(Long taskId);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskGroupResponse.java b/src/main/java/net/officefloor/hq/app/task/TaskGroupResponse.java
+new file mode 100644
+index 0000000..dca6b3a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/TaskGroupResponse.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.task;
++
++import java.util.List;
++
++/** A job and the tasks that belong to it. */
++public record TaskGroupResponse(Long projectId, String projectName, String projectCode, List<TaskResponse> tasks) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskRepository.java b/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
+index ab29a46..ea75a1f 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
+@@ -10,6 +10,9 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
+     /** A project's tasks in the order they were added. */
+     List<Task> findByProjectIdOrderById(Long projectId);
+ 
++    /** Every task, grouped by job (in the order jobs were added) then in the order added. */
++    List<Task> findAllByOrderByProjectIdAscIdAsc();
++
+     /** How many tasks not yet done were due before the given date. */
+     long countByDoneFalseAndDueDateBefore(LocalDate date);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskService.java b/src/main/java/net/officefloor/hq/app/task/TaskService.java
+index 030e5af..54373ac 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskService.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.task;
+ 
++import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.stream.Collectors;
+@@ -39,6 +40,23 @@ public class TaskService {
+                 .map(t -> TaskResponse.from(t, checklists.getOrDefault(t.getId(), List.of()))).toList();
+     }
+ 
++    /** The tasks of every job still in use, grouped under the job they belong to. */
++    @Transactional(readOnly = true)
++    public List<TaskGroupResponse> listByJob() {
++        Map<Long, List<ChecklistItemResponse>> checklists = checklistItems.findAllByOrderById().stream()
++                .map(ChecklistItemResponse::from)
++                .collect(Collectors.groupingBy(ChecklistItemResponse::taskId));
++        Map<Project, List<TaskResponse>> grouped = tasks.findAllByOrderByProjectIdAscIdAsc().stream()
++                .filter(t -> !t.getProject().isArchived())
++                .collect(Collectors.groupingBy(Task::getProject, LinkedHashMap::new, Collectors.mapping(
++                        t -> TaskResponse.from(t, checklists.getOrDefault(t.getId(), List.of())),
++                        Collectors.toList())));
++        return grouped.entrySet().stream()
++                .map(e -> new TaskGroupResponse(e.getKey().getId(), e.getKey().getName(), e.getKey().getCode(),
++                        e.getValue()))
++                .toList();
++    }
++
+     @Transactional
+     public TaskResponse create(Long projectId, TaskRequest request) {
+         Project project = projects.findById(projectId)
+diff --git a/src/main/java/net/officefloor/hq/app/task/TasksByJobController.java b/src/main/java/net/officefloor/hq/app/task/TasksByJobController.java
+new file mode 100644
+index 0000000..bfb2d2f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/TasksByJobController.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.task;
++
++import java.util.List;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** Every job's tasks, grouped under the job they belong to. */
++@RestController
++public class TasksByJobController {
++
++    private final TaskService service;
++
++    public TasksByJobController(TaskService service) {
++        this.service = service;
++    }
++
++    @GetMapping("/api/tasks/by-job")
++    public List<TaskGroupResponse> listByJob() {
++        return service.listByJob();
++    }
++}
