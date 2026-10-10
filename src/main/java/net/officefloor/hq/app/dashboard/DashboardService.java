@@ -74,7 +74,7 @@ public class DashboardService {
     /**
      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
      * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices (not disputed) are past their due date and
-     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}; disputed and written-off invoices left out), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date, and how many clients were taken on this month, and what was billed this month in the home currency.
+     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}; disputed and written-off invoices left out), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date, and how many clients were taken on this month, and what was billed this month and this year in the home currency (disputed and written-off invoices left out, as for what is outstanding).
      */
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
@@ -92,8 +92,7 @@ public class DashboardService {
         long overdue = invoices.countByStatusInAndDueDateBefore(owing, today);
         String home = settings.homeCurrency();
         Map<Invoice, BigDecimal> owedInHome = inHome(invoices.findByStatusInWithClient(owing), home, today, false);
-        // The grand total leaves out disputed invoices (written-off ones are already not owing).
-        BigDecimal outstandingHome = owedInHome.entrySet().stream().filter(e -> !e.getKey().isDisputed())
+        BigDecimal outstandingHome = owedInHome.entrySet().stream().filter(e -> countsInKpis(e.getKey()))
                 .map(Map.Entry::getValue).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
         Map<Invoice, BigDecimal> overdueInHome = inHome(invoices.findByStatusInAndDueDateBefore(owing, today), home, today, true);
         BigDecimal overdueAmount = sum(overdueInHome);
@@ -190,14 +189,22 @@ public class DashboardService {
     }
 
     /**
+     * Whether an invoice counts towards the dashboard's money figures (what is outstanding and what was billed): the
+     * same rule for each so they agree, leaving out disputed and written-off invoices.
+     */
+    private static boolean countsInKpis(Invoice invoice) {
+        return !invoice.isDisputed() && invoice.getStatus() != InvoiceStatus.WRITTEN_OFF;
+    }
+
+    /**
      * What was billed on or between the given dates, in the home currency: the amounts of the invoices issued in the
-     * range that were sent (drafts and cancelled invoices are left out), each converted at its issue date's rate (an
-     * invoice that cannot be converted is left out).
+     * range that were sent (drafts and cancelled invoices are left out, and disputed and written-off ones too, see
+     * {@link #countsInKpis}), each converted at its issue date's rate (an invoice that cannot be converted is left out).
      */
     private BigDecimal billings(LocalDate from, LocalDate to, String home) {
-        List<InvoiceStatus> billed = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID,
-                InvoiceStatus.WRITTEN_OFF);
+        List<InvoiceStatus> billed = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID);
         return invoices.findByStatusInAndIssuedDateBetween(billed, from, to).stream()
+                .filter(DashboardService::countsInKpis)
                 .map(i -> i.getCurrency().equals(home) ? Optional.of(i.getAmount())
                         : fxRates.toHome(i.getCurrency(), i.getIssuedDate(), i.getAmount()))
                 .flatMap(Optional::stream).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);

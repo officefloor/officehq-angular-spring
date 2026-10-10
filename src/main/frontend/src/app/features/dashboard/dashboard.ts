@@ -51,11 +51,11 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
           <dd data-testid="dashboard-outstanding-home"><span data-testid="kpi-outstanding">{{ s.outstandingHome | money: s.homeCurrency }}</span></dd>
         </div>
         <div>
-          <dt>Billed this month (in {{ s.homeCurrency }})</dt>
+          <dt>Billed this month (in {{ s.homeCurrency }}, excluding disputed and written-off)</dt>
           <dd data-testid="kpi-billings-month">{{ s.billingsThisMonth | money: s.homeCurrency }}</dd>
         </div>
         <div>
-          <dt>Billed this year (in {{ s.homeCurrency }})</dt>
+          <dt>Billed this year (in {{ s.homeCurrency }}, excluding disputed and written-off)</dt>
           <dd data-testid="kpi-ytd-billings">{{ s.billingsYearToDate | money: s.homeCurrency }}</dd>
         </div>
         <div data-testid="billing-target">
