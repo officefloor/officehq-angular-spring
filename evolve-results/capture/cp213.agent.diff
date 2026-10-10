@@ -1,0 +1,469 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index 02f7115..0b017e4 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -9,6 +9,7 @@ import { ClientCredit } from '../credit/client-credit';
+ import { ClientAging } from '../invoices/client-aging';
+ import { ClientDeposits } from '../deposits/client-deposits';
+ import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
++import { ClientRemittances } from '../payments/client-remittances';
+ import { ClientProjects } from '../projects/client-projects';
+ import { ClientCreditLimit } from './client-credit-limit';
+ import { ClientCurrency } from './client-currency';
+@@ -18,10 +19,10 @@ import { ClientExport } from './client-export';
+ import { ClientMerge } from './client-merge';
+ import { Client, ClientService } from './client.service';
+ 
+-// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
++// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them, their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
+ @Component({
+   selector: 'app-client-detail',
+-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
++  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+   styles: `
+     .client-badges {
+       display: flex;
+@@ -164,6 +165,7 @@ import { Client, ClientService } from './client.service';
+           <p role="status" data-testid="client-deposit-applied">Deposit applied.</p>
+         }
+       </div>
++      <app-client-remittances [clientId]="clientId()" [currency]="c.currency" />
+       <app-client-credit [clientId]="clientId()" [currency]="c.currency" (refunded)="creditRefunded()" />
+       <app-client-deposits [clientId]="clientId()" [currency]="c.currency" />
+       <app-client-contacts
+@@ -202,6 +204,7 @@ export class ClientDetail {
+   protected readonly depositApplied = signal(false);
+   private readonly paymentForm = viewChild(ClientPaymentForm);
+   private readonly depositsPanel = viewChild(ClientDeposits);
++  private readonly remittancesPanel = viewChild(ClientRemittances);
+   private readonly creditPanel = viewChild(ClientCredit);
+   private readonly agingPanel = viewChild(ClientAging);
+   private readonly mergePanel = viewChild(ClientMerge);
+@@ -228,6 +231,7 @@ export class ClientDetail {
+     this.depositsPanel()?.reload();
+     this.creditPanel()?.reload();
+     this.agingPanel()?.reload();
++    this.remittancesPanel()?.reload();
+     this.client.reload();
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/payments/client-remittances.ts b/src/main/frontend/src/app/features/payments/client-remittances.ts
+new file mode 100644
+index 0000000..081f265
+--- /dev/null
++++ b/src/main/frontend/src/app/features/payments/client-remittances.ts
+@@ -0,0 +1,122 @@
++import { Component, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { CurrencyCode } from '../clients/client.service';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { PaymentService } from './payment.service';
++
++// The lump payments a client has made, newest first, each with a remittance note listing which invoices it covered
++// and how much of the payment went to each.
++@Component({
++  selector: 'app-client-remittances',
++  imports: [MoneyPipe],
++  template: `
++    <section aria-labelledby="client-remittances-heading" data-testid="client-remittances">
++      <h2 id="client-remittances-heading">Payments received</h2>
++      @if (payments.error()) {
++        <p role="alert" data-testid="client-remittances-error">Could not load the client's payments.</p>
++      } @else if (payments.hasValue()) {
++        @if (payments.value().length === 0) {
++          <p data-testid="client-remittances-none">No payments received yet.</p>
++        } @else {
++          <ul data-testid="client-remittance-list">
++            @for (p of payments.value(); track p.id) {
++              <li [attr.data-testid]="'client-remittance-' + p.id">
++                <span data-testid="client-remittance-date">{{ p.date }}</span>:
++                <span data-testid="client-remittance-amount">{{ p.amount | money: currency() }}</span>
++                <button
++                  type="button"
++                  [attr.data-testid]="'remittance-open-' + p.id"
++                  aria-controls="client-remittance-note"
++                  [attr.aria-expanded]="openId() === p.id"
++                  (click)="toggle(p.id)"
++                >
++                  {{ openId() === p.id ? 'Hide remittance note' : 'View remittance note' }}
++                </button>
++              </li>
++            }
++          </ul>
++        }
++      }
++      <div id="client-remittance-note" aria-live="polite">
++        @if (openId() !== null) {
++          @if (remittance.error()) {
++            <p role="alert" data-testid="remittance-error">Could not load the remittance note.</p>
++          } @else if (remittance.hasValue()) {
++            @let r = remittance.value();
++            <table data-testid="remittance-note">
++              <caption>
++                Remittance for the payment of {{ r.amount | money: r.currency }} received on {{ r.date }}
++              </caption>
++              <thead>
++                <tr>
++                  <th scope="col">Invoice</th>
++                  <th scope="col">Job</th>
++                  <th scope="col">Paid ({{ r.currency }})</th>
++                </tr>
++              </thead>
++              <tbody>
++                @for (line of r.lines; track line.invoiceId) {
++                  <tr [attr.data-testid]="'remittance-row-' + line.invoiceId">
++                    <th scope="row" data-testid="remittance-invoice">#{{ line.invoiceId }}</th>
++                    <td data-testid="remittance-project">{{ line.projectName }}</td>
++                    <td data-testid="remittance-amount">{{ line.amount | money: r.currency }}</td>
++                  </tr>
++                }
++              </tbody>
++              <tfoot>
++                @if (r.fromDeposits + r.fromCreditNotes > 0) {
++                  <tr>
++                    <th scope="row" colspan="2">From credit</th>
++                    <td data-testid="remittance-from-credit">{{ r.fromDeposits + r.fromCreditNotes | money: r.currency }}</td>
++                  </tr>
++                }
++                @if (r.toCredit > 0) {
++                  <tr>
++                    <th scope="row" colspan="2">Kept as credit</th>
++                    <td data-testid="remittance-to-credit">{{ r.toCredit | money: r.currency }}</td>
++                  </tr>
++                }
++                <tr>
++                  <th scope="row" colspan="2">Payment received</th>
++                  <td data-testid="remittance-total">{{ r.amount | money: r.currency }}</td>
++                </tr>
++              </tfoot>
++            </table>
++          }
++        }
++      </div>
++    </section>
++  `,
++})
++export class ClientRemittances {
++  private readonly service = inject(PaymentService);
++
++  readonly clientId = input.required<number>();
++  /** The client's currency; their payments are received in it. */
++  readonly currency = input.required<CurrencyCode>();
++
++  protected readonly payments = rxResource({
++    params: () => this.clientId(),
++    stream: ({ params }) => this.service.listForClient(params),
++  });
++
++  /** The payment whose remittance note is shown, if any. */
++  protected readonly openId = signal<number | null>(null);
++
++  protected readonly remittance = rxResource({
++    params: () => {
++      const id = this.openId();
++      return id === null ? undefined : { clientId: this.clientId(), paymentId: id };
++    },
++    stream: ({ params }) => this.service.remittance(params.clientId, params.paymentId),
++  });
++
++  protected toggle(id: number): void {
++    this.openId.update((open) => (open === id ? null : id));
++  }
++
++  /** Loads the payments again, e.g. after one was recorded elsewhere on the page. */
++  reload(): void {
++    this.payments.reload();
++  }
++}
+diff --git a/src/main/frontend/src/app/features/payments/payment.service.ts b/src/main/frontend/src/app/features/payments/payment.service.ts
+index 2b313fd..160fabb 100644
+--- a/src/main/frontend/src/app/features/payments/payment.service.ts
++++ b/src/main/frontend/src/app/features/payments/payment.service.ts
+@@ -45,6 +45,38 @@ export interface ClientPayment {
+   allocations: Payment[];
+ }
+ 
++/** A lump payment from a client, without the invoices it was split across. */
++export interface ClientPaymentSummary {
++  id: number;
++  clientId: number;
++  amount: number;
++  /** ISO date (yyyy-MM-dd) the payment was made. */
++  date: string;
++}
++
++/**
++ * A remittance note: a lump payment and the invoices it covered. Each line's `amount` is the share of the lump put
++ * toward that invoice, in the client's `currency`; `settled` is what it settled on the invoice, in `invoiceCurrency`.
++ */
++export interface Remittance {
++  id: number;
++  clientId: number;
++  currency: string;
++  amount: number;
++  date: string;
++  fromDeposits: number;
++  fromCreditNotes: number;
++  toCredit: number;
++  lines: {
++    invoiceId: number;
++    projectId: number;
++    projectName: string;
++    amount: number;
++    settled: number;
++    invoiceCurrency: string;
++  }[];
++}
++
+ @Injectable({ providedIn: 'root' })
+ export class PaymentService {
+   private readonly http = inject(HttpClient);
+@@ -58,6 +90,16 @@ export class PaymentService {
+     return this.http.post<Payment>(`/api/projects/${projectId}/invoices/${invoiceId}/payments`, payment);
+   }
+ 
++  /** A client's lump payments, newest first. */
++  listForClient(clientId: number): Observable<ClientPaymentSummary[]> {
++    return this.http.get<ClientPaymentSummary[]>(`/api/clients/${clientId}/payments`);
++  }
++
++  /** The remittance note for one of a client's lump payments. */
++  remittance(clientId: number, paymentId: number): Observable<Remittance> {
++    return this.http.get<Remittance>(`/api/clients/${clientId}/payments/${paymentId}/remittance`);
++  }
++
+   /** Records one lump payment from a client, split across the given invoices. */
+   recordForClient(clientId: number, payment: NewClientPayment): Observable<ClientPayment> {
+     return this.http.post<ClientPayment>(`/api/clients/${clientId}/payments`, payment);
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 87c1641..c5b1ad3 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -382,7 +382,12 @@ public class TestSupportController {
+         }
+         // A payment in another currency ("currency") than its invoice's is converted into the invoice's currency at
+         // the rates in effect on its date, and settles that much of the invoice.
++        List<Map<String, Object>> lumps = new ArrayList<>();
+         for (Map<String, Object> p : rows(fixture, "payments")) {
++            if (p.get("allocations") != null) {
++                lumps.add(p);
++                continue;
++            }
+             long invoiceId = ((Number) p.get("invoiceId")).longValue();
+             BigDecimal amount = new BigDecimal(p.get("amount").toString());
+             LocalDate date = LocalDate.parse(p.get("date").toString());
+@@ -400,6 +405,11 @@ public class TestSupportController {
+                         ((Number) p.get("id")).longValue(), invoiceId, settles, date, paidCurrency, amount);
+             }
+         }
++        // A lump payment from a client ("clientId"), split across their invoices ("allocations"); each share is an
++        // ordinary payment against its invoice, linked back to the lump. Whatever is not allocated is kept as credit.
++        for (Map<String, Object> p : lumps) {
++            seedClientPayment(p);
++        }
+         for (Map<String, Object> c : rows(fixture, "creditNotes")) {
+             jdbc.update("INSERT INTO credit_note (id, invoice_id, amount, issued_at) VALUES (?, ?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), ((Number) c.get("invoiceId")).longValue(),
+@@ -432,10 +442,39 @@ public class TestSupportController {
+         restartIdentity("tag");
+         restartIdentity("note");
+         restartIdentity("payment");
++        restartIdentity("client_payment");
+         restartIdentity("credit_note");
+         restartIdentity("deposit");
+     }
+ 
++    /** A lump payment and the share of it paid against each invoice, converted into the invoice's currency. */
++    private void seedClientPayment(Map<String, Object> p) {
++        long lumpId = ((Number) p.get("id")).longValue();
++        long clientId = ((Number) p.get("clientId")).longValue();
++        BigDecimal amount = new BigDecimal(p.get("amount").toString());
++        LocalDate date = LocalDate.parse(p.get("date").toString());
++        String clientCurrency = jdbc.queryForObject("SELECT currency FROM client WHERE id = ?", String.class, clientId);
++        BigDecimal allocated = BigDecimal.ZERO;
++        for (Map<String, Object> a : rows(p, "allocations")) {
++            allocated = allocated.add(new BigDecimal(a.get("amount").toString()));
++        }
++        jdbc.update("INSERT INTO client_payment (id, client_id, amount, paid_date, to_credit) VALUES (?, ?, ?, ?, ?)",
++                lumpId, clientId, amount, date, amount.subtract(allocated).max(BigDecimal.ZERO));
++        for (Map<String, Object> a : rows(p, "allocations")) {
++            long invoiceId = ((Number) a.get("invoiceId")).longValue();
++            BigDecimal share = new BigDecimal(a.get("amount").toString());
++            String invoiceCurrency = jdbc.queryForObject("SELECT COALESCE(i.currency, c.currency) FROM invoice i"
++                    + " JOIN project p ON p.id = i.project_id JOIN client c ON c.id = p.client_id WHERE i.id = ?",
++                    String.class, invoiceId);
++            BigDecimal settles = fxRates.convert(clientCurrency, invoiceCurrency, date, share)
++                    .orElseThrow(() -> new IllegalArgumentException("No exchange rate for " + invoiceCurrency + " on " + date));
++            long paymentId = a.get("id") != null ? ((Number) a.get("id")).longValue()
++                    : jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM payment", Long.class);
++            jdbc.update("INSERT INTO payment (id, invoice_id, amount, paid_date, client_payment_id, share_amount)"
++                    + " VALUES (?, ?, ?, ?, ?, ?)", paymentId, invoiceId, settles, date, lumpId, share);
++        }
++    }
++
+     /** A task and the sub-items on its checklist. */
+     private void seedTask(Map<String, Object> t, long projectId) {
+         long taskId = ((Number) t.get("id")).longValue();
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentController.java b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentController.java
+index 05c3738..d24c8ec 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentController.java
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentController.java
+@@ -1,7 +1,9 @@
+ package net.officefloor.hq.app.payment;
+ 
+ import jakarta.validation.Valid;
++import java.util.List;
+ import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+@@ -20,6 +22,18 @@ public class ClientPaymentController {
+         this.service = service;
+     }
+ 
++    /** The client's lump payments, newest first. */
++    @GetMapping
++    public List<ClientPaymentSummaryResponse> list(@PathVariable Long clientId) {
++        return service.listForClient(clientId);
++    }
++
++    /** The remittance note for one of the client's lump payments: the invoices it covered and how much of each. */
++    @GetMapping("/{paymentId}/remittance")
++    public RemittanceResponse remittance(@PathVariable Long clientId, @PathVariable Long paymentId) {
++        return service.remittance(clientId, paymentId);
++    }
++
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClientPaymentResponse record(@PathVariable Long clientId, @Valid @RequestBody ClientPaymentRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java
+index 5d5a09e..976c489 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentRepository.java
+@@ -1,11 +1,15 @@
+ package net.officefloor.hq.app.payment;
+ 
+ import java.math.BigDecimal;
++import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Query;
+ 
+ public interface ClientPaymentRepository extends JpaRepository<ClientPayment, Long> {
+ 
++    /** A client's lump payments, newest first. */
++    List<ClientPayment> findByClientIdOrderByDateDescIdDesc(Long clientId);
++
+     /** Total of a client's held deposits used up by their lump payments (zero when none). */
+     @Query("SELECT COALESCE(SUM(p.fromDeposits), 0) FROM ClientPayment p WHERE p.clientId = :clientId")
+     BigDecimal sumFromDepositsByClientId(Long clientId);
+diff --git a/src/main/java/net/officefloor/hq/app/payment/ClientPaymentSummaryResponse.java b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentSummaryResponse.java
+new file mode 100644
+index 0000000..c838c72
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/ClientPaymentSummaryResponse.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.payment;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A lump payment from a client, in the client's currency, without the invoices it was split across. */
++public record ClientPaymentSummaryResponse(Long id, Long clientId, BigDecimal amount, LocalDate date) {
++
++    static ClientPaymentSummaryResponse from(ClientPayment lump) {
++        return new ClientPaymentSummaryResponse(lump.getId(), lump.getClientId(), lump.getAmount(), lump.getDate());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+index b8b9ce8..f23d18d 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentRepository.java
+@@ -14,6 +14,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
+     /** An invoice's payments, oldest first. */
+     List<Payment> findByInvoiceIdOrderByDateAscIdAsc(Long invoiceId);
+ 
++    /** The payments split from a lump payment, in the order they were recorded. */
++    List<Payment> findByClientPaymentIdOrderByIdAsc(Long clientPaymentId);
++
+     /** Every payment against any of the given invoices. */
+     List<Payment> findByInvoiceIdIn(Collection<Long> invoiceIds);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+index 8bd26ec..41f3367 100644
+--- a/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
++++ b/src/main/java/net/officefloor/hq/app/payment/PaymentService.java
+@@ -95,6 +95,39 @@ public class PaymentService {
+                 currency, request.amount()));
+     }
+ 
++    /** A client's lump payments, newest first. */
++    @Transactional(readOnly = true)
++    public List<ClientPaymentSummaryResponse> listForClient(Long clientId) {
++        requireClient(clientId);
++        return clientPayments.findByClientIdOrderByDateDescIdDesc(clientId).stream()
++                .map(ClientPaymentSummaryResponse::from).toList();
++    }
++
++    /**
++     * The remittance note for one of a client's lump payments: each invoice it was split across, with the share of the
++     * lump put toward it (in the client's currency) and what that settled on the invoice (in the invoice's currency).
++     */
++    @Transactional(readOnly = true)
++    public RemittanceResponse remittance(Long clientId, Long clientPaymentId) {
++        String currency = clients.findById(clientId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"))
++                .getCurrency();
++        ClientPayment lump = clientPayments.findById(clientPaymentId)
++                .filter(p -> p.getClientId().equals(clientId))
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown payment"));
++        List<RemittanceResponse.Line> lines = payments.findByClientPaymentIdOrderByIdAsc(lump.getId()).stream()
++                .map(share -> {
++                    Invoice invoice = invoices.findById(share.getInvoiceId()).orElseThrow();
++                    return new RemittanceResponse.Line(invoice.getId(), invoice.getProject().getId(),
++                            invoice.getProject().getName(),
++                            share.getShareAmount() != null ? share.getShareAmount() : share.getAmount(),
++                            share.getAmount(), invoice.getCurrency());
++                })
++                .toList();
++        return new RemittanceResponse(lump.getId(), clientId, currency, lump.getAmount(), lump.getDate(),
++                lump.getFromDeposits(), lump.getFromCreditNotes(), lump.getToCredit(), lines);
++    }
++
+     /**
+      * Records one lump payment from a client split across several of their owing invoices. With
+      * {@code useCredit} the client's credit is used up first (held deposits, then unused credit
+diff --git a/src/main/java/net/officefloor/hq/app/payment/RemittanceResponse.java b/src/main/java/net/officefloor/hq/app/payment/RemittanceResponse.java
+new file mode 100644
+index 0000000..4843fbb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/payment/RemittanceResponse.java
+@@ -0,0 +1,20 @@
++package net.officefloor.hq.app.payment;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++
++/**
++ * A remittance note for a lump payment: what was received ({@code amount}, in the client's {@code currency}), how much
++ * of the client's credit it used up and kept as credit, and the invoices it covered. Each line's {@code amount} is the
++ * share of the lump put toward that invoice, in the client's currency; {@code settled} is what that share settled on
++ * the invoice, in the invoice's currency.
++ */
++public record RemittanceResponse(Long id, Long clientId, String currency, BigDecimal amount, LocalDate date,
++        BigDecimal fromDeposits, BigDecimal fromCreditNotes, BigDecimal toCredit, List<Line> lines) {
++
++    /** One invoice the lump payment covered. */
++    public record Line(Long invoiceId, Long projectId, String projectName, BigDecimal amount, BigDecimal settled,
++            String invoiceCurrency) {
++    }
++}
+diff --git a/src/main/resources/db/migration/V102__remittance_lookup.sql b/src/main/resources/db/migration/V102__remittance_lookup.sql
+new file mode 100644
+index 0000000..2dfc0af
+--- /dev/null
++++ b/src/main/resources/db/migration/V102__remittance_lookup.sql
+@@ -0,0 +1,2 @@
++-- A remittance note lists the invoices a lump payment covered: the payments split from it, found by the lump.
++CREATE INDEX payment_client_payment_idx ON payment (client_payment_id);
