@@ -124,6 +124,21 @@ public class DashboardService {
         String shownIn = fxRates.convert(home, base, today, BigDecimal.ONE).isPresent() ? base : home;
         UnaryOperator<BigDecimal> shown = amount -> amount == null ? null
                 : fxRates.convert(home, shownIn, today, amount).orElseThrow();
+        Map<Long, BigDecimal> overdueByClient = new HashMap<>();
+        Map<Long, String> overdueClientNames = new HashMap<>();
+        overdueInHome.forEach((invoice, amount) -> {
+            var client = invoice.getProject().getClient();
+            overdueByClient.merge(client.getId(), amount, BigDecimal::add);
+            overdueClientNames.put(client.getId(), client.getName());
+        });
+        List<DashboardResponse.TopOverdueClient> topOverdue = overdueByClient.entrySet().stream()
+                .filter(e -> e.getValue().signum() > 0)
+                .sorted(Map.Entry.<Long, BigDecimal>comparingByValue().reversed()
+                        .thenComparing(e -> overdueClientNames.get(e.getKey())))
+                .limit(TOP_CLIENTS)
+                .map(e -> new DashboardResponse.TopOverdueClient(e.getKey(), overdueClientNames.get(e.getKey()),
+                        shown.apply(e.getValue().setScale(2, RoundingMode.HALF_UP))))
+                .toList();
         top = top.stream().map(c -> new DashboardResponse.TopClient(c.id(), c.name(), c.currency(), c.outstanding(),
                 shown.apply(c.outstandingHome()))).toList();
         overdueBuckets = new DashboardResponse.OverdueBuckets(shown.apply(overdueBuckets.days0To30()),
@@ -136,7 +151,7 @@ public class DashboardService {
                 shown.apply(billingsYearToDate), shown.apply(collected(today.withDayOfYear(1), today, home)),
                 shown.apply(collected(today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)), today, home)),
                 taskCompletionRate(), shown.apply(billingTarget), billingTargetProgress,
-                shown.apply(billingTargetVariance), base);
+                shown.apply(billingTargetVariance), base, topOverdue);
     }
 
     /** The share of all tasks that are done, as a whole percentage. Null when there are no tasks. */

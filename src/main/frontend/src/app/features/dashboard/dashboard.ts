@@ -17,7 +17,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 // exchange rate from its own issue date (leaving out disputed and written-off invoices), and how many of those sent
 // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
 // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
-// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, what share of all tasks are done, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected, and how what was billed this year tracks against the yearly billings target set in the settings, including how far ahead of or behind it billing is. An aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here. The currency the totals are shown in can be chosen here.
+// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the top five clients with the most overdue (including late fees and interest), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, what share of all tasks are done, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected, and how what was billed this year tracks against the yearly billings target set in the settings, including how far ahead of or behind it billing is. An aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here. The currency the totals are shown in can be chosen here.
 @Component({
   selector: 'app-dashboard',
   imports: [MoneyPipe, AgingReportPanel, OverdueTrendPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
@@ -185,6 +185,22 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
           </ol>
         } @else {
           <p data-testid="dashboard-top-clients-empty">No clients owe anything.</p>
+        }
+      </section>
+
+      <section data-testid="dashboard-top-overdue" aria-labelledby="dashboard-top-overdue-heading">
+        <h2 id="dashboard-top-overdue-heading">Clients with the most overdue (in {{ s.homeCurrency }})</h2>
+        @if (s.topOverdueClients.length) {
+          <ol>
+            @for (c of s.topOverdueClients; track c.id) {
+              <li [attr.data-testid]="'overdue-client-row-' + c.id">
+                <span data-testid="overdue-client-name">{{ c.name }}</span>:
+                <span data-testid="overdue-client-amount">{{ c.overdue | money: s.homeCurrency }}</span>
+              </li>
+            }
+          </ol>
+        } @else {
+          <p data-testid="dashboard-top-overdue-empty">No clients have anything overdue.</p>
         }
       </section>
     } @else {

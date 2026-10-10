@@ -19,7 +19,8 @@ import java.util.List;
  * percentage of it, and how far what has been billed this year is ahead of (positive) or behind (negative) that
  * target (all null when no target is set). The money totals are shown in {@code homeCurrency}: the chosen dashboard
  * {@code baseCurrency}, converted from the home currency at today's rate, or the home currency itself while the base
- * currency has no rate.
+ * currency has no rate. Also the clients with the most overdue, ranked by what is overdue on their invoices (including
+ * late fees and instalment interest), in the shown currency.
  */
 public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
         BigDecimal outstandingHome, long overdue,
@@ -28,7 +29,7 @@ public record DashboardResponse(long clients, long projects, List<CurrencyTotal>
         BigDecimal billingsThisMonth, Long collectionRate, BigDecimal billingsYearToDate,
         BigDecimal collectedYearToDate, BigDecimal collectedThisWeek, Long taskCompletionRate,
         BigDecimal billingTarget, Long billingTargetProgress, BigDecimal billingTargetVariance,
-        String baseCurrency) {
+        String baseCurrency, List<TopOverdueClient> topOverdueClients) {
 
     /** What is still owed in one currency. */
     public record CurrencyTotal(String currency, BigDecimal amount) {
@@ -40,5 +41,9 @@ public record DashboardResponse(long clients, long projects, List<CurrencyTotal>
 
     /** A client and what they still owe, in their currency and converted into the home currency. */
     public record TopClient(Long id, String name, String currency, BigDecimal outstanding, BigDecimal outstandingHome) {
+    }
+
+    /** A client and what is overdue on their invoices, in the shown currency. */
+    public record TopOverdueClient(Long id, String name, BigDecimal overdue) {
     }
 }

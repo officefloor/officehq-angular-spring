@@ -13,6 +13,13 @@ export interface TopClient {
   outstandingHome: number;
 }
 
+/** A client and what is overdue on their invoices (including late fees and interest), in the dashboard's currency. */
+export interface TopOverdueClient {
+  id: number;
+  name: string;
+  overdue: number;
+}
+
 /** What is still owed in one currency; different currencies are never added together. */
 export interface CurrencyTotal {
   currency: CurrencyCode;
@@ -69,6 +76,8 @@ export interface DashboardSummary {
   billingTargetVariance: number | null;
   /** The currency chosen for the dashboard's totals to be shown in. */
   baseCurrency: CurrencyCode;
+  /** The clients with the most overdue, the most first. */
+  topOverdueClients: TopOverdueClient[];
 }
 
 /** The tax charged on invoices issued on or between two dates, in the home currency. */
