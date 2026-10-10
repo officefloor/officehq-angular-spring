@@ -14,7 +14,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 // Dashboard page: how many clients and projects there are (and how many clients were taken on this month), what was billed this month and year to date in the home currency, what was collected year to date, and the total still owed in each currency
 // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
 // counted), plus one grand total of it in the home currency with each invoice converted at the
-// exchange rate from its own issue date (leaving out disputed and written-off invoices), and how many of those sent
+// exchange rate from its own issue date (leaving out disputed and written-off invoices), and what is tied up in disputed invoices, and how many of those sent
 // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
 // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
 // converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the top five clients with the most overdue (including late fees and interest), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, what share of all tasks are done, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected, and how what was billed this year tracks against the yearly billings target set in the settings, including how far ahead of or behind it billing is. An aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here. The currency the totals are shown in can be chosen here.
@@ -71,6 +71,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
         <div>
           <dt>Outstanding in {{ s.homeCurrency }} (converted at each invoice's date, excluding disputed and written-off)</dt>
           <dd data-testid="dashboard-outstanding-home"><span data-testid="kpi-outstanding">{{ s.outstandingHome | money: s.homeCurrency }}</span></dd>
+        </div>
+        <div>
+          <dt>Tied up in disputed invoices (in {{ s.homeCurrency }})</dt>
+          <dd data-testid="dashboard-disputes-total">{{ s.disputedAmount | money: s.homeCurrency }}</dd>
         </div>
         <div>
           <dt>Billed this month (in {{ s.homeCurrency }}, excluding disputed and written-off)</dt>

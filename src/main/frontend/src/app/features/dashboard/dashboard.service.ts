@@ -78,6 +78,8 @@ export interface DashboardSummary {
   baseCurrency: CurrencyCode;
   /** The clients with the most overdue, the most first. */
   topOverdueClients: TopOverdueClient[];
+  /** What is left to pay on disputed invoices (which the outstanding total leaves out), in the home currency. */
+  disputedAmount: number;
 }
 
 /** The tax charged on invoices issued on or between two dates, in the home currency. */
