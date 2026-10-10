@@ -1,0 +1,378 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-revenue-bands.ts b/src/main/frontend/src/app/features/clients/client-revenue-bands.ts
+new file mode 100644
+index 0000000..43eeee4
+--- /dev/null
++++ b/src/main/frontend/src/app/features/clients/client-revenue-bands.ts
+@@ -0,0 +1,58 @@
++import { Component, inject, signal } from '@angular/core';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { ClientService, RevenueBands } from './client.service';
++
++// How many clients (not archived) are in each revenue band, by how much revenue they bring in, in the home currency;
++// a client with no revenue is in the low band.
++@Component({
++  selector: 'app-client-revenue-bands',
++  imports: [MoneyPipe],
++  template: `
++    @if (error()) {
++      <p role="alert" data-testid="revenue-bands-error">Could not load the revenue bands. Please try again.</p>
++    } @else if (bands(); as result) {
++      <table data-testid="revenue-bands-table">
++        <caption>Clients per revenue band ({{ result.homeCurrency }})</caption>
++        <thead>
++          <tr>
++            <th scope="col">Band</th>
++            <th scope="col">Revenue</th>
++            <th scope="col">Clients</th>
++          </tr>
++        </thead>
++        <tbody>
++          @for (b of result.bands; track b.band) {
++            <tr [attr.data-testid]="'revenue-band-row-' + b.band">
++              <td data-testid="revenue-band-name">{{ label(b.band) }}</td>
++              <td data-testid="revenue-band-range">
++                @if (b.to === null) {
++                  {{ b.from | money: result.homeCurrency }} and over
++                } @else {
++                  {{ b.from | money: result.homeCurrency }} to under {{ b.to | money: result.homeCurrency }}
++                }
++              </td>
++              <td data-testid="revenue-band-count">{{ b.count }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    }
++  `,
++})
++export class ClientRevenueBands {
++  protected readonly bands = signal<RevenueBands | null>(null);
++  protected readonly error = signal(false);
++
++  constructor() {
++    inject(ClientService)
++      .revenueBands()
++      .subscribe({
++        next: (result) => this.bands.set(result),
++        error: () => this.error.set(true),
++      });
++  }
++
++  protected label(band: string): string {
++    return band.charAt(0).toUpperCase() + band.slice(1);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 46dd167..2813ce1 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -66,6 +66,20 @@ export interface ClientSegment {
+   count: number;
+ }
+ 
++/** One revenue band: the revenue it starts from, the revenue it runs up to (null for the top band), and how many clients are in it. */
++export interface RevenueBand {
++  band: 'high' | 'medium' | 'low';
++  from: number;
++  to: number | null;
++  count: number;
++}
++
++/** Clients grouped into revenue bands, in the home currency, highest band first. */
++export interface RevenueBands {
++  homeCurrency: string;
++  bands: RevenueBand[];
++}
++
+ /** The exported client list file and how many clients it holds. */
+ export interface ClientListExport {
+   count: number;
+@@ -90,6 +104,11 @@ export class ClientService {
+     return this.http.get<ClientSegment[]>('/api/clients/segments');
+   }
+ 
++  /** How many clients, not archived, are in each revenue band. */
++  revenueBands(): Observable<RevenueBands> {
++    return this.http.get<RevenueBands>('/api/clients/revenue-bands');
++  }
++
+   get(id: number): Observable<Client> {
+     return this.http.get<Client>(`/api/clients/${id}`);
+   }
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 25362d1..eb0707a 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -6,16 +6,17 @@ import { NgTemplateOutlet } from '@angular/common';
+ import { RouterLink } from '@angular/router';
+ import { ClientEditForm } from './client-edit-form';
+ import { ClientListExport } from './client-list-export';
++import { ClientRevenueBands } from './client-revenue-bands';
+ import { ClientSegments } from './client-segments';
+ import { Client, ClientService } from './client.service';
+ 
+ // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
+ // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
+ // list and search unless the archived toggle is on, where it can be restored. A client's name or email
+-// can be corrected in place from its row. Favourite clients can be pinned, which keeps them in a group at the top of the list. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first.
++// can be corrected in place from its row. Favourite clients can be pinned, which keeps them in a group at the top of the list. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment, and a revenue bands panel counts the clients in each band of revenue they bring in. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first.
+ @Component({
+   selector: 'app-clients',
+-  imports: [MoneyPipe, NgTemplateOutlet, ReactiveFormsModule, RouterLink, ClientEditForm, ClientListExport, ClientSegments],
++  imports: [MoneyPipe, NgTemplateOutlet, ReactiveFormsModule, RouterLink, ClientEditForm, ClientListExport, ClientRevenueBands, ClientSegments],
+   styles: `
+     .key-account {
+       margin-inline-start: 0.5em;
+@@ -248,6 +249,23 @@ import { Client, ClientService } from './client.service';
+       }
+     </div>
+ 
++    <div>
++      <button
++        type="button"
++        data-testid="revenue-bands-open"
++        aria-controls="client-revenue-bands"
++        [attr.aria-expanded]="revenueBandsOpen()"
++        (click)="revenueBandsOpen.set(!revenueBandsOpen())"
++      >
++        Revenue bands
++      </button>
++      @if (revenueBandsOpen()) {
++        <section id="client-revenue-bands" aria-label="Client revenue bands" data-testid="revenue-bands">
++          <app-client-revenue-bands />
++        </section>
++      }
++    </div>
++
+     <app-client-list-export [includeArchived]="showArchived()" />
+ 
+     @if (actionError()) {
+@@ -418,6 +436,7 @@ export class Clients {
+   protected readonly actionError = signal<string | null>(null);
+   protected readonly editing = signal<number | null>(null);
+   protected readonly segmentsOpen = signal(false);
++  protected readonly revenueBandsOpen = signal(false);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 199ef5c..6919498 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -86,7 +86,8 @@ public class TestSupportController {
+             jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+         }
+         jdbc.update("UPDATE app_settings SET default_tax_pct = 0, home_currency = 'USD',"
+-                + " revenue_recognition_basis = 'sent', billing_target = NULL WHERE id = 1");
++                + " revenue_recognition_basis = 'sent', billing_target = NULL,"
++                + " revenue_band_medium_from = 1000, revenue_band_high_from = 5000 WHERE id = 1");
+     }
+ 
+     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
+@@ -117,6 +118,13 @@ public class TestSupportController {
+         if (fixture.get("settings") instanceof Map<?, ?> s && s.get("billingTarget") != null) {
+             jdbc.update("UPDATE app_settings SET billing_target = ? WHERE id = 1", decimal(s.get("billingTarget")));
+         }
++        // App settings: "revenueBandMediumFrom" and "revenueBandHighFrom" are where the revenue bands start.
++        if (fixture.get("settings") instanceof Map<?, ?> s && s.get("revenueBandMediumFrom") != null) {
++            jdbc.update("UPDATE app_settings SET revenue_band_medium_from = ? WHERE id = 1", decimal(s.get("revenueBandMediumFrom")));
++        }
++        if (fixture.get("settings") instanceof Map<?, ?> s && s.get("revenueBandHighFrom") != null) {
++            jdbc.update("UPDATE app_settings SET revenue_band_high_from = ? WHERE id = 1", decimal(s.get("revenueBandHighFrom")));
++        }
+         // An exchange rate: from its date, one unit of the currency is worth "rate" units of the home currency.
+         for (Map<String, Object> r : rows(fixture, "fxRates")) {
+             jdbc.update("INSERT INTO fx_rate (currency, rate_date, rate) VALUES (?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index 7139281..74e6d63 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -39,6 +39,12 @@ public class ClientController {
+         return service.segments();
+     }
+ 
++    /** How many clients are in each revenue band, by how much revenue they bring in. */
++    @GetMapping("/revenue-bands")
++    public RevenueBandsResponse revenueBands() {
++        return service.revenueBands();
++    }
++
+     /** Downloads the client list as a CSV file; the X-Export-Count header says how many clients it holds. */
+     @GetMapping(value = "/export", produces = "text/csv")
+     public ResponseEntity<String> exportList(@RequestParam(defaultValue = "false") boolean includeArchived) {
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 10fb673..fa9bc49 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -8,6 +8,7 @@ import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Optional;
+ import java.util.TreeMap;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.contact.ContactRepository;
+@@ -23,6 +24,8 @@ import net.officefloor.hq.app.payment.ClientPaymentRepository;
+ import net.officefloor.hq.app.payment.PaymentRepository;
+ import net.officefloor.hq.app.refund.RefundRepository;
+ import net.officefloor.hq.app.project.ProjectRepository;
++import net.officefloor.hq.app.settings.RecognitionBasis;
++import net.officefloor.hq.app.settings.SettingsService;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.data.domain.Sort;
+ import org.springframework.http.HttpStatus;
+@@ -44,13 +47,14 @@ public class ClientService {
+     private final RefundRepository refunds;
+     private final FxRateService fxRates;
+     private final CurrencyService currencies;
++    private final SettingsService settings;
+     private final Audit audit;
+     private final Clock clock;
+ 
+     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
+             InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes,
+             ClientPaymentRepository clientPayments, DepositRepository deposits, RefundRepository refunds,
+-            FxRateService fxRates, CurrencyService currencies, Audit audit, Clock clock) {
++            FxRateService fxRates, CurrencyService currencies, SettingsService settings, Audit audit, Clock clock) {
+         this.clients = clients;
+         this.projects = projects;
+         this.contacts = contacts;
+@@ -62,6 +66,7 @@ public class ClientService {
+         this.refunds = refunds;
+         this.fxRates = fxRates;
+         this.currencies = currencies;
++        this.settings = settings;
+         this.audit = audit;
+         this.clock = clock;
+     }
+@@ -79,6 +84,40 @@ public class ClientService {
+         return clients.countActiveBySegment();
+     }
+ 
++    /**
++     * How many clients, not archived, are in each revenue band, highest band first. A client's revenue is counted as the
++     * revenue report counts it: the amounts of their invoices that were sent (or, when the settings count revenue once
++     * paid, only those fully paid), each converted into the home currency at its issue date's rate (an invoice that
++     * cannot be converted is left out). A client with no revenue is in the low band.
++     */
++    @Transactional(readOnly = true)
++    public RevenueBandsResponse revenueBands() {
++        List<InvoiceStatus> recognised = RecognitionBasis.PAID.equals(settings.revenueRecognitionBasis())
++                ? List.of(InvoiceStatus.PAID)
++                : BILLED;
++        String home = settings.homeCurrency();
++        Map<Long, BigDecimal> revenue = new HashMap<>();
++        clients.findByArchivedFalseOrderById().forEach(c -> revenue.put(c.getId(), BigDecimal.ZERO));
++        for (Invoice invoice : invoices.findByStatusInWithClient(recognised)) {
++            Long clientId = invoice.getProject().getClient().getId();
++            if (!revenue.containsKey(clientId)) {
++                continue;
++            }
++            String currency = invoice.getCurrency();
++            (currency.equals(home) ? Optional.of(invoice.getAmount())
++                    : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount()))
++                    .ifPresent(amount -> revenue.merge(clientId, amount, BigDecimal::add));
++        }
++        BigDecimal mediumFrom = settings.revenueBandMediumFrom();
++        BigDecimal highFrom = settings.revenueBandHighFrom();
++        long high = revenue.values().stream().filter(r -> r.compareTo(highFrom) >= 0).count();
++        long low = revenue.values().stream().filter(r -> r.compareTo(mediumFrom) < 0).count();
++        return new RevenueBandsResponse(home, List.of(
++                new RevenueBandsResponse.Band("high", highFrom, null, high),
++                new RevenueBandsResponse.Band("medium", mediumFrom, highFrom, revenue.size() - high - low),
++                new RevenueBandsResponse.Band("low", BigDecimal.ZERO.setScale(2), mediumFrom, low)));
++    }
++
+     @Transactional(readOnly = true)
+     public ClientResponse get(Long id) {
+         return respond(find(id));
+diff --git a/src/main/java/net/officefloor/hq/app/client/RevenueBandsResponse.java b/src/main/java/net/officefloor/hq/app/client/RevenueBandsResponse.java
+new file mode 100644
+index 0000000..81d16ba
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/RevenueBandsResponse.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app.client;
++
++import java.math.BigDecimal;
++import java.util.List;
++
++/** Clients grouped into revenue bands by how much revenue they bring in, in the home currency, highest band first. */
++public record RevenueBandsResponse(String homeCurrency, List<Band> bands) {
++
++    /**
++     * One revenue band ("high", "medium" or "low"): the revenue it starts from (inclusive), the revenue it runs up to
++     * (exclusive; null for the top band), and how many clients are in it.
++     */
++    public record Band(String band, BigDecimal from, BigDecimal to, long count) {
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/Settings.java b/src/main/java/net/officefloor/hq/app/settings/Settings.java
+index ddf5778..d295a07 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/Settings.java
++++ b/src/main/java/net/officefloor/hq/app/settings/Settings.java
+@@ -34,6 +34,14 @@ public class Settings {
+     @Column(name = "billing_target", precision = 15, scale = 2)
+     private BigDecimal billingTarget;
+ 
++    /** The revenue, in the home currency, from which a client is in the "medium" revenue band. */
++    @Column(name = "revenue_band_medium_from", nullable = false, precision = 15, scale = 2)
++    private BigDecimal revenueBandMediumFrom = new BigDecimal("1000.00");
++
++    /** The revenue, in the home currency, from which a client is in the "high" revenue band. */
++    @Column(name = "revenue_band_high_from", nullable = false, precision = 15, scale = 2)
++    private BigDecimal revenueBandHighFrom = new BigDecimal("5000.00");
++
+     protected Settings() {
+     }
+ 
+@@ -61,6 +69,14 @@ public class Settings {
+         this.billingTarget = billingTarget == null ? null : billingTarget.setScale(2, RoundingMode.HALF_UP);
+     }
+ 
++    public BigDecimal getRevenueBandMediumFrom() {
++        return revenueBandMediumFrom;
++    }
++
++    public BigDecimal getRevenueBandHighFrom() {
++        return revenueBandHighFrom;
++    }
++
+     public void setDefaultTaxPct(BigDecimal defaultTaxPct) {
+         this.defaultTaxPct = defaultTaxPct.setScale(2, RoundingMode.HALF_UP);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 640314f..5f9e58d 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -44,6 +44,18 @@ public class SettingsService {
+         return find().getBillingTarget();
+     }
+ 
++    /** The revenue, in the home currency, from which a client is in the "medium" revenue band. */
++    @Transactional(readOnly = true)
++    public BigDecimal revenueBandMediumFrom() {
++        return find().getRevenueBandMediumFrom();
++    }
++
++    /** The revenue, in the home currency, from which a client is in the "high" revenue band. */
++    @Transactional(readOnly = true)
++    public BigDecimal revenueBandHighFrom() {
++        return find().getRevenueBandHighFrom();
++    }
++
+     /** The sales tax percentage a new invoice starts with when none is given for it. */
+     @Transactional(readOnly = true)
+     public BigDecimal defaultTaxPct() {
+diff --git a/src/main/resources/db/migration/V104__revenue_bands.sql b/src/main/resources/db/migration/V104__revenue_bands.sql
+new file mode 100644
+index 0000000..227e359
+--- /dev/null
++++ b/src/main/resources/db/migration/V104__revenue_bands.sql
+@@ -0,0 +1,6 @@
++-- Clients are grouped into revenue bands by how much revenue they bring in, in the home currency: "high" from the
++-- high threshold up, "medium" from the medium threshold up to the high one, and "low" below that.
++ALTER TABLE app_settings ADD COLUMN revenue_band_medium_from DECIMAL(15, 2) DEFAULT 1000 NOT NULL;
++ALTER TABLE app_settings ADD COLUMN revenue_band_high_from DECIMAL(15, 2) DEFAULT 5000 NOT NULL;
++ALTER TABLE app_settings ADD CONSTRAINT app_settings_revenue_bands_ordered
++    CHECK (revenue_band_medium_from > 0 AND revenue_band_high_from > revenue_band_medium_from);
