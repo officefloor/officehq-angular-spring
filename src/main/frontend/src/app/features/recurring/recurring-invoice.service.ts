@@ -20,10 +20,19 @@ export interface RecurringInvoice {
   status: RecurringStatus;
   /** Whether the next invoice has fallen due, so it can be raised now. */
   due: boolean;
+  /** The length in days of the billing period the first invoice is pro-rated over. */
+  periodDays: number;
+  /** Whether the next invoice is the first, pro-rated by the days left in its period. */
+  prorateFirst: boolean;
+  /** What the pro-rated first invoice bills, or null when the next invoice is for the full amount. */
+  proratedAmount: number | null;
 }
 
 /** A recurring invoice that is coming up, with the project and client it bills and the currency it is in. */
-export interface UpcomingRecurringInvoice extends Omit<RecurringInvoice, 'due' | 'status'> {
+export interface UpcomingRecurringInvoice extends Omit<
+    RecurringInvoice,
+    'due' | 'status' | 'periodDays' | 'prorateFirst' | 'proratedAmount'
+  > {
   projectName: string;
   clientId: number;
   clientName: string;
@@ -34,6 +43,8 @@ export interface NewRecurringInvoice {
   amount: number;
   frequency: RecurringFrequency;
   nextDate: string;
+  periodDays?: number;
+  prorateFirst?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })

@@ -24,6 +24,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             <thead>
               <tr>
                 <th scope="col">Amount</th>
+                <th scope="col">First invoice (pro-rated)</th>
                 <th scope="col">Repeats</th>
                 <th scope="col">Next invoice</th>
                 <th scope="col">Status</th>
@@ -34,6 +35,13 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
               @for (r of recurring.value(); track r.id) {
                 <tr [attr.data-testid]="'recurring-row-' + r.id">
                   <td data-testid="recurring-amount">{{ r.amount | money: currency() }}</td>
+                  <td data-testid="recurring-prorated-amount">
+                    @if (r.proratedAmount !== null) {
+                      {{ r.proratedAmount | money: currency() }}
+                    } @else {
+                      <span aria-hidden="true">—</span><span class="visually-hidden">Not pro-rated</span>
+                    }
+                  </td>
                   <td data-testid="recurring-frequency">{{ r.frequency }}</td>
                   <td data-testid="recurring-next-date">{{ r.nextDate }}</td>
                   <td data-testid="recurring-status">{{ r.status }}</td>
@@ -122,6 +130,32 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
             </p>
           }
         </div>
+        <div>
+          <input id="recurring-prorate-first" type="checkbox" formControlName="prorateFirst" data-testid="recurring-form-prorate-first" />
+          <label for="recurring-prorate-first">Pro-rate the first invoice by the days left in the period</label>
+        </div>
+        @if (form.controls.prorateFirst.value) {
+          <div>
+            <label for="recurring-period-days">Days in the billing period</label>
+            <input
+              id="recurring-period-days"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="366"
+              step="1"
+              formControlName="periodDays"
+              data-testid="recurring-form-period-days"
+              [attr.aria-invalid]="invalid('periodDays')"
+              [attr.aria-describedby]="invalid('periodDays') ? 'recurring-period-days-error' : null"
+            />
+            @if (invalid('periodDays')) {
+              <p id="recurring-period-days-error" role="alert" data-testid="recurring-form-period-days-error">
+                Enter a whole number of days from 1 to 366.
+              </p>
+            }
+          </div>
+        }
         <button type="submit" data-testid="recurring-form-submit" [disabled]="saving()">
           Set up monthly invoice
         </button>
@@ -163,9 +197,11 @@ export class ProjectRecurringInvoices {
   protected readonly form = inject(NonNullableFormBuilder).group({
     amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
     nextDate: ['', [Validators.required]],
+    prorateFirst: [false],
+    periodDays: [30, [Validators.required, Validators.min(1), Validators.max(366), Validators.pattern(/^\d+$/)]],
   });
 
-  protected invalid(name: 'amount' | 'nextDate'): boolean {
+  protected invalid(name: 'amount' | 'nextDate' | 'periodDays'): boolean {
     const control = this.form.controls[name];
     return control.invalid && (control.touched || control.dirty);
   }
@@ -214,13 +250,19 @@ export class ProjectRecurringInvoices {
   protected submit(): void {
     this.saveError.set(null);
     this.saved.set(false);
-    if (this.form.invalid) {
+    const controls = this.form.controls;
+    const invalid = controls.amount.invalid || controls.nextDate.invalid
+      || (controls.prorateFirst.value && controls.periodDays.invalid);
+    if (invalid) {
       this.form.markAllAsTouched();
       return;
     }
-    const { amount, nextDate } = this.form.getRawValue();
+    const { amount, nextDate, prorateFirst, periodDays } = this.form.getRawValue();
     this.saving.set(true);
-    this.service.create(this.projectId(), { amount: Number(amount), frequency: 'MONTHLY', nextDate }).subscribe({
+    const recurring = prorateFirst
+      ? { amount: Number(amount), frequency: 'MONTHLY' as const, nextDate, prorateFirst, periodDays: Number(periodDays) }
+      : { amount: Number(amount), frequency: 'MONTHLY' as const, nextDate };
+    this.service.create(this.projectId(), recurring).subscribe({
       next: () => {
         this.saving.set(false);
         this.saved.set(true);

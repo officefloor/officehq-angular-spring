@@ -59,15 +59,19 @@ public class RecurringInvoiceService {
     public RecurringInvoiceResponse create(Long projectId, RecurringInvoiceRequest request) {
         requireProject(projectId);
         RecurringInvoice saved = recurring.saveAndFlush(
-                new RecurringInvoice(projectId, request.amount(), request.frequency(), request.nextDate()));
+                new RecurringInvoice(projectId, request.amount(), request.frequency(), request.nextDate(),
+                        request.periodDays() == null ? RecurringInvoice.DEFAULT_PERIOD_DAYS : request.periodDays(),
+                        Boolean.TRUE.equals(request.prorateFirst())));
         audit.record("RECURRING_INVOICE_CREATED id=" + saved.getId() + " project=" + projectId
-                + " amount=" + saved.getAmount().toPlainString() + " frequency=" + saved.getFrequency());
+                + " amount=" + saved.getAmount().toPlainString() + " frequency=" + saved.getFrequency()
+                + " prorateFirst=" + saved.isProrateFirst() + " periodDays=" + saved.getPeriodDays());
         return RecurringInvoiceResponse.from(saved, LocalDate.now(clock));
     }
 
     /**
      * Raises the invoice a recurring schedule has fallen due for, dated the day it fell due, and moves the
-     * schedule on to the next one. The invoice is raised as a DRAFT so it can be reviewed before it is sent.
+     * schedule on to the next one. The first invoice of a pro-rated schedule bills only the days left in its
+     * period; every later one bills the full amount. The invoice is raised as a DRAFT so it can be reviewed before it is sent.
      */
     @Transactional
     public InvoiceResponse generate(Long projectId, Long recurringId) {
@@ -79,7 +83,7 @@ public class RecurringInvoiceService {
         if (due.isAfter(LocalDate.now(clock))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The recurring invoice is not due yet");
         }
-        InvoiceResponse invoice = invoices.create(projectId, new InvoiceRequest(schedule.getAmount(), due, null, null));
+        InvoiceResponse invoice = invoices.create(projectId, new InvoiceRequest(schedule.nextAmount(), due, null, null));
         schedule.advance();
         recurring.saveAndFlush(schedule);
         audit.record("RECURRING_INVOICE_GENERATED id=" + recurringId + " project=" + projectId

@@ -14,6 +14,7 @@ import net.officefloor.hq.app.currency.Currency;
 import net.officefloor.hq.app.invoice.InvoiceRequest;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.project.ProjectStatus;
+import net.officefloor.hq.app.recurring.RecurringInvoice;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
@@ -162,13 +163,15 @@ public class TestSupportController {
         }
         // An invoice repeating for a fixed amount on a project, monthly unless it says otherwise.
         for (Map<String, Object> r : rows(fixture, "recurring")) {
-            jdbc.update("INSERT INTO recurring_invoice (id, project_id, amount, frequency, next_date, status)"
-                    + " VALUES (?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO recurring_invoice (id, project_id, amount, frequency, next_date, status, period_days, prorate_first)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     ((Number) r.get("id")).longValue(), ((Number) r.get("projectId")).longValue(),
                     new BigDecimal(r.get("amount").toString()),
                     r.get("frequency") == null ? "MONTHLY" : r.get("frequency").toString(),
                     LocalDate.parse(r.get("nextDate").toString()),
-                    r.get("status") == null ? "ACTIVE" : r.get("status").toString());
+                    r.get("status") == null ? "ACTIVE" : r.get("status").toString(),
+                    r.get("periodDays") == null ? RecurringInvoice.DEFAULT_PERIOD_DAYS : ((Number) r.get("periodDays")).intValue(),
+                    Boolean.TRUE.equals(r.get("prorateFirst")));
         }
         for (Map<String, Object> i : rows(fixture, "invoices")) {
             // A missing date is filled in from the other one using the standard payment term; with
