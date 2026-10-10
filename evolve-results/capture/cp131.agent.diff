@@ -1,0 +1,288 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 0d5b0cc..b92dfbe 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -397,7 +397,11 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+             @if (inv.retentionPct > 0) {
+               <tr data-testid="invoice-retention-row">
+                 <th scope="row" colspan="5">
+-                  Retention held back, not due yet
++                  @if (inv.retentionReleased) {
++                    Retention <span data-testid="invoice-retention-released">released</span>, now due
++                  } @else {
++                    Retention held back, not due yet
++                  }
+                   (<span data-testid="invoice-retention-pct">{{ inv.retentionPct | number: '1.0-2' : 'en-US' }}</span>%)
+                 </th>
+                 <td data-testid="invoice-retention">{{ inv.retention | money: inv.currency }}</td>
+@@ -413,8 +417,30 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 }
+               </tr>
+             }
++            <tr data-testid="invoice-due-amount-row">
++              <th scope="row" colspan="5">Owed now (after payments and credits)</th>
++              <td data-testid="invoice-due-amount">{{ inv.amountDue | money: inv.currency }}</td>
++              @if (inv.status === 'DRAFT') {
++                <td></td>
++              }
++            </tr>
+           </tfoot>
+         </table>
++        @if (canReleaseRetention()) {
++          <p>
++            <button
++              type="button"
++              (click)="releaseRetention()"
++              [disabled]="releasingRetention()"
++              data-testid="invoice-retention-release"
++            >
++              Release retention (job finished)
++            </button>
++          </p>
++        }
++        @if (releaseRetentionError()) {
++          <p role="alert" data-testid="invoice-retention-release-error">{{ releaseRetentionError() }}</p>
++        }
+         @if (editError()) {
+           <p role="alert" data-testid="lineitem-edit-error">{{ editError() }}</p>
+         }
+@@ -895,6 +921,38 @@ export class InvoiceDetailPage {
+     });
+   }
+ 
++  protected readonly releasingRetention = signal(false);
++  protected readonly releaseRetentionError = signal<string | null>(null);
++
++  // Retention can be released once the invoice is sent and still holds some back.
++  protected readonly canReleaseRetention = computed(() => {
++    const inv = this.invoice.value();
++    return (
++      !!inv &&
++      inv.retention > 0 &&
++      !inv.retentionReleased &&
++      inv.status !== 'DRAFT' &&
++      inv.status !== 'VOID' &&
++      inv.status !== 'WRITTEN_OFF'
++    );
++  });
++
++  // Releases the retention held back once the job is finished, so it becomes due.
++  protected releaseRetention(): void {
++    this.releasingRetention.set(true);
++    this.releaseRetentionError.set(null);
++    this.service.releaseRetention(this.projectIdNumber(), Number(this.invoiceId())).subscribe({
++      next: (updated) => {
++        this.invoice.set(updated);
++        this.releasingRetention.set(false);
++      },
++      error: () => {
++        this.releaseRetentionError.set('Could not release the retention. Please try again.');
++        this.releasingRetention.set(false);
++      },
++    });
++  }
++
+   protected readonly discountSaving = signal(false);
+   protected readonly discountError = signal<string | null>(null);
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index a70c780..c1676e6 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -212,10 +212,14 @@ export interface InvoiceDetail extends Invoice {
+   lateFee: number;
+   /** The percentage of the amount held back as retention; zero when none is held back. */
+   retentionPct: number;
+-  /** The amount held back as retention, which is not due yet. */
++  /** The amount held back as retention, which is not due yet; nothing once released. */
+   retention: number;
++  /** Whether the retention has been released once the job is finished, making it due. */
++  retentionReleased: boolean;
+   /** What is due now: the amount less the retention held back. */
+   dueNow: number;
++  /** What the client owes right now: what is left to pay after any payments, less the retention held back. */
++  amountDue: number;
+ }
+ 
+ export interface NewLineItem {
+@@ -351,6 +355,11 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/retention`, { retentionPct });
+   }
+ 
++  /** Releases the retention held back on a sent invoice once the job is finished, so it becomes due. */
++  releaseRetention(projectId: number, invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/retention/release`, null);
++  }
++
+   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
+     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 889083d..5e25a17 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -282,13 +282,16 @@ public class TestSupportController {
+             BigDecimal lateFeePerDay = decimal(i.get("lateFeePerDay"));
+             // A percentage may be held back as retention; it is not due yet but does not change the amount invoiced.
+             BigDecimal retentionPct = decimal(i.get("retentionPct"));
++            // The retention may already have been released ("retentionReleased"), making it due.
++            boolean retentionReleased = Boolean.TRUE.equals(i.get("retentionReleased"));
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, retention_pct, currency)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, retention_pct, retention_released, currency)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
+                     surcharge, taxInclusive, taxExempt,
+                     earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, retentionPct,
++                    retentionReleased,
+                     i.get("currency") == null ? null : i.get("currency").toString());
+             for (Map<String, Object> d : discounts) {
+                 if (d.get("id") != null) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 43cf2d2..345bc90 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -104,6 +104,10 @@ public class Invoice {
+     @Column(name = "retention_pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal retentionPct = BigDecimal.ZERO.setScale(2);
+ 
++    /** Whether the retention has been released, once the job is finished, so it is now due. */
++    @Column(name = "retention_released", nullable = false)
++    private boolean retentionReleased;
++
+     @Enumerated(EnumType.STRING)
+     @Column(nullable = false, length = 16)
+     private InvoiceStatus status = InvoiceStatus.DRAFT;
+@@ -539,9 +543,21 @@ public class Invoice {
+         return retentionPct;
+     }
+ 
+-    /** The amount held back as retention: the retention percentage of the amount invoiced. */
++    /** Releases the retention held back, so it becomes due. The percentage is kept on record. */
++    public void releaseRetention() {
++        this.retentionReleased = true;
++    }
++
++    public boolean isRetentionReleased() {
++        return retentionReleased;
++    }
++
++    /**
++     * The amount held back as retention: the retention percentage of the amount invoiced, or nothing once
++     * the retention has been released.
++     */
+     public BigDecimal getRetention() {
+-        return percentOf(amount, retentionPct);
++        return retentionReleased ? BigDecimal.ZERO.setScale(2) : percentOf(amount, retentionPct);
+     }
+ 
+     /** What is due now: the amount invoiced less the retention held back. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index 3c99fb6..c02359d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -119,6 +119,11 @@ public class InvoiceController {
+         return service.applyRetention(projectId, invoiceId, request);
+     }
+ 
++    @PostMapping("/{invoiceId}/retention/release")
++    public InvoiceDetailResponse releaseRetention(@PathVariable Long projectId, @PathVariable Long invoiceId) {
++        return service.releaseRetention(projectId, invoiceId);
++    }
++
+     @PostMapping("/{invoiceId}/send")
+     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.send(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index 1bc1528..3c7331e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -20,7 +20,9 @@ import java.util.List;
+  * (null when the invoice is already in the home currency or there is no rate for that date). The late
+  * fee charged per day overdue, the days the invoice is overdue as of today (only while sent and still
+  * owed), and the late fee that has accrued over them. The percentage held back as retention, the amount
+- * it holds back (not due yet), and what is due now without it.
++ * it holds back (not due yet, nothing once released), whether it has been released, and what is due now
++ * without it. What the client owes right now after the payments and credit notes against it, less any
++ * retention still held back.
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+@@ -32,14 +34,14 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
+         String homeCurrency, BigDecimal homeAmount,
+         BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee,
+-        BigDecimal retentionPct, BigDecimal retention, BigDecimal dueNow) {
++        BigDecimal retentionPct, BigDecimal retention, boolean retentionReleased, BigDecimal dueNow, BigDecimal amountDue) {
+ 
+     /**
+      * The invoice with the given status, as worked out from what has been paid and credited against it, and
+      * its amount in the home currency, with any late fee accrued by today.
+      */
+     static InvoiceDetailResponse from(Invoice invoice, InvoiceStatus status, String homeCurrency, BigDecimal homeAmount,
+-            LocalDate today) {
++            LocalDate today, BigDecimal amountDue) {
+         return new InvoiceDetailResponse(invoice.getId(), invoice.getProject().getId(),
+                 invoice.getCurrency(), invoice.getAmount(), invoice.getTotalExTax(),
+                 invoice.getSubtotal(), invoice.getDiscountPct(), invoice.getDiscountAmount(), invoice.getDiscount(),
+@@ -56,6 +58,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+                 invoice.getMinimumCharge(), invoice.getNetTotal(), invoice.isMinimumApplied(),
+                 invoice.getTotalSavings(), homeCurrency, homeAmount,
+                 invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today),
+-                invoice.getRetentionPct(), invoice.getRetention(), invoice.getDueNow());
++                invoice.getRetentionPct(), invoice.getRetention(), invoice.isRetentionReleased(), invoice.getDueNow(),
++                amountDue);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 82d6862..6d73f27 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -381,6 +381,26 @@ public class InvoiceService {
+         return detail(invoice);
+     }
+ 
++    /**
++     * Releases the retention held back on a sent invoice once the job is finished, so it becomes due, and
++     * records the release in the audit log.
++     */
++    @Transactional
++    public InvoiceDetailResponse releaseRetention(Long projectId, Long invoiceId) {
++        Invoice invoice = find(projectId, invoiceId);
++        if (invoice.getStatus() == InvoiceStatus.DRAFT || invoice.getStatus().isClosedUnpaid()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a sent invoice can have its retention released");
++        }
++        BigDecimal retention = invoice.getRetention();
++        if (retention.signum() == 0) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has no retention held back to release");
++        }
++        invoice.releaseRetention();
++        invoices.flush();
++        audit.record("INVOICE_RETENTION_RELEASED id=" + invoice.getId() + " amount=" + retention.toPlainString());
++        return detail(invoice);
++    }
++
+     /** Sends a draft invoice and records the sending in the audit log. */
+     @Transactional
+     public InvoiceResponse send(Long projectId, Long invoiceId) {
+@@ -471,6 +491,8 @@ public class InvoiceService {
+         String currency = invoice.getCurrency();
+         BigDecimal homeAmount = currency.equals(home) ? null
+                 : fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getAmount()).orElse(null);
+-        return InvoiceDetailResponse.from(invoice, status, home, homeAmount, LocalDate.now(clock));
++        BigDecimal amountDue = invoice.dueNow(payments.sumAmountByInvoiceId(invoice.getId()),
++                creditNotes.sumAmountByInvoiceId(invoice.getId()));
++        return InvoiceDetailResponse.from(invoice, status, home, homeAmount, LocalDate.now(clock), amountDue);
+     }
+ }
+diff --git a/src/main/resources/db/migration/V70__invoice_retention_release.sql b/src/main/resources/db/migration/V70__invoice_retention_release.sql
+new file mode 100644
+index 0000000..af32990
+--- /dev/null
++++ b/src/main/resources/db/migration/V70__invoice_retention_release.sql
+@@ -0,0 +1,3 @@
++-- Retention held back on an invoice can be released once the job is finished, making it due. The
++-- percentage is kept on record; once released it no longer holds anything back.
++ALTER TABLE invoice ADD COLUMN retention_released BOOLEAN DEFAULT FALSE NOT NULL;
