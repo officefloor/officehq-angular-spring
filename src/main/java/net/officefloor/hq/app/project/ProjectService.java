@@ -196,6 +196,20 @@ public class ProjectService {
         return ProjectResponse.from(project);
     }
 
+    /** Puts a job into (or, given none, takes it out of) a category, recording the change in the audit log. */
+    @Transactional
+    public ProjectResponse setCategory(Long id, String category) {
+        String value = category == null || category.isBlank() ? null : category.trim();
+        Project project = projects.findByIdWithClient(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job"));
+        if (!Objects.equals(project.getCategory(), value)) {
+            project.setCategory(value);
+            projects.flush();
+            audit.record("PROJECT_CATEGORY_SET id=" + id + " category=" + (value == null ? "none" : value));
+        }
+        return ProjectResponse.from(project);
+    }
+
     /** Closes a job so no new invoice can be raised on it, recording the closing in the audit log. */
     @Transactional
     public ProjectResponse close(Long id) {

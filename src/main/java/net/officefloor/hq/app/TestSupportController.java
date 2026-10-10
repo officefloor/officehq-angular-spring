@@ -142,7 +142,7 @@ public class TestSupportController {
         }
         for (Map<String, Object> p : rows(fixture, "projects")) {
             jdbc.update("INSERT INTO project (id, name, code, description, client_id, status, archived, budget, billable, closed,"
-                    + " start_date, end_date, file_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + " start_date, end_date, file_ref, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     ((Number) p.get("id")).longValue(), p.get("name"), p.get("code"), p.get("description"),
                     ((Number) p.get("clientId")).longValue(),
                     p.get("status") == null ? ProjectStatus.ACTIVE.name() : p.get("status").toString(),
@@ -151,7 +151,7 @@ public class TestSupportController {
                     !Boolean.FALSE.equals(p.get("billable")), Boolean.TRUE.equals(p.get("closed")),
                     p.get("startDate") == null ? null : LocalDate.parse(p.get("startDate").toString()),
                     p.get("endDate") == null ? null : LocalDate.parse(p.get("endDate").toString()),
-                    p.get("fileRef"));
+                    p.get("fileRef"), p.get("category"));
         }
         for (Map<String, Object> t : rows(fixture, "tags")) {
             jdbc.update("INSERT INTO tag (id, name) VALUES (?, ?)",

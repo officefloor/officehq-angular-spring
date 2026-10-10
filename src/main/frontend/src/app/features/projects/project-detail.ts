@@ -8,13 +8,14 @@ import { ProjectTags } from '../tags/project-tags';
 import { ProjectTasks } from '../tasks/project-tasks';
 import { ProjectBudgetPanel } from './project-budget';
 import { ProjectDates } from './project-dates';
+import { ProjectCategory } from './project-category';
 import { ProjectFileRef } from './project-file-ref';
 import { ProjectService } from './project.service';
 
 // A single project's page: its name, description, client and status, whether it is open or closed, whether it is billable, its start and end dates, its file reference, its budget, its tags, its tasks, its notes, its invoices, and the invoices that recur every month.
 @Component({
   selector: 'app-project-detail',
-  imports: [RouterLink, ProjectBudgetPanel, ProjectDates, ProjectFileRef, ProjectInvoices, ProjectRecurringInvoices, Notes, ProjectTags, ProjectTasks],
+  imports: [RouterLink, ProjectBudgetPanel, ProjectCategory, ProjectDates, ProjectFileRef, ProjectInvoices, ProjectRecurringInvoices, Notes, ProjectTags, ProjectTasks],
   template: `
     <a routerLink="/projects" data-testid="project-back">Back to jobs</a>
     @if (project.error()) {
@@ -56,6 +57,7 @@ import { ProjectService } from './project.service';
         <p role="alert" data-testid="project-billable-error">{{ billableError() }}</p>
       }
       <app-project-dates [project]="p" (changed)="project.set($event)" />
+      <app-project-category [project]="p" (changed)="project.set($event)" />
       <app-project-file-ref [project]="p" (changed)="project.set($event)" />
       <app-project-budget [projectId]="projectId()" [currency]="p.currency" />
       <app-project-tags [projectId]="projectId()" />

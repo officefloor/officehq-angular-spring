@@ -60,6 +60,11 @@ public class ProjectController {
         return service.setFileRef(id, request.fileRef());
     }
 
+    @PutMapping("/{id}/category")
+    public ProjectResponse setCategory(@PathVariable Long id, @Valid @RequestBody ProjectCategoryRequest request) {
+        return service.setCategory(id, request.category());
+    }
+
     @GetMapping("/{id}/budget")
     public ProjectBudgetResponse budget(@PathVariable Long id) {
         return service.budget(id);

@@ -55,6 +55,8 @@ public class Project {
 
     private String fileRef;
 
+    private String category;
+
     @ManyToMany
     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
             inverseJoinColumns = @JoinColumn(name = "tag_id"))
@@ -160,6 +162,15 @@ public class Project {
 
     public void setFileRef(String fileRef) {
         this.fileRef = fileRef;
+    }
+
+    /** The category the job is put into (e.g. "Web"), or null when it has none. */
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
     }
 
     /** The tags labelling this project; add or remove to tag or untag it. */

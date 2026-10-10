@@ -35,6 +35,8 @@ export interface Project {
   endDate: string | null;
   /** A reference to a file kept elsewhere for the job (e.g. a document number); null when none was noted. */
   fileRef: string | null;
+  /** The category the job is put into (e.g. "Web"); null when it has none. */
+  category: string | null;
 }
 
 /** A project's budget, what has been invoiced against it, and what is left; null when no budget is set. */
@@ -99,6 +101,10 @@ export class ProjectService {
 
   setFileRef(id: number, fileRef: string | null): Observable<Project> {
     return this.http.put<Project>(`/api/projects/${id}/file-ref`, { fileRef });
+  }
+
+  setCategory(id: number, category: string | null): Observable<Project> {
+    return this.http.put<Project>(`/api/projects/${id}/category`, { category });
   }
 
   budget(id: number): Observable<ProjectBudget> {
