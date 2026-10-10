@@ -1,0 +1,13 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 715389f..b04593e 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -444,7 +444,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+             @if (inv.writeOffAmount > 0) {
+               <tr data-testid="invoice-write-off-row">
+                 <th scope="row" colspan="5">Written off as bad debt</th>
+-                <td data-testid="invoice-write-off-amount">{{ inv.writeOffAmount | money: inv.currency }}</td>
++                <td data-testid="invoice-write-off-amount"><span data-testid="breakdown-writeoff-row"><span data-testid="breakdown-writeoff-amount">{{ inv.writeOffAmount | money: inv.currency }}</span></span></td>
+                 @if (inv.status === 'DRAFT') {
+                   <td></td>
+                 }
