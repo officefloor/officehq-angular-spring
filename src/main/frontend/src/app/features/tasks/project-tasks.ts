@@ -8,7 +8,9 @@ import {
 import { TaskChecklist } from "./task-checklist";
 import { Task, TaskPriority, TaskService } from "./task.service";
 
-export type TaskFilter = "ALL" | "OPEN" | "DONE";
+export type TaskFilter = "ALL" | "OPEN" | "DONE" | `ASSIGNEE:${string}`;
+
+const ASSIGNEE_PREFIX = "ASSIGNEE:";
 
 // A project's task list: add tasks and tick them off (OPEN <-> DONE) as they are finished.
 @Component({
@@ -118,11 +120,18 @@ export type TaskFilter = "ALL" | "OPEN" | "DONE";
               <option value="ALL">All tasks</option>
               <option value="OPEN">Open tasks</option>
               <option value="DONE">Done tasks</option>
+              @if (assignees().length > 0) {
+                <optgroup label="Assigned to">
+                  @for (name of assignees(); track name) {
+                    <option [value]="'ASSIGNEE:' + name">{{ name }}</option>
+                  }
+                </optgroup>
+              }
             </select>
           </div>
           @if (visibleTasks().length === 0) {
             <p data-testid="project-tasks-filter-empty">
-              {{ filter() === "OPEN" ? "No open tasks." : "No done tasks." }}
+              {{ filterEmptyMessage() }}
             </p>
           } @else {
             <table data-testid="project-tasks-table">
@@ -192,15 +201,40 @@ export class ProjectTasks {
     stream: ({ params }) => this.service.listForProject(params),
   });
   protected readonly filter = signal<TaskFilter>("ALL");
+  protected readonly assignees = computed(() =>
+    [
+      ...new Set(
+        (this.tasks.value() ?? [])
+          .map((t) => t.assignee?.trim())
+          .filter((a): a is string => !!a),
+      ),
+    ].sort((a, b) => a.localeCompare(b)),
+  );
   protected readonly visibleTasks = computed(() => {
     const list = this.tasks.value() ?? [];
-    switch (this.filter()) {
+    const filter = this.filter();
+    switch (filter) {
+      case "ALL":
+        return list;
       case "OPEN":
         return list.filter((t) => !t.done);
       case "DONE":
         return list.filter((t) => t.done);
+      default: {
+        const assignee = filter.slice(ASSIGNEE_PREFIX.length);
+        return list.filter((t) => t.assignee?.trim() === assignee);
+      }
+    }
+  });
+  protected readonly filterEmptyMessage = computed(() => {
+    const filter = this.filter();
+    switch (filter) {
+      case "OPEN":
+        return "No open tasks.";
+      case "DONE":
+        return "No done tasks.";
       default:
-        return list;
+        return `No tasks assigned to ${filter.slice(ASSIGNEE_PREFIX.length)}.`;
     }
   });
   protected readonly saving = signal(false);
