@@ -1,0 +1,290 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index ce5b54c..a7a1c2b 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -11,6 +11,7 @@ import { InvoiceCreditNotes } from '../credit-notes/invoice-credit-notes';
+ import { CreditNoteService } from '../credit-notes/credit-note.service';
+ import { InvoiceInstalments } from '../instalments/invoice-instalments';
+ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
++import { InvoicePoNumber } from './invoice-po-number';
+ 
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ // A unit price may be a fraction of a cent; each line is rounded to the cent on its own.
+@@ -24,12 +25,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
+ // When the net total comes out under the invoice's minimum charge, the minimum is billed instead and marked as applied.
+ // A foreign invoice also shows its original amount in the client's currency alongside its total in the home currency, converted at the exchange rate from its issue date.
++// It also shows the client's purchase-order number, which can be put on or cleared at any time.
+ // It also shows the total savings: every line discount and invoice discount added together.
+ // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the client's early-payment window.
+ // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+-  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, Notes],
++  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, InvoicePoNumber, Notes],
+   template: `
+     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
+     @if (invoice.error()) {
+@@ -86,6 +88,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+       @if (inv.clientTaxNumber) {
+         <p>Client tax number: <span data-testid="invoice-client-tax-number">{{ inv.clientTaxNumber }}</span></p>
+       }
++      <app-invoice-po-number [invoice]="inv" (changed)="invoice.set($event)" />
+ 
+       <section aria-labelledby="invoice-lineitems-heading">
+         <h2 id="invoice-lineitems-heading" tabindex="-1">Line items</h2>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-po-number.ts b/src/main/frontend/src/app/features/invoices/invoice-po-number.ts
+new file mode 100644
+index 0000000..b253a33
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/invoice-po-number.ts
+@@ -0,0 +1,67 @@
++import { Component, effect, inject, input, output, signal } from '@angular/core';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { InvoiceDetail, InvoiceService } from './invoice.service';
++
++// An invoice's purchase-order number: shows it, and puts it on or clears it (leave it blank to clear it).
++@Component({
++  selector: 'app-invoice-po-number',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="invoice-po-number-heading" data-testid="invoice-po-number-section">
++      <h2 id="invoice-po-number-heading">Purchase order</h2>
++      @if (invoice().poNumber; as po) {
++        <p>PO number: <span data-testid="invoice-po-number">{{ po }}</span></p>
++      } @else {
++        <p data-testid="invoice-po-number-none">No PO number given.</p>
++      }
++
++      <form [formGroup]="form" (ngSubmit)="submit()" data-testid="invoice-po-number-form" novalidate>
++        <label for="invoice-po-number-input">PO number</label>
++        <input
++          id="invoice-po-number-input"
++          type="text"
++          maxlength="50"
++          formControlName="poNumber"
++          data-testid="invoice-po-number-input"
++        />
++        <button type="submit" data-testid="invoice-po-number-submit" [disabled]="saving()">Save PO number</button>
++        @if (saveError()) {
++          <p role="alert" data-testid="invoice-po-number-save-error">{{ saveError() }}</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class InvoicePoNumber {
++  private readonly service = inject(InvoiceService);
++
++  readonly invoice = input.required<InvoiceDetail>();
++  /** Emits the invoice once its PO number has been saved. */
++  readonly changed = output<InvoiceDetail>();
++
++  protected readonly form = inject(NonNullableFormBuilder).group({ poNumber: ['', Validators.maxLength(50)] });
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  constructor() {
++    effect(() => {
++      this.form.setValue({ poNumber: this.invoice().poNumber ?? '' });
++    });
++  }
++
++  protected submit(): void {
++    const poNumber = this.form.getRawValue().poNumber.trim();
++    this.saving.set(true);
++    this.saveError.set(null);
++    this.service.setPoNumber(this.invoice().projectId, this.invoice().id, poNumber || null).subscribe({
++      next: (updated) => {
++        this.changed.emit(updated);
++        this.saving.set(false);
++      },
++      error: () => {
++        this.saveError.set('Could not save the PO number.');
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 6c5aaf7..c5e91e6 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -238,6 +238,8 @@ export interface InvoiceDetail extends Invoice {
+   retentionReleased: boolean;
+   /** What is due now: the amount less the retention held back. */
+   dueNow: number;
++  /** The client's purchase-order number the invoice is raised against; null when none was given. */
++  poNumber: string | null;
+   /** The part of the invoice written off as bad debt, no longer owed; zero when none has been written off. */
+   writeOffAmount: number;
+   /** What the client owes right now: what is left to pay after any payments and part written off, less the retention held back. */
+@@ -382,6 +384,10 @@ export class InvoiceService {
+   }
+ 
+   /** Releases the retention held back on a sent invoice once the job is finished, so it becomes due. */
++  setPoNumber(projectId: number, invoiceId: number, poNumber: string | null): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/po-number`, { poNumber });
++  }
++
+   releaseRetention(projectId: number, invoiceId: number): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/retention/release`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 089da5a..ed9f05b 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -324,16 +324,18 @@ public class TestSupportController {
+             // The retention may already have been released ("retentionReleased"), making it due.
+             boolean retentionReleased = Boolean.TRUE.equals(i.get("retentionReleased"));
+             // Part of the invoice may already have been written off as bad debt ("writeOff"), so it is no longer owed.
++            // It may carry the client's purchase-order number ("poNumber").
+             BigDecimal writeOff = decimal(i.get("writeOff"));
+             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+-                    + " early_payment_pct, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " early_payment_pct, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency, po_number)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, projectId,
+                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
+                     surcharge, taxInclusive, taxExempt,
+                     earlyPaymentPct, rebatePct, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
+                     retentionReleased, writeOff,
+-                    i.get("currency") == null ? null : i.get("currency").toString());
++                    i.get("currency") == null ? null : i.get("currency").toString(),
++                    i.get("poNumber") == null ? null : i.get("poNumber").toString());
+             for (Map<String, Object> d : discounts) {
+                 if (d.get("id") != null) {
+                     jdbc.update("INSERT INTO invoice_discount (id, invoice_id, discount_pct, discount_amount, discount_cap) VALUES (?, ?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index 1687577..6cfdf2a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -119,6 +119,10 @@ public class Invoice {
+     @Column(name = "write_off_amount", nullable = false, precision = 12, scale = 2)
+     private BigDecimal writeOffAmount = BigDecimal.ZERO.setScale(2);
+ 
++    /** The client's purchase-order number the invoice is raised against; null when none was given. */
++    @Column(name = "po_number", length = 50)
++    private String poNumber;
++
+     @Enumerated(EnumType.STRING)
+     @Column(nullable = false, length = 16)
+     private InvoiceStatus status = InvoiceStatus.DRAFT;
+@@ -735,6 +739,14 @@ public class Invoice {
+         return writeOffAmount;
+     }
+ 
++    public String getPoNumber() {
++        return poNumber;
++    }
++
++    public void setPoNumber(String poNumber) {
++        this.poNumber = poNumber;
++    }
++
+     /**
+      * What is left to pay on this invoice given the totals paid and credited against it, less any part written
+      * off and any settlement rebate earned; nothing once it is void or written off.
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index 596ca0a..b084083 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -125,6 +125,12 @@ public class InvoiceController {
+         return service.applyRetention(projectId, invoiceId, request);
+     }
+ 
++    @PutMapping("/{invoiceId}/po-number")
++    public InvoiceDetailResponse setPoNumber(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody PoNumberRequest request) {
++        return service.setPoNumber(projectId, invoiceId, request.poNumber());
++    }
++
+     @PostMapping("/{invoiceId}/retention/release")
+     public InvoiceDetailResponse releaseRetention(@PathVariable Long projectId, @PathVariable Long invoiceId) {
+         return service.releaseRetention(projectId, invoiceId);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index d373d2c..e023000 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -28,6 +28,7 @@ import java.util.List;
+  * part written off and any retention still held back. The exchange gain (positive) or loss (negative) realised
+  * in the home currency by payments on a foreign invoice, from the rate moving between the invoice's issue date
+  * and each payment's date (null when the invoice is in the home currency, has no payments, or a rate is missing).
++ * The client's purchase-order number the invoice is raised against (null when none was given).
+  */
+ public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
+         BigDecimal subtotal,
+@@ -41,7 +42,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+         String homeCurrency, BigDecimal homeAmount,
+         BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee,
+         BigDecimal retentionPct, BigDecimal retention, boolean retentionReleased, BigDecimal dueNow, BigDecimal writeOffAmount, BigDecimal amountDue,
+-        BigDecimal fxGainLoss) {
++        BigDecimal fxGainLoss, String poNumber) {
+ 
+     /**
+      * The invoice with the given status, as worked out from what has been paid and credited against it, and
+@@ -67,6 +68,6 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
+                 invoice.getTotalSavings(), homeCurrency, homeAmount,
+                 invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today),
+                 invoice.getRetentionPct(), invoice.getRetention(), invoice.isRetentionReleased(), invoice.getDueNow(),
+-                invoice.getWriteOffAmount(), amountDue, fxGainLoss);
++                invoice.getWriteOffAmount(), amountDue, fxGainLoss, invoice.getPoNumber());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index ff2133b..4e7ef94 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -9,6 +9,7 @@ import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Objects;
+ import java.util.Optional;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+@@ -424,6 +425,22 @@ public class InvoiceService {
+         return detail(invoice);
+     }
+ 
++    /**
++     * Puts (or, given none, clears) the client's purchase-order number on an invoice, recording the change in the
++     * audit log.
++     */
++    @Transactional
++    public InvoiceDetailResponse setPoNumber(Long projectId, Long invoiceId, String poNumber) {
++        String po = poNumber == null || poNumber.isBlank() ? null : poNumber.trim();
++        Invoice invoice = find(projectId, invoiceId);
++        if (!Objects.equals(invoice.getPoNumber(), po)) {
++            invoice.setPoNumber(po);
++            invoices.flush();
++            audit.record("INVOICE_PO_NUMBER_SET id=" + invoice.getId() + " poNumber=" + (po == null ? "none" : po));
++        }
++        return detail(invoice);
++    }
++
+     /**
+      * Releases the retention held back on a sent invoice once the job is finished, so it becomes due, and
+      * records the release in the audit log.
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/PoNumberRequest.java b/src/main/java/net/officefloor/hq/app/invoice/PoNumberRequest.java
+new file mode 100644
+index 0000000..4bb331b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/PoNumberRequest.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.invoice;
++
++import jakarta.validation.constraints.Size;
++
++/** Payload to put the client's purchase-order number on an invoice; leave it out or blank to clear it. */
++public record PoNumberRequest(@Size(max = 50) String poNumber) {
++}
+diff --git a/src/main/resources/db/migration/V91__invoice_po_number.sql b/src/main/resources/db/migration/V91__invoice_po_number.sql
+new file mode 100644
+index 0000000..958790d
+--- /dev/null
++++ b/src/main/resources/db/migration/V91__invoice_po_number.sql
+@@ -0,0 +1,2 @@
++-- An invoice can carry the client's purchase-order number; unset when none was given.
++ALTER TABLE invoice ADD COLUMN po_number VARCHAR(50);
