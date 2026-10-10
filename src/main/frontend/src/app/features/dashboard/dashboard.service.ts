@@ -45,6 +45,8 @@ export interface DashboardSummary {
   overdueTasks: number;
   /** Average days from issue to final payment on paid invoices, rounded; null when no invoice has been paid. */
   averageDaysToPay: number | null;
+  /** How many clients were taken on in the current month. */
+  newClientsThisMonth: number;
 }
 
 /** The tax charged on invoices issued on or between two dates, in the home currency. */

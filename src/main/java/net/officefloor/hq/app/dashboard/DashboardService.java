@@ -73,7 +73,7 @@ public class DashboardService {
     /**
      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
      * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices (not disputed) are past their due date and
-     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date.
+     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date, and how many clients were taken on this month.
      */
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
@@ -103,7 +103,8 @@ public class DashboardService {
                         clientsInHome.get(c.id()).setScale(2, RoundingMode.HALF_UP)))
                 .toList();
         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
-                overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay());
+                overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
+                clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)));
     }
 
     /**

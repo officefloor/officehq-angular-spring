@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.client;
 
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -14,6 +15,9 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     @Query("SELECT new net.officefloor.hq.app.client.ClientSegmentResponse(c.segment, COUNT(c)) FROM Client c"
             + " WHERE c.archived = false AND c.segment IS NOT NULL GROUP BY c.segment ORDER BY c.segment")
     List<ClientSegmentResponse> countActiveBySegment();
+
+    /** How many clients were taken on on or after the date. */
+    long countByCreatedDateGreaterThanEqual(LocalDate from);
 
     /** Whether any client, archived or not, already has the email, ignoring case. */
     boolean existsByEmailIgnoreCase(String email);

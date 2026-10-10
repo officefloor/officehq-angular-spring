@@ -8,7 +8,7 @@ import { TaxReport } from './tax-report';
 import { TaxSummaryReport } from './tax-summary';
 import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 
-// Dashboard page: how many clients and projects there are, and the total still owed in each currency
+// Dashboard page: how many clients and projects there are (and how many clients were taken on this month), and the total still owed in each currency
 // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
 // counted), plus one grand total of it in the home currency with each invoice converted at the
 // exchange rate from its own issue date, and how many of those sent
@@ -28,6 +28,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
         <div>
           <dt>Clients</dt>
           <dd data-testid="dashboard-clients-count">{{ s.clients }}</dd>
+        </div>
+        <div>
+          <dt>New clients this month</dt>
+          <dd data-testid="dashboard-new-clients">{{ s.newClientsThisMonth }}</dd>
         </div>
         <div>
           <dt>Jobs</dt>

@@ -119,8 +119,8 @@ public class TestSupportController {
                     r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
         }
         for (Map<String, Object> c : rows(fixture, "clients")) {
-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, billing_contact, segment, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days, early_payment_window_days)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, billing_contact, segment, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days, early_payment_window_days, created_date)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"), c.get("language"), c.get("accountManager"), c.get("billingContact"), c.get("segment"),
                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
                     Boolean.TRUE.equals(c.get("keyAccount")),
@@ -130,7 +130,9 @@ public class TestSupportController {
                     c.get("creditLimit") == null ? null : decimal(c.get("creditLimit")),
                     c.get("paymentTermsDays") == null ? null : ((Number) c.get("paymentTermsDays")).intValue(),
                     // The early-payment window, part of the client's payment terms.
-                    c.get("earlyPaymentWindowDays") == null ? null : ((Number) c.get("earlyPaymentWindowDays")).intValue());
+                    c.get("earlyPaymentWindowDays") == null ? null : ((Number) c.get("earlyPaymentWindowDays")).intValue(),
+                    // The day the client was taken on ("createdDate"); without one, today.
+                    c.get("createdDate") == null ? LocalDate.now(clock) : LocalDate.parse(c.get("createdDate").toString()));
             // When the client was contacted, each with a date and a note.
             for (Map<String, Object> h : rows(c, "contactHistory")) {
                 jdbc.update("INSERT INTO contact_history (id, client_id, contact_date, note) VALUES (?, ?, ?, ?)",

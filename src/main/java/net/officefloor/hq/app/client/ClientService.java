@@ -2,6 +2,8 @@ package net.officefloor.hq.app.client;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
+import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -34,9 +36,11 @@ public class ClientService {
     private final CreditNoteRepository creditNotes;
     private final CurrencyService currencies;
     private final Audit audit;
+    private final Clock clock;
 
     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
-            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes, CurrencyService currencies, Audit audit) {
+            InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes, CurrencyService currencies, Audit audit,
+            Clock clock) {
         this.clients = clients;
         this.projects = projects;
         this.contacts = contacts;
@@ -45,6 +49,7 @@ public class ClientService {
         this.creditNotes = creditNotes;
         this.currencies = currencies;
         this.audit = audit;
+        this.clock = clock;
     }
 
     /** The clients, leaving out archived ones unless they are asked for. */
@@ -88,6 +93,7 @@ public class ClientService {
         }
         try {
             Client client = new Client(request.name().trim(), email, request.trimmedPhone(), request.trimmedTaxNumber(), request.trimmedBillingAddress());
+            client.setCreatedDate(LocalDate.now(clock));
             client.setLanguage(request.trimmedLanguage());
             client.setAccountManager(request.trimmedAccountManager());
             client.setBillingContact(request.trimmedBillingContact());

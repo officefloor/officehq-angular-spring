@@ -11,6 +11,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import net.officefloor.hq.app.contact.Contact;
 import net.officefloor.hq.app.currency.Currency;
 
@@ -85,6 +86,10 @@ public class Client {
     @JoinColumn(name = "primary_contact_id")
     private Contact primaryContact;
 
+    /** The day the client was taken on. */
+    @Column(nullable = false)
+    private LocalDate createdDate;
+
     protected Client() {
     }
 
@@ -94,6 +99,14 @@ public class Client {
         this.phone = phone;
         this.taxNumber = taxNumber;
         this.billingAddress = billingAddress;
+    }
+
+    public LocalDate getCreatedDate() {
+        return createdDate;
+    }
+
+    public void setCreatedDate(LocalDate createdDate) {
+        this.createdDate = createdDate;
     }
 
     public Long getId() {
