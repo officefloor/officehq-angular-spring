@@ -1,0 +1,216 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/aging-report.ts b/src/main/frontend/src/app/features/dashboard/aging-report.ts
+new file mode 100644
+index 0000000..07eddc8
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/aging-report.ts
+@@ -0,0 +1,49 @@
++import { Component, inject } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { DashboardService } from './dashboard.service';
++
++// An aging report across all clients: what is left to pay on sent invoices, in the home currency, split by how many
++// days past due each invoice is — current (not yet due, or up to 30 days overdue), 31 to 60 days, and more than 60.
++@Component({
++  selector: 'app-aging-report',
++  imports: [MoneyPipe],
++  styles: `
++    .aging-report-figures {
++      display: grid;
++      grid-template-columns: max-content max-content;
++      gap: 0.25rem 1.5rem;
++    }
++    .aging-report-figures dd {
++      margin: 0;
++      text-align: right;
++    }
++  `,
++  template: `
++    <section aria-labelledby="aging-report-heading" data-testid="aging-report">
++      <h2 id="aging-report-heading">Aging report</h2>
++      @if (report.error()) {
++        <p role="alert" data-testid="aging-report-error">Could not load the aging report.</p>
++      } @else if (report.value(); as r) {
++        <dl class="aging-report-figures">
++          <dt>Current (up to 30 days overdue)</dt>
++          <dd data-testid="aging-report-current">{{ r.current | money: r.homeCurrency }}</dd>
++          <dt>31 to 60 days overdue</dt>
++          <dd data-testid="aging-report-30-60">{{ r.days30To60 | money: r.homeCurrency }}</dd>
++          <dt>More than 60 days overdue</dt>
++          <dd data-testid="aging-report-60-plus">{{ r.days60Plus | money: r.homeCurrency }}</dd>
++          <dt>Total outstanding</dt>
++          <dd data-testid="aging-report-total">{{ r.total | money: r.homeCurrency }}</dd>
++        </dl>
++        <p data-testid="aging-report-asof">As at {{ r.asOf }}</p>
++      } @else {
++        <p data-testid="aging-report-loading">Loading…</p>
++      }
++    </section>
++  `,
++})
++export class AgingReportPanel {
++  private readonly service = inject(DashboardService);
++
++  protected readonly report = rxResource({ stream: () => this.service.agingReport() });
++}
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 0ddcfa5..941baeb 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -137,6 +137,19 @@ export interface Forecast {
+   total: number;
+ }
+ 
++/**
++ * How old the debt across all clients is as at a date, in the home currency: what is left to pay on sent invoices
++ * split into current (not yet due, or up to 30 days overdue), 31 to 60 days and more than 60 days overdue.
++ */
++export interface AgingReport {
++  asOf: string;
++  homeCurrency: CurrencyCode;
++  current: number;
++  days30To60: number;
++  days60Plus: number;
++  total: number;
++}
++
+ @Injectable({ providedIn: 'root' })
+ export class DashboardService {
+   private readonly http = inject(HttpClient);
+@@ -159,6 +172,10 @@ export class DashboardService {
+     return this.http.get<RevenueReport>('/api/dashboard/revenue-report', { params });
+   }
+ 
++  agingReport(): Observable<AgingReport> {
++    return this.http.get<AgingReport>('/api/dashboard/aging-report');
++  }
++
+   forecast(): Observable<Forecast> {
+     return this.http.get<Forecast>('/api/dashboard/forecast');
+   }
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 13bbd4f..5b4e580 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -1,6 +1,7 @@
+ import { Component, inject, signal } from '@angular/core';
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService, DashboardSummary } from './dashboard.service';
++import { AgingReportPanel } from './aging-report';
+ import { CashFlowForecast } from './cash-flow-forecast';
+ import { RevenueReport } from './revenue-report';
+ import { TaxReport } from './tax-report';
+@@ -13,10 +14,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // exchange rate from its own issue date, and how many of those sent
+ // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+-// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. A tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
++// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. An aging report across all clients, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
+ @Component({
+   selector: 'app-dashboard',
+-  imports: [MoneyPipe, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
++  imports: [MoneyPipe, AgingReportPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
+   template: `
+     <h1>Dashboard</h1>
+ 
+@@ -96,6 +97,19 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ 
+     <app-cash-flow-forecast />
+ 
++    <button
++      type="button"
++      data-testid="aging-report-open"
++      aria-controls="aging-report"
++      [attr.aria-expanded]="agingReportOpen()"
++      (click)="agingReportOpen.set(!agingReportOpen())"
++    >
++      {{ agingReportOpen() ? 'Hide aging report' : 'Aging report' }}
++    </button>
++    @if (agingReportOpen()) {
++      <app-aging-report id="aging-report" />
++    }
++
+     <button
+       type="button"
+       data-testid="tax-summary-open"
+@@ -139,6 +153,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ export class Dashboard {
+   protected readonly summary = signal<DashboardSummary | null>(null);
+   protected readonly loadError = signal<string | null>(null);
++  protected readonly agingReportOpen = signal(false);
+   protected readonly taxSummaryOpen = signal(false);
+   protected readonly taxReportOpen = signal(false);
+   protected readonly revenueReportOpen = signal(false);
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/AgingReportResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/AgingReportResponse.java
+new file mode 100644
+index 0000000..8e2d92f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/AgingReportResponse.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * How old the debt across all clients is as at today, in the home currency: what is left to pay on sent invoices
++ * split by how many days past due each one is — current (not yet due, or up to 30 days overdue), 31 to 60 days, and
++ * more than 60 days — with the total of them.
++ */
++public record AgingReportResponse(LocalDate asOf, String homeCurrency, BigDecimal current, BigDecimal days30To60,
++        BigDecimal days60Plus, BigDecimal total) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index 699abf9..5f042d3 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -47,6 +47,12 @@ public class DashboardController {
+         return service.revenueReport(from, to);
+     }
+ 
++    /** How old the debt across all clients is, in the home currency, split into age buckets. */
++    @GetMapping("/aging-report")
++    public AgingReportResponse agingReport() {
++        return service.agingReport();
++    }
++
+     /** The money expected in from the instalments still to be paid on sent invoices. */
+     @GetMapping("/forecast")
+     public ForecastResponse forecast() {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index cb6c4e0..9a49aff 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -106,6 +106,22 @@ public class DashboardService {
+                 overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today));
+     }
+ 
++    /**
++     * How old the debt across all clients is as at today: what is left to pay on each sent invoice not yet fully
++     * paid, converted into the home currency (see {@link #inHome}), split by how many days past its due date it is.
++     * An invoice not yet due, or without a due date, is current.
++     */
++    @Transactional(readOnly = true)
++    public AgingReportResponse agingReport() {
++        LocalDate today = LocalDate.now(clock);
++        String home = settings.homeCurrency();
++        Map<Invoice, BigDecimal> owedInHome = inHome(
++                invoices.findByStatusInWithClient(List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL)), home, today, false);
++        DashboardResponse.OverdueBuckets aged = buckets(owedInHome, today);
++        return new AgingReportResponse(today, home, aged.days0To30(), aged.days31To60(), aged.days60Plus(),
++                sum(owedInHome));
++    }
++
+     /**
+      * Splits what is overdue by how many days past its due date each invoice is: up to 30 days, 31 to 60 days,
+      * and more than 60 days.
+@@ -115,7 +131,8 @@ public class DashboardService {
+         BigDecimal days31To60 = BigDecimal.ZERO;
+         BigDecimal days60Plus = BigDecimal.ZERO;
+         for (Map.Entry<Invoice, BigDecimal> e : overdueInHome.entrySet()) {
+-            long days = ChronoUnit.DAYS.between(e.getKey().getDueDate(), today);
++            LocalDate dueDate = e.getKey().getDueDate();
++            long days = dueDate == null ? 0 : ChronoUnit.DAYS.between(dueDate, today);
+             if (days > 60) {
+                 days60Plus = days60Plus.add(e.getValue());
+             } else if (days > 30) {
