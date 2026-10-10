@@ -78,6 +78,7 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE fx_rate RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE tax_adjustment RESTART IDENTITY");
             // Back to the standard currencies, each rounding to the cent and shown with two decimals.
             jdbc.execute("DELETE FROM currency");
             jdbc.execute("INSERT INTO currency (code, symbol, rounding_step) VALUES ('USD', '$', 0.01), ('EUR', '€', 0.01),"

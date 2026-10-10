@@ -2,13 +2,14 @@ import { Component, inject, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { MoneyPipe } from '../currencies/money.pipe';
 import { DashboardService } from './dashboard.service';
+import { TaxAdjustments } from '../tax-adjustments/tax-adjustments';
 
 // The tax charged over a chosen date range: the main (sales) tax and the levy, each totalled separately, on invoices
 // issued within it that were sent (drafts and cancelled invoices are left out), in the home currency. Their sum is
 // the tax liability for the period: the tax collected that is owed on to the tax authority.
 @Component({
   selector: 'app-tax-summary',
-  imports: [MoneyPipe],
+  imports: [MoneyPipe, TaxAdjustments],
   styles: `
     .tax-summary-range {
       display: flex;
@@ -56,6 +57,7 @@ import { DashboardService } from './dashboard.service';
           </dd>
         </dl>
       }
+      <app-tax-adjustments />
     </section>
   `,
 })
