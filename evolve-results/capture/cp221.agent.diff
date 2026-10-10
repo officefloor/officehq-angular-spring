@@ -1,0 +1,391 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index e472a00..0ca9078 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -59,6 +59,10 @@ export interface DashboardSummary {
+   collectedYearToDate: number;
+   /** The share of all tasks that are done, as a whole percentage; null when there are no tasks. */
+   taskCompletionRate: number | null;
++  /** What the business aims to bill over the year, in the home currency; null when no target is set. */
++  billingTarget: number | null;
++  /** What has been billed this year as a whole percentage of the target; null when no target is set. */
++  billingTargetProgress: number | null;
+ }
+ 
+ /** The tax charged on invoices issued on or between two dates, in the home currency. */
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index a17bd6b..5bbd153 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -15,7 +15,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // exchange rate from its own issue date (leaving out disputed and written-off invoices), and how many of those sent
+ // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+-// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, what share of all tasks are done, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected. An aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
++// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, what share of all tasks are done, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected, and how what was billed this year tracks against the yearly billings target set in the settings. An aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
+ @Component({
+   selector: 'app-dashboard',
+   imports: [MoneyPipe, AgingReportPanel, OverdueTrendPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
+@@ -58,6 +58,18 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+           <dt>Billed this year (in {{ s.homeCurrency }})</dt>
+           <dd data-testid="kpi-ytd-billings">{{ s.billingsYearToDate | money: s.homeCurrency }}</dd>
+         </div>
++        <div data-testid="billing-target">
++          <dt>Billings target this year (in {{ s.homeCurrency }})</dt>
++          @if (s.billingTarget !== null) {
++            <dd data-testid="target-value">{{ s.billingTarget | money: s.homeCurrency }}</dd>
++            <dd>
++              <span data-testid="target-progress">{{ s.billingTargetProgress }}%</span> of target billed
++              (<span data-testid="target-remaining">{{ remaining(s) | money: s.homeCurrency }}</span> to go)
++            </dd>
++          } @else {
++            <dd data-testid="target-none">No target set</dd>
++          }
++        </div>
+         <div>
+           <dt>Collected this year (in {{ s.homeCurrency }})</dt>
+           <dd data-testid="kpi-ytd-collected">{{ s.collectedYearToDate | money: s.homeCurrency }}</dd>
+@@ -228,6 +240,11 @@ export class Dashboard {
+   protected readonly taxReportOpen = signal(false);
+   protected readonly revenueReportOpen = signal(false);
+ 
++  /** What is still to bill this year to reach the target; never below zero. */
++  protected remaining(s: DashboardSummary): number {
++    return Math.max(0, (s.billingTarget ?? 0) - s.billingsYearToDate);
++  }
++
+   constructor() {
+     inject(DashboardService)
+       .summary()
+diff --git a/src/main/frontend/src/app/features/settings/billing-target.ts b/src/main/frontend/src/app/features/settings/billing-target.ts
+new file mode 100644
+index 0000000..5f63559
+--- /dev/null
++++ b/src/main/frontend/src/app/features/settings/billing-target.ts
+@@ -0,0 +1,93 @@
++import { Component, effect, inject, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { SettingsService } from './settings.service';
++
++// The yearly billings target, in the home currency: what the business aims to bill over the year. The dashboard tracks
++// what has been billed this year against it. Left empty, no target is set.
++@Component({
++  selector: 'app-billing-target',
++  imports: [ReactiveFormsModule],
++  template: `
++    <form [formGroup]="form" (ngSubmit)="save()" data-testid="billing-target-form" novalidate>
++      <div>
++        <label for="settings-billing-target">
++          Billings target for the year{{ settings.hasValue() ? ' (' + settings.value().homeCurrency + ')' : '' }}
++        </label>
++        <input
++          id="settings-billing-target"
++          type="number"
++          inputmode="decimal"
++          min="0.01"
++          step="0.01"
++          formControlName="billingTarget"
++          data-testid="settings-billing-target"
++          [attr.aria-invalid]="showError()"
++          [attr.aria-describedby]="showError() ? 'settings-billing-target-error' : 'settings-billing-target-hint'"
++        />
++        <p id="settings-billing-target-hint">Leave empty for no target.</p>
++        @if (showError()) {
++          <p id="settings-billing-target-error" role="alert" data-testid="settings-billing-target-error">
++            Enter an amount above zero with at most two decimal places.
++          </p>
++        }
++      </div>
++      <button type="submit" data-testid="settings-billing-target-save" [disabled]="saving()">Save target</button>
++      @if (saved()) {
++        <p role="status" data-testid="settings-billing-target-saved">Billings target saved.</p>
++      }
++      @if (saveError()) {
++        <p role="alert" data-testid="settings-billing-target-save-error">{{ saveError() }}</p>
++      }
++    </form>
++  `,
++})
++export class BillingTarget {
++  private readonly service = inject(SettingsService);
++
++  protected readonly settings = rxResource({ stream: () => this.service.get() });
++
++  protected readonly saving = signal(false);
++  protected readonly saved = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    billingTarget: ['', [Validators.pattern(/^\d+(\.\d{1,2})?$/), Validators.min(0.01)]],
++  });
++
++  // Starts the field from the saved target once the settings load, unless it has already been edited.
++  private readonly syncForm = effect(() => {
++    if (this.settings.hasValue() && !this.form.controls.billingTarget.dirty) {
++      const target = this.settings.value().billingTarget;
++      this.form.controls.billingTarget.setValue(target == null ? '' : String(target));
++    }
++  });
++
++  protected showError(): boolean {
++    const control = this.form.controls.billingTarget;
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected save(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.saved.set(false);
++    this.saveError.set(null);
++    const raw = String(this.form.getRawValue().billingTarget ?? '').trim();
++    this.service.updateBillingTarget(raw === '' ? null : Number(raw)).subscribe({
++      next: (updated) => {
++        this.settings.set(updated);
++        this.form.reset({ billingTarget: updated.billingTarget == null ? '' : String(updated.billingTarget) });
++        this.saving.set(false);
++        this.saved.set(true);
++      },
++      error: () => {
++        this.saveError.set('Could not save the billings target. Please try again.');
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/settings/settings.service.ts b/src/main/frontend/src/app/features/settings/settings.service.ts
+index 8b7634f..ec28847 100644
+--- a/src/main/frontend/src/app/features/settings/settings.service.ts
++++ b/src/main/frontend/src/app/features/settings/settings.service.ts
+@@ -10,6 +10,8 @@ export interface Settings {
+   homeCurrency?: string;
+   /** When revenue counts: when an invoice is sent, or once it is paid. */
+   revenueRecognitionBasis?: RecognitionBasis;
++  /** What the business aims to bill over the year, in the home currency; null when no target is set (read-only here). */
++  billingTarget?: number | null;
+ }
+ 
+ /** When revenue counts: when an invoice is sent, or once it is paid. */
+@@ -27,4 +29,9 @@ export class SettingsService {
+     // Kept alive so a save finishes even when the page is left or reloaded straight after.
+     return this.http.put<Settings>('/api/settings', settings, { keepalive: true });
+   }
++
++  /** Sets the yearly billings target, or clears it when null. */
++  updateBillingTarget(billingTarget: number | null): Observable<Settings> {
++    return this.http.put<Settings>('/api/settings/billing-target', { billingTarget }, { keepalive: true });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index dd67a4e..4a6e64a 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -4,11 +4,12 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
+ import { RecognitionBasis, SettingsService } from './settings.service';
+ import { CurrencyRounding } from '../currencies/currency-rounding';
+ import { FxRates } from '../fx-rates/fx-rates';
++import { BillingTarget } from './billing-target';
+ 
+-// The app-wide settings: the standard sales tax rate that every new invoice starts with, whether revenue counts when an invoice is sent or when it is paid, how each currency rounds, and the exchange rate history.
++// The app-wide settings: the standard sales tax rate that every new invoice starts with, whether revenue counts when an invoice is sent or when it is paid, the yearly billings target, how each currency rounds, and the exchange rate history.
+ @Component({
+   selector: 'app-settings',
+-  imports: [ReactiveFormsModule, CurrencyRounding, FxRates],
++  imports: [ReactiveFormsModule, CurrencyRounding, FxRates, BillingTarget],
+   template: `
+     <h1>Settings</h1>
+     @if (settings.error()) {
+@@ -54,6 +55,7 @@ import { FxRates } from '../fx-rates/fx-rates';
+         <p role="alert" data-testid="settings-save-error">{{ saveError() }}</p>
+       }
+     </form>
++    <app-billing-target />
+     <app-currency-rounding />
+     <app-fx-rates />
+   `,
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index c5b1ad3..199ef5c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -86,7 +86,7 @@ public class TestSupportController {
+             jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+         }
+         jdbc.update("UPDATE app_settings SET default_tax_pct = 0, home_currency = 'USD',"
+-                + " revenue_recognition_basis = 'sent' WHERE id = 1");
++                + " revenue_recognition_basis = 'sent', billing_target = NULL WHERE id = 1");
+     }
+ 
+     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
+@@ -113,6 +113,10 @@ public class TestSupportController {
+             jdbc.update("UPDATE app_settings SET revenue_recognition_basis = ? WHERE id = 1",
+                     s.get("recognitionBasis").toString());
+         }
++        // App settings: "billingTarget" is what the business aims to bill over the year, in the home currency.
++        if (fixture.get("settings") instanceof Map<?, ?> s && s.get("billingTarget") != null) {
++            jdbc.update("UPDATE app_settings SET billing_target = ? WHERE id = 1", decimal(s.get("billingTarget")));
++        }
+         // An exchange rate: from its date, one unit of the currency is worth "rate" units of the home currency.
+         for (Map<String, Object> r : rows(fixture, "fxRates")) {
+             jdbc.update("INSERT INTO fx_rate (currency, rate_date, rate) VALUES (?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+index 57f45ab..6b19773 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+@@ -15,14 +15,16 @@ import java.util.List;
+  * currency, and the share of everything billed that has been collected as a whole percentage (null when nothing
+  * has been billed), and what was billed and what was collected (payments received) from the start of the year to
+  * today, in the home currency, and the share of all tasks that are done as a whole percentage (null when there are
+- * no tasks).
++ * no tasks), and the yearly billings target in the home currency with what has been billed this year as a whole
++ * percentage of it (both null when no target is set).
+  */
+ public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
+         BigDecimal outstandingHome, long overdue,
+         String homeCurrency, BigDecimal overdueAmount, OverdueBuckets overdueBuckets, List<TopClient> topClients,
+         long openTasks, long overdueTasks, Long averageDaysToPay, long newClientsThisMonth,
+         BigDecimal billingsThisMonth, Long collectionRate, BigDecimal billingsYearToDate,
+-        BigDecimal collectedYearToDate, Long taskCompletionRate) {
++        BigDecimal collectedYearToDate, Long taskCompletionRate,
++        BigDecimal billingTarget, Long billingTargetProgress) {
+ 
+     /** What is still owed in one currency. */
+     public record CurrencyTotal(String currency, BigDecimal amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 6228d2f..db6c95b 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -105,11 +105,16 @@ public class DashboardService {
+                 .map(c -> new DashboardResponse.TopClient(c.id(), c.name(), c.currency(), c.outstanding(),
+                         clientsInHome.get(c.id()).setScale(2, RoundingMode.HALF_UP)))
+                 .toList();
++        BigDecimal billingsYearToDate = billings(today.withDayOfYear(1), today, home);
++        BigDecimal billingTarget = settings.billingTarget();
++        Long billingTargetProgress = billingTarget == null ? null
++                : billingsYearToDate.multiply(BigDecimal.valueOf(100)).divide(billingTarget, 0, RoundingMode.HALF_UP)
++                        .longValue();
+         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
+                 overdueBuckets, top, tasks.countByDoneFalse(), tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
+                 clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home),
+-                collectionRate(home), billings(today.withDayOfYear(1), today, home),
+-                collected(today.withDayOfYear(1), today, home), taskCompletionRate());
++                collectionRate(home), billingsYearToDate,
++                collected(today.withDayOfYear(1), today, home), taskCompletionRate(), billingTarget, billingTargetProgress);
+     }
+ 
+     /** The share of all tasks that are done, as a whole percentage. Null when there are no tasks. */
+diff --git a/src/main/java/net/officefloor/hq/app/settings/BillingTargetRequest.java b/src/main/java/net/officefloor/hq/app/settings/BillingTargetRequest.java
+new file mode 100644
+index 0000000..1b79ef4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/settings/BillingTargetRequest.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.settings;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import java.math.BigDecimal;
++
++/** Payload to set what the business aims to bill over the year, in the home currency; null clears the target. */
++public record BillingTargetRequest(
++        @DecimalMin(value = "0", inclusive = false) @Digits(integer = 13, fraction = 2) BigDecimal billingTarget) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/settings/Settings.java b/src/main/java/net/officefloor/hq/app/settings/Settings.java
+index 5090921..ddf5778 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/Settings.java
++++ b/src/main/java/net/officefloor/hq/app/settings/Settings.java
+@@ -30,6 +30,10 @@ public class Settings {
+     @Column(name = "revenue_recognition_basis", nullable = false, length = 10)
+     private String revenueRecognitionBasis = RecognitionBasis.SENT;
+ 
++    /** What the business aims to bill over the year, in the home currency; null when no target is set. */
++    @Column(name = "billing_target", precision = 15, scale = 2)
++    private BigDecimal billingTarget;
++
+     protected Settings() {
+     }
+ 
+@@ -49,6 +53,14 @@ public class Settings {
+         this.revenueRecognitionBasis = revenueRecognitionBasis;
+     }
+ 
++    public BigDecimal getBillingTarget() {
++        return billingTarget;
++    }
++
++    public void setBillingTarget(BigDecimal billingTarget) {
++        this.billingTarget = billingTarget == null ? null : billingTarget.setScale(2, RoundingMode.HALF_UP);
++    }
++
+     public void setDefaultTaxPct(BigDecimal defaultTaxPct) {
+         this.defaultTaxPct = defaultTaxPct.setScale(2, RoundingMode.HALF_UP);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index d52aa4f..1172bf5 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -26,4 +26,9 @@ public class SettingsController {
+     public SettingsResponse update(@Valid @RequestBody SettingsRequest request) {
+         return service.update(request);
+     }
++
++    @PutMapping("/billing-target")
++    public SettingsResponse updateBillingTarget(@Valid @RequestBody BillingTargetRequest request) {
++        return service.updateBillingTarget(request);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java b/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
+index b9bd42f..8e0f012 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsResponse.java
+@@ -2,10 +2,11 @@ package net.officefloor.hq.app.settings;
+ 
+ import java.math.BigDecimal;
+ 
+-public record SettingsResponse(BigDecimal defaultTaxPct, String homeCurrency, String revenueRecognitionBasis) {
++public record SettingsResponse(BigDecimal defaultTaxPct, String homeCurrency, String revenueRecognitionBasis,
++        BigDecimal billingTarget) {
+ 
+     public static SettingsResponse from(Settings settings) {
+         return new SettingsResponse(settings.getDefaultTaxPct(), settings.getHomeCurrency(),
+-                settings.getRevenueRecognitionBasis());
++                settings.getRevenueRecognitionBasis(), settings.getBillingTarget());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 9b79925..640314f 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -29,6 +29,21 @@ public class SettingsService {
+         return SettingsResponse.from(current);
+     }
+ 
++    /** Sets the yearly billings target, or clears it when none is given. */
++    @Transactional
++    public SettingsResponse updateBillingTarget(BillingTargetRequest request) {
++        Settings current = find();
++        current.setBillingTarget(request.billingTarget());
++        settings.flush();
++        return SettingsResponse.from(current);
++    }
++
++    /** What the business aims to bill over the year, in the home currency; null when no target is set. */
++    @Transactional(readOnly = true)
++    public BigDecimal billingTarget() {
++        return find().getBillingTarget();
++    }
++
+     /** The sales tax percentage a new invoice starts with when none is given for it. */
+     @Transactional(readOnly = true)
+     public BigDecimal defaultTaxPct() {
+diff --git a/src/main/resources/db/migration/V103__billing_target.sql b/src/main/resources/db/migration/V103__billing_target.sql
+new file mode 100644
+index 0000000..c1f1927
+--- /dev/null
++++ b/src/main/resources/db/migration/V103__billing_target.sql
+@@ -0,0 +1,3 @@
++-- The billings target: what the business aims to bill over the year, in the home currency. Null when no target is set.
++ALTER TABLE app_settings ADD COLUMN billing_target DECIMAL(15, 2);
++ALTER TABLE app_settings ADD CONSTRAINT app_settings_billing_target_positive CHECK (billing_target IS NULL OR billing_target > 0);
