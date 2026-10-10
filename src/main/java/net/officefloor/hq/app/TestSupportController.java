@@ -58,6 +58,7 @@ public class TestSupportController {
         try {
             jdbc.execute("TRUNCATE TABLE note RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project_tag");
+            jdbc.execute("TRUNCATE TABLE client_tag");
             jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE task_checklist_item RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
@@ -198,6 +199,10 @@ public class TestSupportController {
         for (Map<String, Object> pt : rows(fixture, "projectTags")) {
             jdbc.update("INSERT INTO project_tag (project_id, tag_id) VALUES (?, ?)",
                     ((Number) pt.get("projectId")).longValue(), ((Number) pt.get("tagId")).longValue());
+        }
+        for (Map<String, Object> ct : rows(fixture, "clientTags")) {
+            jdbc.update("INSERT INTO client_tag (client_id, tag_id) VALUES (?, ?)",
+                    ((Number) ct.get("clientId")).longValue(), ((Number) ct.get("tagId")).longValue());
         }
         // Tasks are given at the top level (with a projectId) or nested inside their project.
         for (Map<String, Object> t : rows(fixture, "tasks")) {

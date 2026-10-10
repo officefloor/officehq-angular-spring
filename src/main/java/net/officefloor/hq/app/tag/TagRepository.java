@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.tag;
 
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface TagRepository extends JpaRepository<Tag, Long> {
@@ -9,4 +10,6 @@ public interface TagRepository extends JpaRepository<Tag, Long> {
     List<Tag> findAllByOrderByNameAsc();
 
     boolean existsByNameIgnoreCase(String name);
+
+    Optional<Tag> findByNameIgnoreCase(String name);
 }

@@ -7,13 +7,18 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
 import net.officefloor.hq.app.contact.Contact;
 import net.officefloor.hq.app.currency.Currency;
+import net.officefloor.hq.app.tag.Tag;
 
 /** A client of the office. */
 @Entity
@@ -62,6 +67,12 @@ public class Client {
 
     /** Whether the client is pinned to the top of the client list. */
     private boolean pinned;
+
+    /** The tags the client is labelled with. */
+    @ManyToMany
+    @JoinTable(name = "client_tag", joinColumns = @JoinColumn(name = "client_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id"))
+    private Set<Tag> tags = new HashSet<>();
 
     /** The client's standard discount, a percentage each new invoice for them starts with; zero when none. */
     @Column(name = "default_discount_pct", nullable = false, precision = 5, scale = 2)
@@ -207,6 +218,10 @@ public class Client {
 
     public void setPinned(boolean pinned) {
         this.pinned = pinned;
+    }
+
+    public Set<Tag> getTags() {
+        return tags;
     }
 
     public BigDecimal getDefaultDiscountPct() {

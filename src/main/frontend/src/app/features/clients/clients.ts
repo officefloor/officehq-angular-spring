@@ -13,11 +13,20 @@ import { Client, ClientService } from './client.service';
 // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
 // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
 // list and search unless the archived toggle is on, where it can be restored. A client's name or email
-// can be corrected in place from its row. Favourite clients can be pinned, which keeps them in a group at the top of the list. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment, and a revenue bands panel counts the clients in each band of revenue they bring in. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first.
+// can be corrected in place from its row. Favourite clients can be pinned, which keeps them in a group at the top of the list. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment, and a revenue bands panel counts the clients in each band of revenue they bring in. The list can be exported to a CSV file. The list can be sorted by name, by how much each client owes, or with key accounts first. Several clients can be selected and given a tag all at once; each client shows its tags.
 @Component({
   selector: 'app-clients',
   imports: [MoneyPipe, NgTemplateOutlet, ReactiveFormsModule, RouterLink, ClientEditForm, ClientListExport, ClientRevenueBands, ClientSegments],
   styles: `
+    .client-tags {
+      margin-inline-start: 0.5em;
+      padding: 0 0.4em;
+      border: 1px solid #1f4e79;
+      border-radius: 0.25em;
+      color: #1f4e79;
+      background: #e8f1fa;
+      font-size: 0.85em;
+    }
     .key-account {
       margin-inline-start: 0.5em;
       padding: 0 0.4em;
@@ -309,10 +318,37 @@ import { Client, ClientService } from './client.service';
       @if (filteredClients().length === 0) {
         <p role="status" data-testid="clients-no-match">No clients match your search.</p>
       } @else {
+        <form class="bulk-tag" data-testid="clients-bulk-tag" (submit)="applyBulkTag($event)" aria-label="Tag selected clients">
+          <label for="clients-bulk-tag-input">Tag selected clients</label>
+          <input
+            id="clients-bulk-tag-input"
+            type="text"
+            maxlength="50"
+            autocomplete="off"
+            data-testid="clients-bulk-tag-input"
+            [value]="bulkTag()"
+            (input)="onBulkTagInput($event)"
+          />
+          <button
+            type="submit"
+            data-testid="clients-bulk-tag-apply"
+            [disabled]="tagging() || selected().size === 0 || !bulkTag().trim()"
+          >
+            Apply tag
+          </button>
+          <span data-testid="clients-selected-count">{{ selected().size }} selected</span>
+          @if (bulkTagMessage()) {
+            <p role="status" data-testid="clients-bulk-tag-status">{{ bulkTagMessage() }}</p>
+          }
+          @if (bulkTagError()) {
+            <p role="alert" data-testid="clients-bulk-tag-error">{{ bulkTagError() }}</p>
+          }
+        </form>
         <table data-testid="clients-table">
           <caption>All clients</caption>
           <thead>
             <tr>
+              <th scope="col"><span class="visually-hidden">Select</span></th>
               <th scope="col">Name</th>
               <th scope="col">Email</th>
               <th scope="col">Owed</th>
@@ -322,7 +358,7 @@ import { Client, ClientService } from './client.service';
           @if (pinnedClients().length > 0) {
             <tbody data-testid="pinned-clients" aria-label="Pinned clients">
               <tr>
-                <th scope="colgroup" colspan="4">Pinned</th>
+                <th scope="colgroup" colspan="5">Pinned</th>
               </tr>
               @for (c of pinnedClients(); track c.id) {
                 <ng-container *ngTemplateOutlet="clientRow; context: { $implicit: c }" />
@@ -341,12 +377,24 @@ import { Client, ClientService } from './client.service';
     <ng-template #clientRow let-c>
       <tr [attr.data-testid]="'client-row-' + c.id">
         <td>
+          <input
+            type="checkbox"
+            [attr.data-testid]="'clients-select-' + c.id"
+            [attr.aria-label]="'Select ' + c.name"
+            [checked]="selected().has(c.id)"
+            (change)="toggleSelected(c.id)"
+          />
+        </td>
+        <td>
           <span data-testid="client-name">{{ c.name }}</span>
           @if (c.keyAccount) {
             <span class="key-account" data-testid="client-key-account">Key account</span>
           }
           @if (c.segment) {
             <span data-testid="client-segment">({{ c.segment }})</span>
+          }
+          @if (c.tags.length > 0) {
+            <span class="client-tags" [attr.data-testid]="'client-tag-' + c.id">{{ c.tags.join(', ') }}</span>
           }
           @if (c.archived) {
             <span [attr.data-testid]="'client-archived-' + c.id">(archived)</span>
@@ -405,7 +453,7 @@ import { Client, ClientService } from './client.service';
       </tr>
       @if (editing() === c.id) {
         <tr [attr.data-testid]="'client-edit-row-' + c.id">
-          <td colspan="4">
+          <td colspan="5">
             <app-client-edit-form [client]="c" (saved)="onSaved($event)" (cancelled)="closeEdit(c)" />
           </td>
         </tr>
@@ -437,6 +485,11 @@ export class Clients {
   protected readonly editing = signal<number | null>(null);
   protected readonly segmentsOpen = signal(false);
   protected readonly revenueBandsOpen = signal(false);
+  protected readonly selected = signal<ReadonlySet<number>>(new Set());
+  protected readonly bulkTag = signal('');
+  protected readonly tagging = signal(false);
+  protected readonly bulkTagMessage = signal<string | null>(null);
+  protected readonly bulkTagError = signal<string | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -523,6 +576,46 @@ export class Clients {
     setTimeout(() => document.querySelector<HTMLElement>(`[data-testid="client-edit-${client.id}"]`)?.focus());
   }
 
+  protected toggleSelected(id: number): void {
+    this.selected.update((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  protected onBulkTagInput(event: Event): void {
+    this.bulkTag.set((event.target as HTMLInputElement).value);
+  }
+
+  protected applyBulkTag(event: Event): void {
+    event.preventDefault();
+    const tag = this.bulkTag().trim();
+    const ids = [...this.selected()];
+    if (!tag || ids.length === 0) {
+      return;
+    }
+    this.tagging.set(true);
+    this.bulkTagMessage.set(null);
+    this.bulkTagError.set(null);
+    this.service.bulkTag(ids, tag).subscribe({
+      next: (tagged) => {
+        const byId = new Map(tagged.map((c) => [c.id, c]));
+        this.clients.update((list) => list.map((c) => byId.get(c.id) ?? c));
+        this.selected.set(new Set());
+        this.bulkTag.set('');
+        this.bulkTagMessage.set(`Tagged ${tagged.length} ${tagged.length === 1 ? 'client' : 'clients'} with ${tag}.`);
+        this.tagging.set(false);
+      },
+      error: () => {
+        this.bulkTagError.set('Could not tag the selected clients. Please try again.');
+        this.tagging.set(false);
+      },
+    });
+  }
+
   protected toggleArchived(): void {
     this.showArchived.update((show) => !show);
     this.load();
@@ -584,6 +677,7 @@ export class Clients {
   }
 
   private load(): void {
+    this.selected.set(new Set());
     this.service.list(this.showArchived()).subscribe((list) => this.clients.set(list));
   }
 }

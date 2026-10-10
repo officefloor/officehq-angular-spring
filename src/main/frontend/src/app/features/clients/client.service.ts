@@ -46,6 +46,8 @@ export interface Client {
   outstanding: number;
   /** Whether the client is pinned to the top of the client list. */
   pinned: boolean;
+  /** The names of the tags the client is labelled with, in name order. */
+  tags: string[];
 }
 
 /** At-a-glance counts of what one client has. */
@@ -58,7 +60,7 @@ export interface ClientSummary {
   lifetimeValue: number;
 }
 
-export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding' | 'pinned'>;
+export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding' | 'pinned' | 'tags'>;
 
 /** A segment clients are grouped into, and how many clients are in it. */
 export interface ClientSegment {
@@ -167,6 +169,11 @@ export class ClientService {
 
   restore(id: number): Observable<Client> {
     return this.http.post<Client>(`/api/clients/${id}/restore`, null);
+  }
+
+  /** Puts one tag, by name, on each of the given clients (creating the tag if need be); returns those clients. */
+  bulkTag(clientIds: number[], tag: string): Observable<Client[]> {
+    return this.http.post<Client[]>('/api/clients/tags', { clientIds, tag });
   }
 
   /** Pins the client to the top of the client list. */

@@ -116,6 +116,12 @@ public class ClientController {
         return service.restore(id);
     }
 
+    /** Puts one tag on several clients at once. */
+    @PostMapping("/tags")
+    public List<ClientResponse> bulkTag(@Valid @RequestBody ClientBulkTagRequest request) {
+        return service.bulkTag(request);
+    }
+
     @PostMapping("/{id}/pin")
     public ClientResponse pin(@PathVariable Long id) {
         return service.pin(id);

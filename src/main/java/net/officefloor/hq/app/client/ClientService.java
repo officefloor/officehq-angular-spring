@@ -28,6 +28,8 @@ import net.officefloor.hq.app.refund.RefundRepository;
 import net.officefloor.hq.app.project.ProjectRepository;
 import net.officefloor.hq.app.settings.RecognitionBasis;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.tag.Tag;
+import net.officefloor.hq.app.tag.TagRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -48,6 +50,7 @@ public class ClientService {
     private final DepositRepository deposits;
     private final RefundRepository refunds;
     private final NoteRepository notes;
+    private final TagRepository tags;
     private final FxRateService fxRates;
     private final CurrencyService currencies;
     private final SettingsService settings;
@@ -57,7 +60,7 @@ public class ClientService {
     public ClientService(ClientRepository clients, ProjectRepository projects, ContactRepository contacts,
             InvoiceRepository invoices, PaymentRepository payments, CreditNoteRepository creditNotes,
             ClientPaymentRepository clientPayments, DepositRepository deposits, RefundRepository refunds,
-            NoteRepository notes, FxRateService fxRates, CurrencyService currencies, SettingsService settings, Audit audit, Clock clock) {
+            NoteRepository notes, TagRepository tags, FxRateService fxRates, CurrencyService currencies, SettingsService settings, Audit audit, Clock clock) {
         this.clients = clients;
         this.projects = projects;
         this.contacts = contacts;
@@ -68,6 +71,7 @@ public class ClientService {
         this.deposits = deposits;
         this.refunds = refunds;
         this.notes = notes;
+        this.tags = tags;
         this.fxRates = fxRates;
         this.currencies = currencies;
         this.settings = settings;
@@ -372,6 +376,30 @@ public class ClientService {
         return respond(client);
     }
 
+    /**
+     * Puts one tag on each of the given clients, creating the tag (by name, ignoring case) if it does not exist
+     * yet. Each client newly tagged is recorded in the audit log; clients already carrying the tag are left as
+     * they are. Returns the clients tagged, in id order.
+     */
+    @Transactional
+    public List<ClientResponse> bulkTag(ClientBulkTagRequest request) {
+        String name = request.tag().trim();
+        if (name.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A tag name is required");
+        }
+        List<Long> ids = request.clientIds().stream().distinct().sorted().toList();
+        List<Client> found = clients.findAllById(ids);
+        if (found.size() != ids.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+        }
+        Tag tag = tags.findByNameIgnoreCase(name).orElseGet(() -> tags.save(new Tag(name)));
+        List<Client> tagged = found.stream().filter(c -> c.getTags().add(tag)).toList();
+        clients.flush();
+        tagged.stream().sorted(Comparator.comparing(Client::getId))
+                .forEach(c -> audit.record("CLIENT_TAGGED id=" + c.getId() + " tag=" + tag.getId()));
+        return respond(found.stream().sorted(Comparator.comparing(Client::getId)).toList());
+    }
+
     /** Pins a client to the top of the client list, recording it in the audit log. */
     @Transactional
     public ClientResponse pin(Long id) {
@@ -397,7 +425,7 @@ public class ClientService {
     /**
      * Merges a duplicate client into the client it duplicates: the duplicate's projects (and so their
      * invoices), contacts, contact history, notes, emailed statements, payments, deposits and refunds all move to the kept client, which takes the
-     * duplicate's main contact if it has none of its own, and the duplicate is then removed. Both must
+     * duplicate's main contact if it has none of its own and its tags, and the duplicate is then removed. Both must
      * be billed in the same currency, so no money changes currency. Recorded in the audit log.
      */
     @Transactional
@@ -414,6 +442,7 @@ public class ClientService {
         Long adoptedPrimary = target.getPrimaryContact() == null && source.getPrimaryContact() != null
                 ? source.getPrimaryContact().getId()
                 : null;
+        List<Long> sourceTags = source.getTags().stream().map(Tag::getId).toList();
         // The main contact must belong to its client, so let it go before the contacts move.
         source.setPrimaryContact(null);
         clients.moveProjects(id, targetId);
@@ -430,6 +459,7 @@ public class ClientService {
         if (adoptedPrimary != null) {
             kept.setPrimaryContact(contacts.getReferenceById(adoptedPrimary));
         }
+        sourceTags.forEach(tagId -> kept.getTags().add(tags.getReferenceById(tagId)));
         clients.flush();
         audit.record("CLIENT_MERGED id=" + id + " into=" + targetId);
         return respond(kept);
