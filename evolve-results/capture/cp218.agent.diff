@@ -1,0 +1,303 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index fdc467f..ac1a2e2 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -211,6 +211,23 @@ export interface AgingReportLine {
+   amount: number;
+ }
+ 
++/** What was overdue at the close of one month (as at today for the current month), in the home currency. */
++export interface OverdueTrendMonth {
++  /** The month as yyyy-MM. */
++  month: string;
++  asOf: string;
++  amount: number;
++  /** The change from the month before; null for the first month listed. */
++  change: number | null;
++}
++
++/** How the overdue total has changed over recent months, oldest first, ending with the current month. */
++export interface OverdueTrend {
++  asOf: string;
++  homeCurrency: CurrencyCode;
++  months: OverdueTrendMonth[];
++}
++
+ @Injectable({ providedIn: 'root' })
+ export class DashboardService {
+   private readonly http = inject(HttpClient);
+@@ -246,4 +263,8 @@ export class DashboardService {
+   forecast(): Observable<Forecast> {
+     return this.http.get<Forecast>('/api/dashboard/forecast');
+   }
++
++  overdueTrend(): Observable<OverdueTrend> {
++    return this.http.get<OverdueTrend>('/api/dashboard/overdue-trend');
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 4a6df60..47141e0 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService, DashboardSummary } from './dashboard.service';
+ import { AgingReportPanel } from './aging-report';
++import { OverdueTrendPanel } from './overdue-trend';
+ import { CashFlowForecast } from './cash-flow-forecast';
+ import { RevenueReport } from './revenue-report';
+ import { TaxReport } from './tax-report';
+@@ -14,10 +15,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // exchange rate from its own issue date (leaving out disputed and written-off invoices), and how many of those sent
+ // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+-// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected. An aging report across all clients, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
++// converted into the home currency, each shown in their own currency and in the home currency (and again as a summary tile built from that same list, so the two never disagree), and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, and the average number of days clients take to pay (issue date to final payment on paid invoices), and what share of everything billed has been collected. An aging report across all clients, how the overdue total has changed over recent months, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
+ @Component({
+   selector: 'app-dashboard',
+-  imports: [MoneyPipe, AgingReportPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
++  imports: [MoneyPipe, AgingReportPanel, OverdueTrendPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
+   template: `
+     <h1>Dashboard</h1>
+ 
+@@ -157,6 +158,19 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+       <app-aging-report id="aging-report" />
+     }
+ 
++    <button
++      type="button"
++      data-testid="overdue-trend-open"
++      aria-controls="overdue-trend"
++      [attr.aria-expanded]="overdueTrendOpen()"
++      (click)="overdueTrendOpen.set(!overdueTrendOpen())"
++    >
++      {{ overdueTrendOpen() ? 'Hide overdue trend' : 'Overdue trend' }}
++    </button>
++    @if (overdueTrendOpen()) {
++      <app-overdue-trend id="overdue-trend" />
++    }
++
+     <button
+       type="button"
+       data-testid="tax-summary-open"
+@@ -201,6 +215,7 @@ export class Dashboard {
+   protected readonly summary = signal<DashboardSummary | null>(null);
+   protected readonly loadError = signal<string | null>(null);
+   protected readonly agingReportOpen = signal(false);
++  protected readonly overdueTrendOpen = signal(false);
+   protected readonly taxSummaryOpen = signal(false);
+   protected readonly taxReportOpen = signal(false);
+   protected readonly revenueReportOpen = signal(false);
+diff --git a/src/main/frontend/src/app/features/dashboard/overdue-trend.ts b/src/main/frontend/src/app/features/dashboard/overdue-trend.ts
+new file mode 100644
+index 0000000..51c8129
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/overdue-trend.ts
+@@ -0,0 +1,78 @@
++import { Component, computed, inject } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { DashboardService } from './dashboard.service';
++
++// How the overdue total has changed over recent months: what was overdue at the close of each month (as at today for
++// the current month), in the home currency, with the change from the month before and a bar sized against the
++// biggest month so the trend can be seen at a glance.
++@Component({
++  selector: 'app-overdue-trend',
++  imports: [MoneyPipe],
++  styles: `
++    .overdue-trend td.amount {
++      text-align: right;
++    }
++    .overdue-trend-bar {
++      display: inline-block;
++      height: 0.75em;
++      min-width: 1px;
++      background: #8a1c1c;
++    }
++  `,
++  template: `
++    <section class="overdue-trend" aria-labelledby="overdue-trend-heading" data-testid="overdue-trend">
++      <h2 id="overdue-trend-heading">Overdue trend</h2>
++      @if (trend.error()) {
++        <p role="alert" data-testid="overdue-trend-error">Could not load the overdue trend.</p>
++      } @else if (trend.value(); as t) {
++        <table data-testid="overdue-trend-table">
++          <caption class="visually-hidden">What was overdue at the close of each month, in {{ t.homeCurrency }}</caption>
++          <thead>
++            <tr>
++              <th scope="col">Month</th>
++              <th scope="col">Overdue ({{ t.homeCurrency }})</th>
++              <th scope="col">Change</th>
++              <th scope="col"><span class="visually-hidden">Relative size</span></th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (m of t.months; track m.month) {
++              <tr [attr.data-testid]="'overdue-trend-row-' + m.month">
++                <th scope="row" data-testid="overdue-trend-month">{{ m.month }}</th>
++                <td class="amount" data-testid="overdue-trend-amount">{{ m.amount | money: t.homeCurrency }}</td>
++                <td class="amount" data-testid="overdue-trend-change">
++                  @if (m.change === null) {
++                    —
++                  } @else {
++                    {{ m.change > 0 ? '+' : '' }}{{ m.change | money: t.homeCurrency }}
++                  }
++                </td>
++                <td aria-hidden="true">
++                  <span class="overdue-trend-bar" [style.width.px]="barWidth(m.amount)"></span>
++                </td>
++              </tr>
++            }
++          </tbody>
++        </table>
++        <p data-testid="overdue-trend-asof">As at {{ t.asOf }}</p>
++      } @else {
++        <p data-testid="overdue-trend-loading">Loading…</p>
++      }
++    </section>
++  `,
++})
++export class OverdueTrendPanel {
++  private readonly service = inject(DashboardService);
++
++  protected readonly trend = rxResource({ stream: () => this.service.overdueTrend() });
++
++  private readonly largest = computed(() =>
++    Math.max(0, ...(this.trend.value()?.months.map((m) => m.amount) ?? [])),
++  );
++
++  protected barWidth(amount: number): number {
++    const largest = this.largest();
++    return largest > 0 ? Math.round((amount / largest) * 120) : 0;
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index 196e051..09975b1 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -63,6 +63,12 @@ public class DashboardController {
+         return service.agingReport();
+     }
+ 
++    /** What was overdue at the close of each recent month, in the home currency, ending with the current month. */
++    @GetMapping("/overdue-trend")
++    public OverdueTrendResponse overdueTrend() {
++        return service.overdueTrend();
++    }
++
+     /** The money expected in from the instalments still to be paid on sent invoices. */
+     @GetMapping("/forecast")
+     public ForecastResponse forecast() {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 3baa297..839e480 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -233,6 +233,82 @@ public class DashboardService {
+                 sum(owedInHome), lines);
+     }
+ 
++    /** How many months the overdue trend covers, the current month included. */
++    static final int OVERDUE_TREND_MONTHS = 6;
++
++    /**
++     * What was overdue at the close of each of the recent months, in the home currency, ending with the current
++     * month. The current month's figure is what is overdue today, exactly as on the dashboard. An earlier month's is
++     * rebuilt from the record: what was left to pay at the month's close (less the payments made by then, and the
++     * credit notes and any write-off or rebate) on each sent invoice not disputed nor cancelled whose due date had
++     * passed, plus the late fee built up by then. An invoice marked paid by hand, without payments to date it by, is
++     * left out of earlier months. A foreign invoice converts at its issue date's rate, as elsewhere.
++     */
++    @Transactional(readOnly = true)
++    public OverdueTrendResponse overdueTrend() {
++        LocalDate today = LocalDate.now(clock);
++        String home = settings.homeCurrency();
++        List<InvoiceStatus> owing = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL);
++        List<Invoice> sent = invoices.findByStatusInWithClient(
++                List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID, InvoiceStatus.WRITTEN_OFF))
++                .stream().filter(i -> !i.isDisputed() && i.getDueDate() != null).toList();
++        List<Long> ids = sent.stream().map(Invoice::getId).toList();
++        Map<Long, List<Payment>> paymentsByInvoice = ids.isEmpty() ? Map.of()
++                : payments.findByInvoiceIdIn(ids).stream().collect(Collectors.groupingBy(Payment::getInvoiceId));
++        Map<Long, BigDecimal> credited = ids.isEmpty() ? Map.of()
++                : creditNotes.sumAmountByInvoiceIds(ids).stream()
++                        .collect(Collectors.toMap(CreditNoteRepository.InvoiceCreditedTotal::getInvoiceId,
++                                CreditNoteRepository.InvoiceCreditedTotal::getCredited));
++
++        YearMonth current = YearMonth.from(today);
++        List<OverdueTrendResponse.Month> months = new ArrayList<>();
++        BigDecimal previous = null;
++        for (int back = OVERDUE_TREND_MONTHS - 1; back >= 0; back--) {
++            YearMonth month = current.minusMonths(back);
++            LocalDate asOf = back == 0 ? today : month.atEndOfMonth();
++            BigDecimal amount = back == 0
++                    ? sum(inHome(invoices.findByStatusInAndDueDateBefore(owing, today), home, today, true))
++                    : overdueAt(sent, paymentsByInvoice, credited, home, asOf);
++            months.add(new OverdueTrendResponse.Month(month.toString(), asOf, amount,
++                    previous == null ? null : amount.subtract(previous)));
++            previous = amount;
++        }
++        return new OverdueTrendResponse(today, home, months);
++    }
++
++    /** What was overdue on the given invoices at the close of the given day, in the home currency. */
++    private BigDecimal overdueAt(List<Invoice> sent, Map<Long, List<Payment>> paymentsByInvoice,
++            Map<Long, BigDecimal> credited, String home, LocalDate asOf) {
++        BigDecimal total = BigDecimal.ZERO;
++        for (Invoice invoice : sent) {
++            if (!invoice.getDueDate().isBefore(asOf)
++                    || (invoice.getIssuedDate() != null && invoice.getIssuedDate().isAfter(asOf))) {
++                continue;
++            }
++            List<Payment> made = paymentsByInvoice.getOrDefault(invoice.getId(), List.of());
++            if (invoice.getStatus() == InvoiceStatus.PAID && made.isEmpty()) {
++                continue;
++            }
++            BigDecimal paid = made.stream().filter(p -> !p.getDate().isAfter(asOf)).map(Payment::getAmount)
++                    .reduce(BigDecimal.ZERO, BigDecimal::add);
++            // Worked out as though still owing, so a write-off is taken off rather than clearing the invoice.
++            BigDecimal due = invoice.getAmount().subtract(paid)
++                    .subtract(credited.getOrDefault(invoice.getId(), BigDecimal.ZERO))
++                    .subtract(invoice.getWriteOffAmount()).subtract(invoice.getRebateTaken());
++            if (due.signum() <= 0) {
++                continue;
++            }
++            due = due.add(invoice.lateFee(InvoiceStatus.SENT, asOf));
++            String currency = invoice.getProject().getClient().getCurrency();
++            BigDecimal inHome = currency.equals(home) ? due
++                    : fxRates.toHome(currency, invoice.getIssuedDate(), due).orElse(null);
++            if (inHome != null) {
++                total = total.add(inHome);
++            }
++        }
++        return total.setScale(2, RoundingMode.HALF_UP);
++    }
++
+     /** How many days past its due date an invoice is as at today; one without a due date is not overdue. */
+     private static long daysOverdue(Invoice invoice, LocalDate today) {
+         LocalDate dueDate = invoice.getDueDate();
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/OverdueTrendResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/OverdueTrendResponse.java
+new file mode 100644
+index 0000000..9e2aaa5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/OverdueTrendResponse.java
+@@ -0,0 +1,19 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++
++/**
++ * How the overdue total has changed over recent months, in the home currency: one figure per month, oldest first,
++ * ending with the current month.
++ */
++public record OverdueTrendResponse(LocalDate asOf, String homeCurrency, List<Month> months) {
++
++    /**
++     * What was overdue as at the close of a month (given as {@code yyyy-MM}), or as at today for the current month,
++     * and the change from the month before (null for the first month listed).
++     */
++    public record Month(String month, LocalDate asOf, BigDecimal amount, BigDecimal change) {
++    }
++}
