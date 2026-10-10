@@ -1,0 +1,77 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 1557abc..8a597e5 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -41,6 +41,8 @@ export interface DashboardSummary {
+   /** The overdue amount split by how many days past due each invoice is. */
+   overdueBuckets: OverdueBuckets;
+   topClients: TopClient[];
++  /** How many tasks are not yet done. */
++  openTasks: number;
+   /** How many tasks not yet done are past their due date. */
+   overdueTasks: number;
+   /** Average days from issue to final payment on paid invoices, rounded; null when no invoice has been paid. */
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 9c0abce..dddf695 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -81,6 +81,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+           <dt>Overdue more than 60 days</dt>
+           <dd data-testid="dashboard-overdue-60-plus">{{ s.overdueBuckets.days60Plus | money: s.homeCurrency }}</dd>
+         </div>
++        <div>
++          <dt>Open tasks</dt>
++          <dd data-testid="dashboard-open-tasks">{{ s.openTasks }}</dd>
++        </div>
+         <div>
+           <dt>Overdue tasks</dt>
+           <dd data-testid="dashboard-overdue-tasks-count">{{ s.overdueTasks }}</dd>
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+index 898863c..07bcf6e 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardResponse.java
+@@ -9,7 +9,7 @@ import java.util.List;
+  * (left to pay on overdue invoices plus the late fees and instalment interest they have built up) is one total in
+  * the home currency, and is also split by how many days overdue each invoice is.
+  * What is outstanding is also given as one grand total in the home currency, each invoice converted at the
+- * exchange rate from its own issue date. Also how many tasks not yet done are past their due date,
++ * exchange rate from its own issue date. Also how many tasks are not yet done and how many of those are past their due date,
+  * and the average number of days clients take to pay (from issue date to final payment on paid invoices; null when
+  * there are none), and how many new clients were taken on in the current month, and what was billed (invoices issued and sent) in the current month, in the home
+  * currency, and the share of everything billed that has been collected as a whole percentage (null when nothing
+@@ -18,7 +18,7 @@ import java.util.List;
+ public record DashboardResponse(long clients, long projects, List<CurrencyTotal> outstanding,
+         BigDecimal outstandingHome, long overdue,
+         String homeCurrency, BigDecimal overdueAmount, OverdueBuckets overdueBuckets, List<TopClient> topClients,
+-        long overdueTasks, Long averageDaysToPay, long newClientsThisMonth,
++        long openTasks, long overdueTasks, Long averageDaysToPay, long newClientsThisMonth,
+         BigDecimal billingsThisMonth, Long collectionRate) {
+ 
+     /** What is still owed in one currency. */
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 4d033d8..f76c415 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -105,7 +105,7 @@ public class DashboardService {
+                         clientsInHome.get(c.id()).setScale(2, RoundingMode.HALF_UP)))
+                 .toList();
+         return new DashboardResponse(clients.count(), projects.count(), outstanding, outstandingHome, overdue, home, overdueAmount,
+-                overdueBuckets, top, tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
++                overdueBuckets, top, tasks.countByDoneFalse(), tasks.countByDoneFalseAndDueDateBefore(today), averageDaysToPay(),
+                 clients.countByCreatedDateGreaterThanEqual(today.withDayOfMonth(1)), billings(today.withDayOfMonth(1), today, home),
+                 collectionRate(home));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskRepository.java b/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
+index ea75a1f..1b0d6b9 100644
+--- a/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
++++ b/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
+@@ -13,6 +13,9 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
+     /** Every task, grouped by job (in the order jobs were added) then in the order added. */
+     List<Task> findAllByOrderByProjectIdAscIdAsc();
+ 
++    /** How many tasks are not yet done. */
++    long countByDoneFalse();
++
+     /** How many tasks not yet done were due before the given date. */
+     long countByDoneFalseAndDueDateBefore(LocalDate date);
+ 
