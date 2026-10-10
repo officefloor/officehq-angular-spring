@@ -1,0 +1,540 @@
+diff --git a/src/main/frontend/src/app/features/adjustment-notes/adjustment-note.service.ts b/src/main/frontend/src/app/features/adjustment-notes/adjustment-note.service.ts
+new file mode 100644
+index 0000000..6baf1bd
+--- /dev/null
++++ b/src/main/frontend/src/app/features/adjustment-notes/adjustment-note.service.ts
+@@ -0,0 +1,32 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++/** A correction to a sent invoice: an amount added to (or, when negative, taken off) its total, and why. */
++export interface AdjustmentNote {
++  id: number;
++  invoiceId: number;
++  amount: number;
++  reason: string;
++  /** ISO instant the adjustment note was issued. */
++  issuedAt: string;
++}
++
++export interface NewAdjustmentNote {
++  amount: number;
++  reason: string;
++}
++
++@Injectable({ providedIn: 'root' })
++export class AdjustmentNoteService {
++  private readonly http = inject(HttpClient);
++
++  /** An invoice's adjustment notes, oldest first. */
++  list(projectId: number, invoiceId: number): Observable<AdjustmentNote[]> {
++    return this.http.get<AdjustmentNote[]>(`/api/projects/${projectId}/invoices/${invoiceId}/adjustment-notes`);
++  }
++
++  issue(projectId: number, invoiceId: number, adjustmentNote: NewAdjustmentNote): Observable<AdjustmentNote> {
++    return this.http.post<AdjustmentNote>(`/api/projects/${projectId}/invoices/${invoiceId}/adjustment-notes`, adjustmentNote);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/adjustment-notes/invoice-adjustment-notes.ts b/src/main/frontend/src/app/features/adjustment-notes/invoice-adjustment-notes.ts
+new file mode 100644
+index 0000000..41cedcb
+--- /dev/null
++++ b/src/main/frontend/src/app/features/adjustment-notes/invoice-adjustment-notes.ts
+@@ -0,0 +1,172 @@
++import { DatePipe } from '@angular/common';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, computed, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { AdjustmentNoteService } from './adjustment-note.service';
++import { CurrencyCode } from '../clients/client.service';
++
++// A non-zero amount, optionally negative, with at most two decimal places.
++const SIGNED_TWO_DECIMALS = /^-?\d+(\.\d{1,2})?$/;
++
++// The adjustment notes issued against a sent invoice to correct it without editing it: the original
++// amount stays as sent, each note adds to (or takes off) it with a reason, and the adjusted total follows.
++@Component({
++  selector: 'app-invoice-adjustment-notes',
++  imports: [MoneyPipe, ReactiveFormsModule, DatePipe],
++  template: `
++    <section aria-labelledby="invoice-adjustment-notes-heading" data-testid="invoice-adjustment-notes">
++      <h2 id="invoice-adjustment-notes-heading">Adjustment notes</h2>
++      @if (adjustmentNotes.error()) {
++        <p role="alert" data-testid="invoice-adjustment-notes-error">Could not load the adjustment notes.</p>
++      } @else if (adjustmentNotes.hasValue()) {
++        @if (adjustmentNotes.value().length === 0) {
++          <p data-testid="invoice-adjustment-notes-empty">No adjustment notes issued yet.</p>
++        } @else {
++          <table data-testid="invoice-adjustment-notes-table">
++            <caption>Corrections issued against this invoice</caption>
++            <thead>
++              <tr>
++                <th scope="col">Issued</th>
++                <th scope="col">Reason</th>
++                <th scope="col">Amount</th>
++              </tr>
++            </thead>
++            <tbody>
++              @for (a of adjustmentNotes.value(); track a.id) {
++                <tr [attr.data-testid]="'adjustment-note-row-' + a.id">
++                  <td data-testid="adjustment-note-date">{{ a.issuedAt | date: 'yyyy-MM-dd' }}</td>
++                  <td data-testid="adjustment-note-reason">{{ a.reason }}</td>
++                  <td data-testid="adjustment-note-amount">{{ a.amount | money: currency() }}</td>
++                </tr>
++              }
++            </tbody>
++            <tfoot>
++              <tr>
++                <th scope="row" colspan="2">Original amount</th>
++                <td data-testid="invoice-adjustment-original-amount">{{ invoiceAmount() | money: currency() }}</td>
++              </tr>
++              <tr>
++                <th scope="row" colspan="2">Adjusted total</th>
++                <td data-testid="invoice-adjusted-total">{{ adjustedCents() / 100 | money: currency() }}</td>
++              </tr>
++            </tfoot>
++          </table>
++        }
++      }
++
++      @if (canIssue()) {
++        <form [formGroup]="form" (ngSubmit)="submit()" data-testid="adjustment-note-form" novalidate>
++          <h3>Issue an adjustment note</h3>
++          <div>
++            <label for="adjustment-note-amount">Amount (negative to reduce)</label>
++            <input
++              id="adjustment-note-amount"
++              type="number"
++              inputmode="decimal"
++              step="0.01"
++              formControlName="amount"
++              data-testid="adjustment-note-form-amount"
++              [attr.aria-invalid]="invalid('amount')"
++              [attr.aria-describedby]="invalid('amount') ? 'adjustment-note-amount-error' : null"
++            />
++            @if (invalid('amount')) {
++              <p id="adjustment-note-amount-error" role="alert" data-testid="adjustment-note-form-amount-error">
++                Enter a non-zero amount with at most two decimal places.
++              </p>
++            }
++          </div>
++          <div>
++            <label for="adjustment-note-reason">Reason</label>
++            <input
++              id="adjustment-note-reason"
++              type="text"
++              maxlength="500"
++              formControlName="reason"
++              data-testid="adjustment-note-form-reason"
++              [attr.aria-invalid]="invalid('reason')"
++              [attr.aria-describedby]="invalid('reason') ? 'adjustment-note-reason-error' : null"
++            />
++            @if (invalid('reason')) {
++              <p id="adjustment-note-reason-error" role="alert" data-testid="adjustment-note-form-reason-error">
++                Give a reason for the adjustment.
++              </p>
++            }
++          </div>
++          <button type="submit" data-testid="adjustment-note-submit" [disabled]="saving()">Issue adjustment note</button>
++          @if (saveError()) {
++            <p role="alert" data-testid="adjustment-note-form-error">{{ saveError() }}</p>
++          }
++        </form>
++      }
++    </section>
++  `,
++})
++export class InvoiceAdjustmentNotes {
++  private readonly service = inject(AdjustmentNoteService);
++
++  readonly projectId = input.required<number>();
++  readonly invoiceId = input.required<number>();
++  /** The invoice amount as sent; adjustment notes never change it. */
++  readonly invoiceAmount = input.required<number>();
++  /** The currency of the client the job is for; the money shown is in it. */
++  readonly currency = input.required<CurrencyCode>();
++  /** Adjustment notes can be issued once the invoice has been sent, unless it is cancelled or written off. */
++  readonly canIssue = input.required<boolean>();
++
++  protected readonly adjustmentNotes = rxResource({
++    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
++    stream: ({ params }) => this.service.list(params.projectId, params.invoiceId),
++  });
++
++  // Work in whole cents so the total is exact.
++  protected readonly adjustedCents = computed(() =>
++    (this.adjustmentNotes.hasValue() ? this.adjustmentNotes.value() : []).reduce(
++      (sum, a) => sum + Math.round(a.amount * 100),
++      Math.round(this.invoiceAmount() * 100),
++    ),
++  );
++
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    amount: ['', [Validators.required, Validators.pattern(SIGNED_TWO_DECIMALS), nonZero]],
++    reason: ['', [Validators.required, Validators.pattern(/\S/), Validators.maxLength(500)]],
++  });
++
++  protected invalid(name: 'amount' | 'reason'): boolean {
++    const control = this.form.controls[name];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.saveError.set(null);
++    const { amount, reason } = this.form.getRawValue();
++    this.service.issue(this.projectId(), this.invoiceId(), { amount: Number(amount), reason: reason.trim() }).subscribe({
++      next: (created) => {
++        this.adjustmentNotes.update((list) => [...(list ?? []), created]);
++        this.form.reset();
++        this.saving.set(false);
++      },
++      error: (err: HttpErrorResponse) => {
++        this.saveError.set(
++          err.status === 409
++            ? 'That adjustment would take the invoice total below zero.'
++            : 'Could not issue the adjustment note. Please try again.',
++        );
++        this.saving.set(false);
++      },
++    });
++  }
++}
++
++function nonZero(control: { value: string | number }): { nonZero: true } | null {
++  return control.value !== '' && Number(control.value) === 0 ? { nonZero: true } : null;
++}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index bbdaa5f..886d538 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -9,6 +9,7 @@ import { Observable } from 'rxjs';
+ import { Notes } from '../notes/notes';
+ import { InvoicePayments } from '../payments/invoice-payments';
+ import { InvoiceCreditNotes } from '../credit-notes/invoice-credit-notes';
++import { InvoiceAdjustmentNotes } from '../adjustment-notes/invoice-adjustment-notes';
+ import { CreditNoteService } from '../credit-notes/credit-note.service';
+ import { InvoiceInstalments } from '../instalments/invoice-instalments';
+ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+@@ -32,7 +33,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+-  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, InvoicePoNumber, InvoiceSentSnapshot, Notes],
++  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceAdjustmentNotes, InvoiceInstalments, InvoicePoNumber, InvoiceSentSnapshot, Notes],
+   template: `
+     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
+     @if (invoice.error()) {
+@@ -924,6 +925,14 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+         (issued)="creditNotes.reload()"
+       />
+ 
++      <app-invoice-adjustment-notes
++        [projectId]="projectIdNumber()"
++        [invoiceId]="inv.id"
++        [invoiceAmount]="inv.amount"
++        [currency]="inv.currency"
++        [canIssue]="inv.status !== 'DRAFT' && inv.status !== 'VOID' && inv.status !== 'WRITTEN_OFF'"
++      />
++
+       <app-notes [projectId]="projectIdNumber()" [invoiceId]="inv.id" />
+     }
+   `,
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 3ce920e..b4f0bd4 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -65,6 +65,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE statement_email RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE contact_history RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE adjustment_note RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE credit_note RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE client_payment RESTART IDENTITY");
+@@ -491,6 +492,7 @@ public class TestSupportController {
+         restartIdentity("payment");
+         restartIdentity("client_payment");
+         restartIdentity("credit_note");
++        restartIdentity("adjustment_note");
+         restartIdentity("deposit");
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNote.java b/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNote.java
+new file mode 100644
+index 0000000..55cd9d9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNote.java
+@@ -0,0 +1,62 @@
++package net.officefloor.hq.app.adjustmentnote;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.Instant;
++
++/** A correction to a sent invoice: an amount added to (or, when negative, taken off) its total, and why. */
++@Entity
++@Table(name = "adjustment_note")
++public class AdjustmentNote {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "invoice_id", nullable = false)
++    private Long invoiceId;
++
++    @Column(nullable = false, precision = 12, scale = 2)
++    private BigDecimal amount;
++
++    @Column(nullable = false, length = 500)
++    private String reason;
++
++    @Column(name = "issued_at", nullable = false)
++    private Instant issuedAt;
++
++    protected AdjustmentNote() {
++    }
++
++    public AdjustmentNote(Long invoiceId, BigDecimal amount, String reason, Instant issuedAt) {
++        this.invoiceId = invoiceId;
++        this.amount = amount.setScale(2);
++        this.reason = reason;
++        this.issuedAt = issuedAt;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public String getReason() {
++        return reason;
++    }
++
++    public Instant getIssuedAt() {
++        return issuedAt;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNoteRepository.java b/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNoteRepository.java
+new file mode 100644
+index 0000000..003b150
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNoteRepository.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.adjustmentnote;
++
++import java.math.BigDecimal;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
++
++public interface AdjustmentNoteRepository extends JpaRepository<AdjustmentNote, Long> {
++
++    /** An invoice's adjustment notes, oldest first. */
++    List<AdjustmentNote> findByInvoiceIdOrderByIdAsc(Long invoiceId);
++
++    /** Net adjustment to an invoice (zero when it has none). */
++    @Query("SELECT COALESCE(SUM(a.amount), 0) FROM AdjustmentNote a WHERE a.invoiceId = :invoiceId")
++    BigDecimal sumAmountByInvoiceId(Long invoiceId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNoteRequest.java b/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNoteRequest.java
+new file mode 100644
+index 0000000..762f054
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNoteRequest.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.adjustmentnote;
++
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++
++/** Payload to issue an adjustment note: a positive amount charges more, a negative one charges less. */
++public record AdjustmentNoteRequest(
++        @NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount,
++        @NotBlank @Size(max = 500) String reason) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNoteResponse.java b/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNoteResponse.java
+new file mode 100644
+index 0000000..b401a63
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNoteResponse.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.adjustmentnote;
++
++import java.math.BigDecimal;
++import java.time.Instant;
++
++public record AdjustmentNoteResponse(Long id, Long invoiceId, BigDecimal amount, String reason, Instant issuedAt) {
++
++    static AdjustmentNoteResponse from(AdjustmentNote note) {
++        return new AdjustmentNoteResponse(note.getId(), note.getInvoiceId(), note.getAmount(), note.getReason(),
++                note.getIssuedAt());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNoteService.java b/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNoteService.java
+new file mode 100644
+index 0000000..cad3342
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/adjustmentnote/AdjustmentNoteService.java
+@@ -0,0 +1,73 @@
++package net.officefloor.hq.app.adjustmentnote;
++
++import java.math.BigDecimal;
++import java.time.Clock;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.invoice.Invoice;
++import net.officefloor.hq.app.invoice.InvoiceRepository;
++import net.officefloor.hq.app.invoice.InvoiceStatus;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class AdjustmentNoteService {
++
++    private final AdjustmentNoteRepository adjustmentNotes;
++    private final InvoiceRepository invoices;
++    private final Clock clock;
++    private final Audit audit;
++
++    public AdjustmentNoteService(AdjustmentNoteRepository adjustmentNotes, InvoiceRepository invoices, Clock clock,
++            Audit audit) {
++        this.adjustmentNotes = adjustmentNotes;
++        this.invoices = invoices;
++        this.clock = clock;
++        this.audit = audit;
++    }
++
++    @Transactional(readOnly = true)
++    public List<AdjustmentNoteResponse> list(Long projectId, Long invoiceId) {
++        find(projectId, invoiceId);
++        return adjustmentNotes.findByInvoiceIdOrderByIdAsc(invoiceId).stream().map(AdjustmentNoteResponse::from)
++                .toList();
++    }
++
++    /**
++     * Issues an adjustment note against an invoice that has been sent and not cancelled or written off. The
++     * invoice itself is left exactly as sent; the notes together may not take its adjusted total below zero.
++     */
++    @Transactional
++    public AdjustmentNoteResponse issue(Long projectId, Long invoiceId, AdjustmentNoteRequest request) {
++        Invoice invoice = find(projectId, invoiceId);
++        if (invoice.getStatus() == InvoiceStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Edit a draft invoice directly instead");
++        }
++        if (invoice.getStatus() == InvoiceStatus.VOID) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been cancelled");
++        }
++        if (invoice.getStatus() == InvoiceStatus.WRITTEN_OFF) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been written off");
++        }
++        if (request.amount().signum() == 0) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An adjustment must change the total");
++        }
++        BigDecimal adjusted = invoice.getAmount().add(adjustmentNotes.sumAmountByInvoiceId(invoiceId))
++                .add(request.amount());
++        if (adjusted.signum() < 0) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The adjusted total cannot be below zero");
++        }
++        AdjustmentNote saved = adjustmentNotes.saveAndFlush(
++                new AdjustmentNote(invoiceId, request.amount(), request.reason().strip(), clock.instant()));
++        audit.record("ADJUSTMENT_NOTE_ISSUED invoice=" + invoiceId + " amount=" + saved.getAmount().toPlainString());
++        return AdjustmentNoteResponse.from(saved);
++    }
++
++    private Invoice find(Long projectId, Long invoiceId) {
++        return invoices.findById(invoiceId)
++                .filter(i -> i.getProject().getId().equals(projectId))
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown invoice"));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/adjustmentnote/InvoiceAdjustmentNoteController.java b/src/main/java/net/officefloor/hq/app/adjustmentnote/InvoiceAdjustmentNoteController.java
+new file mode 100644
+index 0000000..ded4d07
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/adjustmentnote/InvoiceAdjustmentNoteController.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app.adjustmentnote;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The adjustment notes issued against a sent invoice to correct it, oldest first. */
++@RestController
++@RequestMapping("/api/projects/{projectId}/invoices/{invoiceId}/adjustment-notes")
++public class InvoiceAdjustmentNoteController {
++
++    private final AdjustmentNoteService service;
++
++    public InvoiceAdjustmentNoteController(AdjustmentNoteService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<AdjustmentNoteResponse> list(@PathVariable Long projectId, @PathVariable Long invoiceId) {
++        return service.list(projectId, invoiceId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public AdjustmentNoteResponse issue(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody AdjustmentNoteRequest request) {
++        return service.issue(projectId, invoiceId, request);
++    }
++}
+diff --git a/src/main/resources/db/migration/V111__create_adjustment_note.sql b/src/main/resources/db/migration/V111__create_adjustment_note.sql
+new file mode 100644
+index 0000000..75637e3
+--- /dev/null
++++ b/src/main/resources/db/migration/V111__create_adjustment_note.sql
+@@ -0,0 +1,14 @@
++-- A correction to an invoice that has already been sent. Rather than editing the sent invoice, an
++-- adjustment note is issued against it: the original amount stays as sent, and the notes (positive to
++-- charge more, negative to charge less) give its adjusted total. Each carries the reason for the change.
++CREATE TABLE adjustment_note (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    invoice_id BIGINT         NOT NULL,
++    amount     DECIMAL(12, 2) NOT NULL,
++    reason     VARCHAR(500)   NOT NULL,
++    issued_at  TIMESTAMP      NOT NULL,
++    CONSTRAINT adjustment_note_invoice_fk FOREIGN KEY (invoice_id) REFERENCES invoice (id),
++    CONSTRAINT adjustment_note_amount_non_zero CHECK (amount <> 0)
++);
++
++CREATE INDEX adjustment_note_invoice_idx ON adjustment_note (invoice_id);
