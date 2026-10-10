@@ -3,12 +3,11 @@
 Implement the change request you have been given. A single change may span the
 database schema, the server, and the front end.
 
-- **`data-testid` is an immutable public API.** Expose a stable `data-testid` on every
-  element and value a feature surfaces, and **never rename or remove a `data-testid`
-  that already exists** — it is how the app is tested. Match exactly the `data-testid`
-  values your task's test expects.
+- **How this app is tested is defined in [`TEST.md`](./TEST.md)** (installed by the harness) — the
+  `data-testid` rules, the audit file, and the `/__test__` test-data endpoints. Read it and follow
+  it; it is the same for every implementation of this app.
 - **Run `bin/e2e`** to build the app, start it, run your test, and stop — use it to
-  check your work. The `bin/` scripts and these two instruction files are fixed; do
+  check your work. The `bin/` scripts, `TEST.md` and these two instruction files are fixed; do
   not edit them.
 
 ---
