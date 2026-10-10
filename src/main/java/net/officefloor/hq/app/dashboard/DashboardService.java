@@ -343,7 +343,46 @@ public class DashboardService {
                     currency, invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
                     invoice.getProject().getClient().getName()));
         }
-        return new ForecastResponse(home, entries, total.setScale(2, RoundingMode.HALF_UP));
+        LocalDate today = LocalDate.now(clock);
+        return new ForecastResponse(home, entries, total.setScale(2, RoundingMode.HALF_UP),
+                dueWithin(List.copyOf(open.values()), today, today.plusDays(FORECAST_DAYS), home));
+    }
+
+    /** How many days ahead the forecast of what can be collected looks. */
+    static final int FORECAST_DAYS = 30;
+
+    /**
+     * What can be expected to be collected on or between the given dates, in the home currency, from the given open
+     * invoices (disputed ones are left out): an invoice paid by instalments brings in its unpaid instalments due in the
+     * window; any other brings in what is left to pay on it when its due date is in the window. Anything already
+     * overdue is not counted. A foreign amount converts at its invoice's issue date's rate; one that cannot be
+     * converted is left out.
+     */
+    private ForecastResponse.Window dueWithin(List<Invoice> open, LocalDate from, LocalDate to, String home) {
+        List<Invoice> undisputed = open.stream().filter(i -> !i.isDisputed()).toList();
+        Map<Long, List<Instalment>> scheduled = undisputed.isEmpty() ? Map.of()
+                : instalments.findByInvoiceIdIn(undisputed.stream().map(Invoice::getId).toList()).stream()
+                        .collect(Collectors.groupingBy(Instalment::getInvoiceId));
+        BigDecimal total = BigDecimal.ZERO;
+        List<Invoice> unscheduled = new ArrayList<>();
+        for (Invoice invoice : undisputed) {
+            List<Instalment> plan = scheduled.get(invoice.getId());
+            if (plan == null) {
+                if (invoice.getDueDate() != null && !invoice.getDueDate().isBefore(from)
+                        && !invoice.getDueDate().isAfter(to)) {
+                    unscheduled.add(invoice);
+                }
+                continue;
+            }
+            BigDecimal due = plan.stream().filter(i -> !i.isPaid())
+                    .filter(i -> !i.getDueDate().isBefore(from) && !i.getDueDate().isAfter(to))
+                    .map(Instalment::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+            String currency = invoice.getCurrency();
+            total = total.add(currency.equals(home) ? due
+                    : fxRates.toHome(currency, invoice.getIssuedDate(), due).orElse(BigDecimal.ZERO));
+        }
+        total = total.add(sum(inHome(unscheduled, home, from, false)));
+        return new ForecastResponse.Window(from, to, total.setScale(2, RoundingMode.HALF_UP));
     }
 
     /**

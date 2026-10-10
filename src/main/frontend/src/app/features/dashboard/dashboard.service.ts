@@ -163,11 +163,23 @@ export interface ForecastEntry {
   clientName: string;
 }
 
+/**
+ * What falls due on or between two dates, in the home currency: unpaid instalments due in the window, and what is
+ * left to pay on sent invoices without instalments that are due in it. Disputed and already-overdue amounts are left out.
+ */
+export interface ForecastWindow {
+  from: string;
+  to: string;
+  total: number;
+}
+
 /** The money expected in from instalments still to be paid, earliest due first, with the total in the home currency. */
 export interface Forecast {
   homeCurrency: CurrencyCode;
   entries: ForecastEntry[];
   total: number;
+  /** What can be expected to be collected over the next 30 days. */
+  next30Days: ForecastWindow;
 }
 
 /**

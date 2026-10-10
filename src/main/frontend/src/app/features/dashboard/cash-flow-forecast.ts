@@ -5,7 +5,7 @@ import { MoneyPipe } from '../currencies/money.pipe';
 import { DashboardService } from './dashboard.service';
 
 // A simple cash-flow forecast: the money expected in from instalments still to be paid on sent invoices,
-// earliest due first, with the total in the home currency.
+// earliest due first, with the total in the home currency, and what can be expected to be collected in the next 30 days.
 @Component({
   selector: 'app-cash-flow-forecast',
   imports: [MoneyPipe, RouterLink],
@@ -15,6 +15,10 @@ import { DashboardService } from './dashboard.service';
       @if (forecast.error()) {
         <p role="alert" data-testid="forecast-error">Could not load the forecast.</p>
       } @else if (forecast.value(); as f) {
+        <p>
+          Expected in the next 30 days ({{ f.next30Days.from }} to {{ f.next30Days.to }}):
+          <strong data-testid="forecast-30day-total">{{ f.next30Days.total | money: f.homeCurrency }}</strong>
+        </p>
         @if (f.entries.length === 0) {
           <p data-testid="forecast-empty">No instalments expected in.</p>
         } @else {
