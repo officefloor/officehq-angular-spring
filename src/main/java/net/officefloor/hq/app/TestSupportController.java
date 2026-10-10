@@ -280,13 +280,15 @@ public class TestSupportController {
             // An invoice may be billed in its own currency ("currency"); without one it is in its client's.
             // A late fee per day accrues once the invoice is overdue; it does not change the amount invoiced.
             BigDecimal lateFeePerDay = decimal(i.get("lateFeePerDay"));
+            // A percentage may be held back as retention; it is not due yet but does not change the amount invoiced.
+            BigDecimal retentionPct = decimal(i.get("retentionPct"));
             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, currency)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, retention_pct, currency)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
                     surcharge, taxInclusive, taxExempt,
-                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay,
+                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, retentionPct,
                     i.get("currency") == null ? null : i.get("currency").toString());
             for (Map<String, Object> d : discounts) {
                 if (d.get("id") != null) {

@@ -19,7 +19,8 @@ import java.util.List;
  * the home currency and its amount converted into it at the exchange rate from the invoice's issue date
  * (null when the invoice is already in the home currency or there is no rate for that date). The late
  * fee charged per day overdue, the days the invoice is overdue as of today (only while sent and still
- * owed), and the late fee that has accrued over them.
+ * owed), and the late fee that has accrued over them. The percentage held back as retention, the amount
+ * it holds back (not due yet), and what is due now without it.
  */
 public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
         BigDecimal subtotal,
@@ -30,7 +31,8 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
         LocalDate dueDate, List<LineItemResponse> lineItems, String clientTaxNumber, List<InvoiceDiscountResponse> discounts,
         BigDecimal minimumCharge, BigDecimal netTotal, boolean minimumApplied, BigDecimal totalSavings,
         String homeCurrency, BigDecimal homeAmount,
-        BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee) {
+        BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee,
+        BigDecimal retentionPct, BigDecimal retention, BigDecimal dueNow) {
 
     /**
      * The invoice with the given status, as worked out from what has been paid and credited against it, and
@@ -53,6 +55,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
                         d.getDiscountAmount(), d.getDiscountCap(), invoice.discountTakenBy(d))).toList(),
                 invoice.getMinimumCharge(), invoice.getNetTotal(), invoice.isMinimumApplied(),
                 invoice.getTotalSavings(), homeCurrency, homeAmount,
-                invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today));
+                invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today),
+                invoice.getRetentionPct(), invoice.getRetention(), invoice.getDueNow());
     }
 }

@@ -100,6 +100,10 @@ public class Invoice {
     @Column(name = "late_fee_per_day", nullable = false, precision = 12, scale = 2)
     private BigDecimal lateFeePerDay = BigDecimal.ZERO.setScale(2);
 
+    /** The percentage of the amount held back as retention, not due yet; zero when none is held back. */
+    @Column(name = "retention_pct", nullable = false, precision = 5, scale = 2)
+    private BigDecimal retentionPct = BigDecimal.ZERO.setScale(2);
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private InvoiceStatus status = InvoiceStatus.DRAFT;
@@ -524,6 +528,25 @@ public class Invoice {
 
     public BigDecimal getLateFeePerDay() {
         return lateFeePerDay;
+    }
+
+    /** Sets the percentage of this invoice held back as retention. It does not change the amount invoiced. */
+    public void applyRetention(BigDecimal retentionPct) {
+        this.retentionPct = retentionPct.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public BigDecimal getRetentionPct() {
+        return retentionPct;
+    }
+
+    /** The amount held back as retention: the retention percentage of the amount invoiced. */
+    public BigDecimal getRetention() {
+        return percentOf(amount, retentionPct);
+    }
+
+    /** What is due now: the amount invoiced less the retention held back. */
+    public BigDecimal getDueNow() {
+        return amount.subtract(getRetention());
     }
 
     /**

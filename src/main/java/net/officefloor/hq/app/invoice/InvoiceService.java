@@ -372,6 +372,15 @@ public class InvoiceService {
         return detail(invoice);
     }
 
+    /** Sets the percentage of a draft invoice held back as retention, not due yet. */
+    @Transactional
+    public InvoiceDetailResponse applyRetention(Long projectId, Long invoiceId, RetentionRequest request) {
+        Invoice invoice = findDraft(projectId, invoiceId);
+        invoice.applyRetention(request.retentionPct());
+        invoices.flush();
+        return detail(invoice);
+    }
+
     /** Sends a draft invoice and records the sending in the audit log. */
     @Transactional
     public InvoiceResponse send(Long projectId, Long invoiceId) {

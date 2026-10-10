@@ -113,6 +113,12 @@ public class InvoiceController {
         return service.applyLateFee(projectId, invoiceId, request);
     }
 
+    @PutMapping("/{invoiceId}/retention")
+    public InvoiceDetailResponse applyRetention(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @Valid @RequestBody RetentionRequest request) {
+        return service.applyRetention(projectId, invoiceId, request);
+    }
+
     @PostMapping("/{invoiceId}/send")
     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.send(projectId, invoiceId);

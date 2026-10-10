@@ -207,6 +207,12 @@ export interface InvoiceDetail extends Invoice {
   daysLate: number;
   /** The late fee accrued so far: the fee per day times the days overdue. */
   lateFee: number;
+  /** The percentage of the amount held back as retention; zero when none is held back. */
+  retentionPct: number;
+  /** The amount held back as retention, which is not due yet. */
+  retention: number;
+  /** What is due now: the amount less the retention held back. */
+  dueNow: number;
 }
 
 export interface NewLineItem {
@@ -335,6 +341,11 @@ export class InvoiceService {
   /** Sets the late fee charged for each day a draft invoice is overdue once sent; zero charges none. */
   applyLateFee(projectId: number, invoiceId: number, lateFeePerDay: number): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/late-fee`, { lateFeePerDay });
+  }
+
+  /** Sets the percentage of a draft invoice held back as retention, not due yet; zero holds none back. */
+  applyRetention(projectId: number, invoiceId: number, retentionPct: number): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/retention`, { retentionPct });
   }
 
   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {

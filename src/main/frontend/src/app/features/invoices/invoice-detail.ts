@@ -394,6 +394,25 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                 }
               </tr>
             }
+            @if (inv.retentionPct > 0) {
+              <tr data-testid="invoice-retention-row">
+                <th scope="row" colspan="5">
+                  Retention held back, not due yet
+                  (<span data-testid="invoice-retention-pct">{{ inv.retentionPct | number: '1.0-2' : 'en-US' }}</span>%)
+                </th>
+                <td data-testid="invoice-retention">{{ inv.retention | money: inv.currency }}</td>
+                @if (inv.status === 'DRAFT') {
+                  <td></td>
+                }
+              </tr>
+              <tr data-testid="invoice-due-now-row">
+                <th scope="row" colspan="5">Due now</th>
+                <td data-testid="invoice-due-now">{{ inv.dueNow | money: inv.currency }}</td>
+                @if (inv.status === 'DRAFT') {
+                  <td></td>
+                }
+              </tr>
+            }
           </tfoot>
         </table>
         @if (editError()) {
@@ -666,6 +685,34 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
           <button type="submit" data-testid="late-fee-form-submit" [disabled]="lateFeeSaving()">Apply late fee</button>
           @if (lateFeeError()) {
             <p role="alert" data-testid="late-fee-form-error">{{ lateFeeError() }}</p>
+          }
+        </form>
+
+        <form [formGroup]="retentionForm" (ngSubmit)="applyRetention()" data-testid="retention-form" novalidate>
+          <h2>Retention</h2>
+          <div>
+            <label for="retention-pct">Percentage held back, not due yet</label>
+            <input
+              id="retention-pct"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              max="100"
+              step="0.01"
+              formControlName="retentionPct"
+              data-testid="retention-form-pct"
+              [attr.aria-invalid]="retentionInvalid()"
+              [attr.aria-describedby]="retentionInvalid() ? 'retention-pct-error' : null"
+            />
+            @if (retentionInvalid()) {
+              <p id="retention-pct-error" role="alert" data-testid="retention-form-pct-error">
+                Enter a percentage from 0 to 100 with at most two decimal places.
+              </p>
+            }
+          </div>
+          <button type="submit" data-testid="retention-form-submit" [disabled]="retentionSaving()">Apply retention</button>
+          @if (retentionError()) {
+            <p role="alert" data-testid="retention-form-error">{{ retentionError() }}</p>
           }
         </form>
 
@@ -1196,6 +1243,46 @@ export class InvoiceDetailPage {
         error: () => {
           this.lateFeeError.set('Could not apply the late fee. Please try again.');
           this.lateFeeSaving.set(false);
+        },
+      });
+  }
+
+  protected readonly retentionSaving = signal(false);
+  protected readonly retentionError = signal<string | null>(null);
+
+  protected readonly retentionForm = this.fb.group({
+    retentionPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
+  });
+
+  // Starts the retention field from the invoice's current retention whenever the invoice loads.
+  private readonly syncRetention = effect(() => {
+    if (this.invoice.hasValue()) {
+      this.retentionForm.setValue({ retentionPct: String(this.invoice.value().retentionPct) });
+    }
+  });
+
+  protected retentionInvalid(): boolean {
+    const control = this.retentionForm.controls.retentionPct;
+    return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected applyRetention(): void {
+    if (this.retentionForm.invalid) {
+      this.retentionForm.markAllAsTouched();
+      return;
+    }
+    this.retentionSaving.set(true);
+    this.retentionError.set(null);
+    this.service
+      .applyRetention(this.projectIdNumber(), Number(this.invoiceId()), Number(this.retentionForm.getRawValue().retentionPct))
+      .subscribe({
+        next: (updated) => {
+          this.invoice.set(updated);
+          this.retentionSaving.set(false);
+        },
+        error: () => {
+          this.retentionError.set('Could not apply the retention. Please try again.');
+          this.retentionSaving.set(false);
         },
       });
   }
