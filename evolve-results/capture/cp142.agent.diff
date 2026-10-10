@@ -1,0 +1,249 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index d6ed9bb..632dbcf 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService, DashboardSummary } from './dashboard.service';
+ import { TaxSummaryReport } from './tax-summary';
++import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ 
+ // Dashboard page: how many clients and projects there are, and the total still owed in each currency
+ // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
+@@ -9,10 +10,10 @@ import { TaxSummaryReport } from './tax-summary';
+ // exchange rate from its own issue date, and how many of those sent
+ // invoices are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe,
+-// each in their own currency. A tax summary for a chosen date range can be opened from here.
++// each in their own currency, and the recurring invoices coming up with when each falls. A tax summary for a chosen date range can be opened from here.
+ @Component({
+   selector: 'app-dashboard',
+-  imports: [MoneyPipe, TaxSummaryReport],
++  imports: [MoneyPipe, TaxSummaryReport, UpcomingRecurringInvoices],
+   template: `
+     <h1>Dashboard</h1>
+ 
+@@ -81,6 +82,8 @@ import { TaxSummaryReport } from './tax-summary';
+       <p data-testid="dashboard-loading">Loading…</p>
+     }
+ 
++    <app-upcoming-recurring-invoices />
++
+     <button
+       type="button"
+       data-testid="tax-summary-open"
+diff --git a/src/main/frontend/src/app/features/dashboard/upcoming-recurring-invoices.ts b/src/main/frontend/src/app/features/dashboard/upcoming-recurring-invoices.ts
+new file mode 100644
+index 0000000..da1fe22
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/upcoming-recurring-invoices.ts
+@@ -0,0 +1,56 @@
++import { Component, inject } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { RouterLink } from '@angular/router';
++import { MoneyPipe } from '../currencies/money.pipe';
++import { RecurringInvoiceService } from '../recurring/recurring-invoice.service';
++
++// The recurring invoices across all projects that are coming up (next falling today or later), soonest first,
++// each with the date it next falls on.
++@Component({
++  selector: 'app-upcoming-recurring-invoices',
++  imports: [MoneyPipe, RouterLink],
++  template: `
++    <section aria-labelledby="upcoming-recurring-heading" data-testid="upcoming-recurring">
++      <h2 id="upcoming-recurring-heading">Upcoming recurring invoices</h2>
++      @if (upcoming.error()) {
++        <p role="alert" data-testid="upcoming-recurring-error">Could not load the upcoming recurring invoices.</p>
++      } @else if (upcoming.hasValue()) {
++        @if (upcoming.value().length === 0) {
++          <p data-testid="upcoming-recurring-empty">No recurring invoices coming up.</p>
++        } @else {
++          <table>
++            <thead>
++              <tr>
++                <th scope="col">Next invoice</th>
++                <th scope="col">Job</th>
++                <th scope="col">Client</th>
++                <th scope="col">Amount</th>
++                <th scope="col">Repeats</th>
++              </tr>
++            </thead>
++            <tbody>
++              @for (r of upcoming.value(); track r.id) {
++                <tr [attr.data-testid]="'recurring-row-' + r.id">
++                  <td data-testid="recurring-next-date">{{ r.nextDate }}</td>
++                  <td data-testid="recurring-project">
++                    <a [routerLink]="['/projects', r.projectId]">{{ r.projectName }}</a>
++                  </td>
++                  <td data-testid="recurring-client">{{ r.clientName }}</td>
++                  <td data-testid="recurring-amount">{{ r.amount | money: r.currency }}</td>
++                  <td data-testid="recurring-frequency">{{ r.frequency }}</td>
++                </tr>
++              }
++            </tbody>
++          </table>
++        }
++      } @else {
++        <p data-testid="upcoming-recurring-loading">Loading…</p>
++      }
++    </section>
++  `,
++})
++export class UpcomingRecurringInvoices {
++  private readonly service = inject(RecurringInvoiceService);
++
++  protected readonly upcoming = rxResource({ stream: () => this.service.upcoming() });
++}
+diff --git a/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts b/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts
+index ebdfd64..f24a9be 100644
+--- a/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts
++++ b/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts
+@@ -15,6 +15,14 @@ export interface RecurringInvoice {
+   nextDate: string;
+ }
+ 
++/** A recurring invoice that is coming up, with the project and client it bills and the currency it is in. */
++export interface UpcomingRecurringInvoice extends RecurringInvoice {
++  projectName: string;
++  clientId: number;
++  clientName: string;
++  currency: string;
++}
++
+ export interface NewRecurringInvoice {
+   amount: number;
+   frequency: RecurringFrequency;
+@@ -29,6 +37,11 @@ export class RecurringInvoiceService {
+     return this.http.get<RecurringInvoice[]>(`/api/projects/${projectId}/recurring-invoices`);
+   }
+ 
++  /** The recurring invoices across all projects coming up from today, soonest first. */
++  upcoming(): Observable<UpcomingRecurringInvoice[]> {
++    return this.http.get<UpcomingRecurringInvoice[]>('/api/recurring-invoices/upcoming');
++  }
++
+   create(projectId: number, recurring: NewRecurringInvoice): Observable<RecurringInvoice> {
+     return this.http.post<RecurringInvoice>(`/api/projects/${projectId}/recurring-invoices`, recurring);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceController.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceController.java
+new file mode 100644
+index 0000000..d98404f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceController.java
+@@ -0,0 +1,24 @@
++package net.officefloor.hq.app.recurring;
++
++import java.util.List;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** Recurring invoices across all projects. */
++@RestController
++@RequestMapping("/api/recurring-invoices")
++public class RecurringInvoiceController {
++
++    private final RecurringInvoiceService service;
++
++    public RecurringInvoiceController(RecurringInvoiceService service) {
++        this.service = service;
++    }
++
++    /** The recurring invoices coming up from today, soonest first. */
++    @GetMapping("/upcoming")
++    public List<UpcomingRecurringInvoiceResponse> upcoming() {
++        return service.upcoming();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRepository.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRepository.java
+index 39f18f2..f8536ed 100644
+--- a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRepository.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.recurring;
+ 
++import java.time.LocalDate;
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+@@ -7,4 +8,7 @@ public interface RecurringInvoiceRepository extends JpaRepository<RecurringInvoi
+ 
+     /** A project's recurring invoices, soonest next first. */
+     List<RecurringInvoice> findByProjectIdOrderByNextDateAscIdAsc(Long projectId);
++
++    /** Every recurring invoice next falling on or after the given day, soonest first. */
++    List<RecurringInvoice> findByNextDateGreaterThanEqualOrderByNextDateAscIdAsc(LocalDate from);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java
+index c9561c2..945afac 100644
+--- a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java
+@@ -1,7 +1,13 @@
+ package net.officefloor.hq.app.recurring;
+ 
++import java.time.Clock;
++import java.time.LocalDate;
+ import java.util.List;
++import java.util.Map;
++import java.util.function.Function;
++import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.project.Project;
+ import net.officefloor.hq.app.project.ProjectRepository;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -14,11 +20,14 @@ public class RecurringInvoiceService {
+     private final RecurringInvoiceRepository recurring;
+     private final ProjectRepository projects;
+     private final Audit audit;
++    private final Clock clock;
+ 
+-    public RecurringInvoiceService(RecurringInvoiceRepository recurring, ProjectRepository projects, Audit audit) {
++    public RecurringInvoiceService(RecurringInvoiceRepository recurring, ProjectRepository projects, Audit audit,
++            Clock clock) {
+         this.recurring = recurring;
+         this.projects = projects;
+         this.audit = audit;
++        this.clock = clock;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -28,6 +37,16 @@ public class RecurringInvoiceService {
+                 .map(RecurringInvoiceResponse::from).toList();
+     }
+ 
++    /** The recurring invoices across all projects next falling today or later, soonest first. */
++    @Transactional(readOnly = true)
++    public List<UpcomingRecurringInvoiceResponse> upcoming() {
++        List<RecurringInvoice> found = recurring.findByNextDateGreaterThanEqualOrderByNextDateAscIdAsc(LocalDate.now(clock));
++        List<Long> projectIds = found.stream().map(RecurringInvoice::getProjectId).distinct().toList();
++        Map<Long, Project> byId = projects.findAllById(projectIds).stream()
++                .collect(Collectors.toMap(Project::getId, Function.identity()));
++        return found.stream().map(r -> UpcomingRecurringInvoiceResponse.from(r, byId.get(r.getProjectId()))).toList();
++    }
++
+     /** Sets up an invoice on the project that repeats for a fixed amount, the first falling on the given day. */
+     @Transactional
+     public RecurringInvoiceResponse create(Long projectId, RecurringInvoiceRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/UpcomingRecurringInvoiceResponse.java b/src/main/java/net/officefloor/hq/app/recurring/UpcomingRecurringInvoiceResponse.java
+new file mode 100644
+index 0000000..5eb8577
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/recurring/UpcomingRecurringInvoiceResponse.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.recurring;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import net.officefloor.hq.app.project.Project;
++
++/** A recurring invoice that is coming up, with the project and client it bills and the currency it is in. */
++public record UpcomingRecurringInvoiceResponse(Long id, Long projectId, String projectName, Long clientId,
++        String clientName, String currency, BigDecimal amount, RecurringFrequency frequency, LocalDate nextDate) {
++
++    static UpcomingRecurringInvoiceResponse from(RecurringInvoice recurring, Project project) {
++        return new UpcomingRecurringInvoiceResponse(recurring.getId(), recurring.getProjectId(), project.getName(),
++                project.getClient().getId(), project.getClient().getName(), project.getClient().getCurrency(),
++                recurring.getAmount(), recurring.getFrequency(), recurring.getNextDate());
++    }
++}
