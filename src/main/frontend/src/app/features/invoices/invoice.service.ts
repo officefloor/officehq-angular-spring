@@ -293,6 +293,15 @@ export interface InvoiceDetail extends Invoice {
   writeOffAmount: number;
   /** What the client owes right now: what is left to pay after any payments and part written off, less the retention held back. */
   amountDue: number;
+  /** The invoice as it read when it was sent, unaffected by later changes; null until it is sent. */
+  sentSnapshot: InvoiceSnapshot | null;
+}
+
+/** An invoice as it read when it was sent: the total it showed and the day it went out. */
+export interface InvoiceSnapshot {
+  total: number;
+  /** ISO date (YYYY-MM-DD). */
+  date: string;
 }
 
 export interface NewLineItem {

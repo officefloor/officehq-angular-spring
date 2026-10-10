@@ -596,7 +596,7 @@ public class InvoiceService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Sending this invoice would take the client over their credit limit");
         }
-        invoice.markSent();
+        invoice.markSent(LocalDate.now(clock));
         invoices.flush();
         audit.record("INVOICE_SENT id=" + invoice.getId() + " amount=" + invoice.getAmount().toPlainString());
         return toResponse(invoice);
@@ -628,7 +628,8 @@ public class InvoiceService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Sending these invoices would take the client over their credit limit");
         }
-        drafts.forEach(Invoice::markSent);
+        LocalDate today = LocalDate.now(clock);
+        drafts.forEach(i -> i.markSent(today));
         invoices.flush();
         drafts.forEach(i -> audit.record("INVOICE_SENT id=" + i.getId() + " amount=" + i.getAmount().toPlainString()));
         return drafts.stream().map(this::toResponse).toList();

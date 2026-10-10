@@ -124,6 +124,14 @@ public class Invoice {
     @Column(nullable = false)
     private boolean disputed;
 
+    /** The total the invoice showed when it was sent; null until it is sent. */
+    @Column(name = "sent_snapshot_total", precision = 12, scale = 2)
+    private BigDecimal sentSnapshotTotal;
+
+    /** The day the invoice was sent; null until it is sent. */
+    @Column(name = "sent_snapshot_date")
+    private LocalDate sentSnapshotDate;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private InvoiceStatus status = InvoiceStatus.DRAFT;
@@ -692,9 +700,17 @@ public class Invoice {
         this.amount = getNetTotal().max(minimumCharge);
     }
 
-    /** Marks this invoice as sent to the client. */
-    public void markSent() {
+    /** Marks this invoice as sent to the client on the given day, keeping a snapshot of its total as sent. */
+    public void markSent(LocalDate sentOn) {
         this.status = InvoiceStatus.SENT;
+        this.sentSnapshotTotal = amount;
+        this.sentSnapshotDate = sentOn;
+    }
+
+    /** The invoice as it read when it was sent; empty until it is sent. */
+    public Optional<InvoiceSnapshot> getSentSnapshot() {
+        return sentSnapshotTotal == null ? Optional.empty()
+                : Optional.of(new InvoiceSnapshot(sentSnapshotTotal, sentSnapshotDate));
     }
 
     /** Cancels this invoice, so it is no longer owed. */

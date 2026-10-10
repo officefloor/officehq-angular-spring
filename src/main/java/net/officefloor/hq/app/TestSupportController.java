@@ -409,6 +409,17 @@ public class TestSupportController {
                             Boolean.TRUE.equals(l.get("taxExempt")), lineDiscountPct(l));
                 }
             }
+            // A sent invoice keeps a snapshot of how it read when sent ("sentSnapshot": its total and the day it
+            // went out); without one it is taken as it reads now, sent on its issue date.
+            if (!InvoiceStatus.DRAFT.name().equals(seedStatus(i.get("status")))) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> snapshot = i.get("sentSnapshot") instanceof Map<?, ?> m
+                        ? (Map<String, Object>) m : Map.of();
+                jdbc.update("UPDATE invoice SET sent_snapshot_total = COALESCE(?, amount), sent_snapshot_date = ? WHERE id = ?",
+                        snapshot.get("total") == null ? null : decimal(snapshot.get("total")),
+                        snapshot.get("date") == null ? issued : LocalDate.parse(snapshot.get("date").toString()),
+                        invoiceId);
+            }
             // The scheduled instalments the invoice is split into, each an amount due on a date and maybe paid.
             for (Map<String, Object> n : rows(i, "instalments")) {
                 jdbc.update("INSERT INTO invoice_instalment (id, invoice_id, amount, due_date, paid) VALUES (?, ?, ?, ?, ?)",

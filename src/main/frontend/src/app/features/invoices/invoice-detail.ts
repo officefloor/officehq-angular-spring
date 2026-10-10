@@ -1,5 +1,6 @@
 import { DecimalPipe } from '@angular/common';
 import { MoneyPipe } from '../currencies/money.pipe';
+import { InvoiceSentSnapshot } from './invoice-sent-snapshot';
 import { Component, Injector, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
 import { rxResource, toSignal } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -31,7 +32,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
-  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, InvoicePoNumber, Notes],
+  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, InvoicePoNumber, InvoiceSentSnapshot, Notes],
   template: `
     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
     @if (invoice.error()) {
@@ -89,6 +90,9 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
         <p>Client tax number: <span data-testid="invoice-client-tax-number">{{ inv.clientTaxNumber }}</span></p>
       }
       <app-invoice-po-number [invoice]="inv" (changed)="invoice.set($event)" />
+      @if (inv.sentSnapshot; as snapshot) {
+        <app-invoice-sent-snapshot [snapshot]="snapshot" [currency]="inv.currency" />
+      }
 
       <section aria-labelledby="invoice-lineitems-heading">
         <h2 id="invoice-lineitems-heading" tabindex="-1">Line items</h2>
