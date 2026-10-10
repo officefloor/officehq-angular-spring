@@ -1,0 +1,295 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-detail.ts b/src/main/frontend/src/app/features/clients/client-detail.ts
+index cc4dfc2..2220abc 100644
+--- a/src/main/frontend/src/app/features/clients/client-detail.ts
++++ b/src/main/frontend/src/app/features/clients/client-detail.ts
+@@ -162,6 +162,7 @@ import { Client, ClientService } from './client.service';
+         [clientId]="clientId()"
+         (contactAdded)="contactAdded()"
+         (primaryChanged)="primaryChanged($event)"
++        (contactArchived)="contactArchived($event)"
+       />
+       <app-client-contact-history [clientId]="clientId()" />
+       <app-client-projects [clientId]="clientId()" />
+@@ -234,6 +235,14 @@ export class ClientDetail {
+     }
+   }
+ 
++  protected contactArchived(contact: Contact): void {
++    this.summary.reload();
++    // An archived contact is no longer the main contact.
++    if (this.client.value()?.primaryContact?.id === contact.id) {
++      this.client.update((c) => c && { ...c, primaryContact: null });
++    }
++  }
++
+   protected currencyChanged(client: Client): void {
+     this.client.set(client);
+   }
+diff --git a/src/main/frontend/src/app/features/contacts/client-contacts.ts b/src/main/frontend/src/app/features/contacts/client-contacts.ts
+index 5c3a890..dcf9abb 100644
+--- a/src/main/frontend/src/app/features/contacts/client-contacts.ts
++++ b/src/main/frontend/src/app/features/contacts/client-contacts.ts
+@@ -82,6 +82,9 @@ type ContactField = 'name' | 'email' | 'role';
+           @if (primaryError()) {
+             <p role="alert" data-testid="contact-primary-error">{{ primaryError() }}</p>
+           }
++          @if (archiveError()) {
++            <p role="alert" data-testid="contact-archive-error">{{ archiveError() }}</p>
++          }
+           <table data-testid="client-contacts-table">
+             <caption>Contacts for this client</caption>
+             <thead>
+@@ -90,6 +93,7 @@ type ContactField = 'name' | 'email' | 'role';
+                 <th scope="col">Email</th>
+                 <th scope="col">Role</th>
+                 <th scope="col">Main contact</th>
++                <th scope="col"><span class="visually-hidden">Actions</span></th>
+               </tr>
+             </thead>
+             <tbody>
+@@ -110,6 +114,17 @@ type ContactField = 'name' | 'email' | 'role';
+                       {{ c.primary ? 'Main contact' : 'Make main contact' }}
+                     </button>
+                   </td>
++                  <td>
++                    <button
++                      type="button"
++                      [attr.data-testid]="'contact-archive-' + c.id"
++                      [attr.aria-label]="'Archive ' + c.name"
++                      [disabled]="archiving()"
++                      (click)="archive(c)"
++                    >
++                      Archive
++                    </button>
++                  </td>
+                 </tr>
+               }
+             </tbody>
+@@ -127,6 +142,8 @@ export class ClientContacts {
+   readonly contactAdded = output<Contact>();
+   /** Emits the contact that has just become the client's main contact. */
+   readonly primaryChanged = output<Contact>();
++  /** Emits each contact once it has been archived. */
++  readonly contactArchived = output<Contact>();
+ 
+   protected readonly contacts = rxResource({
+     params: () => this.clientId(),
+@@ -136,6 +153,8 @@ export class ClientContacts {
+   protected readonly saveError = signal<string | null>(null);
+   protected readonly choosingPrimary = signal(false);
+   protected readonly primaryError = signal<string | null>(null);
++  protected readonly archiving = signal(false);
++  protected readonly archiveError = signal<string | null>(null);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+@@ -173,6 +192,22 @@ export class ClientContacts {
+     });
+   }
+ 
++  protected archive(contact: Contact): void {
++    this.archiving.set(true);
++    this.archiveError.set(null);
++    this.service.archive(this.clientId(), contact.id).subscribe({
++      next: (archived) => {
++        this.contacts.update((list) => list?.filter((c) => c.id !== archived.id));
++        this.contactArchived.emit(archived);
++        this.archiving.set(false);
++      },
++      error: () => {
++        this.archiveError.set('Could not archive the contact. Please try again.');
++        this.archiving.set(false);
++      },
++    });
++  }
++
+   protected submit(): void {
+     if (this.form.invalid) {
+       this.form.markAllAsTouched();
+diff --git a/src/main/frontend/src/app/features/contacts/contact.service.ts b/src/main/frontend/src/app/features/contacts/contact.service.ts
+index 14a444d..b89b8da 100644
+--- a/src/main/frontend/src/app/features/contacts/contact.service.ts
++++ b/src/main/frontend/src/app/features/contacts/contact.service.ts
+@@ -29,4 +29,9 @@ export class ContactService {
+   makePrimary(clientId: number, contactId: number): Observable<Contact> {
+     return this.http.post<Contact>(`/api/clients/${clientId}/contacts/${contactId}/primary`, null);
+   }
++
++  /** Archives a contact: it drops off the client's contact list but the record is kept. */
++  archive(clientId: number, contactId: number): Observable<Contact> {
++    return this.http.post<Contact>(`/api/clients/${clientId}/contacts/${contactId}/archive`, null);
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 6b75f25..089da5a 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -132,12 +132,12 @@ public class TestSupportController {
+             }
+         }
+         for (Map<String, Object> c : rows(fixture, "contacts")) {
+-            jdbc.update("INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
+-                    ((Number) c.get("id")).longValue(), ((Number) c.get("clientId")).longValue(),
+-                    c.get("name"), c.get("email"), c.get("role"));
+-            if (Boolean.TRUE.equals(c.get("primary"))) {
+-                jdbc.update("UPDATE client SET primary_contact_id = ? WHERE id = ?",
+-                        ((Number) c.get("id")).longValue(), ((Number) c.get("clientId")).longValue());
++            seedContact(c, ((Number) c.get("clientId")).longValue());
++        }
++        // Contacts may also be nested under their client.
++        for (Map<String, Object> client : rows(fixture, "clients")) {
++            for (Map<String, Object> c : rows(client, "contacts")) {
++                seedContact(c, ((Number) client.get("id")).longValue());
+             }
+         }
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+@@ -471,6 +471,16 @@ public class TestSupportController {
+                 : new BigDecimal(lineItem.get("discountPct").toString());
+     }
+ 
++    private void seedContact(Map<String, Object> c, long clientId) {
++        jdbc.update("INSERT INTO contact (id, client_id, name, email, role, archived) VALUES (?, ?, ?, ?, ?, ?)",
++                ((Number) c.get("id")).longValue(), clientId, c.get("name"), c.get("email"), c.get("role"),
++                Boolean.TRUE.equals(c.get("archived")));
++        if (Boolean.TRUE.equals(c.get("primary"))) {
++            jdbc.update("UPDATE client SET primary_contact_id = ? WHERE id = ?", ((Number) c.get("id")).longValue(),
++                    clientId);
++        }
++    }
++
+     private static List<Map<String, Object>> rows(Map<String, Object> fixture, String key) {
+         Object value = fixture.get(key);
+         return value == null ? List.of() : (List<Map<String, Object>>) value;
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 92c5a24..6ab27aa 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -69,7 +69,7 @@ public class ClientService {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+         }
+         BigDecimal billed = invoices.sumAmountByClientIdAndStatusIn(id, BILLED).setScale(2, RoundingMode.HALF_UP);
+-        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientId(id), billed);
++        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientIdAndArchivedFalse(id), billed);
+     }
+ 
+     /** Adds a client; its email, once trimmed, must not already belong to another client. */
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ClientContactController.java b/src/main/java/net/officefloor/hq/app/contact/ClientContactController.java
+index 238ca5b..36ea54e 100644
+--- a/src/main/java/net/officefloor/hq/app/contact/ClientContactController.java
++++ b/src/main/java/net/officefloor/hq/app/contact/ClientContactController.java
+@@ -38,4 +38,10 @@ public class ClientContactController {
+     public ContactResponse makePrimary(@PathVariable Long clientId, @PathVariable Long contactId) {
+         return service.makePrimary(clientId, contactId);
+     }
++
++    /** Archives this contact: it drops off the client's contact list but the record is kept. */
++    @PostMapping("/{contactId}/archive")
++    public ContactResponse archive(@PathVariable Long clientId, @PathVariable Long contactId) {
++        return service.archive(clientId, contactId);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/contact/Contact.java b/src/main/java/net/officefloor/hq/app/contact/Contact.java
+index 0848b40..9867039 100644
+--- a/src/main/java/net/officefloor/hq/app/contact/Contact.java
++++ b/src/main/java/net/officefloor/hq/app/contact/Contact.java
+@@ -29,6 +29,8 @@ public class Contact {
+ 
+     private String role;
+ 
++    private boolean archived;
++
+     protected Contact() {
+     }
+ 
+@@ -58,4 +60,12 @@ public class Contact {
+     public String getRole() {
+         return role;
+     }
++
++    public boolean isArchived() {
++        return archived;
++    }
++
++    public void setArchived(boolean archived) {
++        this.archived = archived;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java b/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java
+index 3a8736c..7f8f538 100644
+--- a/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java
++++ b/src/main/java/net/officefloor/hq/app/contact/ContactRepository.java
+@@ -6,12 +6,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface ContactRepository extends JpaRepository<Contact, Long> {
+ 
+-    /** A client's contacts in the order they were added. */
+-    List<Contact> findByClientIdOrderById(Long clientId);
++    /** A client's contacts, not archived, in the order they were added. */
++    List<Contact> findByClientIdAndArchivedFalseOrderById(Long clientId);
+ 
+     /** One of a client's contacts, if it is theirs. */
+     Optional<Contact> findByIdAndClientId(Long id, Long clientId);
+ 
+-    /** How many contacts a client has. */
+-    long countByClientId(Long clientId);
++    /** How many contacts, not archived, a client has. */
++    long countByClientIdAndArchivedFalse(Long clientId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/contact/ContactService.java b/src/main/java/net/officefloor/hq/app/contact/ContactService.java
+index 603bcff..e6ec89c 100644
+--- a/src/main/java/net/officefloor/hq/app/contact/ContactService.java
++++ b/src/main/java/net/officefloor/hq/app/contact/ContactService.java
+@@ -27,7 +27,7 @@ public class ContactService {
+         if (!clients.existsById(clientId)) {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client");
+         }
+-        return contacts.findByClientIdOrderById(clientId).stream().map(ContactResponse::from).toList();
++        return contacts.findByClientIdAndArchivedFalseOrderById(clientId).stream().map(ContactResponse::from).toList();
+     }
+ 
+     @Transactional
+@@ -48,6 +48,9 @@ public class ContactService {
+     public ContactResponse makePrimary(Long clientId, Long contactId) {
+         Contact contact = contacts.findByIdAndClientId(contactId, clientId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown contact"));
++        if (contact.isArchived()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "An archived contact cannot be the main contact");
++        }
+         Client client = contact.getClient();
+         Contact current = client.getPrimaryContact();
+         if (current == null || !current.getId().equals(contactId)) {
+@@ -57,4 +60,25 @@ public class ContactService {
+         }
+         return ContactResponse.from(contact);
+     }
++
++    /**
++     * Archives one of a client's contacts: it drops off the client's contact list but is kept, and the
++     * archiving is recorded in the audit log. An archived contact is no longer the client's main contact.
++     */
++    @Transactional
++    public ContactResponse archive(Long clientId, Long contactId) {
++        Contact contact = contacts.findByIdAndClientId(contactId, clientId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown contact"));
++        if (!contact.isArchived()) {
++            contact.setArchived(true);
++            Client client = contact.getClient();
++            Contact primary = client.getPrimaryContact();
++            if (primary != null && primary.getId().equals(contactId)) {
++                client.setPrimaryContact(null);
++            }
++            contacts.flush();
++            audit.record("CONTACT_ARCHIVED id=" + contactId + " clientId=" + clientId);
++        }
++        return ContactResponse.from(contact);
++    }
+ }
+diff --git a/src/main/resources/db/migration/V90__contact_archive.sql b/src/main/resources/db/migration/V90__contact_archive.sql
+new file mode 100644
+index 0000000..96adef3
+--- /dev/null
++++ b/src/main/resources/db/migration/V90__contact_archive.sql
+@@ -0,0 +1,3 @@
++-- Contacts are archived rather than deleted: an archived contact drops off the client's contact list
++-- but its record is kept.
++ALTER TABLE contact ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE;
