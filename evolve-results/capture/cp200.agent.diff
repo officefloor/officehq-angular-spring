@@ -1,0 +1,59 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 58090bc..30f570b 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -31,7 +31,7 @@ export interface DashboardSummary {
+   projects: number;
+   /** What is still owed, one total per currency anything is owed in. */
+   outstanding: CurrencyTotal[];
+-  /** Everything outstanding as one total in the home currency, each invoice converted at its issue date's rate. */
++  /** Everything outstanding as one total in the home currency, each invoice converted at its issue date's rate; disputed and written-off invoices are left out. */
+   outstandingHome: number;
+   overdue: number;
+   /** The currency the overdue amount is given in. */
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 925a804..6769899 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -11,7 +11,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+ // Dashboard page: how many clients and projects there are (and how many clients were taken on this month), and the total still owed in each currency
+ // (what is left to pay on invoices that have been sent but not yet fully paid; drafts are not
+ // counted), plus one grand total of it in the home currency with each invoice converted at the
+-// exchange rate from its own issue date, and how many of those sent
++// exchange rate from its own issue date (leaving out disputed and written-off invoices), and how many of those sent
+ // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
+ // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
+ // converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date, and the average number of days clients take to pay (issue date to final payment on paid invoices). An aging report across all clients, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
+@@ -46,7 +46,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
+           }
+         </div>
+         <div>
+-          <dt>Outstanding in {{ s.homeCurrency }} (converted at each invoice's date)</dt>
++          <dt>Outstanding in {{ s.homeCurrency }} (converted at each invoice's date, excluding disputed and written-off)</dt>
+           <dd data-testid="dashboard-outstanding-home"><span data-testid="kpi-outstanding">{{ s.outstandingHome | money: s.homeCurrency }}</span></dd>
+         </div>
+         <div>
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index bf22b81..f14ec34 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -73,7 +73,7 @@ public class DashboardService {
+     /**
+      * Counts of clients and projects, and the total still owed in each currency (what is left to pay
+      * on sent invoices that are not yet fully paid; a currency with written-off invoices is listed even when nothing is owed), plus how many of those sent invoices (not disputed) are past their due date and
+-     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date, and how many clients were taken on this month.
++     * what is overdue on them (in total and split by how many days overdue each invoice is), what is outstanding as one grand total in the home currency (see {@link #inHome}; disputed and written-off invoices left out), and the top clients ranked by what they owe converted into the home currency (a client none of whose debt can be converted is left out), and how many tasks not yet done are past their due date, and how many clients were taken on this month.
+      */
+     @Transactional(readOnly = true)
+     public DashboardResponse summary() {
+@@ -91,7 +91,9 @@ public class DashboardService {
+         long overdue = invoices.countByStatusInAndDueDateBefore(owing, today);
+         String home = settings.homeCurrency();
+         Map<Invoice, BigDecimal> owedInHome = inHome(invoices.findByStatusInWithClient(owing), home, today, false);
+-        BigDecimal outstandingHome = sum(owedInHome);
++        // The grand total leaves out disputed invoices (written-off ones are already not owing).
++        BigDecimal outstandingHome = owedInHome.entrySet().stream().filter(e -> !e.getKey().isDisputed())
++                .map(Map.Entry::getValue).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
+         Map<Invoice, BigDecimal> overdueInHome = inHome(invoices.findByStatusInAndDueDateBefore(owing, today), home, today, true);
+         BigDecimal overdueAmount = sum(overdueInHome);
+         DashboardResponse.OverdueBuckets overdueBuckets = buckets(overdueInHome, today);
