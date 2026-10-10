@@ -1,0 +1,472 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-edit-form.ts b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+index 7246bcc..e89016f 100644
+--- a/src/main/frontend/src/app/features/clients/client-edit-form.ts
++++ b/src/main/frontend/src/app/features/clients/client-edit-form.ts
+@@ -122,6 +122,23 @@ import { Client, ClientService } from './client.service';
+           </p>
+         }
+       </div>
++      <div>
++        <label for="client-edit-segment">Segment (optional)</label>
++        <input
++          id="client-edit-segment"
++          type="text"
++          formControlName="segment"
++          autocomplete="off"
++          data-testid="client-edit-form-segment"
++          [attr.aria-invalid]="showError('segment')"
++          [attr.aria-describedby]="showError('segment') ? 'client-edit-segment-error' : null"
++        />
++        @if (showError('segment')) {
++          <p id="client-edit-segment-error" role="alert" data-testid="client-edit-form-segment-error">
++            Segment must be 50 characters or fewer.
++          </p>
++        }
++      </div>
+       <div>
+         <label for="client-edit-tax-number">Tax number (optional)</label>
+         <input
+@@ -228,6 +245,7 @@ export class ClientEditForm implements OnInit {
+     language: ['', Validators.maxLength(50)],
+     accountManager: ['', Validators.maxLength(255)],
+     billingContact: ['', Validators.maxLength(255)],
++    segment: ['', Validators.maxLength(50)],
+     taxNumber: ['', Validators.maxLength(50)],
+     billingAddress: ['', Validators.maxLength(500)],
+     taxInclusive: false,
+@@ -241,11 +259,11 @@ export class ClientEditForm implements OnInit {
+   }
+ 
+   ngOnInit(): void {
+-    const { name, email, phone, language, accountManager, billingContact, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.client();
+-    this.form.setValue({ name, email, phone: phone ?? '', language: language ?? '', accountManager: accountManager ?? '', billingContact: billingContact ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt, keyAccount, defaultDiscountPct });
++    const { name, email, phone, language, accountManager, billingContact, segment, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.client();
++    this.form.setValue({ name, email, phone: phone ?? '', language: language ?? '', accountManager: accountManager ?? '', billingContact: billingContact ?? '', segment: segment ?? '', taxNumber: taxNumber ?? '', billingAddress: billingAddress ?? '', taxInclusive, taxExempt, keyAccount, defaultDiscountPct });
+   }
+ 
+-  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'accountManager' | 'billingContact' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
++  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'accountManager' | 'billingContact' | 'segment' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -255,10 +273,10 @@ export class ClientEditForm implements OnInit {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email, phone, language, accountManager, billingContact, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
++    const { name, email, phone, language, accountManager, billingContact, segment, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, accountManager: accountManager.trim() || null, billingContact: billingContact.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
++    this.service.update(this.client().id, { name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, accountManager: accountManager.trim() || null, billingContact: billingContact.trim() || null, segment: segment.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
+       next: (updated) => {
+         this.saving.set(false);
+         this.saved.emit(updated);
+diff --git a/src/main/frontend/src/app/features/clients/client-segments.ts b/src/main/frontend/src/app/features/clients/client-segments.ts
+new file mode 100644
+index 0000000..a730564
+--- /dev/null
++++ b/src/main/frontend/src/app/features/clients/client-segments.ts
+@@ -0,0 +1,47 @@
++import { Component, inject, signal } from '@angular/core';
++import { ClientSegment, ClientService } from './client.service';
++
++// How many clients (not archived) are in each segment; clients in no segment are left out.
++@Component({
++  selector: 'app-client-segments',
++  template: `
++    @if (error()) {
++      <p role="alert" data-testid="client-segments-error">Could not load the segments. Please try again.</p>
++    } @else if (segments(); as list) {
++      @if (list.length === 0) {
++        <p data-testid="client-segments-empty">No clients are in a segment yet.</p>
++      } @else {
++        <table data-testid="client-segments-table">
++          <caption>Clients per segment</caption>
++          <thead>
++            <tr>
++              <th scope="col">Segment</th>
++              <th scope="col">Clients</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (s of list; track s.segment) {
++              <tr [attr.data-testid]="'segment-row-' + s.segment">
++                <td data-testid="segment-name">{{ s.segment }}</td>
++                <td data-testid="segment-count">{{ s.count }}</td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
++    }
++  `,
++})
++export class ClientSegments {
++  protected readonly segments = signal<ClientSegment[] | null>(null);
++  protected readonly error = signal(false);
++
++  constructor() {
++    inject(ClientService)
++      .segments()
++      .subscribe({
++        next: (list) => this.segments.set(list),
++        error: () => this.error.set(true),
++      });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 692f3bd..b41cb1c 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -21,6 +21,8 @@ export interface Client {
+   accountManager: string | null;
+   /** Who the client's bills should go to, when someone other than the client themselves; null when not recorded. */
+   billingContact: string | null;
++  /** The segment the client is grouped into (e.g. "VIP"); null when in none. */
++  segment: string | null;
+   /** Whether the client's prices already include tax, so it is worked back out of them rather than added on. */
+   taxInclusive: boolean;
+   /** Whether the client is tax exempt, so none of their invoices carry any tax whatever the lines say. */
+@@ -53,6 +55,12 @@ export interface ClientSummary {
+ 
+ export type NewClient = Omit<Client, 'id' | 'archived' | 'primaryContact' | 'currency' | 'creditLimit' | 'paymentTermsDays' | 'earlyPaymentWindowDays' | 'outstanding'>;
+ 
++/** A segment clients are grouped into, and how many clients are in it. */
++export interface ClientSegment {
++  segment: string;
++  count: number;
++}
++
+ /** Where a client's contact details file is downloaded from. */
+ export function exportUrl(id: number): string {
+   return `/api/clients/${id}/export`;
+@@ -66,6 +74,11 @@ export class ClientService {
+     return this.http.get<Client[]>('/api/clients', { params: { includeArchived } });
+   }
+ 
++  /** How many clients, not archived, are in each segment. */
++  segments(): Observable<ClientSegment[]> {
++    return this.http.get<ClientSegment[]>('/api/clients/segments');
++  }
++
+   get(id: number): Observable<Client> {
+     return this.http.get<Client>(`/api/clients/${id}`);
+   }
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index b98e442..f6a5dcb 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -4,15 +4,16 @@ import { Component, computed, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { RouterLink } from '@angular/router';
+ import { ClientEditForm } from './client-edit-form';
++import { ClientSegments } from './client-segments';
+ import { Client, ClientService } from './client.service';
+ 
+ // Clients page: add a client (name + email, optionally a phone number and tax number) and list all clients, filterable by name; each client
+ // opens its detail page. A client no longer worked with can be archived: it is kept but left off the
+ // list and search unless the archived toggle is on, where it can be restored. A client's name or email
+-// can be corrected in place from its row. Key accounts carry a marker beside their name. The list can be sorted by name, by how much each client owes, or with key accounts first.
++// can be corrected in place from its row. Key accounts carry a marker beside their name, and each client shows the segment it is in; a segments panel counts the clients in each segment. The list can be sorted by name, by how much each client owes, or with key accounts first.
+ @Component({
+   selector: 'app-clients',
+-  imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm],
++  imports: [MoneyPipe, ReactiveFormsModule, RouterLink, ClientEditForm, ClientSegments],
+   styles: `
+     .key-account {
+       margin-inline-start: 0.5em;
+@@ -134,6 +135,23 @@ import { Client, ClientService } from './client.service';
+           </p>
+         }
+       </div>
++      <div>
++        <label for="client-segment">Segment (optional)</label>
++        <input
++          id="client-segment"
++          type="text"
++          formControlName="segment"
++          autocomplete="off"
++          data-testid="client-form-segment"
++          [attr.aria-invalid]="showError('segment')"
++          [attr.aria-describedby]="showError('segment') ? 'client-segment-error' : null"
++        />
++        @if (showError('segment')) {
++          <p id="client-segment-error" role="alert" data-testid="client-form-segment-error">
++            Segment must be 50 characters or fewer.
++          </p>
++        }
++      </div>
+       <div>
+         <label for="client-tax-number">Tax number (optional)</label>
+         <input
+@@ -211,6 +229,23 @@ import { Client, ClientService } from './client.service';
+       }
+     </form>
+ 
++    <div>
++      <button
++        type="button"
++        data-testid="client-segments-open"
++        aria-controls="client-segments"
++        [attr.aria-expanded]="segmentsOpen()"
++        (click)="segmentsOpen.set(!segmentsOpen())"
++      >
++        Segments
++      </button>
++      @if (segmentsOpen()) {
++        <section id="client-segments" aria-label="Client segments" data-testid="client-segments">
++          <app-client-segments />
++        </section>
++      }
++    </div>
++
+     @if (actionError()) {
+       <p role="alert" data-testid="client-archive-error">{{ actionError() }}</p>
+     }
+@@ -270,6 +305,9 @@ import { Client, ClientService } from './client.service';
+                   @if (c.keyAccount) {
+                     <span class="key-account" data-testid="client-key-account">Key account</span>
+                   }
++                  @if (c.segment) {
++                    <span data-testid="client-segment">({{ c.segment }})</span>
++                  }
+                   @if (c.archived) {
+                     <span [attr.data-testid]="'client-archived-' + c.id">(archived)</span>
+                   }
+@@ -348,6 +386,7 @@ export class Clients {
+   protected readonly busy = signal<number | null>(null);
+   protected readonly actionError = signal<string | null>(null);
+   protected readonly editing = signal<number | null>(null);
++  protected readonly segmentsOpen = signal(false);
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.maxLength(255)]],
+@@ -365,6 +404,7 @@ export class Clients {
+     language: ['', Validators.maxLength(50)],
+     accountManager: ['', Validators.maxLength(255)],
+     billingContact: ['', Validators.maxLength(255)],
++    segment: ['', Validators.maxLength(50)],
+     taxNumber: ['', Validators.maxLength(50)],
+     billingAddress: ['', Validators.maxLength(500)],
+     taxInclusive: false,
+@@ -385,7 +425,7 @@ export class Clients {
+     this.sort.set((event.target as HTMLSelectElement).value as ClientSort);
+   }
+ 
+-  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'accountManager' | 'billingContact' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
++  protected showError(field: 'name' | 'email' | 'phone' | 'language' | 'accountManager' | 'billingContact' | 'segment' | 'taxNumber' | 'billingAddress' | 'defaultDiscountPct'): boolean {
+     const control = this.form.controls[field];
+     return control.invalid && (control.touched || control.dirty);
+   }
+@@ -395,10 +435,10 @@ export class Clients {
+       this.form.markAllAsTouched();
+       return;
+     }
+-    const { name, email, phone, language, accountManager, billingContact, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
++    const { name, email, phone, language, accountManager, billingContact, segment, taxNumber, billingAddress, taxInclusive, taxExempt, keyAccount, defaultDiscountPct } = this.form.getRawValue();
+     this.saving.set(true);
+     this.saveError.set(null);
+-    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, accountManager: accountManager.trim() || null, billingContact: billingContact.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
++    this.service.create({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, language: language.trim() || null, accountManager: accountManager.trim() || null, billingContact: billingContact.trim() || null, segment: segment.trim() || null, taxNumber: taxNumber.trim() || null, billingAddress: billingAddress.trim() || null, taxInclusive, taxExempt, keyAccount, defaultDiscountPct }).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created]);
+         this.form.reset();
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 3e3efe5..73fe0e5 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -113,9 +113,9 @@ public class TestSupportController {
+                     r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
+         }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+-            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, billing_contact, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days, early_payment_window_days)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+-                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"), c.get("language"), c.get("accountManager"), c.get("billingContact"),
++            jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, billing_contact, segment, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days, early_payment_window_days)"
++                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"), c.get("phone"), c.get("taxNumber"), c.get("billingAddress"), c.get("language"), c.get("accountManager"), c.get("billingContact"), c.get("segment"),
+                     Boolean.TRUE.equals(c.get("taxInclusive")), Boolean.TRUE.equals(c.get("taxExempt")),
+                     Boolean.TRUE.equals(c.get("keyAccount")),
+                     Boolean.TRUE.equals(c.get("archived")),
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index 5d10a9a..c2aa100 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -45,6 +45,9 @@ public class Client {
+     /** Who the client's bills should go to, when someone other than the client themselves; none when not recorded. */
+     private String billingContact;
+ 
++    /** The segment the client is grouped into (e.g. "VIP"); none when not in one. */
++    private String segment;
++
+     private boolean archived;
+ 
+     /** Whether the client's prices already include tax, so tax is worked back out of them rather than added on. */
+@@ -133,6 +136,14 @@ public class Client {
+         this.billingContact = billingContact;
+     }
+ 
++    public String getSegment() {
++        return segment;
++    }
++
++    public void setSegment(String segment) {
++        this.segment = segment;
++    }
++
+     public String getTaxNumber() {
+         return taxNumber;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientController.java b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+index 0b4f2b4..5d2694d 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientController.java
+@@ -33,6 +33,12 @@ public class ClientController {
+         return service.list(includeArchived);
+     }
+ 
++    /** How many clients are in each segment. */
++    @GetMapping("/segments")
++    public List<ClientSegmentResponse> segments() {
++        return service.segments();
++    }
++
+     @GetMapping("/{id}")
+     public ClientResponse get(@PathVariable Long id) {
+         return service.get(id);
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+index b3ed673..d361018 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+@@ -10,6 +10,11 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+     /** All clients not archived, in id order. */
+     List<Client> findByArchivedFalseOrderById();
+ 
++    /** How many clients not archived are in each segment, by segment name; clients in no segment are left out. */
++    @Query("SELECT new net.officefloor.hq.app.client.ClientSegmentResponse(c.segment, COUNT(c)) FROM Client c"
++            + " WHERE c.archived = false AND c.segment IS NOT NULL GROUP BY c.segment ORDER BY c.segment")
++    List<ClientSegmentResponse> countActiveBySegment();
++
+     /** Whether any client, archived or not, already has the email, ignoring case. */
+     boolean existsByEmailIgnoreCase(String email);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+index 0839588..49837b2 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRequest.java
+@@ -9,7 +9,7 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ 
+ /**
+- * Payload to create a client, or to correct an existing client's name, email, phone number, tax number, billing address, preferred language, account manager and billing contact,
++ * Payload to create a client, or to correct an existing client's name, email, phone number, tax number, billing address, preferred language, account manager, billing contact and segment,
+  * whether their prices already include tax and whether they are tax exempt and whether they are a key account and their standard discount percentage (each left as it is when not given).
+  */
+ public record ClientRequest(
+@@ -21,6 +21,7 @@ public record ClientRequest(
+         @Size(max = 50) String language,
+         @Size(max = 255) String accountManager,
+         @Size(max = 255) String billingContact,
++        @Size(max = 50) String segment,
+         Boolean taxInclusive,
+         Boolean taxExempt,
+         Boolean keyAccount,
+@@ -54,6 +55,11 @@ public record ClientRequest(
+         return billingContact == null || billingContact.isBlank() ? null : billingContact.trim();
+     }
+ 
++    /** The segment trimmed, or null when the client is in none. */
++    public String trimmedSegment() {
++        return segment == null || segment.isBlank() ? null : segment.trim();
++    }
++
+     /** The billing address trimmed, or null when none was given. */
+     public String trimmedBillingAddress() {
+         return billingAddress == null || billingAddress.isBlank() ? null : billingAddress.trim();
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+index f82b5d6..b4a6e6d 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientResponse.java
+@@ -3,7 +3,7 @@ package net.officefloor.hq.app.client;
+ import java.math.BigDecimal;
+ import net.officefloor.hq.app.contact.Contact;
+ 
+-public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, String language, String accountManager, String billingContact, boolean taxInclusive, boolean taxExempt, boolean keyAccount, BigDecimal defaultDiscountPct, boolean archived, PrimaryContact primaryContact,
++public record ClientResponse(Long id, String name, String email, String phone, String taxNumber, String billingAddress, String language, String accountManager, String billingContact, String segment, boolean taxInclusive, boolean taxExempt, boolean keyAccount, BigDecimal defaultDiscountPct, boolean archived, PrimaryContact primaryContact,
+         String currency, BigDecimal creditLimit, Integer paymentTermsDays, Integer earlyPaymentWindowDays, BigDecimal outstanding) {
+ 
+     /** Who the client's main contact is; null when none has been chosen. */
+@@ -13,7 +13,7 @@ public record ClientResponse(Long id, String name, String email, String phone, S
+     /** A client with what they still owe, in their currency: what is left to pay on their sent, not yet fully paid invoices. */
+     public static ClientResponse from(Client client, BigDecimal outstanding) {
+         Contact primary = client.getPrimaryContact();
+-        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.getLanguage(), client.getAccountManager(), client.getBillingContact(), client.isTaxInclusive(), client.isTaxExempt(), client.isKeyAccount(), client.getDefaultDiscountPct(), client.isArchived(),
++        return new ClientResponse(client.getId(), client.getName(), client.getEmail(), client.getPhone(), client.getTaxNumber(), client.getBillingAddress(), client.getLanguage(), client.getAccountManager(), client.getBillingContact(), client.getSegment(), client.isTaxInclusive(), client.isTaxExempt(), client.isKeyAccount(), client.getDefaultDiscountPct(), client.isArchived(),
+                 primary == null ? null : new PrimaryContact(primary.getId(), primary.getName()),
+                 client.getCurrency(), client.getCreditLimit(), client.getPaymentTermsDays(), client.getEarlyPaymentWindowDays(), outstanding);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientSegmentResponse.java b/src/main/java/net/officefloor/hq/app/client/ClientSegmentResponse.java
+new file mode 100644
+index 0000000..d9cf651
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientSegmentResponse.java
+@@ -0,0 +1,5 @@
++package net.officefloor.hq.app.client;
++
++/** A segment clients are grouped into, and how many clients are in it. */
++public record ClientSegmentResponse(String segment, long count) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientService.java b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+index 1b90a1a..91fc4ab 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientService.java
+@@ -54,6 +54,12 @@ public class ClientService {
+         return respond(found);
+     }
+ 
++    /** How many clients, not archived, are in each segment, by segment name; clients in no segment are left out. */
++    @Transactional(readOnly = true)
++    public List<ClientSegmentResponse> segments() {
++        return clients.countActiveBySegment();
++    }
++
+     @Transactional(readOnly = true)
+     public ClientResponse get(Long id) {
+         return respond(find(id));
+@@ -85,6 +91,7 @@ public class ClientService {
+             client.setLanguage(request.trimmedLanguage());
+             client.setAccountManager(request.trimmedAccountManager());
+             client.setBillingContact(request.trimmedBillingContact());
++            client.setSegment(request.trimmedSegment());
+             client.setTaxInclusive(Boolean.TRUE.equals(request.taxInclusive()));
+             client.setTaxExempt(Boolean.TRUE.equals(request.taxExempt()));
+             client.setKeyAccount(Boolean.TRUE.equals(request.keyAccount()));
+@@ -102,7 +109,7 @@ public class ClientService {
+     }
+ 
+     /**
+-     * Corrects a client's name, email, phone number, tax number, billing address, preferred language, account manager and billing contact (each left as it is when not given, cleared when blank); the email, once trimmed, must not belong to another client.
++     * Corrects a client's name, email, phone number, tax number, billing address, preferred language, account manager, billing contact and segment (each left as it is when not given, cleared when blank); the email, once trimmed, must not belong to another client.
+      * When whether their prices include tax, or whether they are tax exempt, changes, their draft invoices are reworked to match; sent ones keep the
+      * figures they were issued with. The change is recorded in the audit log.
+      */
+@@ -123,6 +130,9 @@ public class ClientService {
+         if (request.billingContact() != null) {
+             client.setBillingContact(request.trimmedBillingContact());
+         }
++        if (request.segment() != null) {
++            client.setSegment(request.trimmedSegment());
++        }
+         if (request.taxInclusive() != null && request.taxInclusive() != client.isTaxInclusive()) {
+             client.setTaxInclusive(request.taxInclusive());
+             invoices.findByClientIdAndStatus(id, InvoiceStatus.DRAFT)
+diff --git a/src/main/resources/db/migration/V96__client_segment.sql b/src/main/resources/db/migration/V96__client_segment.sql
+new file mode 100644
+index 0000000..76c86eb
+--- /dev/null
++++ b/src/main/resources/db/migration/V96__client_segment.sql
+@@ -0,0 +1,3 @@
++-- A client can be put into a segment (e.g. "VIP"), so the office can see how many clients are in each;
++-- existing clients are in none.
++ALTER TABLE client ADD COLUMN segment VARCHAR(50);
