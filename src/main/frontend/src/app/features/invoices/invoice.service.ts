@@ -386,6 +386,11 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/retention/release`, null);
   }
 
+  /** Sends every draft invoice on a job in one go; returns the invoices that were sent. */
+  sendDrafts(projectId: number): Observable<ProjectInvoice[]> {
+    return this.http.post<ProjectInvoice[]>(`/api/projects/${projectId}/invoices/send-drafts`, null);
+  }
+
   send(projectId: number, invoiceId: number): Observable<ProjectInvoice> {
     return this.http.post<ProjectInvoice>(`/api/projects/${projectId}/invoices/${invoiceId}/send`, null);
   }

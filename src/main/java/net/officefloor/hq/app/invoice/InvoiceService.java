@@ -470,6 +470,38 @@ public class InvoiceService {
     }
 
     /**
+     * Sends every draft invoice on a job in one go, and records each sending in the audit log. It is all or
+     * nothing: if any draft has no line items, or sending them all would take the client over their credit
+     * limit, none are sent.
+     */
+    @Transactional
+    public List<InvoiceResponse> sendDrafts(Long projectId) {
+        if (!projects.existsById(projectId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown job");
+        }
+        List<Invoice> drafts = invoices.findByProjectIdOrderById(projectId).stream()
+                .filter(i -> i.getStatus() == InvoiceStatus.DRAFT)
+                .toList();
+        if (drafts.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "There are no draft invoices to send");
+        }
+        if (drafts.stream().anyMatch(i -> i.getAmount().signum() == 0)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Add a line item to every draft before sending");
+        }
+        Client client = drafts.get(0).getProject().getClient();
+        BigDecimal limit = client.getCreditLimit();
+        BigDecimal total = drafts.stream().map(Invoice::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (limit != null && clientService.outstanding(client.getId()).add(total).compareTo(limit) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "Sending these invoices would take the client over their credit limit");
+        }
+        drafts.forEach(Invoice::markSent);
+        invoices.flush();
+        drafts.forEach(i -> audit.record("INVOICE_SENT id=" + i.getId() + " amount=" + i.getAmount().toPlainString()));
+        return drafts.stream().map(this::toResponse).toList();
+    }
+
+    /**
      * Cancels an invoice sent by mistake, so it no longer counts toward what is owed, and records the
      * cancellation in the audit log. Only a sent invoice with nothing yet paid against it can be voided.
      */

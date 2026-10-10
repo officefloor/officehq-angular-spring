@@ -21,7 +21,7 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
 }
 
 // A project's invoices: lists them with their issue and due dates, shows what they add up to and how much of each the client owes right now (with any retention held back shown separately), adds a
-// new draft (starting from the default tax rate in the settings), sends a draft and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
+// new draft (starting from the default tax rate in the settings), sends a draft (or all of the job's drafts at once) and cancels (voids) an invoice sent by mistake. Each invoice's status follows from the payments recorded on it; each invoice
 // opens onto its line items and payments. Invoices with a credit put against them are flagged.
 @Component({
   selector: 'app-project-invoices',
@@ -119,6 +119,19 @@ function dueNotBeforeIssued(group: AbstractControl): ValidationErrors | null {
       } @else if (list().length === 0) {
         <p data-testid="project-invoices-empty">No invoices yet.</p>
       } @else {
+        @if (draftCount() > 0) {
+          <button
+            type="button"
+            data-testid="job-bulk-send"
+            [disabled]="bulkSending()"
+            (click)="sendAllDrafts()"
+          >
+            Send all drafts ({{ draftCount() }})
+          </button>
+        }
+        @if (bulkSendError()) {
+          <p role="alert" data-testid="job-bulk-send-error">{{ bulkSendError() }}</p>
+        }
         <table data-testid="project-invoices-table">
           <caption>Invoices for this job</caption>
           <thead>
@@ -253,6 +266,10 @@ export class ProjectInvoices {
   protected readonly creditWarning = signal<string | null>(null);
   protected readonly cancelError = signal<string | null>(null);
 
+  protected readonly draftCount = computed(() => this.list().filter((i) => i.status === 'DRAFT').length);
+  protected readonly bulkSending = signal(false);
+  protected readonly bulkSendError = signal<string | null>(null);
+
   protected readonly form = inject(NonNullableFormBuilder).group(
     {
       amount: ['', [Validators.min(0.01), Validators.pattern(/^\d+(\.\d{1,2})?$/)]],
@@ -359,6 +376,30 @@ export class ProjectInvoices {
           this.sendError.set('Could not send the invoice. Please try again.');
         }
         this.busy.set(null);
+      },
+    });
+  }
+
+  protected sendAllDrafts(): void {
+    this.bulkSending.set(true);
+    this.bulkSendError.set(null);
+    this.sendError.set(null);
+    this.creditWarning.set(null);
+    this.service.sendDrafts(this.projectId()).subscribe({
+      next: (sent) => {
+        sent.forEach((i) => this.replace(i));
+        this.bulkSending.set(false);
+        this.invoiced.emit();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.bulkSendError.set(
+          err.status === 422
+            ? 'No invoices were sent: sending them all would take the client over their credit limit.'
+            : err.status === 409
+              ? 'No invoices were sent: every draft needs a line item before it can be sent.'
+              : 'Could not send the draft invoices. Please try again.',
+        );
+        this.bulkSending.set(false);
       },
     });
   }

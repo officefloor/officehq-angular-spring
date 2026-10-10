@@ -130,6 +130,11 @@ public class InvoiceController {
         return service.releaseRetention(projectId, invoiceId);
     }
 
+    @PostMapping("/send-drafts")
+    public List<InvoiceResponse> sendDrafts(@PathVariable Long projectId) {
+        return service.sendDrafts(projectId);
+    }
+
     @PostMapping("/{invoiceId}/send")
     public InvoiceResponse send(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.send(projectId, invoiceId);
