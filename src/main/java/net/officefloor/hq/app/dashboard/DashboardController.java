@@ -47,6 +47,12 @@ public class DashboardController {
         return service.revenueReport(from, to);
     }
 
+    /** How old the debt across all clients is, in the home currency, split into age buckets. */
+    @GetMapping("/aging-report")
+    public AgingReportResponse agingReport() {
+        return service.agingReport();
+    }
+
     /** The money expected in from the instalments still to be paid on sent invoices. */
     @GetMapping("/forecast")
     public ForecastResponse forecast() {

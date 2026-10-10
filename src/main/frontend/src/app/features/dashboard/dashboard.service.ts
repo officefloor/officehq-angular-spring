@@ -137,6 +137,19 @@ export interface Forecast {
   total: number;
 }
 
+/**
+ * How old the debt across all clients is as at a date, in the home currency: what is left to pay on sent invoices
+ * split into current (not yet due, or up to 30 days overdue), 31 to 60 days and more than 60 days overdue.
+ */
+export interface AgingReport {
+  asOf: string;
+  homeCurrency: CurrencyCode;
+  current: number;
+  days30To60: number;
+  days60Plus: number;
+  total: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class DashboardService {
   private readonly http = inject(HttpClient);
@@ -157,6 +170,10 @@ export class DashboardService {
   revenueReport(range?: { from: string; to: string }): Observable<RevenueReport> {
     const params = range ? new HttpParams().set('from', range.from).set('to', range.to) : new HttpParams();
     return this.http.get<RevenueReport>('/api/dashboard/revenue-report', { params });
+  }
+
+  agingReport(): Observable<AgingReport> {
+    return this.http.get<AgingReport>('/api/dashboard/aging-report');
   }
 
   forecast(): Observable<Forecast> {

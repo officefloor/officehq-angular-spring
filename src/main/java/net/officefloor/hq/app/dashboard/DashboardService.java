@@ -107,6 +107,22 @@ public class DashboardService {
     }
 
     /**
+     * How old the debt across all clients is as at today: what is left to pay on each sent invoice not yet fully
+     * paid, converted into the home currency (see {@link #inHome}), split by how many days past its due date it is.
+     * An invoice not yet due, or without a due date, is current.
+     */
+    @Transactional(readOnly = true)
+    public AgingReportResponse agingReport() {
+        LocalDate today = LocalDate.now(clock);
+        String home = settings.homeCurrency();
+        Map<Invoice, BigDecimal> owedInHome = inHome(
+                invoices.findByStatusInWithClient(List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL)), home, today, false);
+        DashboardResponse.OverdueBuckets aged = buckets(owedInHome, today);
+        return new AgingReportResponse(today, home, aged.days0To30(), aged.days31To60(), aged.days60Plus(),
+                sum(owedInHome));
+    }
+
+    /**
      * Splits what is overdue by how many days past its due date each invoice is: up to 30 days, 31 to 60 days,
      * and more than 60 days.
      */
@@ -115,7 +131,8 @@ public class DashboardService {
         BigDecimal days31To60 = BigDecimal.ZERO;
         BigDecimal days60Plus = BigDecimal.ZERO;
         for (Map.Entry<Invoice, BigDecimal> e : overdueInHome.entrySet()) {
-            long days = ChronoUnit.DAYS.between(e.getKey().getDueDate(), today);
+            LocalDate dueDate = e.getKey().getDueDate();
+            long days = dueDate == null ? 0 : ChronoUnit.DAYS.between(dueDate, today);
             if (days > 60) {
                 days60Plus = days60Plus.add(e.getValue());
             } else if (days > 30) {

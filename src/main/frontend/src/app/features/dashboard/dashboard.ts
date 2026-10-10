@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { MoneyPipe } from '../currencies/money.pipe';
 import { DashboardService, DashboardSummary } from './dashboard.service';
+import { AgingReportPanel } from './aging-report';
 import { CashFlowForecast } from './cash-flow-forecast';
 import { RevenueReport } from './revenue-report';
 import { TaxReport } from './tax-report';
@@ -13,10 +14,10 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 // exchange rate from its own issue date, and how many of those sent
 // invoices (not disputed — a disputed invoice is kept out of the overdue chase) are past their due date, with what is overdue on them (left to pay plus accrued late fees and
 // instalment interest, in the home currency), also split by how many days overdue each invoice is. Also lists the top five clients ranked by what they still owe
-// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. A tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
+// converted into the home currency, each shown in their own currency and in the home currency, and the recurring invoices coming up with when each falls, and a forecast of the money expected in from scheduled instalments. Also shows how many tasks not yet done are past their due date. An aging report across all clients, a tax summary, a tax report by rate and a revenue report for a chosen date range can be opened from here.
 @Component({
   selector: 'app-dashboard',
-  imports: [MoneyPipe, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
+  imports: [MoneyPipe, AgingReportPanel, CashFlowForecast, RevenueReport, TaxReport, TaxSummaryReport, UpcomingRecurringInvoices],
   template: `
     <h1>Dashboard</h1>
 
@@ -98,6 +99,19 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 
     <button
       type="button"
+      data-testid="aging-report-open"
+      aria-controls="aging-report"
+      [attr.aria-expanded]="agingReportOpen()"
+      (click)="agingReportOpen.set(!agingReportOpen())"
+    >
+      {{ agingReportOpen() ? 'Hide aging report' : 'Aging report' }}
+    </button>
+    @if (agingReportOpen()) {
+      <app-aging-report id="aging-report" />
+    }
+
+    <button
+      type="button"
       data-testid="tax-summary-open"
       aria-controls="tax-summary"
       [attr.aria-expanded]="taxSummaryOpen()"
@@ -139,6 +153,7 @@ import { UpcomingRecurringInvoices } from './upcoming-recurring-invoices';
 export class Dashboard {
   protected readonly summary = signal<DashboardSummary | null>(null);
   protected readonly loadError = signal<string | null>(null);
+  protected readonly agingReportOpen = signal(false);
   protected readonly taxSummaryOpen = signal(false);
   protected readonly taxReportOpen = signal(false);
   protected readonly revenueReportOpen = signal(false);
