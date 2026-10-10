@@ -3,7 +3,13 @@ package net.officefloor.hq.app.project;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.client.Client;
 import net.officefloor.hq.app.client.ClientRepository;
@@ -83,6 +89,7 @@ public class ProjectService {
             throw codeTaken();
         }
         Project project = new Project(request.name().trim(), code, client);
+        project.setSortOrder(projects.maxSortOrder() + 1);
         if (request.status() != null) {
             project.setStatus(request.status());
         }
@@ -101,6 +108,32 @@ public class ProjectService {
             }
             throw e;
         }
+    }
+
+    /**
+     * Puts the given projects into the given order and keeps it. The ids are the list as the user sees
+     * it (possibly filtered); they are rearranged among the places they already hold, so projects not
+     * in the list keep their places.
+     */
+    @Transactional
+    public void reorder(List<Long> ids) {
+        if (new HashSet<>(ids).size() != ids.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A job is listed more than once");
+        }
+        List<Project> all = projects.findAllOrdered();
+        Map<Long, Project> byId = new HashMap<>();
+        all.forEach(p -> byId.put(p.getId(), p));
+        if (!byId.keySet().containsAll(ids)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown job");
+        }
+        Set<Long> moved = Set.copyOf(ids);
+        Iterator<Long> next = ids.iterator();
+        int position = 1;
+        for (Project slot : all) {
+            Project placed = moved.contains(slot.getId()) ? byId.get(next.next()) : slot;
+            placed.setSortOrder(position++);
+        }
+        audit.record("PROJECTS_REORDERED ids=" + ids.stream().map(String::valueOf).collect(Collectors.joining(",")));
     }
 
     private static ResponseStatusException codeTaken() {

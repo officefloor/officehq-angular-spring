@@ -57,6 +57,8 @@ public class Project {
 
     private String category;
 
+    private int sortOrder;
+
     @ManyToMany
     @JoinTable(name = "project_tag", joinColumns = @JoinColumn(name = "project_id"),
             inverseJoinColumns = @JoinColumn(name = "tag_id"))
@@ -171,6 +173,15 @@ public class Project {
 
     public void setCategory(String category) {
         this.category = category;
+    }
+
+    /** Where the job sits in the kept order of jobs; lower comes first, ties fall back to id. */
+    public int getSortOrder() {
+        return sortOrder;
+    }
+
+    public void setSortOrder(int sortOrder) {
+        this.sortOrder = sortOrder;
     }
 
     /** The tags labelling this project; add or remove to tag or untag it. */

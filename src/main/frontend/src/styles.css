@@ -29,3 +29,15 @@
   background: #fff;
   font-size: 0.85em;
 }
+
+/* Jobs can be dragged into order: the handle shows where to grab, the drop target where it lands. */
+.drag-handle {
+  cursor: grab;
+  margin-right: 0.25em;
+}
+tr.dragging {
+  opacity: 0.5;
+}
+tr.drop-target {
+  outline: 2px dashed #1a4e8a;
+}

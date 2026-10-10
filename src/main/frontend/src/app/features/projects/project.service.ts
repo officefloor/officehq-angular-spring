@@ -79,6 +79,11 @@ export class ProjectService {
     });
   }
 
+  /** Puts the jobs into the given order (ids first to last) and keeps it. */
+  reorder(ids: number[]): Observable<void> {
+    return this.http.put<void>('/api/projects/order', { ids });
+  }
+
   get(id: number): Observable<Project> {
     return this.http.get<Project>(`/api/projects/${id}`);
   }

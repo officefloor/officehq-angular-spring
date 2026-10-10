@@ -29,6 +29,12 @@ public class ProjectController {
         return service.list(includeArchived, tagId, status);
     }
 
+    @PutMapping("/order")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void reorder(@Valid @RequestBody ProjectOrderRequest request) {
+        service.reorder(request.ids());
+    }
+
     @GetMapping("/{id}")
     public ProjectResponse get(@PathVariable Long id) {
         return service.get(id);

@@ -13,7 +13,8 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
 // or finished, chosen when it is added and changeable from its row, and the list can be narrowed to
 // the projects at a chosen status. The tag and status filters combine, e.g. active projects with a
 // given tag. Each project carries a short reference code, given when it is added, that no other
-// project may share, and may carry an optional short description of the work.
+// project may share, and may carry an optional short description of the work. Jobs can be dragged
+// into the order wanted, or moved up and down with buttons, and that order is kept.
 @Component({
   selector: 'app-projects',
   imports: [ReactiveFormsModule, RouterLink],
@@ -116,6 +117,11 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
       }
     </form>
 
+    @if (reorderError()) {
+      <p role="alert" data-testid="project-reorder-error">{{ reorderError() }}</p>
+    }
+    <p class="visually-hidden" aria-live="polite" data-testid="project-reorder-status">{{ reorderStatus() }}</p>
+
     @if (deleteError()) {
       <p role="alert" data-testid="project-delete-error">{{ deleteError() }}</p>
     }
@@ -178,6 +184,7 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
         <caption>All jobs</caption>
         <thead>
           <tr>
+            <th scope="col"><span class="visually-hidden">Order</span></th>
             <th scope="col">Code</th>
             <th scope="col">Name</th>
             <th scope="col">Client</th>
@@ -186,8 +193,38 @@ import { PROJECT_STATUSES, Project, ProjectService, ProjectStatus } from './proj
           </tr>
         </thead>
         <tbody>
-          @for (p of projects(); track p.id) {
-            <tr [attr.data-testid]="'project-row-' + p.id">
+          @for (p of projects(); track p.id; let first = $first, last = $last, i = $index) {
+            <tr
+              [attr.data-testid]="'project-row-' + p.id"
+              draggable="true"
+              [class.drop-target]="dropIndex() === i && dragIndex() !== i"
+              [class.dragging]="dragIndex() === i"
+              (dragstart)="dragStart($event, i)"
+              (dragover)="dragOver($event, i)"
+              (drop)="drop($event, i)"
+              (dragend)="dragEnd()"
+            >
+              <td>
+                <span aria-hidden="true" class="drag-handle" title="Drag to reorder">&#x2630;</span>
+                <button
+                  type="button"
+                  [attr.data-testid]="'project-move-up-' + p.id"
+                  [attr.aria-label]="'Move ' + p.name + ' up'"
+                  [disabled]="first || reordering()"
+                  (click)="move(i, i - 1)"
+                >
+                  &#x2191;
+                </button>
+                <button
+                  type="button"
+                  [attr.data-testid]="'project-move-down-' + p.id"
+                  [attr.aria-label]="'Move ' + p.name + ' down'"
+                  [disabled]="last || reordering()"
+                  (click)="move(i, i + 1)"
+                >
+                  &#x2193;
+                </button>
+              </td>
               <td data-testid="project-code">{{ p.code }}</td>
               <td data-testid="project-name">
                 {{ p.name }}
@@ -269,6 +306,11 @@ export class Projects {
   protected readonly tagFilter = signal<number | null>(null);
   protected readonly statusFilter = signal<ProjectStatus | null>(null);
   protected readonly statuses = PROJECT_STATUSES;
+  protected readonly reordering = signal(false);
+  protected readonly reorderError = signal<string | null>(null);
+  protected readonly reorderStatus = signal('');
+  protected readonly dragIndex = signal<number | null>(null);
+  protected readonly dropIndex = signal<number | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -393,6 +435,64 @@ export class Projects {
       error: () => {
         this.deleteError.set(`Could not restore ${project.name}. Please try again.`);
         this.deleting.set(null);
+      },
+    });
+  }
+
+  protected dragStart(event: DragEvent, index: number): void {
+    this.dragIndex.set(index);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(index));
+    }
+  }
+
+  protected dragOver(event: DragEvent, index: number): void {
+    if (this.dragIndex() === null) {
+      return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+    this.dropIndex.set(index);
+  }
+
+  protected drop(event: DragEvent, index: number): void {
+    event.preventDefault();
+    const from = this.dragIndex();
+    this.dragEnd();
+    if (from !== null) {
+      this.move(from, index);
+    }
+  }
+
+  protected dragEnd(): void {
+    this.dragIndex.set(null);
+    this.dropIndex.set(null);
+  }
+
+  /** Moves the job at one place in the list to another and keeps the new order. */
+  protected move(from: number, to: number): void {
+    const before = this.projects();
+    if (from === to || to < 0 || to >= before.length || this.reordering()) {
+      return;
+    }
+    const after = [...before];
+    const [moved] = after.splice(from, 1);
+    after.splice(to, 0, moved);
+    this.projects.set(after);
+    this.reordering.set(true);
+    this.reorderError.set(null);
+    this.service.reorder(after.map((p) => p.id)).subscribe({
+      next: () => {
+        this.reorderStatus.set(`${moved.name} moved to position ${to + 1} of ${after.length}.`);
+        this.reordering.set(false);
+      },
+      error: () => {
+        this.projects.set(before);
+        this.reorderError.set(`Could not move ${moved.name}. Please try again.`);
+        this.reordering.set(false);
       },
     });
   }
