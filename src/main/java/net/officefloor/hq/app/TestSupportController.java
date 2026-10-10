@@ -311,6 +311,8 @@ public class TestSupportController {
             // A minimum charge is billed instead when the net total comes out under it.
             BigDecimal minimumCharge = decimal(i.get("minimumCharge"));
             int earlyPaymentDays = i.get("earlyPaymentDays") == null ? 0 : ((Number) i.get("earlyPaymentDays")).intValue();
+            // A settlement rebate offered for paying before the due date is just recorded; it does not change the amount owed.
+            BigDecimal rebatePct = decimal(i.get("rebatePct"));
             // An invoice may be billed in its own currency ("currency"); without one it is in its client's.
             // A late fee per day accrues once the invoice is overdue; it does not change the amount invoiced.
             BigDecimal lateFeePerDay = decimal(i.get("lateFeePerDay"));
@@ -323,12 +325,12 @@ public class TestSupportController {
             // Part of the invoice may already have been written off as bad debt ("writeOff"), so it is no longer owed.
             BigDecimal writeOff = decimal(i.get("writeOff"));
             jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
-                    + " early_payment_pct, early_payment_days, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + " early_payment_pct, early_payment_days, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
                     (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
                     surcharge, taxInclusive, taxExempt,
-                    earlyPaymentPct, earlyPaymentDays, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
+                    earlyPaymentPct, earlyPaymentDays, rebatePct, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
                     retentionReleased, writeOff,
                     i.get("currency") == null ? null : i.get("currency").toString());
             for (Map<String, Object> d : discounts) {

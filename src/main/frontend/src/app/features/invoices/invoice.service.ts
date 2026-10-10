@@ -195,6 +195,10 @@ export interface InvoiceDetail extends Invoice {
   earlyPaymentBy: string | null;
   /** The reduced amount to pay when settling early; null when no early-payment discount is offered. */
   earlyPaymentAmount: number | null;
+  /** The percentage of the amount given back when paid before the due date; zero when no rebate is offered. */
+  rebatePct: number;
+  /** The settlement rebate for paying before the due date; null when none is offered. */
+  rebate: number | null;
   lineItems: LineItem[];
   /** The client's tax registration number; null when they are not tax registered. */
   clientTaxNumber: string | null;
@@ -359,6 +363,11 @@ export class InvoiceService {
       earlyPaymentPct,
       earlyPaymentDays,
     });
+  }
+
+  /** Sets the settlement rebate offered on a draft invoice for paying before the due date; zero removes it. */
+  applyRebate(projectId: number, invoiceId: number, rebatePct: number): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/rebate`, { rebatePct });
   }
 
   /** Sets the late fee charged for each day a draft invoice is overdue once sent; zero charges none. */

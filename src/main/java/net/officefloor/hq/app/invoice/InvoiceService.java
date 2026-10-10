@@ -397,6 +397,15 @@ public class InvoiceService {
         return detail(invoice);
     }
 
+    /** Sets the settlement rebate offered on a draft invoice for paying before the due date. */
+    @Transactional
+    public InvoiceDetailResponse applyRebate(Long projectId, Long invoiceId, RebateRequest request) {
+        Invoice invoice = findDraft(projectId, invoiceId);
+        invoice.applyRebate(request.rebatePct());
+        invoices.flush();
+        return detail(invoice);
+    }
+
     /** Sets the late fee charged for each day a draft invoice is overdue once it has been sent. */
     @Transactional
     public InvoiceDetailResponse applyLateFee(Long projectId, Long invoiceId, LateFeeRequest request) {

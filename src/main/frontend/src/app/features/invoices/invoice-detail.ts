@@ -415,6 +415,19 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
                 }
               </tr>
             }
+            @if (inv.rebate !== null) {
+              <tr data-testid="invoice-rebate-row">
+                <th scope="row" colspan="5">
+                  Settlement rebate of
+                  <span data-testid="invoice-rebate-pct">{{ inv.rebatePct | number: '1.0-2' : 'en-US' }}</span>% when paid
+                  before <span data-testid="invoice-rebate-due-date">{{ inv.dueDate }}</span>
+                </th>
+                <td data-testid="invoice-rebate">{{ inv.rebate | money: inv.currency }}</td>
+                @if (inv.status === 'DRAFT') {
+                  <td></td>
+                }
+              </tr>
+            }
             @if (inv.lateFeePerDay > 0) {
               <tr data-testid="invoice-late-fee-row">
                 <th scope="row" colspan="5">
@@ -726,6 +739,34 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
           <button type="submit" data-testid="early-pay-form-submit" [disabled]="earlyPaySaving()">Apply early-payment discount</button>
           @if (earlyPayError()) {
             <p role="alert" data-testid="early-pay-form-error">{{ earlyPayError() }}</p>
+          }
+        </form>
+
+        <form [formGroup]="rebateForm" (ngSubmit)="applyRebate()" data-testid="rebate-form" novalidate>
+          <h2>Settlement rebate</h2>
+          <div>
+            <label for="rebate-pct">Percentage given back when paid before the due date</label>
+            <input
+              id="rebate-pct"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              max="100"
+              step="0.01"
+              formControlName="rebatePct"
+              data-testid="rebate-form-pct"
+              [attr.aria-invalid]="rebateInvalid()"
+              [attr.aria-describedby]="rebateInvalid() ? 'rebate-pct-error' : null"
+            />
+            @if (rebateInvalid()) {
+              <p id="rebate-pct-error" role="alert" data-testid="rebate-form-pct-error">
+                Enter a percentage from 0 to 100 with at most two decimal places.
+              </p>
+            }
+          </div>
+          <button type="submit" data-testid="rebate-form-submit" [disabled]="rebateSaving()">Apply settlement rebate</button>
+          @if (rebateError()) {
+            <p role="alert" data-testid="rebate-form-error">{{ rebateError() }}</p>
           }
         </form>
 
@@ -1348,6 +1389,45 @@ export class InvoiceDetailPage {
           this.earlyPaySaving.set(false);
         },
       });
+  }
+
+  protected readonly rebateSaving = signal(false);
+  protected readonly rebateError = signal<string | null>(null);
+
+  protected readonly rebateForm = this.fb.group({
+    rebatePct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
+  });
+
+  // Starts the rebate field from the invoice's current offer whenever the invoice loads.
+  private readonly syncRebate = effect(() => {
+    if (this.invoice.hasValue()) {
+      this.rebateForm.setValue({ rebatePct: String(this.invoice.value().rebatePct) });
+    }
+  });
+
+  protected rebateInvalid(): boolean {
+    const control = this.rebateForm.controls.rebatePct;
+    return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected applyRebate(): void {
+    if (this.rebateForm.invalid) {
+      this.rebateForm.markAllAsTouched();
+      return;
+    }
+    this.rebateSaving.set(true);
+    this.rebateError.set(null);
+    const { rebatePct } = this.rebateForm.getRawValue();
+    this.service.applyRebate(this.projectIdNumber(), Number(this.invoiceId()), Number(rebatePct)).subscribe({
+      next: (updated) => {
+        this.invoice.set(updated);
+        this.rebateSaving.set(false);
+      },
+      error: () => {
+        this.rebateError.set('Could not apply the settlement rebate. Please try again.');
+        this.rebateSaving.set(false);
+      },
+    });
   }
 
   protected readonly lateFeeSaving = signal(false);

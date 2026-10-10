@@ -96,6 +96,10 @@ public class Invoice {
     @Column(name = "early_payment_days", nullable = false)
     private int earlyPaymentDays;
 
+    /** The percentage of the amount given back when paid before the due date; zero when no rebate is offered. */
+    @Column(name = "rebate_pct", nullable = false, precision = 5, scale = 2)
+    private BigDecimal rebatePct = BigDecimal.ZERO.setScale(2);
+
     /** The late fee charged for each day the invoice is overdue once sent; zero when none is charged. */
     @Column(name = "late_fee_per_day", nullable = false, precision = 12, scale = 2)
     private BigDecimal lateFeePerDay = BigDecimal.ZERO.setScale(2);
@@ -386,6 +390,16 @@ public class Invoice {
         return offersEarlyPayment() ? amount.subtract(percentOf(amount, earlyPaymentPct)) : null;
     }
 
+    /** The percentage of the amount given back when paid before the due date; zero when none is offered. */
+    public BigDecimal getRebatePct() {
+        return rebatePct;
+    }
+
+    /** The settlement rebate for paying before the due date: the rebate percentage of the amount, to the cent; null when none is offered. */
+    public BigDecimal getRebate() {
+        return rebatePct.signum() > 0 ? percentOf(amount, rebatePct) : null;
+    }
+
     public InvoiceStatus getStatus() {
         return status;
     }
@@ -604,6 +618,14 @@ public class Invoice {
     public void applyEarlyPayment(BigDecimal earlyPaymentPct, int earlyPaymentDays) {
         this.earlyPaymentPct = earlyPaymentPct.setScale(2, RoundingMode.HALF_UP);
         this.earlyPaymentDays = earlyPaymentDays;
+    }
+
+    /**
+     * Sets the settlement rebate offered on this invoice: the percentage of the amount given back if it is
+     * paid before the due date. It does not change the amount invoiced.
+     */
+    public void applyRebate(BigDecimal rebatePct) {
+        this.rebatePct = rebatePct.setScale(2, RoundingMode.HALF_UP);
     }
 
     /**
