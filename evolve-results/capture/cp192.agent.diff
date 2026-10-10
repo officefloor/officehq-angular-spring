@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/tax-summary.ts b/src/main/frontend/src/app/features/dashboard/tax-summary.ts
+index 3b686ec..74665b9 100644
+--- a/src/main/frontend/src/app/features/dashboard/tax-summary.ts
++++ b/src/main/frontend/src/app/features/dashboard/tax-summary.ts
+@@ -3,8 +3,8 @@ import { rxResource } from '@angular/core/rxjs-interop';
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { DashboardService } from './dashboard.service';
+ 
+-// The total tax charged over a chosen date range: the sales tax and levy on invoices issued within it that were
+-// sent (drafts and cancelled invoices are left out), in the home currency.
++// The tax charged over a chosen date range: the main (sales) tax and the levy, each totalled separately, on invoices
++// issued within it that were sent (drafts and cancelled invoices are left out), in the home currency.
+ @Component({
+   selector: 'app-tax-summary',
+   imports: [MoneyPipe],
+@@ -43,8 +43,10 @@ import { DashboardService } from './dashboard.service';
+         <dl class="tax-summary-figures" aria-live="polite">
+           <dt>Invoices</dt>
+           <dd data-testid="tax-summary-invoices">{{ t.invoices }}</dd>
+-          <dt>Sales tax</dt>
+-          <dd data-testid="tax-summary-tax">{{ t.tax | money: t.homeCurrency }}</dd>
++          <dt>Main tax</dt>
++          <dd data-testid="tax-summary-tax">
++            <span data-testid="tax-summary-primary">{{ t.tax | money: t.homeCurrency }}</span>
++          </dd>
+           <dt>Levy</dt>
+           <dd data-testid="tax-summary-levy">{{ t.levy | money: t.homeCurrency }}</dd>
+           <dt>Total tax charged</dt>
