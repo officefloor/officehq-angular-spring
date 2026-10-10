@@ -264,13 +264,11 @@ public class TestSupportController {
             }
             BigDecimal taxPct = i.get("taxPct") == null ? BigDecimal.ZERO
                     : new BigDecimal(i.get("taxPct").toString());
-            BigDecimal levyPct = i.get("levyPct") == null ? BigDecimal.ZERO
-                    : new BigDecimal(i.get("levyPct").toString());
             // Each line is rounded to the cent first and the rounded lines are added up. A discount takes a
-            // percentage off the subtotal; sales tax and a levy each add their percentage of every taxable
-            // line after its discount, rounded per line and then added up. The amount is the discounted
-            // subtotal plus the tax plus the levy.
-            // An invoice for a tax-exempt client carries no tax or levy on any line.
+            // percentage off the subtotal; sales tax adds its percentage of every taxable line after its
+            // discount, rounded per line and then added up. The amount is the discounted subtotal plus the tax.
+            // The levy (second tax) has been scrapped, so a fixture's levyPct is ignored.
+            // An invoice for a tax-exempt client carries no tax on any line.
             long projectId = ((Number) i.get("projectId")).longValue();
             Map<String, Object> client = jdbc.queryForMap(
                     "SELECT c.tax_inclusive, c.tax_exempt, c.default_discount_pct FROM project p JOIN client c ON c.id = p.client_id WHERE p.id = ?",
@@ -338,7 +336,6 @@ public class TestSupportController {
             BigDecimal flatDiscount = subtotal.subtract(left).subtract(pctDiscount);
             BigDecimal sharedDiscount = flatDiscount.add(cappedDiscount);
             BigDecimal tax = BigDecimal.ZERO.setScale(2);
-            BigDecimal levy = BigDecimal.ZERO.setScale(2);
             for (int n = 0; n < lineItems.size(); n++) {
                 BigDecimal line = lines.get(n);
                 if (!taxExempt && !Boolean.TRUE.equals(lineItems.get(n).get("taxExempt"))) {
@@ -348,12 +345,11 @@ public class TestSupportController {
                             line.multiply(discountPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
                             .subtract(flatShare);
                     tax = tax.add(base.multiply(taxPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
-                    levy = levy.add(base.multiply(levyPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
                 }
             }
             BigDecimal discount = pctDiscount.add(flatDiscount);
             BigDecimal discounted = subtotal.subtract(discount);
-            // An invoice for a tax-inclusive client already has the taxes inside its prices, so its amount is
+            // An invoice for a tax-inclusive client already has the tax inside its prices, so its amount is
             // just the discounted subtotal.
             // An early-payment discount offered is just recorded; it does not change the amount owed.
             BigDecimal earlyPaymentPct = i.get("earlyPaymentPct") == null ? BigDecimal.ZERO
@@ -377,11 +373,11 @@ public class TestSupportController {
             // Part of the invoice may already have been written off as bad debt ("writeOff"), so it is no longer owed.
             // It may carry the client's purchase-order number ("poNumber"), and may be disputed by the client ("disputed").
             BigDecimal writeOff = decimal(i.get("writeOff"));
-            jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, levy_pct, surcharge, tax_inclusive, tax_exempt,"
+            jdbc.update("INSERT INTO invoice (id, project_id, amount, tax_pct, surcharge, tax_inclusive, tax_exempt,"
                     + " early_payment_pct, rebate_pct, status, issued_date, due_date, minimum_charge, late_fee_per_day, instalment_interest_per_day, retention_pct, retention_released, write_off_amount, currency, po_number, disputed)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, projectId,
-                    (taxInclusive ? discounted : discounted.add(tax).add(levy)).add(surcharge).max(minimumCharge), taxPct, levyPct,
+                    (taxInclusive ? discounted : discounted.add(tax)).add(surcharge).max(minimumCharge), taxPct,
                     surcharge, taxInclusive, taxExempt,
                     earlyPaymentPct, rebatePct, seedStatus(i.get("status")), issued, due, minimumCharge, lateFeePerDay, interestPerDay, retentionPct,
                     retentionReleased, writeOff,

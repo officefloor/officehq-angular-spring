@@ -83,12 +83,6 @@ public class InvoiceController {
         return service.applyTax(projectId, invoiceId, request);
     }
 
-    @PutMapping("/{invoiceId}/levy")
-    public InvoiceDetailResponse applyLevy(@PathVariable Long projectId, @PathVariable Long invoiceId,
-            @Valid @RequestBody LevyRequest request) {
-        return service.applyLevy(projectId, invoiceId, request);
-    }
-
     @PutMapping("/{invoiceId}/surcharge")
     public InvoiceDetailResponse applySurcharge(@PathVariable Long projectId, @PathVariable Long invoiceId,
             @Valid @RequestBody SurchargeRequest request) {

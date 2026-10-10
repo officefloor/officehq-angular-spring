@@ -92,11 +92,9 @@ export interface TaxSummary {
   /** How many invoices the tax came from. */
   invoices: number;
   tax: number;
-  /** The levy (second tax). */
-  levy: number;
   /** The net of the manual tax adjustments dated within the range. */
   adjustments: number;
-  /** The tax, levy and adjustments together. */
+  /** The tax and adjustments together. */
   total: number;
 }
 

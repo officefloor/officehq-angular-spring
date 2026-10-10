@@ -19,16 +19,16 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 
 // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
 // amount, their subtotal, each discount on it (a percentage or a flat amount) as its own negative line and what they take off combined before tax, the taxable amount (leaving out tax-free lines), any
-// sales tax added on it after the discount, any levy (a second tax) added on the same base, the effective tax rate
-// (the tax and levy as a percentage of the total before tax), any flat surcharge (such as a handling fee, added after tax and
-// never taxed), the total before tax, and the final total including both taxes (also shown as the total after tax).
-// For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
+// sales tax added on it after the discount, the effective tax rate
+// (the tax as a percentage of the total before tax), any flat surcharge (such as a handling fee, added after tax and
+// never taxed), the total before tax, and the final total including the tax (also shown as the total after tax).
+// For a client whose prices already include tax, the tax is instead shown as worked back out of the price; the total is unchanged.
 // When the net total comes out under the invoice's minimum charge, the minimum is billed instead and marked as applied.
 // A foreign invoice also shows its original amount in the client's currency alongside its total in the home currency, converted at the exchange rate from its issue date.
 // It also shows the client's purchase-order number, which can be put on or cleared at any time.
 // It also shows the total savings: every line discount and invoice discount added together.
 // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the client's early-payment window.
-// Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+// Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
   imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, InvoicePoNumber, Notes],
@@ -313,15 +313,6 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               }
             </tr>
             <tr>
-              <th scope="row" colspan="5" data-testid="invoice-tax-levy-label">
-                Levy (<span data-testid="invoice-tax-levy-pct">{{ inv.levyPct | number: '1.0-2' : 'en-US' }}</span>%)@if (inv.taxInclusive) { included}
-              </th>
-              <td data-testid="invoice-tax-levy">{{ inv.levy | money: inv.currency }}</td>
-              @if (inv.status === 'DRAFT') {
-                <td></td>
-              }
-            </tr>
-            <tr>
               <th scope="row" colspan="5">Surcharge</th>
               <td data-testid="invoice-surcharge">{{ inv.surcharge | money: inv.currency }}</td>
               @if (inv.status === 'DRAFT') {
@@ -329,7 +320,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
               }
             </tr>
             <tr>
-              <th scope="row" colspan="5">Effective tax rate (tax and levy as a share of the total before tax)</th>
+              <th scope="row" colspan="5">Effective tax rate (tax as a share of the total before tax)</th>
               <td data-testid="invoice-effective-tax-rate">{{ inv.effectiveTaxPct | number: '1.2-2' : 'en-US' }}%</td>
               @if (inv.status === 'DRAFT') {
                 <td></td>
@@ -622,34 +613,6 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
           <button type="submit" data-testid="tax-form-submit" [disabled]="taxSaving()">Apply tax</button>
           @if (taxError()) {
             <p role="alert" data-testid="tax-form-error">{{ taxError() }}</p>
-          }
-        </form>
-
-        <form [formGroup]="levyForm" (ngSubmit)="applyLevy()" data-testid="levy-form" novalidate>
-          <h2>Levy</h2>
-          <div>
-            <label for="levy-pct">Levy percentage added on top of the sales tax</label>
-            <input
-              id="levy-pct"
-              type="number"
-              inputmode="decimal"
-              min="0"
-              max="100"
-              step="0.01"
-              formControlName="levyPct"
-              data-testid="levy-form-pct"
-              [attr.aria-invalid]="levyInvalid()"
-              [attr.aria-describedby]="levyInvalid() ? 'levy-pct-error' : null"
-            />
-            @if (levyInvalid()) {
-              <p id="levy-pct-error" role="alert" data-testid="levy-form-pct-error">
-                Enter a percentage from 0 to 100 with at most two decimal places.
-              </p>
-            }
-          </div>
-          <button type="submit" data-testid="levy-form-submit" [disabled]="levySaving()">Apply levy</button>
-          @if (levyError()) {
-            <p role="alert" data-testid="levy-form-error">{{ levyError() }}</p>
           }
         </form>
 
@@ -1227,45 +1190,6 @@ export class InvoiceDetailPage {
       error: () => {
         this.taxError.set('Could not apply the tax. Please try again.');
         this.taxSaving.set(false);
-      },
-    });
-  }
-
-  protected readonly levySaving = signal(false);
-  protected readonly levyError = signal<string | null>(null);
-
-  protected readonly levyForm = this.fb.group({
-    levyPct: ['', [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(TWO_DECIMALS)]],
-  });
-
-  // Starts the levy field from the invoice's current rate whenever the invoice loads.
-  private readonly syncLevy = effect(() => {
-    if (this.invoice.hasValue()) {
-      this.levyForm.setValue({ levyPct: String(this.invoice.value().levyPct) });
-    }
-  });
-
-  protected levyInvalid(): boolean {
-    const control = this.levyForm.controls.levyPct;
-    return control.invalid && (control.touched || control.dirty);
-  }
-
-  protected applyLevy(): void {
-    if (this.levyForm.invalid) {
-      this.levyForm.markAllAsTouched();
-      return;
-    }
-    this.levySaving.set(true);
-    this.levyError.set(null);
-    const levyPct = Number(this.levyForm.getRawValue().levyPct);
-    this.service.applyLevy(this.projectIdNumber(), Number(this.invoiceId()), levyPct).subscribe({
-      next: (updated) => {
-        this.invoice.set(updated);
-        this.levySaving.set(false);
-      },
-      error: () => {
-        this.levyError.set('Could not apply the levy. Please try again.');
-        this.levySaving.set(false);
       },
     });
   }

@@ -16,8 +16,7 @@ import net.officefloor.hq.app.currency.MoneyRule;
  * to pay, the same invoices grouped by job with what is owed on each job, and the total still owed
  * (what is left to pay across their sent invoices; drafts and void ones are not owed). For the printable
  * summary it also gives the total invoiced on those owed invoices and how much of that has been paid,
- * so the total still owed is what was invoiced less what was paid. It also shows the tax (sales tax and
- * levy) on each job and across the whole statement, again leaving out drafts and void invoices. All of it
+ * so the total still owed is what was invoiced less what was paid. It also shows the sales tax on each job and across the whole statement, again leaving out drafts and void invoices. All of it
  * is in the client's currency, with the total still owed also converted into the home currency at the foot (each
  * invoice at the rate on its issue date; null when a rate is missing). Finally it gives the running account: every invoice, payment, credit note, deposit and
  * refund in date order, each with the balance owed once it is counted, and the total of the credit notes on it.
@@ -94,7 +93,7 @@ public record ClientStatementResponse(Long clientId, String clientName, String c
     public record Job(Long projectId, String projectName, List<Line> invoices, BigDecimal subtotal, BigDecimal tax) {
     }
 
-    /** One invoice on a statement; its tax is the sales tax and levy on it. */
+    /** One invoice on a statement; its tax is the sales tax on it. */
     public record Line(Long id, Long projectId, String projectName, String currency, BigDecimal amount, InvoiceStatus status,
             LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue, BigDecimal tax) {
 
@@ -102,7 +101,7 @@ public record ClientStatementResponse(Long clientId, String clientName, String c
         static Line from(Invoice invoice, BigDecimal paid, BigDecimal credited, MoneyRule rule) {
             return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
                     invoice.getCurrency(), rule.round(invoice.getAmount()), invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
-                    rule.round(invoice.amountDue(paid, credited)), rule.round(invoice.getTax()).add(rule.round(invoice.getLevy())));
+                    rule.round(invoice.amountDue(paid, credited)), rule.round(invoice.getTax()));
         }
     }
 }

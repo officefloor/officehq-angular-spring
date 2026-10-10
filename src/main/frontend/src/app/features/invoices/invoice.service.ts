@@ -54,7 +54,7 @@ export interface InvoicePage {
 /** An invoice as listed on a client's statement: its project's name and how much is left to pay. */
 export interface StatementInvoice extends Omit<ProjectInvoice, 'retention'> {
   projectName: string;
-  /** The sales tax and levy on the invoice. */
+  /** The sales tax on the invoice. */
   tax: number;
 }
 
@@ -210,12 +210,11 @@ export interface InvoiceDiscount {
 /**
  * A single invoice with the line items it is built from: their subtotal, each of its discounts (a
  * percentage or flat amount) and what they take off together, and the sales tax percentage, the taxable base it is charged on (the taxable
- * lines after the discount, leaving out tax-free ones) and what it adds, and the levy (a second tax)
- * percentage and what it adds on that same base, and any flat surcharge (such as a handling fee) added
- * after tax; its amount is the subtotal less the discount plus the tax plus the levy plus the surcharge.
+ * lines after the discount, leaving out tax-free ones) and what it adds, and any flat surcharge (such as a
+ * handling fee) added after tax; its amount is the subtotal less the discount plus the tax plus the surcharge.
  */
 export interface InvoiceDetail extends Invoice {
-  /** The total before tax: the amount less the sales tax and levy. */
+  /** The total before tax: the amount less the sales tax. */
   totalExTax: number;
   subtotal: number;
   /** The percentage discounts added up; zero when there are none. */
@@ -229,15 +228,13 @@ export interface InvoiceDetail extends Invoice {
   taxPct: number;
   taxableBase: number;
   tax: number;
-  levyPct: number;
-  levy: number;
   /** A flat amount (such as a handling fee) added to the total after tax; zero when there is none. */
   surcharge: number;
-  /** Whether the prices already include the tax and levy, so they are worked back out rather than added on. */
+  /** Whether the prices already include the tax, so it is worked back out rather than added on. */
   taxInclusive: boolean;
-  /** Whether the client is tax exempt, so the invoice carries no tax or levy whatever its lines say. */
+  /** Whether the client is tax exempt, so the invoice carries no tax whatever its lines say. */
   taxExempt: boolean;
-  /** The overall tax rate that ended up on the invoice: the tax and levy as a percentage of the total before tax. */
+  /** The overall tax rate that ended up on the invoice: the tax as a percentage of the total before tax. */
   effectiveTaxPct: number;
   /** The percentage taken off when paid early; zero when no early-payment discount is offered. */
   earlyPaymentPct: number;
@@ -412,11 +409,6 @@ export class InvoiceService {
   /** Sets the sales tax percentage added to a draft invoice after its discount; zero removes the tax. */
   applyTax(projectId: number, invoiceId: number, taxPct: number): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/tax`, { taxPct });
-  }
-
-  /** Sets the levy (second tax) percentage added to a draft invoice on top of its sales tax; zero removes the levy. */
-  applyLevy(projectId: number, invoiceId: number, levyPct: number): Observable<InvoiceDetail> {
-    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/levy`, { levyPct });
   }
 
   /** Sets the flat surcharge (such as a handling fee) added to a draft invoice; zero removes it. */

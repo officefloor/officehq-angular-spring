@@ -487,15 +487,6 @@ public class InvoiceService {
         return detail(invoice);
     }
 
-    /** Sets the levy (second tax) percentage on a draft invoice and reworks the invoice amount to match. */
-    @Transactional
-    public InvoiceDetailResponse applyLevy(Long projectId, Long invoiceId, LevyRequest request) {
-        Invoice invoice = findDraft(projectId, invoiceId);
-        invoice.applyLevy(request.levyPct());
-        invoices.flush();
-        return detail(invoice);
-    }
-
     /** Sets the flat surcharge on a draft invoice and reworks the invoice amount to match. */
     @Transactional
     public InvoiceDetailResponse applySurcharge(Long projectId, Long invoiceId, SurchargeRequest request) {

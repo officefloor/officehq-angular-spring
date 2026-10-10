@@ -552,7 +552,7 @@ public class DashboardService {
     }
 
     /**
-     * The tax charged over a period, in the home currency: the sales tax and levy on every invoice issued on or
+     * The tax charged over a period, in the home currency: the sales tax on every invoice issued on or
      * between the given dates that was actually charged (sent, whether paid or not, or later written off; drafts
      * and cancelled invoices are left out). A foreign invoice converts at the exchange rate from its issue date;
      * one whose currency has no rate by then cannot be converted and is left out. The manual tax adjustments dated
@@ -568,26 +568,21 @@ public class DashboardService {
                 InvoiceStatus.WRITTEN_OFF);
         String home = settings.homeCurrency();
         BigDecimal tax = BigDecimal.ZERO;
-        BigDecimal levy = BigDecimal.ZERO;
         long count = 0;
         for (Invoice invoice : invoices.findByStatusInAndIssuedDateBetween(charged, from, to)) {
             String currency = invoice.getProject().getClient().getCurrency();
             if (currency.equals(home)) {
                 tax = tax.add(invoice.getTax());
-                levy = levy.add(invoice.getLevy());
                 count++;
                 continue;
             }
             var inHomeTax = fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getTax());
-            var inHomeLevy = fxRates.toHome(currency, invoice.getIssuedDate(), invoice.getLevy());
-            if (inHomeTax.isPresent() && inHomeLevy.isPresent()) {
+            if (inHomeTax.isPresent()) {
                 tax = tax.add(inHomeTax.get());
-                levy = levy.add(inHomeLevy.get());
                 count++;
             }
         }
         tax = tax.setScale(2, RoundingMode.HALF_UP);
-        levy = levy.setScale(2, RoundingMode.HALF_UP);
         BigDecimal adjustments = BigDecimal.ZERO.setScale(2);
         for (TaxAdjustment adjustment : taxAdjustments.findByAdjustmentDateBetween(from, to)) {
             if (adjustment.getCurrency().equals(home)) {
@@ -599,7 +594,7 @@ public class DashboardService {
             }
         }
         adjustments = adjustments.setScale(2, RoundingMode.HALF_UP);
-        return new TaxSummaryResponse(from, to, home, count, tax, levy, adjustments, tax.add(levy).add(adjustments));
+        return new TaxSummaryResponse(from, to, home, count, tax, adjustments, tax.add(adjustments));
     }
 
     /**

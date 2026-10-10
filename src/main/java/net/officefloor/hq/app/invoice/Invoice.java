@@ -29,20 +29,20 @@ import net.officefloor.hq.app.project.Project;
  * their sum before tax, each either a percentage or a flat amount (the percentages each taking their share
  * of the subtotal first (a percentage capped at a maximum never taking off more than that), then the flat amounts, shared across the lines in proportion to what each
  * charges; together never more than the subtotal), then add a percentage sales tax on what is left of the taxable lines only
- * (tax-free lines are never taxed), and optionally a second tax (a levy) worked out on the same taxable base;
- * its stored amount is always that subtotal less the discount plus the tax plus the levy, plus any flat
+ * (tax-free lines are never taxed);
+ * its stored amount is always that subtotal less the discount plus the tax, plus any flat
  * surcharge (such as a handling fee), which is added on last and is never taxed.
  * <p>
  * Every figure is worked out line by line: each line is rounded to the cent first and the rounded lines
- * are then added up, and the tax and levy are likewise worked out and rounded on each taxable line before
+ * are then added up, and the tax is likewise worked out and rounded on each taxable line before
  * being added up, so the totals are sums of rounded lines rather than a rounded sum.
  * <p>
- * A tax-inclusive invoice (for a client whose prices already include tax) instead works the tax and
- * levy back out of the taxable lines after the discount: they are inside the price, so its amount is
+ * A tax-inclusive invoice (for a client whose prices already include tax) instead works the tax
+ * back out of the taxable lines after the discount: they are inside the price, so its amount is
  * just the subtotal less the discount (plus any surcharge), and the taxable base is what is left once they are taken out.
  * <p>
- * A tax-exempt invoice (for a tax-exempt client) has no taxable lines at all: it carries no tax or levy
- * whatever its lines or rates say, so its amount is the subtotal less the discount (plus any surcharge).
+ * A tax-exempt invoice (for a tax-exempt client) has no taxable lines at all: it carries no tax
+ * whatever its lines or rate say, so its amount is the subtotal less the discount (plus any surcharge).
  * <p>
  * An invoice can carry a minimum charge: when its net total (everything above, worked out as usual) comes
  * out under it, the minimum is billed instead, and the invoice records that the minimum was applied.
@@ -69,9 +69,6 @@ public class Invoice {
     @Column(name = "tax_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal taxPct = BigDecimal.ZERO.setScale(2);
 
-    @Column(name = "levy_pct", nullable = false, precision = 5, scale = 2)
-    private BigDecimal levyPct = BigDecimal.ZERO.setScale(2);
-
     /** A flat amount (such as a handling fee) added to the total after tax; zero when there is none. */
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal surcharge = BigDecimal.ZERO.setScale(2);
@@ -80,11 +77,11 @@ public class Invoice {
     @Column(name = "minimum_charge", nullable = false, precision = 12, scale = 2)
     private BigDecimal minimumCharge = BigDecimal.ZERO.setScale(2);
 
-    /** Whether the prices already include the tax and levy, so they are backed out rather than added on. */
+    /** Whether the prices already include the tax, so it is backed out rather than added on. */
     @Column(name = "tax_inclusive", nullable = false)
     private boolean taxInclusive;
 
-    /** Whether the invoice is for a tax-exempt client, so it carries no tax or levy whatever its lines say. */
+    /** Whether the invoice is for a tax-exempt client, so it carries no tax whatever its lines say. */
     @Column(name = "tax_exempt", nullable = false)
     private boolean taxExempt;
 
@@ -175,16 +172,16 @@ public class Invoice {
     }
 
     /**
-     * The total before tax: the amount owed less the sales tax and levy, whether they were added on or
-     * are included in the prices.
+     * The total before tax: the amount owed less the sales tax, whether it was added on or is included
+     * in the prices.
      */
     public BigDecimal getTotalExTax() {
-        return amount.subtract(getTax()).subtract(getLevy());
+        return amount.subtract(getTax());
     }
 
     /**
-     * The overall tax rate that actually ended up on the invoice: the sales tax and levy together as a
-     * percentage of the total before tax, to two decimal places. It is below the headline rates when some
+     * The overall tax rate that actually ended up on the invoice: the sales tax as a percentage of the
+     * total before tax, to two decimal places. It is below the headline rates when some
      * lines are tax-free, and zero when there is nothing before tax to charge it on.
      */
     public BigDecimal getEffectiveTaxPct() {
@@ -192,7 +189,7 @@ public class Invoice {
         if (totalExTax.signum() == 0) {
             return BigDecimal.ZERO.setScale(2);
         }
-        return getTax().add(getLevy()).multiply(BigDecimal.valueOf(100)).divide(totalExTax, 2, RoundingMode.HALF_UP);
+        return getTax().multiply(BigDecimal.valueOf(100)).divide(totalExTax, 2, RoundingMode.HALF_UP);
     }
 
     /** The discounts on this invoice, in the order they were added. */
@@ -281,7 +278,7 @@ public class Invoice {
         return taxPct;
     }
 
-    /** Whether the prices already include the tax and levy, so they are worked back out rather than added on. */
+    /** Whether the prices already include the tax, so it is worked back out rather than added on. */
     public boolean isTaxInclusive() {
         return taxInclusive;
     }
@@ -294,11 +291,11 @@ public class Invoice {
     /**
      * What the sales tax is charged on: the taxable lines (leaving out tax-free ones) less the discount
      * taken off them, to the cent. On a tax-inclusive invoice that is what is left of them once the tax
-     * and levy inside them are taken out.
+     * inside them is taken out.
      */
     public BigDecimal getTaxableBase() {
         BigDecimal gross = getDiscountedTaxable();
-        return taxInclusive ? gross.subtract(getTax()).subtract(getLevy()) : gross;
+        return taxInclusive ? gross.subtract(getTax()) : gross;
     }
 
     /**
@@ -307,19 +304,6 @@ public class Invoice {
      */
     public BigDecimal getTax() {
         return sumOverTaxableLines(this::taxOn);
-    }
-
-    /** The levy (second tax) percentage added on top of the sales tax; zero when there is no levy. */
-    public BigDecimal getLevyPct() {
-        return levyPct;
-    }
-
-    /**
-     * How much levy is added on the taxable base (or is inside it, when tax-inclusive): the levy on each
-     * taxable line rounded to the cent, added up.
-     */
-    public BigDecimal getLevy() {
-        return sumOverTaxableLines(this::levyOn);
     }
 
     /** The flat amount (such as a handling fee) added to the total after tax; zero when there is none. */
@@ -333,12 +317,12 @@ public class Invoice {
     }
 
     /**
-     * What the invoice comes to before any minimum charge: the subtotal less the discount plus the tax and
-     * levy (unless they are inside the prices), plus the surcharge.
+     * What the invoice comes to before any minimum charge: the subtotal less the discount plus the tax
+     * (unless it is inside the prices), plus the surcharge.
      */
     public BigDecimal getNetTotal() {
         BigDecimal discounted = getSubtotal().subtract(getDiscount());
-        return (taxInclusive ? discounted : discounted.add(getTax()).add(getLevy())).add(surcharge);
+        return (taxInclusive ? discounted : discounted.add(getTax())).add(surcharge);
     }
 
     /** Whether the net total came out under the minimum charge, so the minimum is billed instead. */
@@ -363,10 +347,10 @@ public class Invoice {
 
     /**
      * The part of a tax-inclusive price that is the given percentage, worked back out of it: the price
-     * divided in proportion to the sales tax and levy rates it includes (e.g. 20% tax in 120 is 20).
+     * divided in proportion to the sales tax rate it includes (e.g. 20% tax in 120 is 20).
      */
     private BigDecimal includedIn(BigDecimal price, BigDecimal pct) {
-        BigDecimal grossPct = BigDecimal.valueOf(100).add(taxPct).add(levyPct);
+        BigDecimal grossPct = BigDecimal.valueOf(100).add(taxPct);
         return price.multiply(pct).divide(grossPct, 2, RoundingMode.HALF_UP);
     }
 
@@ -572,12 +556,6 @@ public class Invoice {
         recalculateAmount();
     }
 
-    /** Sets the levy (second tax) percentage added to this invoice and reworks its amount to match. */
-    public void applyLevy(BigDecimal levyPct) {
-        this.levyPct = levyPct.setScale(2, RoundingMode.HALF_UP);
-        recalculateAmount();
-    }
-
     /** Sets the flat surcharge (such as a handling fee) added to this invoice and reworks its amount to match. */
     public void applySurcharge(BigDecimal surcharge) {
         this.surcharge = surcharge.setScale(2, RoundingMode.HALF_UP);
@@ -704,11 +682,6 @@ public class Invoice {
     /** The sales tax on one discounted taxable line (or inside it, when tax-inclusive), to the cent. */
     private BigDecimal taxOn(BigDecimal line) {
         return taxInclusive ? includedIn(line, taxPct) : percentOf(line, taxPct);
-    }
-
-    /** The levy on one discounted taxable line (or inside it, when tax-inclusive), to the cent. */
-    private BigDecimal levyOn(BigDecimal line) {
-        return taxInclusive ? includedIn(line, levyPct) : percentOf(line, levyPct);
     }
 
     private static BigDecimal percentOf(BigDecimal base, BigDecimal pct) {
