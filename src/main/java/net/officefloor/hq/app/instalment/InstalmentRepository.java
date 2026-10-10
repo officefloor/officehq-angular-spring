@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.instalment;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -10,6 +11,9 @@ public interface InstalmentRepository extends JpaRepository<Instalment, Long> {
 
     /** An invoice's instalments, earliest due first. */
     List<Instalment> findByInvoiceIdOrderByDueDateAscIdAsc(Long invoiceId);
+
+    /** The instalments of the given invoices. */
+    List<Instalment> findByInvoiceIdIn(Collection<Long> invoiceIds);
 
     /** The earliest-due instalment of an invoice that is still to be paid, if any. */
     Optional<Instalment> findFirstByInvoiceIdAndPaidFalseOrderByDueDateAscIdAsc(Long invoiceId);

@@ -18,6 +18,8 @@ import net.officefloor.hq.app.creditnote.CreditNoteRepository;
 import net.officefloor.hq.app.deposit.Deposit;
 import net.officefloor.hq.app.deposit.DepositRepository;
 import net.officefloor.hq.app.fx.FxRateService;
+import net.officefloor.hq.app.instalment.Instalment;
+import net.officefloor.hq.app.instalment.InstalmentRepository;
 import net.officefloor.hq.app.payment.Payment;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.Project;
@@ -44,12 +46,14 @@ public class InvoiceService {
     private final RefundRepository refunds;
     private final SettingsService settings;
     private final FxRateService fxRates;
+    private final InstalmentRepository instalments;
     private final Audit audit;
     private final Clock clock;
 
     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
             CreditNoteRepository creditNotes, ClientRepository clients, DepositRepository deposits,
-            RefundRepository refunds, SettingsService settings, FxRateService fxRates, Audit audit, Clock clock) {
+            RefundRepository refunds, SettingsService settings, FxRateService fxRates, InstalmentRepository instalments, Audit audit,
+            Clock clock) {
         this.invoices = invoices;
         this.projects = projects;
         this.clients = clients;
@@ -59,6 +63,7 @@ public class InvoiceService {
         this.creditNotes = creditNotes;
         this.settings = settings;
         this.fxRates = fxRates;
+        this.instalments = instalments;
         this.audit = audit;
         this.clock = clock;
     }
@@ -71,10 +76,31 @@ public class InvoiceService {
         List<Invoice> found = invoices.findByProjectIdOrderById(projectId);
         Map<Long, BigDecimal> paid = paidByInvoice(found);
         Map<Long, BigDecimal> credited = creditedByInvoice(found);
+        Map<Long, List<Instalment>> schedules = instalments
+                .findByInvoiceIdIn(found.stream().map(Invoice::getId).toList()).stream()
+                .collect(Collectors.groupingBy(Instalment::getInvoiceId));
+        LocalDate today = LocalDate.now(clock);
         return found.stream()
-                .map(i -> InvoiceResponse.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO),
-                        credited.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                .map(i -> {
+                    BigDecimal invoicePaid = paid.getOrDefault(i.getId(), BigDecimal.ZERO);
+                    BigDecimal invoiceCredited = credited.getOrDefault(i.getId(), BigDecimal.ZERO);
+                    ScheduleStatus schedule = scheduleStatus(i.statusFor(invoicePaid, invoiceCredited),
+                            schedules.getOrDefault(i.getId(), List.of()), today);
+                    return InvoiceResponse.from(i, invoicePaid, invoiceCredited, schedule);
+                })
                 .toList();
+    }
+
+    /**
+     * How an invoice is keeping to its instalment plan: only an owing invoice with instalments has one. It is BEHIND
+     * once an unpaid instalment is past its due date, otherwise ON_TRACK.
+     */
+    private static ScheduleStatus scheduleStatus(InvoiceStatus status, List<Instalment> schedule, LocalDate today) {
+        if (!status.isOwing() || schedule.isEmpty()) {
+            return null;
+        }
+        boolean overdue = schedule.stream().anyMatch(n -> !n.isPaid() && n.getDueDate().isBefore(today));
+        return overdue ? ScheduleStatus.BEHIND : ScheduleStatus.ON_TRACK;
     }
 
     /**

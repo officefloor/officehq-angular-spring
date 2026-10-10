@@ -28,7 +28,12 @@ export interface ProjectInvoice extends Invoice {
   retention: number;
   /** Whether a credit note has been put against the invoice. */
   creditApplied: boolean;
+  /** How an owing invoice on an instalment plan is keeping to its schedule; null when it has none. */
+  schedule: ScheduleStatus | null;
 }
+
+/** ON_TRACK while every instalment fallen due is paid, BEHIND once an unpaid one is overdue. */
+export type ScheduleStatus = 'ON_TRACK' | 'BEHIND';
 
 /** An invoice as listed across all projects, with the name of the project it is for. */
 export interface InvoiceSummary extends Invoice {
