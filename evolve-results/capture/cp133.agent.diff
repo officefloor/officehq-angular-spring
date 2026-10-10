@@ -1,0 +1,588 @@
+diff --git a/src/main/frontend/src/app/features/instalments/instalment.service.ts b/src/main/frontend/src/app/features/instalments/instalment.service.ts
+new file mode 100644
+index 0000000..021b052
+--- /dev/null
++++ b/src/main/frontend/src/app/features/instalments/instalment.service.ts
+@@ -0,0 +1,35 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++/** A scheduled part of an invoice: an amount due on a date. */
++export interface Instalment {
++  id: number;
++  invoiceId: number;
++  amount: number;
++  /** ISO date (yyyy-MM-dd) the instalment is due. */
++  date: string;
++}
++
++export interface NewInstalment {
++  amount: number;
++  date: string;
++}
++
++@Injectable({ providedIn: 'root' })
++export class InstalmentService {
++  private readonly http = inject(HttpClient);
++
++  /** An invoice's instalments, earliest due first. */
++  list(projectId: number, invoiceId: number): Observable<Instalment[]> {
++    return this.http.get<Instalment[]>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments`);
++  }
++
++  schedule(projectId: number, invoiceId: number, instalment: NewInstalment): Observable<Instalment> {
++    return this.http.post<Instalment>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments`, instalment);
++  }
++
++  remove(projectId: number, invoiceId: number, instalmentId: number): Observable<void> {
++    return this.http.delete<void>(`/api/projects/${projectId}/invoices/${invoiceId}/instalments/${instalmentId}`);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/instalments/invoice-instalments.ts b/src/main/frontend/src/app/features/instalments/invoice-instalments.ts
+new file mode 100644
+index 0000000..2f38fa4
+--- /dev/null
++++ b/src/main/frontend/src/app/features/instalments/invoice-instalments.ts
+@@ -0,0 +1,199 @@
++import { MoneyPipe } from '../currencies/money.pipe';
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, computed, inject, input, signal } from '@angular/core';
++import { rxResource } from '@angular/core/rxjs-interop';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { Instalment, InstalmentService } from './instalment.service';
++import { CurrencyCode } from '../clients/client.service';
++
++const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
++
++// The scheduled instalments an invoice is split into, each an amount due on a date, and a form to
++// schedule another while the invoice is still to be paid.
++@Component({
++  selector: 'app-invoice-instalments',
++  imports: [MoneyPipe, ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="invoice-instalments-heading" data-testid="invoice-instalments">
++      <h2 id="invoice-instalments-heading">Instalment plan</h2>
++      @if (instalments.error()) {
++        <p role="alert" data-testid="invoice-instalments-error">Could not load the instalments.</p>
++      } @else if (instalments.hasValue()) {
++        @if (instalments.value().length === 0) {
++          <p data-testid="invoice-instalments-empty">This invoice is not split into instalments.</p>
++        } @else {
++          <table data-testid="invoice-instalments-table">
++            <caption>When each part of this invoice is due</caption>
++            <thead>
++              <tr>
++                <th scope="col">Due</th>
++                <th scope="col">Amount</th>
++                @if (canEdit()) {
++                  <th scope="col"><span class="visually-hidden">Actions</span></th>
++                }
++              </tr>
++            </thead>
++            <tbody>
++              @for (n of instalments.value(); track n.id) {
++                <tr [attr.data-testid]="'instalment-row-' + n.id">
++                  <td data-testid="instalment-date">{{ n.date }}</td>
++                  <td data-testid="instalment-amount">{{ n.amount | money: currency() }}</td>
++                  @if (canEdit()) {
++                    <td>
++                      <button
++                        type="button"
++                        [attr.data-testid]="'instalment-remove-' + n.id"
++                        [attr.aria-label]="'Remove instalment due ' + n.date"
++                        [disabled]="removing() === n.id"
++                        (click)="remove(n)"
++                      >
++                        Remove
++                      </button>
++                    </td>
++                  }
++                </tr>
++              }
++            </tbody>
++            <tfoot>
++              <tr>
++                <th scope="row">Scheduled</th>
++                <td data-testid="invoice-instalments-total">{{ scheduledCents() / 100 | money: currency() }}</td>
++              </tr>
++              <tr>
++                <th scope="row">Unscheduled</th>
++                <td data-testid="invoice-instalments-unscheduled">
++                  {{ (invoiceCents() - scheduledCents()) / 100 | money: currency() }}
++                </td>
++              </tr>
++            </tfoot>
++          </table>
++        }
++      }
++      @if (removeError()) {
++        <p role="alert" data-testid="instalment-remove-error">{{ removeError() }}</p>
++      }
++
++      @if (canEdit()) {
++        <form [formGroup]="form" (ngSubmit)="submit()" data-testid="instalment-form" novalidate>
++          <h3>Schedule an instalment</h3>
++          <div>
++            <label for="instalment-amount">Amount</label>
++            <input
++              id="instalment-amount"
++              type="number"
++              inputmode="decimal"
++              min="0.01"
++              step="0.01"
++              formControlName="amount"
++              data-testid="instalment-form-amount"
++              [attr.aria-invalid]="invalid('amount')"
++              [attr.aria-describedby]="invalid('amount') ? 'instalment-amount-error' : null"
++            />
++            @if (invalid('amount')) {
++              <p id="instalment-amount-error" role="alert" data-testid="instalment-form-amount-error">
++                Enter an amount greater than zero with at most two decimal places.
++              </p>
++            }
++          </div>
++          <div>
++            <label for="instalment-date">Due date</label>
++            <input
++              id="instalment-date"
++              type="date"
++              formControlName="date"
++              data-testid="instalment-form-date"
++              [attr.aria-invalid]="invalid('date')"
++              [attr.aria-describedby]="invalid('date') ? 'instalment-date-error' : null"
++            />
++            @if (invalid('date')) {
++              <p id="instalment-date-error" role="alert" data-testid="instalment-form-date-error">Enter the date it is due.</p>
++            }
++          </div>
++          <button type="submit" data-testid="instalment-form-submit" [disabled]="saving()">Schedule instalment</button>
++          @if (saveError()) {
++            <p role="alert" data-testid="instalment-form-error">{{ saveError() }}</p>
++          }
++        </form>
++      }
++    </section>
++  `,
++})
++export class InvoiceInstalments {
++  private readonly service = inject(InstalmentService);
++
++  readonly projectId = input.required<number>();
++  readonly invoiceId = input.required<number>();
++  /** The invoice amount the instalments may add up to at most. */
++  readonly invoiceAmount = input.required<number>();
++  /** The currency of the client the job is for; the money shown is in it. */
++  readonly currency = input.required<CurrencyCode>();
++  /** Instalments can be scheduled or removed while the invoice is still to be paid. */
++  readonly canEdit = input.required<boolean>();
++
++  protected readonly instalments = rxResource({
++    params: () => ({ projectId: this.projectId(), invoiceId: this.invoiceId() }),
++    stream: ({ params }) => this.service.list(params.projectId, params.invoiceId),
++  });
++
++  // Work in whole cents so the totals are exact.
++  protected readonly scheduledCents = computed(() =>
++    (this.instalments.hasValue() ? this.instalments.value() : []).reduce((sum, n) => sum + Math.round(n.amount * 100), 0),
++  );
++  protected readonly invoiceCents = computed(() => Math.round(this.invoiceAmount() * 100));
++
++  protected readonly saving = signal(false);
++  protected readonly saveError = signal<string | null>(null);
++  protected readonly removing = signal<number | null>(null);
++  protected readonly removeError = signal<string | null>(null);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
++    date: ['', Validators.required],
++  });
++
++  protected invalid(name: 'amount' | 'date'): boolean {
++    const control = this.form.controls[name];
++    return control.invalid && (control.touched || control.dirty);
++  }
++
++  protected submit(): void {
++    if (this.form.invalid) {
++      this.form.markAllAsTouched();
++      return;
++    }
++    this.saving.set(true);
++    this.saveError.set(null);
++    const { amount, date } = this.form.getRawValue();
++    this.service.schedule(this.projectId(), this.invoiceId(), { amount: Number(amount), date }).subscribe({
++      next: () => {
++        // Reload so the schedule stays in due-date order.
++        this.instalments.reload();
++        this.form.reset();
++        this.saving.set(false);
++      },
++      error: (err: HttpErrorResponse) => {
++        this.saveError.set(
++          err.status === 409
++            ? 'The instalments would add up to more than the invoice.'
++            : 'Could not schedule the instalment. Please try again.',
++        );
++        this.saving.set(false);
++      },
++    });
++  }
++
++  protected remove(instalment: Instalment): void {
++    this.removing.set(instalment.id);
++    this.removeError.set(null);
++    this.service.remove(this.projectId(), this.invoiceId(), instalment.id).subscribe({
++      next: () => {
++        this.instalments.update((list) => (list ?? []).filter((n) => n.id !== instalment.id));
++        this.removing.set(null);
++      },
++      error: () => {
++        this.removeError.set('Could not remove the instalment. Please try again.');
++        this.removing.set(null);
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index b92dfbe..9c88889 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -9,6 +9,7 @@ import { Notes } from '../notes/notes';
+ import { InvoicePayments } from '../payments/invoice-payments';
+ import { InvoiceCreditNotes } from '../credit-notes/invoice-credit-notes';
+ import { CreditNoteService } from '../credit-notes/credit-note.service';
++import { InvoiceInstalments } from '../instalments/invoice-instalments';
+ import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+ 
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+@@ -28,7 +29,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+-  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, Notes],
++  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, Notes],
+   template: `
+     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
+     @if (invoice.error()) {
+@@ -845,6 +846,14 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+         </form>
+       }
+ 
++      <app-invoice-instalments
++        [projectId]="projectIdNumber()"
++        [invoiceId]="inv.id"
++        [invoiceAmount]="inv.amount"
++        [currency]="inv.currency"
++        [canEdit]="inv.status === 'DRAFT' || inv.status === 'SENT' || inv.status === 'PARTIAL'"
++      />
++
+       <app-invoice-payments
+         [projectId]="projectIdNumber()"
+         [invoiceId]="inv.id"
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 5e25a17..082ab7b 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -64,6 +64,7 @@ public class TestSupportController {
+             jdbc.execute("TRUNCATE TABLE refund RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE deposit_application RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE deposit RESTART IDENTITY");
++            jdbc.execute("TRUNCATE TABLE invoice_instalment RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice_discount RESTART IDENTITY");
+             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+@@ -318,6 +319,12 @@ public class TestSupportController {
+                             Boolean.TRUE.equals(l.get("taxExempt")), lineDiscountPct(l));
+                 }
+             }
++            // The scheduled instalments the invoice is split into, each an amount due on a date.
++            for (Map<String, Object> n : rows(i, "instalments")) {
++                jdbc.update("INSERT INTO invoice_instalment (id, invoice_id, amount, due_date) VALUES (?, ?, ?, ?)",
++                        ((Number) n.get("id")).longValue(), invoiceId, new BigDecimal(n.get("amount").toString()),
++                        LocalDate.parse(n.get("date").toString()));
++            }
+         }
+         for (Map<String, Object> p : rows(fixture, "payments")) {
+             jdbc.update("INSERT INTO payment (id, invoice_id, amount, paid_date) VALUES (?, ?, ?, ?)",
+@@ -342,6 +349,7 @@ public class TestSupportController {
+         restartIdentity("invoice");
+         restartIdentity("invoice_line_item");
+         restartIdentity("invoice_discount");
++        restartIdentity("invoice_instalment");
+         restartIdentity("task");
+         restartIdentity("task_checklist_item");
+         restartIdentity("tag");
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/Instalment.java b/src/main/java/net/officefloor/hq/app/instalment/Instalment.java
+new file mode 100644
+index 0000000..23cdec0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/instalment/Instalment.java
+@@ -0,0 +1,54 @@
++package net.officefloor.hq.app.instalment;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A scheduled part of an invoice: an amount due on a date. */
++@Entity
++@Table(name = "invoice_instalment")
++public class Instalment {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "invoice_id", nullable = false)
++    private Long invoiceId;
++
++    @Column(nullable = false, precision = 12, scale = 2)
++    private BigDecimal amount;
++
++    @Column(name = "due_date", nullable = false)
++    private LocalDate dueDate;
++
++    protected Instalment() {
++    }
++
++    public Instalment(Long invoiceId, BigDecimal amount, LocalDate dueDate) {
++        this.invoiceId = invoiceId;
++        this.amount = amount.setScale(2);
++        this.dueDate = dueDate;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public LocalDate getDueDate() {
++        return dueDate;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentRepository.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentRepository.java
+new file mode 100644
+index 0000000..e1bcf9f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentRepository.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.instalment;
++
++import java.math.BigDecimal;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
++
++public interface InstalmentRepository extends JpaRepository<Instalment, Long> {
++
++    /** An invoice's instalments, earliest due first. */
++    List<Instalment> findByInvoiceIdOrderByDueDateAscIdAsc(Long invoiceId);
++
++    /** Total scheduled across an invoice's instalments (zero when there are none). */
++    @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Instalment i WHERE i.invoiceId = :invoiceId")
++    BigDecimal sumAmountByInvoiceId(Long invoiceId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentRequest.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentRequest.java
+new file mode 100644
+index 0000000..767fcd8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentRequest.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.instalment;
++
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotNull;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** Payload to schedule an instalment of an invoice. */
++public record InstalmentRequest(
++        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
++        @NotNull LocalDate date) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentResponse.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentResponse.java
+new file mode 100644
+index 0000000..b4205d4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentResponse.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.instalment;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++public record InstalmentResponse(Long id, Long invoiceId, BigDecimal amount, LocalDate date) {
++
++    static InstalmentResponse from(Instalment instalment) {
++        return new InstalmentResponse(instalment.getId(), instalment.getInvoiceId(), instalment.getAmount(),
++                instalment.getDueDate());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java
+new file mode 100644
+index 0000000..5396487
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java
+@@ -0,0 +1,81 @@
++package net.officefloor.hq.app.instalment;
++
++import java.math.BigDecimal;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.invoice.Invoice;
++import net.officefloor.hq.app.invoice.InvoiceRepository;
++import net.officefloor.hq.app.invoice.InvoiceStatus;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class InstalmentService {
++
++    private final InstalmentRepository instalments;
++    private final InvoiceRepository invoices;
++    private final Audit audit;
++
++    public InstalmentService(InstalmentRepository instalments, InvoiceRepository invoices, Audit audit) {
++        this.instalments = instalments;
++        this.invoices = invoices;
++        this.audit = audit;
++    }
++
++    @Transactional(readOnly = true)
++    public List<InstalmentResponse> list(Long projectId, Long invoiceId) {
++        find(projectId, invoiceId);
++        return instalments.findByInvoiceIdOrderByDueDateAscIdAsc(invoiceId).stream()
++                .map(InstalmentResponse::from).toList();
++    }
++
++    /**
++     * Schedules an instalment of an invoice that is still to be paid. The instalments on an invoice may
++     * not add up to more than the invoice amount.
++     */
++    @Transactional
++    public InstalmentResponse schedule(Long projectId, Long invoiceId, InstalmentRequest request) {
++        Invoice invoice = find(projectId, invoiceId);
++        requireOpen(invoice);
++        BigDecimal scheduled = instalments.sumAmountByInvoiceId(invoiceId).add(request.amount());
++        if (scheduled.compareTo(invoice.getAmount()) > 0) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Instalments are more than the invoice amount");
++        }
++        Instalment saved = instalments.saveAndFlush(new Instalment(invoiceId, request.amount(), request.date()));
++        audit.record("INSTALMENT_SCHEDULED invoice=" + invoiceId + " amount=" + saved.getAmount().toPlainString()
++                + " date=" + saved.getDueDate());
++        return InstalmentResponse.from(saved);
++    }
++
++    /** Takes an instalment off an invoice's schedule. */
++    @Transactional
++    public void remove(Long projectId, Long invoiceId, Long instalmentId) {
++        Invoice invoice = find(projectId, invoiceId);
++        requireOpen(invoice);
++        Instalment instalment = instalments.findById(instalmentId)
++                .filter(i -> i.getInvoiceId().equals(invoiceId))
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown instalment"));
++        instalments.delete(instalment);
++        audit.record("INSTALMENT_REMOVED invoice=" + invoiceId + " id=" + instalmentId);
++    }
++
++    private static void requireOpen(Invoice invoice) {
++        if (invoice.getStatus() == InvoiceStatus.VOID) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been cancelled");
++        }
++        if (invoice.getStatus() == InvoiceStatus.WRITTEN_OFF) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been written off");
++        }
++        if (invoice.getStatus() == InvoiceStatus.PAID) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The invoice has been paid");
++        }
++    }
++
++    private Invoice find(Long projectId, Long invoiceId) {
++        return invoices.findById(invoiceId)
++                .filter(i -> i.getProject().getId().equals(projectId))
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown invoice"));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InvoiceInstalmentController.java b/src/main/java/net/officefloor/hq/app/instalment/InvoiceInstalmentController.java
+new file mode 100644
+index 0000000..427b3f9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/instalment/InvoiceInstalmentController.java
+@@ -0,0 +1,43 @@
++package net.officefloor.hq.app.instalment;
++
++import jakarta.validation.Valid;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.DeleteMapping;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The instalments an invoice is split into, earliest due first. */
++@RestController
++@RequestMapping("/api/projects/{projectId}/invoices/{invoiceId}/instalments")
++public class InvoiceInstalmentController {
++
++    private final InstalmentService service;
++
++    public InvoiceInstalmentController(InstalmentService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<InstalmentResponse> list(@PathVariable Long projectId, @PathVariable Long invoiceId) {
++        return service.list(projectId, invoiceId);
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public InstalmentResponse schedule(@PathVariable Long projectId, @PathVariable Long invoiceId,
++            @Valid @RequestBody InstalmentRequest request) {
++        return service.schedule(projectId, invoiceId, request);
++    }
++
++    @DeleteMapping("/{instalmentId}")
++    @ResponseStatus(HttpStatus.NO_CONTENT)
++    public void remove(@PathVariable Long projectId, @PathVariable Long invoiceId, @PathVariable Long instalmentId) {
++        service.remove(projectId, invoiceId, instalmentId);
++    }
++}
+diff --git a/src/main/resources/db/migration/V71__invoice_instalment.sql b/src/main/resources/db/migration/V71__invoice_instalment.sql
+new file mode 100644
+index 0000000..f3d12cd
+--- /dev/null
++++ b/src/main/resources/db/migration/V71__invoice_instalment.sql
+@@ -0,0 +1,12 @@
++-- An invoice can be split into scheduled instalments, each an amount due on a date. They are only
++-- a schedule for paying the invoice, not money received, so they go with their invoice.
++CREATE TABLE invoice_instalment (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    invoice_id BIGINT         NOT NULL,
++    amount     DECIMAL(12, 2) NOT NULL,
++    due_date   DATE           NOT NULL,
++    CONSTRAINT invoice_instalment_invoice_fk FOREIGN KEY (invoice_id) REFERENCES invoice (id) ON DELETE CASCADE,
++    CONSTRAINT invoice_instalment_amount_positive CHECK (amount > 0)
++);
++
++CREATE INDEX invoice_instalment_invoice_idx ON invoice_instalment (invoice_id);
