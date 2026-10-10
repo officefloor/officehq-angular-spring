@@ -1,0 +1,473 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-detail.ts b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+index 886d538..9d2cb51 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-detail.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-detail.ts
+@@ -20,7 +20,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ 
+ // A single invoice: the client's tax number when they are tax registered, the things it charges for (description, how many and of what, price each), each line's
+-// amount, their subtotal, each discount on it (a percentage or a flat amount) as its own negative line and what they take off combined before tax, the taxable amount (leaving out tax-free lines), any
++// amount, their subtotal, its discount (a percentage or a flat amount) and what it takes off before tax, the taxable amount (leaving out tax-free lines), any
+ // sales tax added on it after the discount, the effective tax rate
+ // (the tax as a percentage of the total before tax), any flat surcharge (such as a handling fee, added after tax and
+ // never taxed), the total before tax, and the final total including the tax (also shown as the total after tax).
+@@ -30,7 +30,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+ // It also shows the client's purchase-order number, which can be put on or cleared at any time.
+ // It also shows the total savings: every line discount and invoice discount added together.
+ // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the client's early-payment window.
+-// Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
++// Lines, the discount, the tax rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
+ @Component({
+   selector: 'app-invoice-detail',
+   imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceAdjustmentNotes, InvoiceInstalments, InvoicePoNumber, InvoiceSentSnapshot, Notes],
+@@ -259,41 +259,12 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+                 <td></td>
+               }
+             </tr>
+-            @for (d of inv.discounts; track d.id) {
+-              <tr [attr.data-testid]="'discount-row-' + d.id">
+-                <th scope="row" colspan="5" data-testid="discount-row-label">
+-                  @if (d.discountAmount > 0) {
+-                    Discount {{ $index + 1 }} ({{ d.discountAmount | money: inv.currency }} off)
+-                  } @else {
+-                    Discount {{ $index + 1 }} ({{ d.discountPct | number: '1.0-2' : 'en-US' }}%@if (d.discountCap !== null) {, up to <span data-testid="discount-row-cap">{{ d.discountCap | money: inv.currency }}</span>})
+-                  }
+-                </th>
+-                <td>
+-                  <span [attr.data-testid]="'breakdown-discount-row-' + d.id">-<span data-testid="discount-row-amount">{{ d.amount | money: inv.currency }}</span></span>
+-                </td>
+-                @if (inv.status === 'DRAFT') {
+-                  <td>
+-                    <button
+-                      type="button"
+-                      data-testid="discount-row-remove"
+-                      [attr.aria-label]="'Remove discount ' + ($index + 1)"
+-                      [disabled]="discountSaving()"
+-                      (click)="removeDiscount(d.id)"
+-                    >
+-                      Remove
+-                    </button>
+-                  </td>
+-                }
+-              </tr>
+-            }
+             <tr>
+               <th scope="row" colspan="5">
+-                @if (inv.discounts.length > 1) {
+-                  Combined discount (@if (inv.discountPct > 0) {<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%}@if (inv.discountPct > 0 && inv.discountAmount > 0) { + }@if (inv.discountAmount > 0) {<span data-testid="invoice-discount-amount">{{ inv.discountAmount | money: inv.currency }}</span> off})
+-                } @else if (inv.discountAmount > 0) {
++                @if (inv.discountAmount > 0) {
+                   Discount (<span data-testid="invoice-discount-amount">{{ inv.discountAmount | money: inv.currency }}</span> off)
+                 } @else {
+-                  Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%)
++                  Discount (<span data-testid="invoice-discount-pct">{{ inv.discountPct | number: '1.0-2' : 'en-US' }}</span>%@if (inv.discounts.length > 0 && inv.discounts[0].discountCap !== null) {, up to <span data-testid="discount-row-cap">{{ inv.discounts[0].discountCap | money: inv.currency }}</span>})
+                 }
+               </th>
+               <td data-testid="invoice-discount">{{ inv.discount | money: inv.currency }}</td>
+@@ -585,9 +556,6 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
+             </div>
+           }
+           <button type="submit" data-testid="discount-form-submit" [disabled]="discountSaving()">Apply discount</button>
+-          <button type="button" data-testid="discount-form-add" [disabled]="discountSaving()" (click)="addDiscount()">
+-            Add as another discount
+-          </button>
+           @if (discountError()) {
+             <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
+           }
+@@ -1101,7 +1069,7 @@ export class InvoiceDetailPage {
+     return control.invalid && (control.touched || control.dirty);
+   }
+ 
+-  // Replaces the invoice's discounts with the one in the form.
++  // Sets the invoice's one discount to the one in the form.
+   protected applyDiscount(): void {
+     const chosen = this.chosenDiscount();
+     if (chosen) {
+@@ -1112,30 +1080,6 @@ export class InvoiceDetailPage {
+     }
+   }
+ 
+-  // Adds the discount in the form alongside any the invoice already has.
+-  protected addDiscount(): void {
+-    const chosen = this.chosenDiscount();
+-    if (!chosen) {
+-      return;
+-    }
+-    if (chosen.pct <= 0 && chosen.amount <= 0) {
+-      this.discountError.set('Enter more than zero to add a discount.');
+-      return;
+-    }
+-    this.saveDiscount(
+-      this.service.addDiscount(this.projectIdNumber(), Number(this.invoiceId()), chosen.pct, chosen.amount, chosen.cap),
+-      'Could not add the discount. Please try again.',
+-    );
+-  }
+-
+-  protected removeDiscount(discountId: number): void {
+-    this.saveDiscount(
+-      this.service.removeDiscount(this.projectIdNumber(), Number(this.invoiceId()), discountId),
+-      'Could not remove the discount. Please try again.',
+-    );
+-  }
+-
+-  // The percentage (with any cap) or amount chosen in the form (only the chosen kind; the other is zero), or null when it is invalid.
+   private chosenDiscount(): { pct: number; amount: number; cap: number | null } | null {
+     const { discountType, discountPct, discountAmount, discountCap } = this.discountForm.controls;
+     const isPct = discountType.value === 'pct';
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 38dc33f..3171c9d 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -196,7 +196,7 @@ export interface LineItem {
+   grossAmount: number;
+ }
+ 
+-/** One discount on an invoice: a percentage or a flat amount (the other zero), and what it takes off. */
++/** The one discount on an invoice: a percentage or a flat amount (the other zero), and what it takes off. */
+ export interface InvoiceDiscount {
+   id: number;
+   discountPct: number;
+@@ -217,13 +217,13 @@ export interface InvoiceDetail extends Invoice {
+   /** The total before tax: the amount less the sales tax. */
+   totalExTax: number;
+   subtotal: number;
+-  /** The percentage discounts added up; zero when there are none. */
++  /** The discount's percentage; zero when it is a flat amount or there is none. */
+   discountPct: number;
+-  /** The flat amount discounts added up (taken off after the percentages); zero when there are none. */
++  /** The discount's flat amount; zero when it is a percentage or there is none. */
+   discountAmount: number;
+-  /** What all the discounts take off together, before tax. */
++  /** What the discount takes off, before tax. */
+   discount: number;
+-  /** Each discount on the invoice, in the order it was added. */
++  /** The invoice's discount: empty when it has none, otherwise its one discount. */
+   discounts: InvoiceDiscount[];
+   taxPct: number;
+   taxableBase: number;
+@@ -401,20 +401,6 @@ export class InvoiceService {
+     });
+   }
+ 
+-  /** Adds another percentage or flat amount discount to a draft invoice (the other being zero). */
+-  addDiscount(projectId: number, invoiceId: number, discountPct: number, discountAmount = 0, discountCap: number | null = null): Observable<InvoiceDetail> {
+-    return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discounts`, {
+-      discountPct,
+-      discountAmount,
+-      discountCap,
+-    });
+-  }
+-
+-  /** Removes one discount from a draft invoice. */
+-  removeDiscount(projectId: number, invoiceId: number, discountId: number): Observable<InvoiceDetail> {
+-    return this.http.delete<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/discounts/${discountId}`);
+-  }
+-
+   /** Sets the sales tax percentage added to a draft invoice after its discount; zero removes the tax. */
+   applyTax(projectId: number, invoiceId: number, taxPct: number): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/tax`, { taxPct });
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index b4f0bd4..d89a1ee 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -17,12 +17,14 @@ import net.officefloor.hq.app.invoice.InvoiceStatus;
+ import net.officefloor.hq.app.project.ProjectStatus;
+ import net.officefloor.hq.app.recurring.RecurringInvoice;
+ import org.springframework.context.annotation.Profile;
++import org.springframework.http.HttpStatus;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * Per-spec data setup for the end-to-end tests. Profile-guarded so it exists ONLY under the test
+@@ -276,8 +278,8 @@ public class TestSupportController {
+                     projectId);
+             boolean taxInclusive = Boolean.TRUE.equals(client.get("TAX_INCLUSIVE"));
+             boolean taxExempt = Boolean.TRUE.equals(client.get("TAX_EXEMPT"));
+-            // An invoice may carry several discounts, each a percentage ("pct") or a flat amount ("amount");
+-            // an older fixture gives at most one as discountPct / discountAmount. A percentage may be capped
++            // An invoice carries at most one discount, a percentage ("pct") or a flat amount ("amount"), given
++            // as a one-entry "discounts" list or as discountPct / discountAmount. A percentage may be capped
+             // at the most it takes off ("cap", or discountCap alongside discountPct).
+             List<Map<String, Object>> discounts = new ArrayList<>(rows(i, "discounts"));
+             if (i.get("discountPct") != null && new BigDecimal(i.get("discountPct").toString()).signum() > 0) {
+@@ -297,6 +299,9 @@ public class TestSupportController {
+                     && clientDefaultPct.signum() > 0) {
+                 discounts.add(Map.of("pct", clientDefaultPct));
+             }
++            if (discounts.size() > 1) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An invoice carries only one discount");
++            }
+             // The percentages each take their share of the subtotal (never more than is left); the flat
+             // amounts are then taken off what is left and shared across the lines in proportion to what
+             // each charges.
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+index ece4118..a431e56 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -146,7 +146,7 @@ public class Invoice {
+     @OrderBy("id")
+     private List<InvoiceLineItem> lineItems = new ArrayList<>();
+ 
+-    /** The discounts taken off the subtotal before tax, in the order they were added. */
++    /** The discount taken off the subtotal before tax: at most one. */
+     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+     @OrderBy("id")
+     private List<InvoiceDiscount> discounts = new ArrayList<>();
+@@ -200,7 +200,7 @@ public class Invoice {
+         return getTax().multiply(BigDecimal.valueOf(100)).divide(totalExTax, 2, RoundingMode.HALF_UP);
+     }
+ 
+-    /** The discounts on this invoice, in the order they were added. */
++    /** The discount on this invoice: empty when it has none, otherwise its one discount. */
+     public List<InvoiceDiscount> getDiscounts() {
+         return List.copyOf(discounts);
+     }
+@@ -487,63 +487,34 @@ public class Invoice {
+         return lineItems.stream().filter(l -> l.getId().equals(lineItemId)).findFirst();
+     }
+ 
+-    /** Replaces this invoice's discounts with a single percentage and reworks its amount to match. */
++    /** Sets this invoice's one discount as a percentage and reworks its amount to match. */
+     public void applyDiscount(BigDecimal discountPct) {
+         applyDiscount(discountPct, BigDecimal.ZERO);
+     }
+ 
+     /**
+-     * Replaces this invoice's discounts with a single one, either a percentage or a flat amount (the other
+-     * being zero; zero for both leaves no discount), and reworks its amount to match.
++     * Sets this invoice's one discount, either a percentage or a flat amount (the other being zero; zero
++     * for both leaves no discount), and reworks its amount to match.
+      */
+     public void applyDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
+         applyDiscount(discountPct, discountAmount, null);
+     }
+ 
+     /**
+-     * Replaces this invoice's discounts with a single one, either a percentage (optionally capped at the
+-     * most it takes off) or a flat amount, and reworks its amount to match.
++     * Sets this invoice's one discount, either a percentage (optionally capped at the most it takes off) or
++     * a flat amount, replacing any it had (zero for both leaves no discount), and reworks its amount to match.
+      */
+     public void applyDiscount(BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discountCap) {
+         InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount, discountCap);
+-        discounts.clear();
+-        if (discountPct.signum() != 0 || discountAmount.signum() != 0) {
+-            discounts.add(discount);
+-        }
+-        recalculateAmount();
+-    }
+-
+-    /**
+-     * Adds another discount to this invoice, either a percentage or a flat amount (the other being zero),
+-     * and reworks its amount to match.
+-     */
+-    public InvoiceDiscount addDiscount(BigDecimal discountPct, BigDecimal discountAmount) {
+-        return addDiscount(discountPct, discountAmount, null);
+-    }
+-
+-    /**
+-     * Adds another discount to this invoice, either a percentage (optionally capped at the most it takes
+-     * off) or a flat amount, and reworks its amount to match.
+-     */
+-    public InvoiceDiscount addDiscount(BigDecimal discountPct, BigDecimal discountAmount, BigDecimal discountCap) {
+         if (discountPct.signum() == 0 && discountAmount.signum() == 0) {
+-            throw new IllegalArgumentException("A discount takes off a percentage or a flat amount");
++            discounts.clear();
++        } else if (discounts.isEmpty()) {
++            discounts.add(discount);
++        } else {
++            // The existing discount is changed in place, as an invoice only ever has the one.
++            discounts.get(0).replaceWith(discount);
+         }
+-        InvoiceDiscount discount = new InvoiceDiscount(this, discountPct, discountAmount, discountCap);
+-        discounts.add(discount);
+         recalculateAmount();
+-        return discount;
+-    }
+-
+-    /** Removes a discount from this invoice and reworks its amount to match. */
+-    public void removeDiscount(InvoiceDiscount discount) {
+-        discounts.remove(discount);
+-        recalculateAmount();
+-    }
+-
+-    /** The discount on this invoice with the given id, if there is one. */
+-    public Optional<InvoiceDiscount> findDiscount(Long discountId) {
+-        return discounts.stream().filter(d -> d.getId().equals(discountId)).findFirst();
+     }
+ 
+     /** Sets the sales tax percentage added to this invoice and reworks its amount to match. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+index a24b5ba..19e7ba4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceController.java
+@@ -64,19 +64,6 @@ public class InvoiceController {
+         return service.applyDiscount(projectId, invoiceId, request);
+     }
+ 
+-    @PostMapping("/{invoiceId}/discounts")
+-    @ResponseStatus(HttpStatus.CREATED)
+-    public InvoiceDetailResponse addDiscount(@PathVariable Long projectId, @PathVariable Long invoiceId,
+-            @Valid @RequestBody DiscountRequest request) {
+-        return service.addDiscount(projectId, invoiceId, request);
+-    }
+-
+-    @DeleteMapping("/{invoiceId}/discounts/{discountId}")
+-    public InvoiceDetailResponse removeDiscount(@PathVariable Long projectId, @PathVariable Long invoiceId,
+-            @PathVariable Long discountId) {
+-        return service.removeDiscount(projectId, invoiceId, discountId);
+-    }
+-
+     @PutMapping("/{invoiceId}/tax")
+     public InvoiceDetailResponse applyTax(@PathVariable Long projectId, @PathVariable Long invoiceId,
+             @Valid @RequestBody TaxRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+index ca8b7ee..8c9fdb6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDetailResponse.java
+@@ -5,8 +5,8 @@ import java.time.LocalDate;
+ import java.util.List;
+ 
+ /**
+- * A single invoice together with the line items it is built from: their subtotal, each discount on it
+- * (with what it takes off), the percentage discounts and flat amount discounts added up, and what they all take off together, the sales tax percentage, the taxable base it is charged on (the
++ * A single invoice together with the line items it is built from: their subtotal, its discount
++ * (at most one, with what it takes off), its percentage or flat amount, and what it takes off, the sales tax percentage, the taxable base it is charged on (the
+  * taxable lines after the discount) and what it adds, any flat surcharge (such as a handling fee) added after tax, the amount owed including the tax and the surcharge, the total before tax, whether the prices already include the tax
+  * (so it is worked back out rather than added on), whether the client is tax exempt (so
+  * there is no tax at all), the effective tax rate (the sales tax as a percentage of
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDiscount.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDiscount.java
+index 3f9ac29..f7e7e4b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceDiscount.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceDiscount.java
+@@ -12,7 +12,7 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ 
+-/** One discount on an invoice: either a percentage or a flat amount taken off its subtotal, never both. */
++/** The one discount on an invoice: either a percentage or a flat amount taken off its subtotal, never both. */
+ @Entity
+ @Table(name = "invoice_discount")
+ public class InvoiceDiscount {
+@@ -55,6 +55,13 @@ public class InvoiceDiscount {
+         this.discountCap = discountCap == null ? null : discountCap.setScale(2, RoundingMode.HALF_UP);
+     }
+ 
++    /** Takes on the kind and size of another discount, keeping this one's place on the invoice. */
++    void replaceWith(InvoiceDiscount other) {
++        this.discountPct = other.discountPct;
++        this.discountAmount = other.discountAmount;
++        this.discountCap = other.discountCap;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 8861873..0a7e013 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -402,7 +402,7 @@ public class InvoiceService {
+         // A new invoice starts with the client's standard discount, if they have one.
+         BigDecimal defaultDiscountPct = project.getClient().getDefaultDiscountPct();
+         if (defaultDiscountPct.signum() > 0) {
+-            invoice.addDiscount(defaultDiscountPct, BigDecimal.ZERO);
++            invoice.applyDiscount(defaultDiscountPct);
+         }
+         Invoice saved = invoices.save(invoice);
+         return InvoiceResponse.from(saved, BigDecimal.ZERO, BigDecimal.ZERO);
+@@ -447,7 +447,7 @@ public class InvoiceService {
+         return detail(invoice);
+     }
+ 
+-    /** Replaces the discounts on a draft invoice with a single percentage or flat one and reworks the invoice amount to match. */
++    /** Sets the one percentage or flat discount on a draft invoice and reworks the invoice amount to match. */
+     @Transactional
+     public InvoiceDetailResponse applyDiscount(Long projectId, Long invoiceId, DiscountRequest request) {
+         Invoice invoice = findDraft(projectId, invoiceId);
+@@ -456,28 +456,6 @@ public class InvoiceService {
+         return detail(invoice);
+     }
+ 
+-    /** Adds another percentage or flat discount to a draft invoice and reworks the invoice amount to match. */
+-    @Transactional
+-    public InvoiceDetailResponse addDiscount(Long projectId, Long invoiceId, DiscountRequest request) {
+-        Invoice invoice = findDraft(projectId, invoiceId);
+-        if (request.discountPct().signum() == 0 && request.flatAmount().signum() == 0) {
+-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A discount takes off a percentage or a flat amount");
+-        }
+-        invoice.addDiscount(request.discountPct(), request.flatAmount(), request.discountCap());
+-        invoices.flush();
+-        return detail(invoice);
+-    }
+-
+-    /** Removes one discount from a draft invoice and reworks the invoice amount to match. */
+-    @Transactional
+-    public InvoiceDetailResponse removeDiscount(Long projectId, Long invoiceId, Long discountId) {
+-        Invoice invoice = findDraft(projectId, invoiceId);
+-        invoice.removeDiscount(invoice.findDiscount(discountId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Discount not found")));
+-        invoices.flush();
+-        return detail(invoice);
+-    }
+-
+     /** Sets the sales tax percentage on a draft invoice and reworks the invoice amount to match. */
+     @Transactional
+     public InvoiceDetailResponse applyTax(Long projectId, Long invoiceId, TaxRequest request) {
+diff --git a/src/main/resources/db/migration/V112__single_invoice_discount.sql b/src/main/resources/db/migration/V112__single_invoice_discount.sql
+new file mode 100644
+index 0000000..72d3202
+--- /dev/null
++++ b/src/main/resources/db/migration/V112__single_invoice_discount.sql
+@@ -0,0 +1,45 @@
++-- An invoice carries only one discount again. An invoice with several keeps what they took off together,
++-- so its amount is unchanged: when they were all uncapped percentages they become one percentage (their
++-- sum, never more than 100); otherwise they become one flat amount equal to what they took off between
++-- them (the percentages' shares, each no more than its cap, plus the flat amounts, never more than the
++-- subtotal).
++CREATE VIEW invoice_discount_subtotal_v112 AS
++    SELECT i.id AS invoice_id,
++           COALESCE((SELECT SUM(ROUND(l.qty * l.unit_price, 2)
++                         - ROUND(ROUND(l.qty * l.unit_price, 2) * l.discount_pct / 100, 2))
++                     FROM invoice_line_item l WHERE l.invoice_id = i.id), 0) AS subtotal
++    FROM invoice i
++    WHERE (SELECT COUNT(*) FROM invoice_discount d WHERE d.invoice_id = i.id) > 1;
++
++CREATE TABLE invoice_discount_v112 (
++    invoice_id      BIGINT         NOT NULL PRIMARY KEY,
++    discount_pct    DECIMAL(5, 2)  NOT NULL,
++    discount_amount DECIMAL(12, 2) NOT NULL
++);
++
++INSERT INTO invoice_discount_v112 (invoice_id, discount_pct, discount_amount)
++SELECT s.invoice_id,
++       CASE WHEN all_pct THEN LEAST(pct_sum, 100) ELSE 0 END,
++       CASE WHEN all_pct THEN 0 ELSE LEAST(GREATEST(s.subtotal, 0), pct_taken + flat_sum) END
++FROM (SELECT s.invoice_id,
++             s.subtotal,
++             NOT EXISTS (SELECT 1 FROM invoice_discount d WHERE d.invoice_id = s.invoice_id
++                           AND (d.discount_pct = 0 OR d.discount_cap IS NOT NULL)) AS all_pct,
++             (SELECT SUM(d.discount_pct) FROM invoice_discount d WHERE d.invoice_id = s.invoice_id) AS pct_sum,
++             (SELECT COALESCE(SUM(CASE WHEN d.discount_cap IS NULL THEN ROUND(s.subtotal * d.discount_pct / 100, 2)
++                                       ELSE LEAST(ROUND(s.subtotal * d.discount_pct / 100, 2), d.discount_cap) END), 0)
++              FROM invoice_discount d WHERE d.invoice_id = s.invoice_id AND d.discount_pct > 0) AS pct_taken,
++             (SELECT COALESCE(SUM(d.discount_amount), 0) FROM invoice_discount d WHERE d.invoice_id = s.invoice_id) AS flat_sum
++      FROM invoice_discount_subtotal_v112 s) s;
++
++DELETE FROM invoice_discount WHERE invoice_id IN (SELECT invoice_id FROM invoice_discount_v112);
++
++-- An invoice whose discounts took nothing off (an empty invoice) is left with none.
++INSERT INTO invoice_discount (invoice_id, discount_pct, discount_amount)
++SELECT invoice_id, discount_pct, discount_amount FROM invoice_discount_v112
++WHERE discount_pct > 0 OR discount_amount > 0;
++
++DROP TABLE invoice_discount_v112;
++DROP VIEW invoice_discount_subtotal_v112;
++
++ALTER TABLE invoice_discount ADD CONSTRAINT invoice_discount_one_per_invoice UNIQUE (invoice_id);
