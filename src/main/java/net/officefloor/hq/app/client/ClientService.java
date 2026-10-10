@@ -14,6 +14,7 @@ import net.officefloor.hq.app.contact.ContactRepository;
 import net.officefloor.hq.app.creditnote.CreditNoteRepository;
 import net.officefloor.hq.app.currency.Currency;
 import net.officefloor.hq.app.currency.CurrencyService;
+import net.officefloor.hq.app.invoice.Invoice;
 import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.deposit.DepositRepository;
@@ -92,9 +93,35 @@ public class ClientService {
     public ClientSummaryResponse summary(Long id) {
         Client client = clients.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
-        BigDecimal billed = invoices.sumAmountByClientIdAndStatusIn(id, BILLED).setScale(2, RoundingMode.HALF_UP);
-        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientIdAndArchivedFalse(id), billed,
+        return new ClientSummaryResponse(projects.countByClientId(id), contacts.countByClientIdAndArchivedFalse(id), lifetimeBilled(id),
                 lifetimeValue(client));
+    }
+
+    /**
+     * The total billed to a client net of credits and write-offs: the amount of each invoice issued to them, less
+     * the credit notes against it, any part written off and, for an invoice written off as bad debt, the balance
+     * given up when it was written off.
+     */
+    private BigDecimal lifetimeBilled(Long clientId) {
+        List<Invoice> billed = invoices.findByClientIdWithProject(clientId).stream()
+                .filter(i -> BILLED.contains(i.getStatus()))
+                .toList();
+        List<Long> ids = billed.stream().map(Invoice::getId).toList();
+        Map<Long, BigDecimal> paid = new HashMap<>();
+        payments.sumAmountByInvoiceIds(ids).forEach(t -> paid.put(t.getInvoiceId(), t.getPaid()));
+        Map<Long, BigDecimal> credited = new HashMap<>();
+        creditNotes.sumAmountByInvoiceIds(ids).forEach(t -> credited.put(t.getInvoiceId(), t.getCredited()));
+        return billed.stream().map(i -> {
+            BigDecimal net = i.getAmount()
+                    .subtract(credited.getOrDefault(i.getId(), BigDecimal.ZERO))
+                    .subtract(i.getWriteOffAmount());
+            if (i.getStatus() == InvoiceStatus.WRITTEN_OFF) {
+                BigDecimal givenUp = net.subtract(paid.getOrDefault(i.getId(), BigDecimal.ZERO))
+                        .subtract(i.getRebateTaken()).max(BigDecimal.ZERO);
+                net = net.subtract(givenUp);
+            }
+            return net;
+        }).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**

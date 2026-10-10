@@ -52,6 +52,7 @@ export interface Client {
 export interface ClientSummary {
   projectCount: number;
   contactCount: number;
+  /** The total billed to the client, net of credit notes and write-offs, in their currency. */
   lifetimeBilled: number;
   /** What the client has actually paid, less refunds, in their currency. */
   lifetimeValue: number;
