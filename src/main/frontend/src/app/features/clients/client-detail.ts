@@ -8,6 +8,7 @@ import { Notes } from '../notes/notes';
 import { Contact } from '../contacts/contact.service';
 import { ClientCredit } from '../credit/client-credit';
 import { ClientAging } from '../invoices/client-aging';
+import { ClientFinancialSummaryPanel } from '../invoices/client-financial-summary';
 import { ClientDeposits } from '../deposits/client-deposits';
 import { ClientPaymentForm, PaymentSource } from '../payments/client-payment';
 import { ClientRemittances } from '../payments/client-remittances';
@@ -20,10 +21,10 @@ import { ClientExport } from './client-export';
 import { ClientMerge } from './client-merge';
 import { Client, ClientService } from './client.service';
 
-// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them (net of credits and write-offs), their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
+// A single client's page: their name, email, phone number, preferred language, account manager, billing contact, tax number, billing address, main contact, currency, credit limit and payment terms, an export of their contact details to a file, a link to their statement, how old their debt is, a one-screen financial summary (billed, paid, outstanding and overdue), a form to record a lump payment split across their invoices or to put their held deposits toward those invoices the same way, the payments they have made with a remittance note listing the invoices each covered, the credit they have to spend (unused deposits and credit notes) with a form to refund it, the deposits they have paid up front, counts of their projects and contacts, the total ever billed to them (net of credits and write-offs), their lifetime value (what they have actually paid, less refunds), their contacts, the history of when they were contacted (newest first), the projects being done for them, and a form to merge this client into a duplicate of it.
 @Component({
   selector: 'app-client-detail',
-  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, Notes, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging],
+  imports: [MoneyPipe, RouterLink, ClientCurrency, ClientCreditLimit, ClientPaymentTerms, ClientEarlyPaymentWindow, ClientContacts, ClientContactHistory, Notes, ClientProjects, ClientPaymentForm, ClientRemittances, ClientDeposits, ClientCredit, ClientMerge, ClientExport, ClientAging, ClientFinancialSummaryPanel],
   styles: `
     .client-badges {
       display: flex;
@@ -138,6 +139,22 @@ import { Client, ClientService } from './client.service';
       <p>
         <a [routerLink]="['/clients', clientId(), 'statement']" data-testid="client-statement-open">View statement</a>
       </p>
+      <p>
+        <button
+          type="button"
+          data-testid="client-summary-open"
+          aria-controls="client-summary-panel"
+          [attr.aria-expanded]="showingSummary()"
+          (click)="showingSummary.set(!showingSummary())"
+        >
+          {{ showingSummary() ? 'Hide financial summary' : 'Show financial summary' }}
+        </button>
+      </p>
+      <div id="client-summary-panel">
+        @if (showingSummary()) {
+          <app-client-financial-summary [clientId]="clientId()" />
+        }
+      </div>
       <app-client-aging [clientId]="clientId()" />
       <p>
         <button
@@ -204,6 +221,10 @@ export class ClientDetail {
     stream: ({ params }) => this.service.summary(params),
   });
 
+  /** Whether the billed, paid, outstanding and overdue summary is shown. */
+  protected readonly showingSummary = signal(false);
+  private readonly financialSummaryPanel = viewChild(ClientFinancialSummaryPanel);
+
   /** Which split form is open, if any: a payment received, or the client's held deposits. */
   protected readonly recordingPayment = signal<PaymentSource | null>(null);
   protected readonly paymentSaved = signal(false);
@@ -237,6 +258,7 @@ export class ClientDetail {
     this.depositsPanel()?.reload();
     this.creditPanel()?.reload();
     this.agingPanel()?.reload();
+    this.financialSummaryPanel()?.reload();
     this.remittancesPanel()?.reload();
     this.summary.reload();
     this.client.reload();

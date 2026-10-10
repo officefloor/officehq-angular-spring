@@ -24,6 +24,12 @@ public class ClientStatementController {
         return service.statementForClient(clientId);
     }
 
+    /** The client's billed, paid, outstanding and overdue totals on one screen. */
+    @GetMapping("/summary")
+    public ClientFinancialSummaryResponse summary(@PathVariable Long clientId) {
+        return service.financialSummaryForClient(clientId);
+    }
+
     /** What the client owed as at the end of the given day. */
     @GetMapping("/balance")
     public ClientBalanceAsOfResponse balanceAsOf(@PathVariable Long clientId,

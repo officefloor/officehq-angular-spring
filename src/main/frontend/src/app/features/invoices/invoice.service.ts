@@ -156,6 +156,17 @@ export interface ClientStatementRange {
   aging: ClientAging;
 }
 
+/** A client's money on one screen as at today: billed on sent invoices, paid, still outstanding, and the part of that past due. */
+export interface ClientFinancialSummary {
+  clientId: number;
+  currency: CurrencyCode;
+  asOf: string;
+  billed: number;
+  paid: number;
+  outstanding: number;
+  overdue: number;
+}
+
 /** How old a client's debt is as at a day (today, unless for a date range): what is current (up to 30 days overdue), 31 to 60 days, and more than 60 days overdue. */
 export interface ClientAging {
   clientId: number;
@@ -337,6 +348,10 @@ export class InvoiceService {
 
   emailStatement(clientId: number): Observable<StatementEmail> {
     return this.http.post<StatementEmail>(`/api/clients/${clientId}/statement/emails`, {});
+  }
+
+  financialSummaryForClient(clientId: number): Observable<ClientFinancialSummary> {
+    return this.http.get<ClientFinancialSummary>(`/api/clients/${clientId}/statement/summary`);
   }
 
   agingForClient(clientId: number): Observable<ClientAging> {

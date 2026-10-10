@@ -139,6 +139,24 @@ public class InvoiceService {
     }
 
     /**
+     * A client's financial summary as at today: the billed, paid and outstanding totals of their statement, and the
+     * part of the outstanding left to pay on invoices whose due date has passed.
+     */
+    @Transactional(readOnly = true)
+    public ClientFinancialSummaryResponse financialSummaryForClient(Long clientId) {
+        ClientStatementResponse statement = statementForClient(clientId);
+        LocalDate today = LocalDate.now(clock);
+        BigDecimal overdue = statement.invoices().stream()
+                .filter(l -> l.status() != InvoiceStatus.DRAFT && !l.status().isClosedUnpaid())
+                .filter(l -> l.dueDate() != null && l.dueDate().isBefore(today) && l.amountDue().signum() > 0)
+                .map(ClientStatementResponse.Line::amountDue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        return new ClientFinancialSummaryResponse(statement.clientId(), statement.currency(), today,
+                statement.invoiced(), statement.paid(), statement.outstanding(), overdue);
+    }
+
+    /**
      * What a client owed as at the end of the given day: the running account counting only the entries dated on or
      * before it.
      */
