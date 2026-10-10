@@ -1,0 +1,266 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-statement.ts b/src/main/frontend/src/app/features/invoices/client-statement.ts
+index 0814190..7ad52a5 100644
+--- a/src/main/frontend/src/app/features/invoices/client-statement.ts
++++ b/src/main/frontend/src/app/features/invoices/client-statement.ts
+@@ -10,7 +10,8 @@ import { StatementEmailAction } from './statement-email';
+ // It can be run for a chosen date range, giving the opening balance, the entries within the range with the running
+ // balance, and the closing balance.
+ // The balance owed as at a chosen past date can be looked up, counting only entries up to that date.
+-// Every figure is in the client's own currency; at the foot the total owed is also given in the home currency.
++// Each invoice is shown in its own currency and every figure is rounded by the same currency rule as the invoice
++// (the server rounds each one before adding them up), so the totals match the invoices to the cent. At the foot the total owed is also given in the home currency.
+ // It opens with the running account: invoices, payments, credit notes, deposits and refunds in date order with the
+ // balance owed after each.
+ // It is laid out to print cleanly: a summary of what was invoiced, what was paid and the grand total owed,
+@@ -257,9 +258,9 @@ import { StatementEmailAction } from './statement-email';
+                     <td data-testid="statement-invoice-status">{{ i.status }}</td>
+                     <td data-testid="statement-invoice-issued">{{ i.issuedDate }}</td>
+                     <td data-testid="statement-invoice-due">{{ i.dueDate }}</td>
+-                    <td data-testid="statement-invoice-amount">{{ i.amount | money: s.currency }}</td>
+-                    <td data-testid="statement-invoice-tax">{{ i.tax | money: s.currency }}</td>
+-                    <td data-testid="statement-invoice-due-amount">{{ i.amountDue | money: s.currency }}</td>
++                    <td data-testid="statement-invoice-amount">{{ i.amount | money: i.currency }}</td>
++                    <td data-testid="statement-invoice-tax">{{ i.tax | money: i.currency }}</td>
++                    <td data-testid="statement-invoice-due-amount">{{ i.amountDue | money: i.currency }}</td>
+                   </tr>
+                 }
+                 <tr>
+diff --git a/src/main/java/net/officefloor/hq/app/currency/CurrencyService.java b/src/main/java/net/officefloor/hq/app/currency/CurrencyService.java
+index 5eebaf0..4afcf8e 100644
+--- a/src/main/java/net/officefloor/hq/app/currency/CurrencyService.java
++++ b/src/main/java/net/officefloor/hq/app/currency/CurrencyService.java
+@@ -33,6 +33,12 @@ public class CurrencyService {
+         return code != null && currencies.existsById(code);
+     }
+ 
++    /** The rule the currency's amounts are rounded by; whole cents for an unknown currency. */
++    @Transactional(readOnly = true)
++    public MoneyRule ruleFor(String code) {
++        return code == null ? MoneyRule.CENTS : currencies.findById(code).map(MoneyRule::of).orElse(MoneyRule.CENTS);
++    }
++
+     /** Changes the step a currency's amounts are rounded to, recording the change in the audit log. */
+     @Transactional
+     public CurrencyResponse changeRounding(String code, CurrencyRoundingRequest request) {
+diff --git a/src/main/java/net/officefloor/hq/app/currency/MoneyRule.java b/src/main/java/net/officefloor/hq/app/currency/MoneyRule.java
+new file mode 100644
+index 0000000..7fa766e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/currency/MoneyRule.java
+@@ -0,0 +1,29 @@
++package net.officefloor.hq.app.currency;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++
++/**
++ * How a currency's amounts are rounded when shown: to the nearest multiple of its rounding step, never finer than its
++ * smallest unit, halves away from zero. It is the rule an invoice's figures are shown with, so totals built from
++ * rounded figures agree to the cent with the figures they add up.
++ */
++public record MoneyRule(BigDecimal step) {
++
++    /** The rule for a currency nothing is known about: whole cents. */
++    public static final MoneyRule CENTS = new MoneyRule(new BigDecimal("0.01"));
++
++    static MoneyRule of(Currency currency) {
++        BigDecimal smallest = BigDecimal.ONE.movePointLeft(currency.getDecimals());
++        return new MoneyRule(currency.getRoundingStep().max(smallest));
++    }
++
++    /** The amount rounded to this rule, in cents; null stays null. */
++    public BigDecimal round(BigDecimal amount) {
++        if (amount == null) {
++            return null;
++        }
++        BigDecimal cents = amount.setScale(2, RoundingMode.HALF_UP);
++        return cents.divide(step, 0, RoundingMode.HALF_UP).multiply(step).setScale(2, RoundingMode.HALF_UP);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+index f6621eb..acea25a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ClientStatementResponse.java
+@@ -9,6 +9,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+ import java.util.function.Function;
++import net.officefloor.hq.app.currency.MoneyRule;
+ 
+ /**
+  * A client's statement: all of their invoices, each with the project it is for and how much is left
+@@ -88,10 +89,11 @@ public record ClientStatementResponse(Long clientId, String clientName, String c
+     public record Line(Long id, Long projectId, String projectName, String currency, BigDecimal amount, InvoiceStatus status,
+             LocalDate issuedDate, LocalDate dueDate, BigDecimal amountDue, BigDecimal tax) {
+ 
+-        static Line from(Invoice invoice, BigDecimal paid, BigDecimal credited) {
++        /** The invoice's figures, each rounded by its currency's rule as the invoice itself shows them. */
++        static Line from(Invoice invoice, BigDecimal paid, BigDecimal credited, MoneyRule rule) {
+             return new Line(invoice.getId(), invoice.getProject().getId(), invoice.getProject().getName(),
+-                    invoice.getCurrency(), invoice.getAmount(), invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
+-                    invoice.amountDue(paid, credited), invoice.getTax().add(invoice.getLevy()));
++                    invoice.getCurrency(), rule.round(invoice.getAmount()), invoice.statusFor(paid, credited), invoice.getIssuedDate(), invoice.getDueDate(),
++                    rule.round(invoice.amountDue(paid, credited)), rule.round(invoice.getTax()).add(rule.round(invoice.getLevy())));
+         }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+index 9fd25e3..4c13c8f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceService.java
+@@ -12,6 +12,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
+ import java.util.Optional;
++import java.util.function.Function;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.client.Client;
+@@ -19,6 +20,8 @@ import net.officefloor.hq.app.client.ClientRepository;
+ import net.officefloor.hq.app.client.ClientService;
+ import net.officefloor.hq.app.creditnote.CreditNote;
+ import net.officefloor.hq.app.creditnote.CreditNoteRepository;
++import net.officefloor.hq.app.currency.CurrencyService;
++import net.officefloor.hq.app.currency.MoneyRule;
+ import net.officefloor.hq.app.deposit.Deposit;
+ import net.officefloor.hq.app.deposit.DepositRepository;
+ import net.officefloor.hq.app.fx.FxRateService;
+@@ -52,14 +55,16 @@ public class InvoiceService {
+     private final FxRateService fxRates;
+     private final InstalmentRepository instalments;
+     private final ClientService clientService;
++    private final CurrencyService currencies;
+     private final Audit audit;
+     private final Clock clock;
+ 
+     public InvoiceService(InvoiceRepository invoices, ProjectRepository projects, PaymentRepository payments,
+             CreditNoteRepository creditNotes, ClientRepository clients, DepositRepository deposits,
+             RefundRepository refunds, SettingsService settings, FxRateService fxRates, InstalmentRepository instalments,
+-            ClientService clientService, Audit audit, Clock clock) {
++            ClientService clientService, CurrencyService currencies, Audit audit, Clock clock) {
+         this.clientService = clientService;
++        this.currencies = currencies;
+         this.invoices = invoices;
+         this.projects = projects;
+         this.clients = clients;
+@@ -121,14 +126,16 @@ public class InvoiceService {
+         List<Invoice> found = invoices.findByClientIdWithProject(clientId);
+         Map<Long, BigDecimal> paid = paidByInvoice(found);
+         Map<Long, BigDecimal> credited = creditedByInvoice(found);
++        Function<String, MoneyRule> rules = moneyRules();
+         List<ClientStatementResponse.Line> lines = found.stream()
+                 .map(i -> ClientStatementResponse.Line.from(i, paid.getOrDefault(i.getId(), BigDecimal.ZERO),
+-                        credited.getOrDefault(i.getId(), BigDecimal.ZERO)))
++                        credited.getOrDefault(i.getId(), BigDecimal.ZERO), rules.apply(i.getCurrency())))
+                 .toList();
+         String home = settings.homeCurrency();
++        MoneyRule homeRule = rules.apply(home);
+         return ClientStatementResponse.from(client.getId(), client.getName(), client.getCurrency(), lines,
+-                accountEntries(clientId, found), home, l -> l.issuedDate() == null ? Optional.empty()
+-                        : fxRates.convert(client.getCurrency(), home, l.issuedDate(), l.amountDue()));
++                accountEntries(clientId, found, rules), home, l -> l.issuedDate() == null ? Optional.empty()
++                        : fxRates.convert(l.currency(), home, l.issuedDate(), l.amountDue()).map(homeRule::round));
+     }
+ 
+     /**
+@@ -140,7 +147,7 @@ public class InvoiceService {
+         Client client = clients.findById(clientId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+         List<Invoice> found = invoices.findByClientIdWithProject(clientId);
+-        BigDecimal balance = accountEntries(clientId, found).stream()
++        BigDecimal balance = accountEntries(clientId, found, moneyRules()).stream()
+                 .filter(e -> e.date() != null && !e.date().isAfter(asOf))
+                 .map(StatementEntry::change)
+                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+@@ -158,7 +165,7 @@ public class InvoiceService {
+         }
+         Client client = clients.findById(clientId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown client"));
+-        List<StatementEntry> dated = accountEntries(clientId, invoices.findByClientIdWithProject(clientId)).stream()
++        List<StatementEntry> dated = accountEntries(clientId, invoices.findByClientIdWithProject(clientId), moneyRules()).stream()
+                 .filter(e -> e.date() != null)
+                 .sorted(StatementEntry.DATE_ORDER)
+                 .toList();
+@@ -189,6 +196,7 @@ public class InvoiceService {
+         List<Invoice> found = invoices.findByClientIdWithProject(clientId);
+         Map<Long, BigDecimal> paid = paidByInvoice(found);
+         Map<Long, BigDecimal> credited = creditedByInvoice(found);
++        Function<String, MoneyRule> rules = moneyRules();
+         BigDecimal current = BigDecimal.ZERO.setScale(2);
+         BigDecimal days30To60 = BigDecimal.ZERO.setScale(2);
+         BigDecimal days60Plus = BigDecimal.ZERO.setScale(2);
+@@ -199,7 +207,7 @@ public class InvoiceService {
+             if (status == InvoiceStatus.DRAFT || status.isClosedUnpaid()) {
+                 continue;
+             }
+-            BigDecimal due = invoice.amountDue(invoicePaid, invoiceCredited);
++            BigDecimal due = rules.apply(invoice.getCurrency()).round(invoice.amountDue(invoicePaid, invoiceCredited));
+             if (due.signum() <= 0) {
+                 continue;
+             }
+@@ -221,9 +229,13 @@ public class InvoiceService {
+     /**
+      * The entries on a client's running account. Drafts have not been sent and void invoices were cancelled, so
+      * neither is charged. A payment made out of held deposits is left out, as the deposit was already credited
+-     * when it was paid in.
++     * when it was paid in. Each amount is rounded by the rule of the currency it is in, as the invoice is, so the
++     * balances add up to the cent.
+      */
+-    private List<StatementEntry> accountEntries(Long clientId, List<Invoice> found) {
++    private List<StatementEntry> accountEntries(Long clientId, List<Invoice> found, Function<String, MoneyRule> rules) {
++        MoneyRule clientRule = clients.findById(clientId).map(c -> rules.apply(c.getCurrency())).orElse(MoneyRule.CENTS);
++        Map<Long, MoneyRule> invoiceRules = new HashMap<>();
++        found.forEach(i -> invoiceRules.put(i.getId(), rules.apply(i.getCurrency())));
+         List<StatementEntry> entries = new ArrayList<>();
+         List<Long> sent = new ArrayList<>();
+         Map<Long, String> poNumbers = new HashMap<>();
+@@ -237,7 +249,7 @@ public class InvoiceService {
+             }
+             if (invoice.getStatus() != InvoiceStatus.VOID) {
+                 entries.add(StatementEntry.charge(StatementEntry.Kind.INVOICE, invoice.getId(), invoice.getId(),
+-                        invoice.getIssuedDate(), "Invoice #" + invoice.getId(), invoice.getAmount(),
++                        invoice.getIssuedDate(), "Invoice #" + invoice.getId(), invoiceRules.get(invoice.getId()).round(invoice.getAmount()),
+                         invoice.getPoNumber()));
+             }
+         }
+@@ -245,28 +257,36 @@ public class InvoiceService {
+             for (Payment payment : payments.findByInvoiceIdIn(sent)) {
+                 if (payment.getDepositApplicationId() == null) {
+                     entries.add(StatementEntry.credit(StatementEntry.Kind.PAYMENT, payment.getId(), payment.getInvoiceId(),
+-                            payment.getDate(), "Payment on invoice #" + payment.getInvoiceId(), payment.getAmount(),
++                            payment.getDate(), "Payment on invoice #" + payment.getInvoiceId(),
++                            invoiceRules.get(payment.getInvoiceId()).round(payment.getAmount()),
+                             poNumbers.get(payment.getInvoiceId())));
+                 }
+             }
+             for (CreditNote note : creditNotes.findByInvoiceIdIn(sent)) {
+                 entries.add(StatementEntry.credit(StatementEntry.Kind.CREDIT_NOTE, note.getId(), note.getInvoiceId(),
+                         LocalDate.ofInstant(note.getIssuedAt(), ZoneOffset.UTC),
+-                        "Credit note on invoice #" + note.getInvoiceId(), note.getAmount(),
++                        "Credit note on invoice #" + note.getInvoiceId(),
++                        invoiceRules.get(note.getInvoiceId()).round(note.getAmount()),
+                         poNumbers.get(note.getInvoiceId())));
+             }
+         }
+         for (Deposit deposit : deposits.findByClientIdOrderByDateAscIdAsc(clientId)) {
+             entries.add(StatementEntry.credit(StatementEntry.Kind.DEPOSIT, deposit.getId(), null, deposit.getDate(),
+-                    "Deposit", deposit.getAmount(), null));
++                    "Deposit", clientRule.round(deposit.getAmount()), null));
+         }
+         for (Refund refund : refunds.findByClientIdOrderByDateDescIdDesc(clientId)) {
+             entries.add(StatementEntry.charge(StatementEntry.Kind.REFUND, refund.getId(), null, refund.getDate(),
+-                    "Refund", refund.getAmount(), null));
++                    "Refund", clientRule.round(refund.getAmount()), null));
+         }
+         return entries;
+     }
+ 
++    /** Looks up each currency's rounding rule once per request. */
++    private Function<String, MoneyRule> moneyRules() {
++        Map<String, MoneyRule> known = new HashMap<>();
++        return code -> known.computeIfAbsent(code, currencies::ruleFor);
++    }
++
+     private Map<Long, BigDecimal> paidByInvoice(List<Invoice> found) {
+         return found.isEmpty() ? Map.of()
+                 : payments.sumAmountByInvoiceIds(found.stream().map(Invoice::getId).toList()).stream()
