@@ -1,15 +1,16 @@
 import { Component, inject, input, signal } from '@angular/core';
 import { MoneyPipe } from '../currencies/money.pipe';
+import { JobProfit } from './job-profit';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ProjectService } from './project.service';
 import { CurrencyCode } from '../clients/client.service';
 
 // A project's budget: what it is, how much has been invoiced against it (sent invoices, paid or not),
-// and what is left. Set or change the budget, or clear it by leaving the amount blank.
+// and what is left, and the job's profitability. Set or change the budget, or clear it by leaving the amount blank.
 @Component({
   selector: 'app-project-budget',
-  imports: [MoneyPipe, ReactiveFormsModule],
+  imports: [JobProfit, MoneyPipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="project-budget-heading" data-testid="project-budget-section">
       <h2 id="project-budget-heading">Budget</h2>
@@ -41,6 +42,7 @@ import { CurrencyCode } from '../clients/client.service';
         @if (b.remaining !== null && b.remaining < 0) {
           <p data-testid="project-over-budget">Invoiced over budget.</p>
         }
+        <app-job-profit [figures]="b" [currency]="currency()" />
       }
 
       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="project-budget-form" novalidate>
