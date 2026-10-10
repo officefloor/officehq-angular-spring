@@ -22,6 +22,9 @@ public class SettingsService {
     public SettingsResponse update(SettingsRequest request) {
         Settings current = find();
         current.setDefaultTaxPct(request.defaultTaxPct());
+        if (request.revenueRecognitionBasis() != null) {
+            current.setRevenueRecognitionBasis(request.revenueRecognitionBasis());
+        }
         settings.flush();
         return SettingsResponse.from(current);
     }
@@ -36,6 +39,12 @@ public class SettingsService {
     @Transactional(readOnly = true)
     public String homeCurrency() {
         return find().getHomeCurrency();
+    }
+
+    /** When revenue counts: {@link RecognitionBasis#SENT} or {@link RecognitionBasis#PAID}. */
+    @Transactional(readOnly = true)
+    public String revenueRecognitionBasis() {
+        return find().getRevenueRecognitionBasis();
     }
 
     private Settings find() {

@@ -27,6 +27,7 @@ import net.officefloor.hq.app.invoice.InvoiceRepository;
 import net.officefloor.hq.app.invoice.InvoiceStatus;
 import net.officefloor.hq.app.payment.PaymentRepository;
 import net.officefloor.hq.app.project.ProjectRepository;
+import net.officefloor.hq.app.settings.RecognitionBasis;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.task.TaskRepository;
 import org.springframework.http.HttpStatus;
@@ -252,7 +253,8 @@ public class DashboardService {
 
     /**
      * The revenue billed on or between the given dates (over all time when either date is missing): the amounts of
-     * the invoices issued in the range that were sent (drafts and cancelled invoices are left out), each converted
+     * the invoices issued in the range that were sent (drafts and cancelled invoices are left out) or, when the
+     * settings count revenue once paid, only those fully paid, each converted
      * into the home currency at its issue date's rate (an invoice that cannot be converted is left out). The revenue
      * is also broken down by job (project), highest-earning first, and by the month each invoice was issued in, earliest first, to show the trend.
      */
@@ -262,8 +264,9 @@ public class DashboardService {
         if (!allTime && from.isAfter(to)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The start date must not be after the end date");
         }
-        List<InvoiceStatus> billed = List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID,
-                InvoiceStatus.WRITTEN_OFF);
+        List<InvoiceStatus> billed = RecognitionBasis.PAID.equals(settings.revenueRecognitionBasis())
+                ? List.of(InvoiceStatus.PAID)
+                : List.of(InvoiceStatus.SENT, InvoiceStatus.PARTIAL, InvoiceStatus.PAID, InvoiceStatus.WRITTEN_OFF);
         String home = settings.homeCurrency();
         BigDecimal total = BigDecimal.ZERO;
         long count = 0;

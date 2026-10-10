@@ -26,6 +26,10 @@ public class Settings {
     @Column(name = "home_currency", nullable = false, length = 3)
     private String homeCurrency = "USD";
 
+    /** When revenue counts: when an invoice is sent ("sent") or once it is paid ("paid"). */
+    @Column(name = "revenue_recognition_basis", nullable = false, length = 10)
+    private String revenueRecognitionBasis = RecognitionBasis.SENT;
+
     protected Settings() {
     }
 
@@ -35,6 +39,14 @@ public class Settings {
 
     public String getHomeCurrency() {
         return homeCurrency;
+    }
+
+    public String getRevenueRecognitionBasis() {
+        return revenueRecognitionBasis;
+    }
+
+    public void setRevenueRecognitionBasis(String revenueRecognitionBasis) {
+        this.revenueRecognitionBasis = revenueRecognitionBasis;
     }
 
     public void setDefaultTaxPct(BigDecimal defaultTaxPct) {

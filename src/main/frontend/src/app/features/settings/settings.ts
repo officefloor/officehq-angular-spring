@@ -1,11 +1,11 @@
 import { Component, effect, inject, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { SettingsService } from './settings.service';
+import { RecognitionBasis, SettingsService } from './settings.service';
 import { CurrencyRounding } from '../currencies/currency-rounding';
 import { FxRates } from '../fx-rates/fx-rates';
 
-// The app-wide settings: the standard sales tax rate that every new invoice starts with, how each currency rounds, and the exchange rate history.
+// The app-wide settings: the standard sales tax rate that every new invoice starts with, whether revenue counts when an invoice is sent or when it is paid, how each currency rounds, and the exchange rate history.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule, CurrencyRounding, FxRates],
@@ -35,6 +35,17 @@ import { FxRates } from '../fx-rates/fx-rates';
           </p>
         }
       </div>
+      <div>
+        <label for="settings-recognition-basis">Count revenue when an invoice is</label>
+        <select
+          id="settings-recognition-basis"
+          formControlName="revenueRecognitionBasis"
+          data-testid="settings-recognition-basis"
+        >
+          <option value="sent">Sent</option>
+          <option value="paid">Paid</option>
+        </select>
+      </div>
       <button type="submit" data-testid="settings-save" [disabled]="saving()">Save settings</button>
       @if (saved()) {
         <p role="status" data-testid="settings-saved">Settings saved.</p>
@@ -61,12 +72,20 @@ export class SettingsPage {
       '',
       [Validators.required, Validators.min(0), Validators.max(100), Validators.pattern(/^\d+(\.\d{1,2})?$/)],
     ],
+    revenueRecognitionBasis: ['sent' as RecognitionBasis],
   });
 
-  // Starts the field from the saved rate once the settings load, unless it has already been edited.
+  // Starts each field from the saved settings once they load, unless that field has already been edited.
   private readonly syncForm = effect(() => {
-    if (this.settings.hasValue() && !this.form.dirty) {
-      this.form.setValue({ defaultTaxPct: String(this.settings.value().defaultTaxPct) });
+    if (this.settings.hasValue()) {
+      const settings = this.settings.value();
+      const { defaultTaxPct, revenueRecognitionBasis } = this.form.controls;
+      if (!defaultTaxPct.dirty) {
+        defaultTaxPct.setValue(String(settings.defaultTaxPct));
+      }
+      if (!revenueRecognitionBasis.dirty) {
+        revenueRecognitionBasis.setValue(settings.revenueRecognitionBasis ?? 'sent');
+      }
     }
   });
 
@@ -83,11 +102,15 @@ export class SettingsPage {
     this.saving.set(true);
     this.saved.set(false);
     this.saveError.set(null);
+    const { revenueRecognitionBasis } = this.form.getRawValue();
     const defaultTaxPct = Number(this.form.getRawValue().defaultTaxPct);
-    this.service.update({ defaultTaxPct }).subscribe({
+    this.service.update({ defaultTaxPct, revenueRecognitionBasis }).subscribe({
       next: (updated) => {
         this.settings.set(updated);
-        this.form.reset({ defaultTaxPct: String(updated.defaultTaxPct) });
+        this.form.reset({
+          defaultTaxPct: String(updated.defaultTaxPct),
+          revenueRecognitionBasis: updated.revenueRecognitionBasis ?? 'sent',
+        });
         this.saving.set(false);
         this.saved.set(true);
       },
