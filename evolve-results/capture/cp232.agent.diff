@@ -1,0 +1,200 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+index 09afc5f..3bd1de1 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.service.ts
+@@ -77,7 +77,9 @@ export interface TaxSummary {
+   tax: number;
+   /** The levy (second tax). */
+   levy: number;
+-  /** The tax and levy together. */
++  /** The net of the manual tax adjustments dated within the range. */
++  adjustments: number;
++  /** The tax, levy and adjustments together. */
+   total: number;
+ }
+ 
+diff --git a/src/main/frontend/src/app/features/dashboard/tax-summary.ts b/src/main/frontend/src/app/features/dashboard/tax-summary.ts
+index 7542ec3..83c5089 100644
+--- a/src/main/frontend/src/app/features/dashboard/tax-summary.ts
++++ b/src/main/frontend/src/app/features/dashboard/tax-summary.ts
+@@ -6,7 +6,8 @@ import { TaxAdjustments } from '../tax-adjustments/tax-adjustments';
+ 
+ // The tax charged over a chosen date range: the main (sales) tax and the levy, each totalled separately, on invoices
+ // issued within it that were sent (drafts and cancelled invoices are left out), in the home currency. Their sum is
+-// the tax liability for the period: the tax collected that is owed on to the tax authority.
++// the tax collected; netted with the manual tax adjustments dated within the period it gives the tax liability: what
++// is owed on to the tax authority.
+ @Component({
+   selector: 'app-tax-summary',
+   imports: [MoneyPipe, TaxAdjustments],
+@@ -51,13 +52,15 @@ import { TaxAdjustments } from '../tax-adjustments/tax-adjustments';
+           </dd>
+           <dt>Levy</dt>
+           <dd data-testid="tax-summary-levy">{{ t.levy | money: t.homeCurrency }}</dd>
+-          <dt>Tax liability (total tax collected)</dt>
++          <dt>Adjustments</dt>
++          <dd data-testid="tax-summary-adjustments">{{ t.adjustments | money: t.homeCurrency }}</dd>
++          <dt>Tax liability (tax collected, after adjustments)</dt>
+           <dd data-testid="tax-summary-total">
+             <span data-testid="tax-liability-total">{{ t.total | money: t.homeCurrency }}</span>
+           </dd>
+         </dl>
+       }
+-      <app-tax-adjustments />
++      <app-tax-adjustments (recorded)="summary.reload()" />
+     </section>
+   `,
+ })
+diff --git a/src/main/frontend/src/app/features/tax-adjustments/tax-adjustments.ts b/src/main/frontend/src/app/features/tax-adjustments/tax-adjustments.ts
+index e376ca6..4c5a12b 100644
+--- a/src/main/frontend/src/app/features/tax-adjustments/tax-adjustments.ts
++++ b/src/main/frontend/src/app/features/tax-adjustments/tax-adjustments.ts
+@@ -1,4 +1,4 @@
+-import { Component, inject, signal } from '@angular/core';
++import { Component, inject, output, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { MoneyPipe } from '../currencies/money.pipe';
+@@ -97,6 +97,9 @@ import { TaxAdjustmentService } from './tax-adjustment.service';
+ export class TaxAdjustments {
+   private readonly service = inject(TaxAdjustmentService);
+ 
++  /** Emits once an adjustment has been recorded, so what it counts towards can refresh. */
++  readonly recorded = output();
++
+   protected readonly adjustments = rxResource({ stream: () => this.service.list() });
+ 
+   protected readonly saving = signal(false);
+@@ -129,6 +132,7 @@ export class TaxAdjustments {
+         this.form.reset();
+         this.saving.set(false);
+         this.saved.set(true);
++        this.recorded.emit();
+       },
+       error: () => {
+         this.saveError.set('Could not record the adjustment. Please try again.');
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index cf6ea6c..e8e2a70 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -131,6 +131,16 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO fx_rate (currency, rate_date, rate) VALUES (?, ?, ?)",
+                     r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
+         }
++        // A manual adjustment to the tax owed on its date: positive adds to the tax, negative takes from it. Its
++        // currency defaults to the home currency.
++        for (Map<String, Object> a : rows(fixture, "taxAdjustments")) {
++            String currency = a.get("currency") == null
++                    ? jdbc.queryForObject("SELECT home_currency FROM app_settings WHERE id = 1", String.class)
++                    : a.get("currency").toString();
++            jdbc.update("INSERT INTO tax_adjustment (id, adjustment_date, amount, currency, reason) VALUES (?, ?, ?, ?, ?)",
++                    ((Number) a.get("id")).longValue(), LocalDate.parse(a.get("date").toString()),
++                    decimal(a.get("amount")), currency, a.get("reason"));
++        }
+         for (Map<String, Object> c : rows(fixture, "clients")) {
+             jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, billing_contact, segment, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days, early_payment_window_days, created_date, pinned)"
+                     + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 926fe7e..7862b26 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -31,6 +31,8 @@ import net.officefloor.hq.app.project.ProjectRepository;
+ import net.officefloor.hq.app.settings.RecognitionBasis;
+ import net.officefloor.hq.app.settings.SettingsService;
+ import net.officefloor.hq.app.task.TaskRepository;
++import net.officefloor.hq.app.taxadjustment.TaxAdjustment;
++import net.officefloor.hq.app.taxadjustment.TaxAdjustmentRepository;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -49,6 +51,7 @@ public class DashboardService {
+     private final FxRateService fxRates;
+     private final InstalmentRepository instalments;
+     private final TaskRepository tasks;
++    private final TaxAdjustmentRepository taxAdjustments;
+     private final Clock clock;
+ 
+     /** How many of the biggest debtors the dashboard lists. */
+@@ -57,7 +60,7 @@ public class DashboardService {
+     public DashboardService(ClientRepository clients, ProjectRepository projects, InvoiceRepository invoices,
+             ClientService clientService, PaymentRepository payments, CreditNoteRepository creditNotes,
+             SettingsService settings, FxRateService fxRates, InstalmentRepository instalments, TaskRepository tasks,
+-            Clock clock) {
++            TaxAdjustmentRepository taxAdjustments, Clock clock) {
+         this.clients = clients;
+         this.projects = projects;
+         this.invoices = invoices;
+@@ -68,6 +71,7 @@ public class DashboardService {
+         this.fxRates = fxRates;
+         this.instalments = instalments;
+         this.tasks = tasks;
++        this.taxAdjustments = taxAdjustments;
+         this.clock = clock;
+     }
+ 
+@@ -491,7 +495,9 @@ public class DashboardService {
+      * The tax charged over a period, in the home currency: the sales tax and levy on every invoice issued on or
+      * between the given dates that was actually charged (sent, whether paid or not, or later written off; drafts
+      * and cancelled invoices are left out). A foreign invoice converts at the exchange rate from its issue date;
+-     * one whose currency has no rate by then cannot be converted and is left out.
++     * one whose currency has no rate by then cannot be converted and is left out. The manual tax adjustments dated
++     * within the period are netted into the total; one recorded in another (earlier) home currency converts at the
++     * rate from its date, and is left out when there is none.
+      */
+     @Transactional(readOnly = true)
+     public TaxSummaryResponse taxSummary(LocalDate from, LocalDate to) {
+@@ -522,7 +528,18 @@ public class DashboardService {
+         }
+         tax = tax.setScale(2, RoundingMode.HALF_UP);
+         levy = levy.setScale(2, RoundingMode.HALF_UP);
+-        return new TaxSummaryResponse(from, to, home, count, tax, levy, tax.add(levy));
++        BigDecimal adjustments = BigDecimal.ZERO.setScale(2);
++        for (TaxAdjustment adjustment : taxAdjustments.findByAdjustmentDateBetween(from, to)) {
++            if (adjustment.getCurrency().equals(home)) {
++                adjustments = adjustments.add(adjustment.getAmount());
++            } else {
++                adjustments = adjustments.add(fxRates
++                        .toHome(adjustment.getCurrency(), adjustment.getAdjustmentDate(), adjustment.getAmount())
++                        .orElse(BigDecimal.ZERO));
++            }
++        }
++        adjustments = adjustments.setScale(2, RoundingMode.HALF_UP);
++        return new TaxSummaryResponse(from, to, home, count, tax, levy, adjustments, tax.add(levy).add(adjustments));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/TaxSummaryResponse.java b/src/main/java/net/officefloor/hq/app/dashboard/TaxSummaryResponse.java
+index d4bb7e7..8009fcf 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/TaxSummaryResponse.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/TaxSummaryResponse.java
+@@ -5,8 +5,9 @@ import java.time.LocalDate;
+ 
+ /**
+  * The tax charged on invoices issued on or between two dates, in the home currency: the sales tax and the levy
+- * (second tax) separately, and together as the total, with how many invoices they came from.
++ * (second tax) separately, the net of the manual tax adjustments dated within the period, and the total owed
++ * (tax, levy and adjustments together), with how many invoices they came from.
+  */
+ public record TaxSummaryResponse(LocalDate from, LocalDate to, String homeCurrency, long invoices, BigDecimal tax,
+-        BigDecimal levy, BigDecimal total) {
++        BigDecimal levy, BigDecimal adjustments, BigDecimal total) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/taxadjustment/TaxAdjustmentRepository.java b/src/main/java/net/officefloor/hq/app/taxadjustment/TaxAdjustmentRepository.java
+index 5281968..5cf5161 100644
+--- a/src/main/java/net/officefloor/hq/app/taxadjustment/TaxAdjustmentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/taxadjustment/TaxAdjustmentRepository.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.taxadjustment;
+ 
++import java.time.LocalDate;
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+@@ -7,4 +8,7 @@ public interface TaxAdjustmentRepository extends JpaRepository<TaxAdjustment, Lo
+ 
+     /** The adjustments, earliest date first. */
+     List<TaxAdjustment> findAllByOrderByAdjustmentDateAscIdAsc();
++
++    /** The adjustments dated on or between the given dates. */
++    List<TaxAdjustment> findByAdjustmentDateBetween(LocalDate from, LocalDate to);
+ }
