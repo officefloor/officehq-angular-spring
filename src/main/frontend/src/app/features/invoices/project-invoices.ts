@@ -274,6 +274,11 @@ export class ProjectInvoices {
   });
 
   /** Clears the form back to a fresh invoice, starting from the default tax rate, ready to fill in. */
+  /** Fetches the project's invoices again, e.g. after one was raised from elsewhere on the page. */
+  reload(): void {
+    this.invoices.reload();
+  }
+
   protected startNew(): void {
     this.resetForm();
     this.saveError.set(null);

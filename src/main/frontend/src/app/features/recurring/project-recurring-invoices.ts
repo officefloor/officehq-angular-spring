@@ -1,4 +1,4 @@
-import { Component, inject, input, signal } from '@angular/core';
+import { Component, inject, input, output, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MoneyPipe } from '../currencies/money.pipe';
@@ -25,6 +25,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                 <th scope="col">Amount</th>
                 <th scope="col">Repeats</th>
                 <th scope="col">Next invoice</th>
+                <th scope="col"><span class="visually-hidden">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -33,11 +34,30 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
                   <td data-testid="recurring-amount">{{ r.amount | money: currency() }}</td>
                   <td data-testid="recurring-frequency">{{ r.frequency }}</td>
                   <td data-testid="recurring-next-date">{{ r.nextDate }}</td>
+                  <td>
+                    @if (r.due) {
+                      <button
+                        type="button"
+                        [attr.data-testid]="'recurring-generate-' + r.id"
+                        [attr.aria-label]="'Create draft invoice for ' + r.nextDate"
+                        [disabled]="generating() === r.id"
+                        (click)="generate(r.id)"
+                      >
+                        Create draft invoice
+                      </button>
+                    }
+                  </td>
                 </tr>
               }
             </tbody>
           </table>
         }
+      }
+      @if (generateError()) {
+        <p role="alert" data-testid="recurring-generate-error">{{ generateError() }}</p>
+      }
+      @if (generated(); as id) {
+        <p role="status" data-testid="recurring-generated">Draft invoice #{{ id }} created for review.</p>
       }
       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="recurring-form" novalidate>
         <div>
@@ -94,6 +114,8 @@ export class ProjectRecurringInvoices {
   readonly projectId = input.required<number>();
   /** The project's currency; its recurring invoices are billed in it. */
   readonly currency = input.required<string>();
+  /** Emits when a due recurring invoice is raised as a draft on the project. */
+  readonly generatedInvoice = output<void>();
 
   protected readonly recurring = rxResource({
     params: () => this.projectId(),
@@ -104,6 +126,10 @@ export class ProjectRecurringInvoices {
   protected readonly saved = signal(false);
   protected readonly saveError = signal<string | null>(null);
 
+  protected readonly generating = signal<number | null>(null);
+  protected readonly generated = signal<number | null>(null);
+  protected readonly generateError = signal<string | null>(null);
+
   protected readonly form = inject(NonNullableFormBuilder).group({
     amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
     nextDate: ['', [Validators.required]],
@@ -112,6 +138,24 @@ export class ProjectRecurringInvoices {
   protected invalid(name: 'amount' | 'nextDate'): boolean {
     const control = this.form.controls[name];
     return control.invalid && (control.touched || control.dirty);
+  }
+
+  protected generate(recurringId: number): void {
+    this.generating.set(recurringId);
+    this.generated.set(null);
+    this.generateError.set(null);
+    this.service.generate(this.projectId(), recurringId).subscribe({
+      next: (invoice) => {
+        this.generating.set(null);
+        this.generated.set(invoice.id);
+        this.recurring.reload();
+        this.generatedInvoice.emit();
+      },
+      error: () => {
+        this.generating.set(null);
+        this.generateError.set('Could not create the draft invoice. Please try again.');
+      },
+    });
   }
 
   protected submit(): void {

@@ -60,7 +60,11 @@ import { ProjectService } from './project.service';
       <app-project-tasks [projectId]="projectId()" />
       <app-notes [projectId]="projectId()" />
       <app-project-invoices [projectId]="projectId()" [currency]="p.currency" [closed]="p.closed" (invoiced)="budget()?.reload()" />
-      <app-project-recurring-invoices [projectId]="projectId()" [currency]="p.currency" />
+      <app-project-recurring-invoices
+        [projectId]="projectId()"
+        [currency]="p.currency"
+        (generatedInvoice)="invoices()?.reload()"
+      />
     }
   `,
 })
@@ -72,6 +76,7 @@ export class ProjectDetail {
   protected readonly projectId = computed(() => Number(this.id()));
 
   protected readonly budget = viewChild(ProjectBudgetPanel);
+  protected readonly invoices = viewChild(ProjectInvoices);
 
   protected readonly project = rxResource({
     params: () => this.projectId(),

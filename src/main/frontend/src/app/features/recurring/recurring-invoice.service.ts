@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { Invoice } from '../invoices/invoice.service';
 
 /** How often a recurring invoice repeats. */
 export type RecurringFrequency = 'MONTHLY';
@@ -13,10 +14,12 @@ export interface RecurringInvoice {
   frequency: RecurringFrequency;
   /** ISO date (yyyy-MM-dd) the next invoice falls on. */
   nextDate: string;
+  /** Whether the next invoice has fallen due, so it can be raised now. */
+  due: boolean;
 }
 
 /** A recurring invoice that is coming up, with the project and client it bills and the currency it is in. */
-export interface UpcomingRecurringInvoice extends RecurringInvoice {
+export interface UpcomingRecurringInvoice extends Omit<RecurringInvoice, 'due'> {
   projectName: string;
   clientId: number;
   clientName: string;
@@ -44,5 +47,10 @@ export class RecurringInvoiceService {
 
   create(projectId: number, recurring: NewRecurringInvoice): Observable<RecurringInvoice> {
     return this.http.post<RecurringInvoice>(`/api/projects/${projectId}/recurring-invoices`, recurring);
+  }
+
+  /** Raises the invoice the schedule has fallen due for, as a draft to review before sending. */
+  generate(projectId: number, recurringId: number): Observable<Invoice> {
+    return this.http.post<Invoice>(`/api/projects/${projectId}/recurring-invoices/${recurringId}/generate`, {});
   }
 }

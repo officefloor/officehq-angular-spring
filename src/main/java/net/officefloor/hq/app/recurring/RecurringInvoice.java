@@ -62,4 +62,11 @@ public class RecurringInvoice {
     public LocalDate getNextDate() {
         return nextDate;
     }
+
+    /** Moves the schedule on to the date the invoice after this one falls on. */
+    public void advance() {
+        this.nextDate = switch (frequency) {
+            case MONTHLY -> nextDate.plusMonths(1);
+        };
+    }
 }

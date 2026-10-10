@@ -4,10 +4,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 public record RecurringInvoiceResponse(Long id, Long projectId, BigDecimal amount, RecurringFrequency frequency,
-        LocalDate nextDate) {
+        LocalDate nextDate, boolean due) {
 
-    static RecurringInvoiceResponse from(RecurringInvoice recurring) {
+    /** {@code due} is whether the next invoice has fallen due by the given day, so it can be raised now. */
+    static RecurringInvoiceResponse from(RecurringInvoice recurring, LocalDate today) {
         return new RecurringInvoiceResponse(recurring.getId(), recurring.getProjectId(), recurring.getAmount(),
-                recurring.getFrequency(), recurring.getNextDate());
+                recurring.getFrequency(), recurring.getNextDate(), !recurring.getNextDate().isAfter(today));
     }
 }

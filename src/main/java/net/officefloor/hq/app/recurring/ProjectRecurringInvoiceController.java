@@ -2,6 +2,7 @@ package net.officefloor.hq.app.recurring;
 
 import jakarta.validation.Valid;
 import java.util.List;
+import net.officefloor.hq.app.invoice.InvoiceResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,5 +33,12 @@ public class ProjectRecurringInvoiceController {
     public RecurringInvoiceResponse create(@PathVariable Long projectId,
             @Valid @RequestBody RecurringInvoiceRequest request) {
         return service.create(projectId, request);
+    }
+
+    /** Raises the invoice the recurring schedule has fallen due for, as a draft to review before sending. */
+    @PostMapping("/{recurringId}/generate")
+    @ResponseStatus(HttpStatus.CREATED)
+    public InvoiceResponse generate(@PathVariable Long projectId, @PathVariable Long recurringId) {
+        return service.generate(projectId, recurringId);
     }
 }
