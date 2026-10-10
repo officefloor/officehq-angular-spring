@@ -28,6 +28,7 @@ import java.util.List;
  * part written off and any retention still held back. The exchange gain (positive) or loss (negative) realised
  * in the home currency by payments on a foreign invoice, from the rate moving between the invoice's issue date
  * and each payment's date (null when the invoice is in the home currency, has no payments, or a rate is missing).
+ * The client's purchase-order number the invoice is raised against (null when none was given).
  */
 public record InvoiceDetailResponse(Long id, Long projectId, String currency, BigDecimal amount, BigDecimal totalExTax,
         BigDecimal subtotal,
@@ -41,7 +42,7 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
         String homeCurrency, BigDecimal homeAmount,
         BigDecimal lateFeePerDay, long daysLate, BigDecimal lateFee,
         BigDecimal retentionPct, BigDecimal retention, boolean retentionReleased, BigDecimal dueNow, BigDecimal writeOffAmount, BigDecimal amountDue,
-        BigDecimal fxGainLoss) {
+        BigDecimal fxGainLoss, String poNumber) {
 
     /**
      * The invoice with the given status, as worked out from what has been paid and credited against it, and
@@ -67,6 +68,6 @@ public record InvoiceDetailResponse(Long id, Long projectId, String currency, Bi
                 invoice.getTotalSavings(), homeCurrency, homeAmount,
                 invoice.getLateFeePerDay(), invoice.daysLate(status, today), invoice.lateFee(status, today),
                 invoice.getRetentionPct(), invoice.getRetention(), invoice.isRetentionReleased(), invoice.getDueNow(),
-                invoice.getWriteOffAmount(), amountDue, fxGainLoss);
+                invoice.getWriteOffAmount(), amountDue, fxGainLoss, invoice.getPoNumber());
     }
 }

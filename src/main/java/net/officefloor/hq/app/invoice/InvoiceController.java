@@ -125,6 +125,12 @@ public class InvoiceController {
         return service.applyRetention(projectId, invoiceId, request);
     }
 
+    @PutMapping("/{invoiceId}/po-number")
+    public InvoiceDetailResponse setPoNumber(@PathVariable Long projectId, @PathVariable Long invoiceId,
+            @Valid @RequestBody PoNumberRequest request) {
+        return service.setPoNumber(projectId, invoiceId, request.poNumber());
+    }
+
     @PostMapping("/{invoiceId}/retention/release")
     public InvoiceDetailResponse releaseRetention(@PathVariable Long projectId, @PathVariable Long invoiceId) {
         return service.releaseRetention(projectId, invoiceId);

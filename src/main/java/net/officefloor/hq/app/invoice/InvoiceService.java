@@ -9,6 +9,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -421,6 +422,22 @@ public class InvoiceService {
         Invoice invoice = findDraft(projectId, invoiceId);
         invoice.applyRetention(request.retentionPct());
         invoices.flush();
+        return detail(invoice);
+    }
+
+    /**
+     * Puts (or, given none, clears) the client's purchase-order number on an invoice, recording the change in the
+     * audit log.
+     */
+    @Transactional
+    public InvoiceDetailResponse setPoNumber(Long projectId, Long invoiceId, String poNumber) {
+        String po = poNumber == null || poNumber.isBlank() ? null : poNumber.trim();
+        Invoice invoice = find(projectId, invoiceId);
+        if (!Objects.equals(invoice.getPoNumber(), po)) {
+            invoice.setPoNumber(po);
+            invoices.flush();
+            audit.record("INVOICE_PO_NUMBER_SET id=" + invoice.getId() + " poNumber=" + (po == null ? "none" : po));
+        }
         return detail(invoice);
     }
 

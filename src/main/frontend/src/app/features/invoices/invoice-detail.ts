@@ -11,6 +11,7 @@ import { InvoiceCreditNotes } from '../credit-notes/invoice-credit-notes';
 import { CreditNoteService } from '../credit-notes/credit-note.service';
 import { InvoiceInstalments } from '../instalments/invoice-instalments';
 import { InvoiceDetail, InvoiceService, LineItem } from './invoice.service';
+import { InvoicePoNumber } from './invoice-po-number';
 
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 // A unit price may be a fraction of a cent; each line is rounded to the cent on its own.
@@ -24,12 +25,13 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
 // For a client whose prices already include tax, the tax and levy are instead shown as worked back out of the price; the total is unchanged.
 // When the net total comes out under the invoice's minimum charge, the minimum is billed instead and marked as applied.
 // A foreign invoice also shows its original amount in the client's currency alongside its total in the home currency, converted at the exchange rate from its issue date.
+// It also shows the client's purchase-order number, which can be put on or cleared at any time.
 // It also shows the total savings: every line discount and invoice discount added together.
 // When an early-payment discount is offered, it also shows the reduced amount to pay if settled within the client's early-payment window.
 // Lines, the discounts (set to one, added to, or removed one at a time), the tax rate, the levy rate, the surcharge, the minimum charge and the early-payment discount can be changed while it is a draft.
 @Component({
   selector: 'app-invoice-detail',
-  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, Notes],
+  imports: [MoneyPipe, ReactiveFormsModule, DecimalPipe, RouterLink, InvoicePayments, InvoiceCreditNotes, InvoiceInstalments, InvoicePoNumber, Notes],
   template: `
     <a [routerLink]="['/projects', projectIdNumber()]" data-testid="invoice-back">Back to job</a>
     @if (invoice.error()) {
@@ -86,6 +88,7 @@ const FOUR_DECIMALS = /^\d+(\.\d{1,4})?$/;
       @if (inv.clientTaxNumber) {
         <p>Client tax number: <span data-testid="invoice-client-tax-number">{{ inv.clientTaxNumber }}</span></p>
       }
+      <app-invoice-po-number [invoice]="inv" (changed)="invoice.set($event)" />
 
       <section aria-labelledby="invoice-lineitems-heading">
         <h2 id="invoice-lineitems-heading" tabindex="-1">Line items</h2>

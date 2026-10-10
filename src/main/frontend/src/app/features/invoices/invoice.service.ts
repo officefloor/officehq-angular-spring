@@ -238,6 +238,8 @@ export interface InvoiceDetail extends Invoice {
   retentionReleased: boolean;
   /** What is due now: the amount less the retention held back. */
   dueNow: number;
+  /** The client's purchase-order number the invoice is raised against; null when none was given. */
+  poNumber: string | null;
   /** The part of the invoice written off as bad debt, no longer owed; zero when none has been written off. */
   writeOffAmount: number;
   /** What the client owes right now: what is left to pay after any payments and part written off, less the retention held back. */
@@ -382,6 +384,10 @@ export class InvoiceService {
   }
 
   /** Releases the retention held back on a sent invoice once the job is finished, so it becomes due. */
+  setPoNumber(projectId: number, invoiceId: number, poNumber: string | null): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/po-number`, { poNumber });
+  }
+
   releaseRetention(projectId: number, invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/projects/${projectId}/invoices/${invoiceId}/retention/release`, null);
   }

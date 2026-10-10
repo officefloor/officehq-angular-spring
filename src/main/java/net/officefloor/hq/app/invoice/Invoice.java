@@ -119,6 +119,10 @@ public class Invoice {
     @Column(name = "write_off_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal writeOffAmount = BigDecimal.ZERO.setScale(2);
 
+    /** The client's purchase-order number the invoice is raised against; null when none was given. */
+    @Column(name = "po_number", length = 50)
+    private String poNumber;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private InvoiceStatus status = InvoiceStatus.DRAFT;
@@ -733,6 +737,14 @@ public class Invoice {
 
     public BigDecimal getWriteOffAmount() {
         return writeOffAmount;
+    }
+
+    public String getPoNumber() {
+        return poNumber;
+    }
+
+    public void setPoNumber(String poNumber) {
+        this.poNumber = poNumber;
     }
 
     /**
