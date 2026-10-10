@@ -68,6 +68,7 @@ public class TestSupportController {
             jdbc.execute("TRUNCATE TABLE invoice_line_item RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice_discount RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE recurring_invoice RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE fx_rate RESTART IDENTITY");
@@ -158,6 +159,14 @@ public class TestSupportController {
             jdbc.update("INSERT INTO note (id, target_type, target_id, text, created_at) VALUES (?, ?, ?, ?, ?)",
                     ((Number) n.get("id")).longValue(), n.get("targetType"),
                     ((Number) n.get("targetId")).longValue(), n.get("text"), Timestamp.from(at));
+        }
+        // An invoice repeating for a fixed amount on a project, monthly unless it says otherwise.
+        for (Map<String, Object> r : rows(fixture, "recurring")) {
+            jdbc.update("INSERT INTO recurring_invoice (id, project_id, amount, frequency, next_date) VALUES (?, ?, ?, ?, ?)",
+                    ((Number) r.get("id")).longValue(), ((Number) r.get("projectId")).longValue(),
+                    new BigDecimal(r.get("amount").toString()),
+                    r.get("frequency") == null ? "MONTHLY" : r.get("frequency").toString(),
+                    LocalDate.parse(r.get("nextDate").toString()));
         }
         for (Map<String, Object> i : rows(fixture, "invoices")) {
             // A missing date is filled in from the other one using the standard payment term; with
@@ -354,6 +363,7 @@ public class TestSupportController {
         restartIdentity("invoice_line_item");
         restartIdentity("invoice_discount");
         restartIdentity("invoice_instalment");
+        restartIdentity("recurring_invoice");
         restartIdentity("task");
         restartIdentity("task_checklist_item");
         restartIdentity("tag");

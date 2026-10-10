@@ -3,16 +3,17 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { ProjectInvoices } from '../invoices/project-invoices';
 import { Notes } from '../notes/notes';
+import { ProjectRecurringInvoices } from '../recurring/project-recurring-invoices';
 import { ProjectTags } from '../tags/project-tags';
 import { ProjectTasks } from '../tasks/project-tasks';
 import { ProjectBudgetPanel } from './project-budget';
 import { ProjectDates } from './project-dates';
 import { ProjectService } from './project.service';
 
-// A single project's page: its name, description, client and status, whether it is open or closed, whether it is billable, its start and end dates, its budget, its tags, its tasks, its notes, and its invoices.
+// A single project's page: its name, description, client and status, whether it is open or closed, whether it is billable, its start and end dates, its budget, its tags, its tasks, its notes, its invoices, and the invoices that recur every month.
 @Component({
   selector: 'app-project-detail',
-  imports: [RouterLink, ProjectBudgetPanel, ProjectDates, ProjectInvoices, Notes, ProjectTags, ProjectTasks],
+  imports: [RouterLink, ProjectBudgetPanel, ProjectDates, ProjectInvoices, ProjectRecurringInvoices, Notes, ProjectTags, ProjectTasks],
   template: `
     <a routerLink="/projects" data-testid="project-back">Back to jobs</a>
     @if (project.error()) {
@@ -59,6 +60,7 @@ import { ProjectService } from './project.service';
       <app-project-tasks [projectId]="projectId()" />
       <app-notes [projectId]="projectId()" />
       <app-project-invoices [projectId]="projectId()" [currency]="p.currency" [closed]="p.closed" (invoiced)="budget()?.reload()" />
+      <app-project-recurring-invoices [projectId]="projectId()" [currency]="p.currency" />
     }
   `,
 })
