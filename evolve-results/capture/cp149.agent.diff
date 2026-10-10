@@ -1,0 +1,51 @@
+diff --git a/src/main/frontend/src/app/features/clients/client-credit-limit.ts b/src/main/frontend/src/app/features/clients/client-credit-limit.ts
+index 21bbe62..c603281 100644
+--- a/src/main/frontend/src/app/features/clients/client-credit-limit.ts
++++ b/src/main/frontend/src/app/features/clients/client-credit-limit.ts
+@@ -1,8 +1,8 @@
+-import { Component, inject, input, linkedSignal, output, signal } from '@angular/core';
++import { Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
+ import { MoneyPipe } from '../currencies/money.pipe';
+ import { Client, ClientService } from './client.service';
+ 
+-// The most a client may owe, in their currency, with a form to set it or remove it.
++// The most a client may owe, in their currency, and how much of it what they already owe uses up, with a form to set it or remove it.
+ @Component({
+   selector: 'app-client-credit-limit',
+   imports: [MoneyPipe],
+@@ -15,6 +15,18 @@ import { Client, ClientService } from './client.service';
+         <span data-testid="client-credit-limit-none">No limit</span>
+       }
+     </p>
++    @if (client().creditLimit !== null) {
++      <p>
++        Credit used:
++        <span data-testid="client-credit-used">{{ client().outstanding | money: client().currency }}</span>
++        @if (usedPct(); as pct) {
++          (<span data-testid="client-credit-used-pct">{{ pct }}%</span> of the limit)
++        }
++        @if (overLimit()) {
++          <strong data-testid="client-credit-over-limit">Over the limit</strong>
++        }
++      </p>
++    }
+     <form (submit)="$event.preventDefault(); save()">
+       <label for="client-credit-limit-input">Credit limit ({{ client().currency }}, blank for no limit)</label>
+       <input
+@@ -47,6 +59,16 @@ export class ClientCreditLimit {
+   /** Emits the client once their credit limit has been saved. */
+   readonly changed = output<Client>();
+ 
++  /** How much of the credit limit is used, as a whole percentage; null when there is no limit or it is zero. */
++  protected readonly usedPct = computed(() => {
++    const limit = this.client().creditLimit;
++    return limit ? Math.round((this.client().outstanding / limit) * 100) : null;
++  });
++  protected readonly overLimit = computed(() => {
++    const limit = this.client().creditLimit;
++    return limit !== null && this.client().outstanding > limit;
++  });
++
+   protected readonly amount = linkedSignal(() => this.client().creditLimit?.toString() ?? '');
+   protected readonly invalid = signal(false);
+   protected readonly saving = signal(false);
