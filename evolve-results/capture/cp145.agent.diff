@@ -1,0 +1,351 @@
+diff --git a/src/main/frontend/src/app/features/recurring/project-recurring-invoices.ts b/src/main/frontend/src/app/features/recurring/project-recurring-invoices.ts
+index c9b672e..198772c 100644
+--- a/src/main/frontend/src/app/features/recurring/project-recurring-invoices.ts
++++ b/src/main/frontend/src/app/features/recurring/project-recurring-invoices.ts
+@@ -2,7 +2,8 @@ import { Component, inject, input, output, signal } from '@angular/core';
+ import { rxResource } from '@angular/core/rxjs-interop';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { MoneyPipe } from '../currencies/money.pipe';
+-import { RecurringInvoiceService } from './recurring-invoice.service';
++import { Observable } from 'rxjs';
++import { RecurringInvoice, RecurringInvoiceService } from './recurring-invoice.service';
+ 
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ 
+@@ -25,6 +26,7 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                 <th scope="col">Amount</th>
+                 <th scope="col">Repeats</th>
+                 <th scope="col">Next invoice</th>
++                <th scope="col">Status</th>
+                 <th scope="col"><span class="visually-hidden">Actions</span></th>
+               </tr>
+             </thead>
+@@ -34,7 +36,29 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+                   <td data-testid="recurring-amount">{{ r.amount | money: currency() }}</td>
+                   <td data-testid="recurring-frequency">{{ r.frequency }}</td>
+                   <td data-testid="recurring-next-date">{{ r.nextDate }}</td>
++                  <td data-testid="recurring-status">{{ r.status }}</td>
+                   <td>
++                    @if (r.status === 'PAUSED') {
++                      <button
++                        type="button"
++                        [attr.data-testid]="'recurring-resume-' + r.id"
++                        [attr.aria-label]="'Resume recurring invoice next due ' + r.nextDate"
++                        [disabled]="toggling() === r.id"
++                        (click)="resume(r.id)"
++                      >
++                        Resume
++                      </button>
++                    } @else {
++                      <button
++                        type="button"
++                        [attr.data-testid]="'recurring-pause-' + r.id"
++                        [attr.aria-label]="'Pause recurring invoice next due ' + r.nextDate"
++                        [disabled]="toggling() === r.id"
++                        (click)="pause(r.id)"
++                      >
++                        Pause
++                      </button>
++                    }
+                     @if (r.due) {
+                       <button
+                         type="button"
+@@ -56,6 +80,9 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+       @if (generateError()) {
+         <p role="alert" data-testid="recurring-generate-error">{{ generateError() }}</p>
+       }
++      @if (toggleError()) {
++        <p role="alert" data-testid="recurring-toggle-error">{{ toggleError() }}</p>
++      }
+       @if (generated(); as id) {
+         <p role="status" data-testid="recurring-generated">Draft invoice #{{ id }} created for review.</p>
+       }
+@@ -130,6 +157,9 @@ export class ProjectRecurringInvoices {
+   protected readonly generated = signal<number | null>(null);
+   protected readonly generateError = signal<string | null>(null);
+ 
++  protected readonly toggling = signal<number | null>(null);
++  protected readonly toggleError = signal<string | null>(null);
++
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     amount: ['', [Validators.required, Validators.min(0.01), Validators.pattern(TWO_DECIMALS)]],
+     nextDate: ['', [Validators.required]],
+@@ -158,6 +188,29 @@ export class ProjectRecurringInvoices {
+     });
+   }
+ 
++  protected pause(recurringId: number): void {
++    this.toggle(recurringId, this.service.pause(this.projectId(), recurringId), 'pause');
++  }
++
++  protected resume(recurringId: number): void {
++    this.toggle(recurringId, this.service.resume(this.projectId(), recurringId), 'resume');
++  }
++
++  private toggle(recurringId: number, request: Observable<RecurringInvoice>, action: string): void {
++    this.toggling.set(recurringId);
++    this.toggleError.set(null);
++    request.subscribe({
++      next: (updated) => {
++        this.toggling.set(null);
++        this.recurring.update((list) => list?.map((r) => (r.id === updated.id ? updated : r)));
++      },
++      error: () => {
++        this.toggling.set(null);
++        this.toggleError.set(`Could not ${action} the recurring invoice. Please try again.`);
++      },
++    });
++  }
++
+   protected submit(): void {
+     this.saveError.set(null);
+     this.saved.set(false);
+diff --git a/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts b/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts
+index d1c077d..174897b 100644
+--- a/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts
++++ b/src/main/frontend/src/app/features/recurring/recurring-invoice.service.ts
+@@ -6,6 +6,9 @@ import { Invoice } from '../invoices/invoice.service';
+ /** How often a recurring invoice repeats. */
+ export type RecurringFrequency = 'MONTHLY';
+ 
++/** Whether a recurring invoice is generating, or paused so it does not. */
++export type RecurringStatus = 'ACTIVE' | 'PAUSED';
++
+ /** An invoice on a project that repeats on a schedule for a fixed amount. */
+ export interface RecurringInvoice {
+   id: number;
+@@ -14,12 +17,13 @@ export interface RecurringInvoice {
+   frequency: RecurringFrequency;
+   /** ISO date (yyyy-MM-dd) the next invoice falls on. */
+   nextDate: string;
++  status: RecurringStatus;
+   /** Whether the next invoice has fallen due, so it can be raised now. */
+   due: boolean;
+ }
+ 
+ /** A recurring invoice that is coming up, with the project and client it bills and the currency it is in. */
+-export interface UpcomingRecurringInvoice extends Omit<RecurringInvoice, 'due'> {
++export interface UpcomingRecurringInvoice extends Omit<RecurringInvoice, 'due' | 'status'> {
+   projectName: string;
+   clientId: number;
+   clientName: string;
+@@ -53,4 +57,14 @@ export class RecurringInvoiceService {
+   generate(projectId: number, recurringId: number): Observable<Invoice> {
+     return this.http.post<Invoice>(`/api/projects/${projectId}/recurring-invoices/${recurringId}/generate`, {});
+   }
++
++  /** Pauses the schedule so it stops generating invoices. */
++  pause(projectId: number, recurringId: number): Observable<RecurringInvoice> {
++    return this.http.post<RecurringInvoice>(`/api/projects/${projectId}/recurring-invoices/${recurringId}/pause`, {});
++  }
++
++  /** Resumes a paused schedule so it generates invoices again. */
++  resume(projectId: number, recurringId: number): Observable<RecurringInvoice> {
++    return this.http.post<RecurringInvoice>(`/api/projects/${projectId}/recurring-invoices/${recurringId}/resume`, {});
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index e64329e..dace8d7 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -162,11 +162,13 @@ public class TestSupportController {
+         }
+         // An invoice repeating for a fixed amount on a project, monthly unless it says otherwise.
+         for (Map<String, Object> r : rows(fixture, "recurring")) {
+-            jdbc.update("INSERT INTO recurring_invoice (id, project_id, amount, frequency, next_date) VALUES (?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO recurring_invoice (id, project_id, amount, frequency, next_date, status)"
++                    + " VALUES (?, ?, ?, ?, ?, ?)",
+                     ((Number) r.get("id")).longValue(), ((Number) r.get("projectId")).longValue(),
+                     new BigDecimal(r.get("amount").toString()),
+                     r.get("frequency") == null ? "MONTHLY" : r.get("frequency").toString(),
+-                    LocalDate.parse(r.get("nextDate").toString()));
++                    LocalDate.parse(r.get("nextDate").toString()),
++                    r.get("status") == null ? "ACTIVE" : r.get("status").toString());
+         }
+         for (Map<String, Object> i : rows(fixture, "invoices")) {
+             // A missing date is filled in from the other one using the standard payment term; with
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/ProjectRecurringInvoiceController.java b/src/main/java/net/officefloor/hq/app/recurring/ProjectRecurringInvoiceController.java
+index 6153a3e..884bfa7 100644
+--- a/src/main/java/net/officefloor/hq/app/recurring/ProjectRecurringInvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/recurring/ProjectRecurringInvoiceController.java
+@@ -41,4 +41,16 @@ public class ProjectRecurringInvoiceController {
+     public InvoiceResponse generate(@PathVariable Long projectId, @PathVariable Long recurringId) {
+         return service.generate(projectId, recurringId);
+     }
++
++    /** Pauses the recurring schedule so it stops generating invoices. */
++    @PostMapping("/{recurringId}/pause")
++    public RecurringInvoiceResponse pause(@PathVariable Long projectId, @PathVariable Long recurringId) {
++        return service.pause(projectId, recurringId);
++    }
++
++    /** Resumes a paused recurring schedule so it generates invoices again. */
++    @PostMapping("/{recurringId}/resume")
++    public RecurringInvoiceResponse resume(@PathVariable Long projectId, @PathVariable Long recurringId) {
++        return service.resume(projectId, recurringId);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoice.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoice.java
+index f47bbfc..6752da8 100644
+--- a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoice.java
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoice.java
+@@ -33,6 +33,10 @@ public class RecurringInvoice {
+     @Column(name = "next_date", nullable = false)
+     private LocalDate nextDate;
+ 
++    @Enumerated(EnumType.STRING)
++    @Column(nullable = false, length = 10)
++    private RecurringStatus status = RecurringStatus.ACTIVE;
++
+     protected RecurringInvoice() {
+     }
+ 
+@@ -63,6 +67,24 @@ public class RecurringInvoice {
+         return nextDate;
+     }
+ 
++    public RecurringStatus getStatus() {
++        return status;
++    }
++
++    public boolean isPaused() {
++        return status == RecurringStatus.PAUSED;
++    }
++
++    /** Stops the schedule generating invoices until it is resumed. */
++    public void pause() {
++        this.status = RecurringStatus.PAUSED;
++    }
++
++    /** Lets a paused schedule generate invoices again. */
++    public void resume() {
++        this.status = RecurringStatus.ACTIVE;
++    }
++
+     /** Moves the schedule on to the date the invoice after this one falls on. */
+     public void advance() {
+         this.nextDate = switch (frequency) {
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRepository.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRepository.java
+index f8536ed..837a8cb 100644
+--- a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceRepository.java
+@@ -9,6 +9,7 @@ public interface RecurringInvoiceRepository extends JpaRepository<RecurringInvoi
+     /** A project's recurring invoices, soonest next first. */
+     List<RecurringInvoice> findByProjectIdOrderByNextDateAscIdAsc(Long projectId);
+ 
+-    /** Every recurring invoice next falling on or after the given day, soonest first. */
+-    List<RecurringInvoice> findByNextDateGreaterThanEqualOrderByNextDateAscIdAsc(LocalDate from);
++    /** Every recurring invoice in the given status next falling on or after the given day, soonest first. */
++    List<RecurringInvoice> findByStatusAndNextDateGreaterThanEqualOrderByNextDateAscIdAsc(RecurringStatus status,
++            LocalDate from);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceResponse.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceResponse.java
+index 7bcc49f..31a83e8 100644
+--- a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceResponse.java
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceResponse.java
+@@ -4,11 +4,12 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
+ public record RecurringInvoiceResponse(Long id, Long projectId, BigDecimal amount, RecurringFrequency frequency,
+-        LocalDate nextDate, boolean due) {
++        LocalDate nextDate, RecurringStatus status, boolean due) {
+ 
+-    /** {@code due} is whether the next invoice has fallen due by the given day, so it can be raised now. */
++    /** {@code due} is whether an active schedule's next invoice has fallen due by the given day, so it can be raised now. */
+     static RecurringInvoiceResponse from(RecurringInvoice recurring, LocalDate today) {
+         return new RecurringInvoiceResponse(recurring.getId(), recurring.getProjectId(), recurring.getAmount(),
+-                recurring.getFrequency(), recurring.getNextDate(), !recurring.getNextDate().isAfter(today));
++                recurring.getFrequency(), recurring.getNextDate(), recurring.getStatus(),
++                !recurring.isPaused() && !recurring.getNextDate().isAfter(today));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java
+index f0a310e..73ffdf4 100644
+--- a/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringInvoiceService.java
+@@ -43,10 +43,11 @@ public class RecurringInvoiceService {
+                 .map(r -> RecurringInvoiceResponse.from(r, today)).toList();
+     }
+ 
+-    /** The recurring invoices across all projects next falling today or later, soonest first. */
++    /** The active recurring invoices across all projects next falling today or later, soonest first. */
+     @Transactional(readOnly = true)
+     public List<UpcomingRecurringInvoiceResponse> upcoming() {
+-        List<RecurringInvoice> found = recurring.findByNextDateGreaterThanEqualOrderByNextDateAscIdAsc(LocalDate.now(clock));
++        List<RecurringInvoice> found = recurring.findByStatusAndNextDateGreaterThanEqualOrderByNextDateAscIdAsc(
++                RecurringStatus.ACTIVE, LocalDate.now(clock));
+         List<Long> projectIds = found.stream().map(RecurringInvoice::getProjectId).distinct().toList();
+         Map<Long, Project> byId = projects.findAllById(projectIds).stream()
+                 .collect(Collectors.toMap(Project::getId, Function.identity()));
+@@ -70,9 +71,10 @@ public class RecurringInvoiceService {
+      */
+     @Transactional
+     public InvoiceResponse generate(Long projectId, Long recurringId) {
+-        RecurringInvoice schedule = recurring.findById(recurringId)
+-                .filter(r -> r.getProjectId().equals(projectId))
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown recurring invoice"));
++        RecurringInvoice schedule = requireSchedule(projectId, recurringId);
++        if (schedule.isPaused()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The recurring invoice is paused");
++        }
+         LocalDate due = schedule.getNextDate();
+         if (due.isAfter(LocalDate.now(clock))) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The recurring invoice is not due yet");
+@@ -85,6 +87,36 @@ public class RecurringInvoiceService {
+         return invoice;
+     }
+ 
++    /** Pauses the schedule so it stops generating invoices until it is resumed. */
++    @Transactional
++    public RecurringInvoiceResponse pause(Long projectId, Long recurringId) {
++        RecurringInvoice schedule = requireSchedule(projectId, recurringId);
++        if (!schedule.isPaused()) {
++            schedule.pause();
++            recurring.saveAndFlush(schedule);
++            audit.record("RECURRING_INVOICE_PAUSED id=" + recurringId + " project=" + projectId);
++        }
++        return RecurringInvoiceResponse.from(schedule, LocalDate.now(clock));
++    }
++
++    /** Resumes a paused schedule so it generates invoices again. */
++    @Transactional
++    public RecurringInvoiceResponse resume(Long projectId, Long recurringId) {
++        RecurringInvoice schedule = requireSchedule(projectId, recurringId);
++        if (schedule.isPaused()) {
++            schedule.resume();
++            recurring.saveAndFlush(schedule);
++            audit.record("RECURRING_INVOICE_RESUMED id=" + recurringId + " project=" + projectId);
++        }
++        return RecurringInvoiceResponse.from(schedule, LocalDate.now(clock));
++    }
++
++    private RecurringInvoice requireSchedule(Long projectId, Long recurringId) {
++        return recurring.findById(recurringId)
++                .filter(r -> r.getProjectId().equals(projectId))
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown recurring invoice"));
++    }
++
+     private void requireProject(Long projectId) {
+         if (!projects.existsById(projectId)) {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown project");
+diff --git a/src/main/java/net/officefloor/hq/app/recurring/RecurringStatus.java b/src/main/java/net/officefloor/hq/app/recurring/RecurringStatus.java
+new file mode 100644
+index 0000000..389d741
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/recurring/RecurringStatus.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.recurring;
++
++/** Whether a recurring invoice is generating, or paused so it does not. */
++public enum RecurringStatus {
++    ACTIVE, PAUSED
++}
+diff --git a/src/main/resources/db/migration/V78__recurring_invoice_status.sql b/src/main/resources/db/migration/V78__recurring_invoice_status.sql
+new file mode 100644
+index 0000000..252ef59
+--- /dev/null
++++ b/src/main/resources/db/migration/V78__recurring_invoice_status.sql
+@@ -0,0 +1,3 @@
++-- A recurring invoice may be paused so it stops generating, and resumed later.
++ALTER TABLE recurring_invoice ADD COLUMN status VARCHAR(10) DEFAULT 'ACTIVE' NOT NULL;
++ALTER TABLE recurring_invoice ADD CONSTRAINT recurring_invoice_status_known CHECK (status IN ('ACTIVE', 'PAUSED'));
