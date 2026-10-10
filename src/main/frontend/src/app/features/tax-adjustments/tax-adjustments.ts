@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, output, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MoneyPipe } from '../currencies/money.pipe';
@@ -97,6 +97,9 @@ import { TaxAdjustmentService } from './tax-adjustment.service';
 export class TaxAdjustments {
   private readonly service = inject(TaxAdjustmentService);
 
+  /** Emits once an adjustment has been recorded, so what it counts towards can refresh. */
+  readonly recorded = output();
+
   protected readonly adjustments = rxResource({ stream: () => this.service.list() });
 
   protected readonly saving = signal(false);
@@ -129,6 +132,7 @@ export class TaxAdjustments {
         this.form.reset();
         this.saving.set(false);
         this.saved.set(true);
+        this.recorded.emit();
       },
       error: () => {
         this.saveError.set('Could not record the adjustment. Please try again.');

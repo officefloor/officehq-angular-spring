@@ -6,7 +6,8 @@ import { TaxAdjustments } from '../tax-adjustments/tax-adjustments';
 
 // The tax charged over a chosen date range: the main (sales) tax and the levy, each totalled separately, on invoices
 // issued within it that were sent (drafts and cancelled invoices are left out), in the home currency. Their sum is
-// the tax liability for the period: the tax collected that is owed on to the tax authority.
+// the tax collected; netted with the manual tax adjustments dated within the period it gives the tax liability: what
+// is owed on to the tax authority.
 @Component({
   selector: 'app-tax-summary',
   imports: [MoneyPipe, TaxAdjustments],
@@ -51,13 +52,15 @@ import { TaxAdjustments } from '../tax-adjustments/tax-adjustments';
           </dd>
           <dt>Levy</dt>
           <dd data-testid="tax-summary-levy">{{ t.levy | money: t.homeCurrency }}</dd>
-          <dt>Tax liability (total tax collected)</dt>
+          <dt>Adjustments</dt>
+          <dd data-testid="tax-summary-adjustments">{{ t.adjustments | money: t.homeCurrency }}</dd>
+          <dt>Tax liability (tax collected, after adjustments)</dt>
           <dd data-testid="tax-summary-total">
             <span data-testid="tax-liability-total">{{ t.total | money: t.homeCurrency }}</span>
           </dd>
         </dl>
       }
-      <app-tax-adjustments />
+      <app-tax-adjustments (recorded)="summary.reload()" />
     </section>
   `,
 })

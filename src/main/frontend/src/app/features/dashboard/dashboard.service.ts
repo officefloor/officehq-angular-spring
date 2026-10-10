@@ -77,7 +77,9 @@ export interface TaxSummary {
   tax: number;
   /** The levy (second tax). */
   levy: number;
-  /** The tax and levy together. */
+  /** The net of the manual tax adjustments dated within the range. */
+  adjustments: number;
+  /** The tax, levy and adjustments together. */
   total: number;
 }
 

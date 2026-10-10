@@ -31,6 +31,8 @@ import net.officefloor.hq.app.project.ProjectRepository;
 import net.officefloor.hq.app.settings.RecognitionBasis;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.task.TaskRepository;
+import net.officefloor.hq.app.taxadjustment.TaxAdjustment;
+import net.officefloor.hq.app.taxadjustment.TaxAdjustmentRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +51,7 @@ public class DashboardService {
     private final FxRateService fxRates;
     private final InstalmentRepository instalments;
     private final TaskRepository tasks;
+    private final TaxAdjustmentRepository taxAdjustments;
     private final Clock clock;
 
     /** How many of the biggest debtors the dashboard lists. */
@@ -57,7 +60,7 @@ public class DashboardService {
     public DashboardService(ClientRepository clients, ProjectRepository projects, InvoiceRepository invoices,
             ClientService clientService, PaymentRepository payments, CreditNoteRepository creditNotes,
             SettingsService settings, FxRateService fxRates, InstalmentRepository instalments, TaskRepository tasks,
-            Clock clock) {
+            TaxAdjustmentRepository taxAdjustments, Clock clock) {
         this.clients = clients;
         this.projects = projects;
         this.invoices = invoices;
@@ -68,6 +71,7 @@ public class DashboardService {
         this.fxRates = fxRates;
         this.instalments = instalments;
         this.tasks = tasks;
+        this.taxAdjustments = taxAdjustments;
         this.clock = clock;
     }
 
@@ -491,7 +495,9 @@ public class DashboardService {
      * The tax charged over a period, in the home currency: the sales tax and levy on every invoice issued on or
      * between the given dates that was actually charged (sent, whether paid or not, or later written off; drafts
      * and cancelled invoices are left out). A foreign invoice converts at the exchange rate from its issue date;
-     * one whose currency has no rate by then cannot be converted and is left out.
+     * one whose currency has no rate by then cannot be converted and is left out. The manual tax adjustments dated
+     * within the period are netted into the total; one recorded in another (earlier) home currency converts at the
+     * rate from its date, and is left out when there is none.
      */
     @Transactional(readOnly = true)
     public TaxSummaryResponse taxSummary(LocalDate from, LocalDate to) {
@@ -522,7 +528,18 @@ public class DashboardService {
         }
         tax = tax.setScale(2, RoundingMode.HALF_UP);
         levy = levy.setScale(2, RoundingMode.HALF_UP);
-        return new TaxSummaryResponse(from, to, home, count, tax, levy, tax.add(levy));
+        BigDecimal adjustments = BigDecimal.ZERO.setScale(2);
+        for (TaxAdjustment adjustment : taxAdjustments.findByAdjustmentDateBetween(from, to)) {
+            if (adjustment.getCurrency().equals(home)) {
+                adjustments = adjustments.add(adjustment.getAmount());
+            } else {
+                adjustments = adjustments.add(fxRates
+                        .toHome(adjustment.getCurrency(), adjustment.getAdjustmentDate(), adjustment.getAmount())
+                        .orElse(BigDecimal.ZERO));
+            }
+        }
+        adjustments = adjustments.setScale(2, RoundingMode.HALF_UP);
+        return new TaxSummaryResponse(from, to, home, count, tax, levy, adjustments, tax.add(levy).add(adjustments));
     }
 
     /**

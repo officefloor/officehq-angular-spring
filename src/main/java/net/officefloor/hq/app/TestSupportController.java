@@ -131,6 +131,16 @@ public class TestSupportController {
             jdbc.update("INSERT INTO fx_rate (currency, rate_date, rate) VALUES (?, ?, ?)",
                     r.get("currency"), LocalDate.parse(r.get("date").toString()), decimal(r.get("rate")));
         }
+        // A manual adjustment to the tax owed on its date: positive adds to the tax, negative takes from it. Its
+        // currency defaults to the home currency.
+        for (Map<String, Object> a : rows(fixture, "taxAdjustments")) {
+            String currency = a.get("currency") == null
+                    ? jdbc.queryForObject("SELECT home_currency FROM app_settings WHERE id = 1", String.class)
+                    : a.get("currency").toString();
+            jdbc.update("INSERT INTO tax_adjustment (id, adjustment_date, amount, currency, reason) VALUES (?, ?, ?, ?, ?)",
+                    ((Number) a.get("id")).longValue(), LocalDate.parse(a.get("date").toString()),
+                    decimal(a.get("amount")), currency, a.get("reason"));
+        }
         for (Map<String, Object> c : rows(fixture, "clients")) {
             jdbc.update("INSERT INTO client (id, name, email, phone, tax_number, billing_address, language, account_manager, billing_contact, segment, tax_inclusive, tax_exempt, key_account, archived, currency, default_discount_pct, credit_limit, payment_terms_days, early_payment_window_days, created_date, pinned)"
                     + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
