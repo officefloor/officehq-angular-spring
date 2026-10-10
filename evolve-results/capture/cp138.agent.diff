@@ -1,0 +1,99 @@
+diff --git a/src/main/frontend/src/app/features/instalments/instalment.service.ts b/src/main/frontend/src/app/features/instalments/instalment.service.ts
+index 6ee01a0..8d1ddd9 100644
+--- a/src/main/frontend/src/app/features/instalments/instalment.service.ts
++++ b/src/main/frontend/src/app/features/instalments/instalment.service.ts
+@@ -20,6 +20,8 @@ export interface Instalment {
+ /** The interest charged for each day an instalment of an invoice is paid late. */
+ export interface InstalmentInterest {
+   interestPerDay: number;
++  /** Total interest that has built up across the late instalments. */
++  accrued: number;
+ }
+ 
+ /** The earliest instalment of an invoice still to be paid. */
+diff --git a/src/main/frontend/src/app/features/instalments/invoice-instalments.ts b/src/main/frontend/src/app/features/instalments/invoice-instalments.ts
+index 5111cd9..d5d58ee 100644
+--- a/src/main/frontend/src/app/features/instalments/invoice-instalments.ts
++++ b/src/main/frontend/src/app/features/instalments/invoice-instalments.ts
+@@ -41,6 +41,12 @@ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+               per day
+             </p>
+           }
++          @if (interest.hasValue()) {
++            <p data-testid="invoice-interest-row">
++              Total interest built up:
++              <strong data-testid="invoice-interest">{{ interest.value().accrued | money: currency() }}</strong>
++            </p>
++          }
+           <table data-testid="invoice-instalments-table">
+             <caption>When each part of this invoice is due</caption>
+             <thead>
+@@ -279,6 +285,7 @@ export class InvoiceInstalments {
+         // Reload so the schedule stays in due-date order.
+         this.instalments.reload();
+         this.next.reload();
++        this.interest.reload();
+         this.form.reset();
+         this.saving.set(false);
+       },
+@@ -300,6 +307,7 @@ export class InvoiceInstalments {
+       next: () => {
+         this.instalments.update((list) => (list ?? []).filter((n) => n.id !== instalment.id));
+         this.next.reload();
++        this.interest.reload();
+         this.removing.set(null);
+       },
+       error: () => {
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentInterestResponse.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentInterestResponse.java
+index 6a0b1c8..a888077 100644
+--- a/src/main/java/net/officefloor/hq/app/instalment/InstalmentInterestResponse.java
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentInterestResponse.java
+@@ -2,6 +2,9 @@ package net.officefloor.hq.app.instalment;
+ 
+ import java.math.BigDecimal;
+ 
+-/** The interest charged for each day an instalment of an invoice is paid late. */
+-public record InstalmentInterestResponse(BigDecimal interestPerDay) {
++/**
++ * The interest charged for each day an instalment of an invoice is paid late, and the total interest
++ * that has built up across the invoice's late instalments.
++ */
++public record InstalmentInterestResponse(BigDecimal interestPerDay, BigDecimal accrued) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java b/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java
+index 8e6cc1f..6e53788 100644
+--- a/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java
++++ b/src/main/java/net/officefloor/hq/app/instalment/InstalmentService.java
+@@ -38,10 +38,13 @@ public class InstalmentService {
+                 .map(i -> from(invoice, i, today)).toList();
+     }
+ 
+-    /** The interest charged for each day an instalment of the invoice is paid late. */
++    /**
++     * The interest charged for each day an instalment of the invoice is paid late, and the total that has
++     * built up across its late instalments.
++     */
+     @Transactional(readOnly = true)
+     public InstalmentInterestResponse interest(Long projectId, Long invoiceId) {
+-        return new InstalmentInterestResponse(find(projectId, invoiceId).getInstalmentInterestPerDay());
++        return interestOf(find(projectId, invoiceId));
+     }
+ 
+     /** Sets the interest charged for each day an instalment of an invoice still to be paid is paid late. */
+@@ -53,7 +56,15 @@ public class InstalmentService {
+         invoices.flush();
+         audit.record("INSTALMENT_INTEREST_SET invoice=" + invoiceId + " perDay="
+                 + invoice.getInstalmentInterestPerDay().toPlainString());
+-        return new InstalmentInterestResponse(invoice.getInstalmentInterestPerDay());
++        return interestOf(invoice);
++    }
++
++    private InstalmentInterestResponse interestOf(Invoice invoice) {
++        LocalDate today = LocalDate.now(clock);
++        BigDecimal accrued = instalments.findByInvoiceIdOrderByDueDateAscIdAsc(invoice.getId()).stream()
++                .map(i -> from(invoice, i, today).interest())
++                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++        return new InstalmentInterestResponse(invoice.getInstalmentInterestPerDay(), accrued);
+     }
+ 
+     /**
