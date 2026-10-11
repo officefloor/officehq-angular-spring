@@ -1,0 +1,393 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 868f105..a3e0ba9 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -29,6 +29,9 @@ export interface Client {
+   // The client's own minimum charge, in its currency (no conversion), charged on its invoices instead
+   // of the workspace's; null for the workspace's, 0 for never charged a minimum.
+   minimumCharge: number | null;
++  // The percentage (0 to 100) taken off every price the client's lines take from its rate card or the
++  // price list, each band's price included; 0 is none. A price typed on a line is not reduced.
++  rateDiscountPct: number;
+   // Days (0 to 30, a week as standard) past its due date an invoice or instalment is given before it
+   // is overdue and earns late interest.
+   graceDays: number;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index c377116..61afda2 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -163,6 +163,17 @@ function validTaxNumber(taxNumber: string): boolean {
+           step="0.01"
+           formControlName="minimumCharge"
+         />
++        <label for="client-rate-discount">Discount on rates % (optional)</label>
++        <input
++          id="client-rate-discount"
++          data-testid="client-form-rate-discount-pct"
++          type="number"
++          inputmode="decimal"
++          min="0"
++          max="100"
++          step="0.01"
++          formControlName="rateDiscountPct"
++        />
+         <label for="client-grace">Grace period in days, 0 to 30 (optional, a week if left out)</label>
+         <input
+           id="client-grace"
+@@ -300,6 +311,7 @@ export class Clients {
+     retentionPct: new FormControl<number | null>(null),
+     withholdingPct: new FormControl<number | null>(null),
+     minimumCharge: new FormControl<number | null>(null),
++    rateDiscountPct: new FormControl<number | null>(null),
+     graceDays: new FormControl<number | null>(null),
+     interestRate: new FormControl<number | null>(null),
+     region: new FormControl('', { nonNullable: true }),
+@@ -340,6 +352,8 @@ export class Clients {
+     const withholdingPct = withholding === null || (withholding as unknown) === '' ? null : Number(withholding);
+     const minimum = this.form.controls.minimumCharge.value;
+     const minimumCharge = minimum === null || (minimum as unknown) === '' ? null : Number(minimum);
++    const rateDiscount = this.form.controls.rateDiscountPct.value;
++    const rateDiscountPct = rateDiscount === null || (rateDiscount as unknown) === '' ? null : Number(rateDiscount);
+     const grace = this.form.controls.graceDays.value;
+     const graceDays = grace === null || (grace as unknown) === '' ? null : Number(grace);
+     const interest = this.form.controls.interestRate.value;
+@@ -361,6 +375,7 @@ export class Clients {
+       retentionPct,
+       withholdingPct,
+       minimumCharge,
++      rateDiscountPct,
+       graceDays,
+       interestRate,
+       region,
+@@ -379,6 +394,7 @@ export class Clients {
+       retentionPct,
+       withholdingPct,
+       minimumCharge,
++      rateDiscountPct,
+       graceDays,
+       interestRate,
+       earlyPayPct,
+@@ -405,6 +421,7 @@ export class Clients {
+       retentionPct: retentionPct ?? 0,
+       withholdingPct: withholdingPct ?? 0,
+       minimumCharge,
++      rateDiscountPct: rateDiscountPct ?? 0,
+       graceDays: graceDays ?? STANDARD_GRACE_DAYS,
+       interestRate,
+       region: region || null,
+@@ -468,6 +485,7 @@ export class Clients {
+     retentionPct: number | null,
+     withholdingPct: number | null,
+     minimumCharge: number | null,
++    rateDiscountPct: number | null,
+     graceDays: number | null,
+     interestRate: number | null,
+     earlyPayPct: number | null,
+@@ -516,6 +534,13 @@ export class Clients {
+         problems.push('The minimum charge can have at most two decimals.');
+       }
+     }
++    if (rateDiscountPct !== null) {
++      if (!(Number.isFinite(rateDiscountPct) && rateDiscountPct >= 0 && rateDiscountPct <= 100)) {
++        problems.push('The rate discount must be from 0 to 100 percent.');
++      } else if (Math.abs(Math.round(rateDiscountPct * 100) - rateDiscountPct * 100) > 1e-6) {
++        problems.push('The rate discount can have at most two decimals.');
++      }
++    }
+     if (graceDays !== null && !(Number.isInteger(graceDays) && graceDays >= 0 && graceDays <= 30)) {
+       problems.push('The grace period must be from 0 to 30 days.');
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 3d9710a..19783de 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -12,6 +12,7 @@ import java.util.Set;
+ import jakarta.persistence.EntityManager;
+ import net.officefloor.hq.app.clients.Client;
+ import net.officefloor.hq.app.clients.Currency;
++import net.officefloor.hq.app.clients.RateDiscount;
+ import net.officefloor.hq.app.clients.RateTiers;
+ import net.officefloor.hq.app.invoices.Invoice;
+ import net.officefloor.hq.app.invoices.InvoiceRepository;
+@@ -47,7 +48,7 @@ public class TestSupportController {
+ 
+     private static final String INTEREST_THRESHOLD = "interest_threshold";
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime");
+@@ -294,7 +295,7 @@ public class TestSupportController {
+             if (Currency.of(currency) == null) {
+                 throw refuse("unsupported value of clients[].currency: " + currency);
+             }
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct", "minimum_charge"},
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct", "minimum_charge", "rate_discount_pct"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+                     percent(row.get("discountPct"), "clients[].discountPct"),
+                     flag(row.get("taxExempt"), "clients[].taxExempt"),
+@@ -307,7 +308,8 @@ public class TestSupportController {
+                     row.get("region") == null ? null : row.get("region").toString(),
+                     row.get("taxNumber") == null ? null : row.get("taxNumber").toString(),
+                     percent(row.get("withholdingPct"), "clients[].withholdingPct"),
+-                    row.get("minimumCharge") == null ? null : money(row.get("minimumCharge"), "clients[].minimumCharge"));
++                    row.get("minimumCharge") == null ? null : money(row.get("minimumCharge"), "clients[].minimumCharge"),
++                    percent(row.get("rateDiscountPct"), "clients[].rateDiscountPct"));
+             Long clientId = id(row.get("id") == null
+                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
+             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
+@@ -569,7 +571,7 @@ public class TestSupportController {
+         if (!settings.isEmpty()) {
+             out.put("settings", settings);
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number, withholding_pct, minimum_charge FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number, withholding_pct, minimum_charge, rate_discount_pct FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -588,6 +590,7 @@ public class TestSupportController {
+                     }
+                     row.put("retentionPct", r.get("RETENTION_PCT"));
+                     row.put("withholdingPct", r.get("WITHHOLDING_PCT"));
++                    row.put("rateDiscountPct", r.get("RATE_DISCOUNT_PCT"));
+                     if (r.get("MINIMUM_CHARGE") != null) {
+                         row.put("minimumCharge", r.get("MINIMUM_CHARGE"));
+                     }
+@@ -753,7 +756,9 @@ public class TestSupportController {
+         if (line.get("unitPrice") != null || line.get("unitType") == null) {
+             return new Object[] {cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"), null, false, false};
+         }
+-        Map<String, Object> invoice = jdbc.queryForMap("SELECT i.status, i.issue_date, c.currency FROM invoice i JOIN client c ON c.id = i.client_id WHERE i.id = ?", invoiceId);
++        Map<String, Object> invoice = jdbc.queryForMap("SELECT i.status, i.issue_date, c.currency, c.rate_discount_pct FROM invoice i JOIN client c ON c.id = i.client_id WHERE i.id = ?", invoiceId);
++        Currency currency = Currency.orUsd((String) invoice.get("CURRENCY"));
++        BigDecimal discountPct = (BigDecimal) invoice.get("RATE_DISCOUNT_PCT");
+         LocalDate on = invoiceDate(invoice.get("ISSUE_DATE"));
+         // A draft's line priced from the rates follows them; a sent invoice's has its price fixed.
+         boolean draft = "DRAFT".equals(invoice.get("STATUS"));
+@@ -762,19 +767,20 @@ public class TestSupportController {
+                 + "ORDER BY r.effective_from DESC NULLS LAST LIMIT 1", invoiceId,
+                 line.get("unitType").toString().trim(), on);
+         if (rate.isEmpty()) {
+-            PriceList.Converted listed = priceList.priceFor(line.get("unitType").toString(),
+-                    Currency.orUsd((String) invoice.get("CURRENCY")), on);
++            PriceList.Converted listed = priceList.priceFor(line.get("unitType").toString(), currency, on);
+             if (listed == null) {
+                 throw refuse("invoices[].lineItems[].unitPrice is required: neither the client's rate card nor the price list has unitType "
+                         + line.get("unitType") + " in force on the issue date");
+             }
+-            return new Object[] {listed.unitPrice(), listed.tiers(), draft, true};
++            return new Object[] {RateDiscount.price(listed.unitPrice(), discountPct, currency),
++                    RateDiscount.tiers(listed.tiers(), discountPct, currency), draft, true};
+         }
+         RateTiers tiers = RateTiers.parse((String) rate.get(0).get("TIERS"));
+         if (tiers != null) {
+-            return new Object[] {tiers.firstPrice(), tiers.format(), draft, true};
++            return new Object[] {RateDiscount.price(tiers.firstPrice(), discountPct, currency),
++                    RateDiscount.tiers(tiers.format(), discountPct, currency), draft, true};
+         }
+-        return new Object[] {rate.get(0).get("UNIT_PRICE"), null, draft, true};
++        return new Object[] {RateDiscount.price((BigDecimal) rate.get(0).get("UNIT_PRICE"), discountPct, currency), null, draft, true};
+     }
+ 
+     /** The day an invoice's rates are taken on: its issue date, or today when it has none. */
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 0ae5ba3..a7d728d 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -104,6 +104,13 @@ public class Client {
+     @Column(name = "minimum_charge")
+     private BigDecimal minimumCharge;
+ 
++    /**
++     * The percentage (0 to 100, 0 for none) taken off every price the client's lines take from its rate card or the
++     * price list (see {@link RateDiscount}).
++     */
++    @Column(name = "rate_discount_pct")
++    private BigDecimal rateDiscountPct = BigDecimal.ZERO;
++
+     /**
+      * The client's rate card: its prices, single or tiered, per unit type (hour, day, ...), each from a date or
+      * always; empty for none.
+@@ -123,7 +130,8 @@ public class Client {
+ 
+     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
+-            Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge) {
++            Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge,
++            BigDecimal rateDiscountPct) {
+         this.name = name;
+         this.email = email;
+         this.termsDays = termsDays;
+@@ -140,6 +148,7 @@ public class Client {
+         this.taxNumber = taxNumber;
+         this.withholdingPct = withholdingPct == null ? BigDecimal.ZERO : withholdingPct;
+         this.minimumCharge = minimumCharge;
++        this.rateDiscountPct = rateDiscountPct == null ? BigDecimal.ZERO : rateDiscountPct;
+     }
+ 
+     public Long getId() {
+@@ -190,6 +199,10 @@ public class Client {
+         return withholdingPct;
+     }
+ 
++    public BigDecimal getRateDiscountPct() {
++        return rateDiscountPct;
++    }
++
+     public BigDecimal getMinimumCharge() {
+         return minimumCharge;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 2f3c3a3..1f333b4 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -29,12 +29,13 @@ public class ClientController {
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+             BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
+-            List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge) {
++            List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
+-                    c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge());
++                    c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
++                    c.getRateDiscountPct());
+         }
+     }
+ 
+@@ -106,7 +107,12 @@ public class ClientController {
+             /** The client's own minimum charge in its currency; the workspace's when left out, none when 0. */
+             @DecimalMin(value = "0", message = "The minimum charge cannot be negative.")
+             @Digits(integer = 17, fraction = 2, message = "The minimum charge can have at most two decimals.")
+-            BigDecimal minimumCharge) {
++            BigDecimal minimumCharge,
++            /** The percentage taken off the prices the client's lines take from the rates; none when left out. */
++            @DecimalMin(value = "0", message = "The rate discount must be from 0 to 100 percent.")
++            @DecimalMax(value = "100", message = "The rate discount must be from 0 to 100 percent.")
++            @Digits(integer = 3, fraction = 2, message = "The rate discount can have at most two decimals.")
++            BigDecimal rateDiscountPct) {
+ 
+         @AssertTrue(message = "Enter a tax number of two letters then ten digits whose last two digits check the first eight, or leave it blank.")
+         public boolean isTaxNumberValid() {
+@@ -141,6 +147,7 @@ public class ClientController {
+     public ClientView add(@Valid @RequestBody NewClient body) {
+         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
+-                body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge()));
++                body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge(),
++                body.rateDiscountPct()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 39aa457..0fe5b3e 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -32,12 +32,13 @@ public class ClientService {
+     @Transactional
+     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays,
+-            BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge) {
++            BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge,
++            BigDecimal rateDiscountPct) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+         return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, pricesIncludeTax, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays, interestRate,
+-                region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber), withholdingPct, minimumCharge));
++                region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber), withholdingPct, minimumCharge, rateDiscountPct));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/RateDiscount.java b/src/main/java/net/officefloor/hq/app/clients/RateDiscount.java
+new file mode 100644
+index 0000000..8437124
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/RateDiscount.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app.clients;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++
++/**
++ * A client's discount on rates: a percentage taken off every price a line takes from the client's rate card or the
++ * price list, each band's price included, rounded half up per unit to the cent (whole yen), after converting a price
++ * list price into the client's currency and before any overtime. A price typed on a line is not reduced.
++ */
++public final class RateDiscount {
++
++    private RateDiscount() {
++    }
++
++    /** The unit price less the percentage (none when null or 0), rounded half up to the currency's decimals. */
++    public static BigDecimal price(BigDecimal unitPrice, BigDecimal pct, Currency currency) {
++        if (unitPrice == null || pct == null || pct.signum() == 0) {
++            return unitPrice;
++        }
++        return unitPrice.multiply(BigDecimal.valueOf(100).subtract(pct)).movePointLeft(2)
++                .setScale(currency.scale(), RoundingMode.HALF_UP);
++    }
++
++    /** The tiers (in their stored form, null for none) with each band's price less the percentage. */
++    public static String tiers(String tiers, BigDecimal pct, Currency currency) {
++        RateTiers parsed = RateTiers.parse(tiers);
++        if (parsed == null || pct == null || pct.signum() == 0) {
++            return tiers;
++        }
++        return new RateTiers(parsed.bands().stream()
++                .map(b -> new RateTiers.Band(b.units(), price(b.unitPrice(), pct, currency))).toList()).format();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 6754b5d..c64ffaa 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -27,6 +27,7 @@ import net.officefloor.hq.app.clients.ClientRate;
+ import net.officefloor.hq.app.clients.ClientRepository;
+ import net.officefloor.hq.app.clients.Currency;
+ import net.officefloor.hq.app.clients.RateTiers;
++import net.officefloor.hq.app.clients.RateDiscount;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -1526,6 +1527,7 @@ public class InvoiceService {
+         ClientRate rate = client == null ? null : client.rateFor(unitType, on);
+         BigDecimal increment = rate == null ? null : rate.getIncrement();
+         BigDecimal minUnits = rate == null ? null : rate.getMinUnits();
++        BigDecimal discountPct = client == null ? null : client.getRateDiscountPct();
+         if (unitPrice != null) {
+             requireWhole(invoice.currency(), unitPrice, "The unit price");
+             return new LinePrice(unitPrice, null, increment, minUnits);
+@@ -1539,14 +1541,17 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException("The client's rate card has no rate for " + unitType
+                         + "; enter a unit price.");
+             }
+-            return new LinePrice(listed.unitPrice(), listed.tiers(), null, null, true);
++            return new LinePrice(RateDiscount.price(listed.unitPrice(), discountPct, invoice.currency()),
++                    RateDiscount.tiers(listed.tiers(), discountPct, invoice.currency()), null, null, true);
+         }
+         RateTiers tiers = rate.tiers();
+         if (tiers != null) {
+-            return new LinePrice(tiers.firstPrice(), tiers.format(), increment, minUnits, true);
++            return new LinePrice(RateDiscount.price(tiers.firstPrice(), discountPct, invoice.currency()),
++                    RateDiscount.tiers(tiers.format(), discountPct, invoice.currency()), increment, minUnits, true);
+         }
+         requireWhole(invoice.currency(), rate.getUnitPrice(), "The unit price");
+-        return new LinePrice(rate.getUnitPrice(), null, increment, minUnits, true);
++        return new LinePrice(RateDiscount.price(rate.getUnitPrice(), discountPct, invoice.currency()), null,
++                increment, minUnits, true);
+     }
+ 
+     private static void requireWhole(Currency currency, BigDecimal amount, String what) {
+diff --git a/src/main/resources/db/migration/V60__client_rate_discount.sql b/src/main/resources/db/migration/V60__client_rate_discount.sql
+new file mode 100644
+index 0000000..0418ccb
+--- /dev/null
++++ b/src/main/resources/db/migration/V60__client_rate_discount.sql
+@@ -0,0 +1,3 @@
++-- The percentage (0 to 100, 0 is none) taken off every price a line of the client's takes from its rate card or
++-- the price list, each band's price included, per unit after conversion and before overtime.
++ALTER TABLE client ADD COLUMN rate_discount_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
