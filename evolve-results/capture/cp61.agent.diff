@@ -1,0 +1,619 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 31f93dd..02319ce 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -332,7 +332,7 @@ function problemWith(line: NewLine): string {
+             @for (p of inv.payments; track p.id) {
+               <tr [attr.data-testid]="'payment-row-' + p.id">
+                 <td data-testid="payment-date">{{ p.date }}</td>
+-                <td data-testid="payment-amount">{{ amount(p.amount) }}</td>
++                <td data-testid="payment-amount">{{ money(p.amount, p.currency) }}</td>
+                 <td data-testid="payment-allocated">{{ amount(p.allocated) }}</td>
+                 <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
+                 <td>
+@@ -637,6 +637,8 @@ export class InvoicePanel {
+   protected readonly reversing = signal(false);
+   protected readonly reverseError = signal('');
+   protected readonly statusLabel = statusLabel;
++  // A payment's amount is shown in the currency it was paid in.
++  protected readonly money = money;
+   protected readonly instalmentStatusLabel = instalmentStatusLabel;
+   // An amount shown in the currency of the open invoice's client.
+   protected amount(value: string): string {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index e306b04..2f77b62 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -64,9 +64,12 @@ export interface InvoiceLineView {
+ // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
+ // this invoice, decimal strings to the cent; the date it was paid (yyyy-mm-dd) and the RF reference it
+ // quoted in groups of four (null when none).
++// A payment to an opened invoice: `amount` is in the `currency` it was paid in, `allocated` (the
++// part applied to this invoice) in the client's currency.
+ export interface InvoicePaymentView {
+   id: number;
+   amount: string;
++  currency: Currency;
+   allocated: string;
+   date: string;
+   reference: string | null;
+@@ -153,8 +156,10 @@ export interface InstalmentView {
+ 
+ // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
+ // RF reference the client quoted ('' when none), checked again by the server.
++// `currency` is the currency it was paid in; the server converts it into the client's currency.
+ export interface NewPayment {
+   amount: string;
++  currency: Currency;
+   date: string;
+   reference: string;
+ }
+@@ -321,7 +326,7 @@ export class InvoiceService {
+   // Records a deposit: the whole amount held on the client's account as credit, applied to no invoice
+   // until one of the client's invoices is sent; refused (409) when dated after today. Answers the
+   // client's invoices.
+-  recordDeposit(clientId: number, deposit: { amount: string; date: string }): Observable<InvoiceSummary[]> {
++  recordDeposit(clientId: number, deposit: { amount: string; currency: Currency; date: string }): Observable<InvoiceSummary[]> {
+     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/deposits`, deposit);
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index 948e874..ab01f3b 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -1,4 +1,5 @@
+-import { Component, inject, input, output, signal } from '@angular/core';
++import { Component, effect, inject, input, output, signal } from '@angular/core';
++import { toSignal } from '@angular/core/rxjs-interop';
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import {
+@@ -8,7 +9,7 @@ import {
+   NewAllocation,
+   NewPayment,
+ } from './invoice.service';
+-import { Currency, TWO_DECIMALS, cents, symbolOf } from './invoice-format';
++import { CURRENCIES, Currency, TWO_DECIMALS, cents, symbolOf } from './invoice-format';
+ 
+ // Whether a reference passes the ISO 11649 check: its first four characters moved to the end,
+ // letters as numbers (A=10 up to Z=35), mod 97 is 1. Spaces and capitals are ignored by the caller.
+@@ -83,8 +84,9 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
+ }
+ 
+ // What is wrong with the parts of a split payment, or '' when they fit it. Whether each part is no
+-// more than its invoice has due is checked by the server.
+-function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[]): string {
++// more than its invoice has due is checked by the server, as is whether they add up to a payment made
++// in another currency than the client's (`currency`) once converted.
++function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[], currency: Currency): string {
+   if (allocations.some((a) => !TWO_DECIMALS.test(a.amount))) {
+     return "Each invoice's part must be a number with at most two decimals.";
+   }
+@@ -92,7 +94,7 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
+     return "Each invoice's part must be more than zero.";
+   }
+   const sum = allocations.reduce((total, a) => total + cents(a.amount), 0);
+-  if (TWO_DECIMALS.test(payment.amount) && sum !== cents(payment.amount)) {
++  if (payment.currency === currency && TWO_DECIMALS.test(payment.amount) && sum !== cents(payment.amount)) {
+     return `The parts add up to $${(sum / 100).toFixed(2)}, not the $${(cents(payment.amount) / 100).toFixed(2)} paid.`;
+   }
+   return '';
+@@ -112,7 +114,13 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
+   imports: [ReactiveFormsModule],
+   template: `
+     <form [formGroup]="form" (ngSubmit)="record()" aria-label="Record a payment" novalidate>
+-      <label for="payment-amount">Amount ({{ symbolOf(currency()) }})</label>
++      <label for="payment-currency">Paid in</label>
++      <select id="payment-currency" data-testid="payment-form-currency" formControlName="currency">
++        @for (c of currencies; track c) {
++          <option [value]="c">{{ c }}</option>
++        }
++      </select>
++      <label for="payment-amount">Amount ({{ symbolOf(paidIn()) }})</label>
+       <input
+         id="payment-amount"
+         data-testid="payment-form-amount"
+@@ -162,9 +170,11 @@ export class PaymentForm {
+   private readonly service = inject(InvoiceService);
+ 
+   readonly clientId = input.required<number>();
+-  // The currency the client is billed in, which the payment is in (whole yen for yen; the server checks).
++  // The currency the client is billed in: the payment's by default. A payment in another currency is
++  // converted into it by the server at the workspace rates (whole yen for yen; the server checks).
+   readonly currency = input<Currency>('USD');
+   protected readonly symbolOf = symbolOf;
++  protected readonly currencies = CURRENCIES;
+   // The open invoice, which takes the payment when no parts are filled in; null when none is open.
+   readonly invoiceId = input<number | null>(null);
+   readonly allocations = input<NewAllocation[]>([]);
+@@ -183,12 +193,27 @@ export class PaymentForm {
+     date: new FormControl('', { nonNullable: true }),
+     reference: new FormControl('', { nonNullable: true }),
+     deposit: new FormControl(false, { nonNullable: true }),
++    currency: new FormControl<Currency>('USD', { nonNullable: true }),
++  });
++  // The currency picked to pay in, as a signal for the amount's label.
++  protected readonly paidIn = toSignal(this.form.controls.currency.valueChanges, {
++    initialValue: this.form.controls.currency.value,
+   });
+ 
++  constructor() {
++    // Each new client (or invoice) starts with its own currency picked.
++    effect(() => this.resetCurrency(this.currency()));
++  }
++
++  private resetCurrency(currency: Currency): void {
++    this.form.controls.currency.setValue(currency);
++  }
++
+   protected record(): void {
+     const raw = this.form.getRawValue();
+     const payment: NewPayment = {
+       amount: raw.amount.trim().replace(/^\$/, ''),
++      currency: raw.currency,
+       date: raw.date.trim(),
+       reference: raw.reference.replace(/\s/g, '').toUpperCase(),
+     };
+@@ -200,7 +225,7 @@ export class PaymentForm {
+     const invoiceId = this.invoiceId();
+     let problem = problemWithPayment(payment, allocations.length === 0 && invoiceId === null);
+     if (allocations.length > 0) {
+-      problem = [problem, problemWithAllocations(payment, allocations)].filter((p) => p).join(' ');
++      problem = [problem, problemWithAllocations(payment, allocations, this.currency())].filter((p) => p).join(' ');
+     }
+     if (problem) {
+       this.form.markAllAsTouched();
+@@ -210,7 +235,7 @@ export class PaymentForm {
+     this.saving.set(true);
+     this.error.set('');
+     const done = () => {
+-      this.form.reset();
++      this.form.reset({ currency: this.currency() });
+       this.saving.set(false);
+     };
+     const failed = (e: HttpErrorResponse) => {
+@@ -253,9 +278,9 @@ export class PaymentForm {
+     }
+     this.saving.set(true);
+     this.error.set('');
+-    this.service.recordDeposit(this.clientId(), { amount: payment.amount, date: payment.date }).subscribe({
++    this.service.recordDeposit(this.clientId(), { amount: payment.amount, currency: payment.currency, date: payment.date }).subscribe({
+       next: (list) => {
+-        this.form.reset();
++        this.form.reset({ currency: this.currency() });
+         this.saving.set(false);
+         this.deposited.emit(list);
+       },
+diff --git a/src/main/java/net/officefloor/hq/app/ExchangeRates.java b/src/main/java/net/officefloor/hq/app/ExchangeRates.java
+index 47751df..ff8500d 100644
+--- a/src/main/java/net/officefloor/hq/app/ExchangeRates.java
++++ b/src/main/java/net/officefloor/hq/app/ExchangeRates.java
+@@ -1,8 +1,10 @@
+ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
++import java.math.MathContext;
+ import java.util.LinkedHashMap;
+ import java.util.Map;
++import net.officefloor.hq.app.clients.Currency;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+ 
+@@ -31,4 +33,24 @@ public class ExchangeRates {
+                         new BigDecimal((String) r.get("SETTING_VALUE"))));
+         return rates;
+     }
++
++    /** The US dollars one unit of the currency is worth: one for the dollar or a currency with no rate set. */
++    public BigDecimal usdPer(Currency currency) {
++        if (currency == Currency.USD) {
++            return BigDecimal.ONE;
++        }
++        return jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class, USD_PER + currency.name())
++                .stream().findFirst().map(v -> new BigDecimal(v.trim())).orElse(BigDecimal.ONE);
++    }
++
++    /**
++     * The amount paid in one currency converted into another through US dollars: amount x (dollars per
++     * unit paid) / (dollars per unit of the other), rounded half up to the other's step.
++     */
++    public BigDecimal convert(BigDecimal amount, Currency from, Currency to) {
++        if (from == to) {
++            return amount.setScale(to.scale());
++        }
++        return to.roundToStep(amount.multiply(usdPer(from)).divide(usdPer(to), MathContext.DECIMAL128));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 8eba2b1..dc101cb 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -41,7 +41,7 @@ public class TestSupportController {
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations");
++    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
+ 
+@@ -191,13 +191,26 @@ public class TestSupportController {
+             if (row.get("date") == null) {
+                 throw refuse("payments[].date is required");
+             }
+-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note"},
+-                    id(row.get("clientId")), cents(row.get("amount"), "payments[].amount"),
++            // An amount paid in another currency than the client's is applied converted into the client's.
++            Currency clientCurrency = Currency.orUsd(jdbc.queryForList("SELECT currency FROM client WHERE id = ?",
++                    String.class, id(row.get("clientId"))).stream().findFirst().orElse(null));
++            Currency paidIn = clientCurrency;
++            if (row.get("currency") != null) {
++                paidIn = Currency.of(row.get("currency").toString());
++                if (paidIn == null) {
++                    throw refuse("unsupported value of payments[].currency: " + row.get("currency"));
++                }
++            }
++            BigDecimal paidAmount = cents(row.get("amount"), "payments[].amount");
++            boolean foreign = paidIn != clientCurrency && paidAmount != null;
++            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount"},
++                    id(row.get("clientId")), foreign ? exchangeRates.convert(paidAmount, paidIn, clientCurrency) : paidAmount,
+                     date(row.get("date"), "payments[].date"),
+                     row.get("reference") == null ? null : row.get("reference").toString(),
+                     flag(row.get("reversed"), "payments[].reversed"),
+                     money(row.get("refunded"), "payments[].refunded"),
+-                    row.get("creditNote") == null ? null : id(row.get("creditNote")));
++                    row.get("creditNote") == null ? null : id(row.get("creditNote")),
++                    foreign ? paidIn.name() : null, foreign ? paidAmount : null);
+             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
+                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
+                 if (allocation.get("invoiceId") == null) {
+@@ -322,12 +335,14 @@ public class TestSupportController {
+                             }).toList());
+                     return row;
+                 }).toList());
+-        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference, reversed, refunded, credit_note FROM payment ORDER BY id")
++        out.put("payments", jdbc.queryForList("SELECT p.id, p.client_id, p.amount, p.payment_date, p.reference, p.reversed, p.refunded, p.credit_note, "
++                + "p.paid_currency, p.paid_amount, c.currency FROM payment p LEFT JOIN client c ON c.id = p.client_id ORDER BY p.id")
+                 .stream().map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+                     row.put("clientId", r.get("CLIENT_ID"));
+-                    row.put("amount", r.get("AMOUNT"));
++                    row.put("amount", r.get("PAID_CURRENCY") == null ? r.get("AMOUNT") : r.get("PAID_AMOUNT"));
++                    row.put("currency", r.get("PAID_CURRENCY") == null ? r.get("CURRENCY") : r.get("PAID_CURRENCY"));
+                     row.put("date", r.get("PAYMENT_DATE").toString());
+                     row.put("reference", r.get("REFERENCE"));
+                     row.put("reversed", r.get("REVERSED"));
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Currency.java b/src/main/java/net/officefloor/hq/app/clients/Currency.java
+index 336af12..202f1e1 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Currency.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Currency.java
+@@ -31,6 +31,15 @@ public enum Currency {
+         return amount.stripTrailingZeros().scale() <= scale;
+     }
+ 
++    /**
++     * The amount rounded half up to this currency's step: whole yen, 0.05 for Swiss francs, otherwise
++     * the cent.
++     */
++    public BigDecimal roundToStep(BigDecimal amount) {
++        BigDecimal step = this == CHF ? new BigDecimal("0.05") : BigDecimal.ONE.movePointLeft(scale);
++        return amount.divide(step, 0, RoundingMode.HALF_UP).multiply(step).setScale(scale);
++    }
++
+     /** The amount with its symbol and thousands separators, e.g. €1,234.50 or ¥1,235. */
+     public String format(BigDecimal amount) {
+         DecimalFormat number = new DecimalFormat(scale == 0 ? "#,##0" : "#,##0.00",
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 9475b0c..7d1ff64 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -60,13 +60,15 @@ public class InvoiceController {
+     }
+ 
+     /**
+-     * A payment made to an opened invoice: the whole amount paid and how much of it went to this
+-     * invoice (to the cent), its date and the reference it quoted in groups of four (null when none).
++     * A payment made to an opened invoice: the whole amount paid in the {@code currency} it was paid in,
++     * how much of it went to this invoice (to the cent) in the client's currency, its date and the
++     * reference it quoted in groups of four (null when none).
+      */
+-    public record PaymentView(Long id, String amount, String allocated, LocalDate date, String reference) {
+-        static PaymentView of(Payment p, Long invoiceId) {
+-            return new PaymentView(p.getId(), p.getAmount().setScale(2).toPlainString(),
+-                    p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
++    public record PaymentView(Long id, String amount, Currency currency, String allocated, LocalDate date,
++            String reference) {
++        static PaymentView of(Payment p, Long invoiceId, Currency clientCurrency) {
++            return new PaymentView(p.getId(), p.paidAmount().setScale(2).toPlainString(),
++                    p.paidCurrency(clientCurrency), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
+                     p.getReference() == null ? null : PaymentReference.grouped(p.getReference()));
+         }
+     }
+@@ -137,7 +139,7 @@ public class InvoiceController {
+                     i.discount().toPlainString(), i.getDiscountReason(),
+                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
+                     i.total(taxRate).toPlainString(),
+-                    payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
++                    payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency())).toList(), paid.toPlainString(),
+                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
+                     i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
+                     i.getRetentionPct().stripTrailingZeros().toPlainString(), i.retention(taxRate).toPlainString(),
+@@ -213,6 +215,8 @@ public class InvoiceController {
+             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
+             @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
+             BigDecimal amount,
++            // The currency it was paid in; the client's own when left out.
++            Currency currency,
+             @NotNull(message = "Enter the date it was paid.")
+             LocalDate date,
+             @Size(max = 64, message = "The reference must be at most 64 characters.")
+@@ -225,6 +229,8 @@ public class InvoiceController {
+             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
+             @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
+             BigDecimal amount,
++            // The currency it was paid in; the client's own when left out.
++            Currency currency,
+             @NotNull(message = "Enter the date it was paid.")
+             LocalDate date) {
+     }
+@@ -301,6 +307,8 @@ public class InvoiceController {
+             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
+             @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
+             BigDecimal amount,
++            // The currency it was paid in; the client's own when left out.
++            Currency currency,
+             @NotNull(message = "Enter the date it was paid.")
+             LocalDate date,
+             @Size(max = 255, message = "The references must be at most 255 characters.")
+@@ -500,9 +508,9 @@ public class InvoiceController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
+         if (body.allocations().isEmpty()) {
+-            invoices.recordAutoPayment(clientId, body.amount(), body.date(), references(body.reference()));
++            invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()));
+         } else {
+-            invoices.recordSplitPayment(clientId, body.amount(), body.date(), reference(body.reference()),
++            invoices.recordSplitPayment(clientId, body.amount(), body.currency(), body.date(), reference(body.reference()),
+                     body.allocations().stream().map(a -> new PaymentAllocation(a.invoiceId(), a.amount())).toList());
+         }
+         return forClient(clientId);
+@@ -542,7 +550,7 @@ public class InvoiceController {
+     @PostMapping("/api/clients/{clientId}/deposits")
+     @ResponseStatus(HttpStatus.CREATED)
+     public List<InvoiceSummary> recordDeposit(@PathVariable Long clientId, @Valid @RequestBody NewDeposit body) {
+-        invoices.recordDeposit(clientId, body.amount(), body.date())
++        invoices.recordDeposit(clientId, body.amount(), body.currency(), body.date())
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+         return forClient(clientId);
+     }
+@@ -559,7 +567,7 @@ public class InvoiceController {
+     @PostMapping("/api/invoices/{id}/payments")
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
+-        return invoices.recordPayment(id, body.amount(), body.date(), reference(body.reference()))
++        return invoices.recordPayment(id, body.amount(), body.currency(), body.date(), reference(body.reference()))
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 25cb1d6..d7bb5f8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -13,6 +13,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.ExchangeRates;
+ import net.officefloor.hq.app.TaxRate;
+ import net.officefloor.hq.app.Today;
+ import net.officefloor.hq.app.clients.Client;
+@@ -35,9 +36,11 @@ public class InvoiceService {
+     private final TaxRate taxRate;
+     private final Audit audit;
+     private final EntityManager entityManager;
++    private final ExchangeRates exchangeRates;
+ 
+     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
+-            Today today, TaxRate taxRate, Audit audit, EntityManager entityManager) {
++            Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates) {
++        this.exchangeRates = exchangeRates;
+         this.entityManager = entityManager;
+         this.invoices = invoices;
+         this.payments = payments;
+@@ -507,18 +510,18 @@ public class InvoiceService {
+      * client. The amount has already been checked; a date after today is refused.
+      */
+     @Transactional
+-    public Optional<Payment> recordDeposit(Long clientId, BigDecimal amount, LocalDate date) {
++    public Optional<Payment> recordDeposit(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date) {
+         Optional<Client> client = clients.findById(clientId);
+         if (client.isEmpty()) {
+             return Optional.empty();
+         }
+         Currency currency = client.get().getCurrency();
+-        requireWhole(currency, amount, "The amount");
++        BigDecimal amount = converted(paidAmount, paidIn, currency);
+         LocalDate now = today.date();
+         if (date.isAfter(now)) {
+             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+         }
+-        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date));
++        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date).paidIn(paidIn, paidAmount, currency));
+         audit.record("DEPOSIT_RECORDED id=" + payment.getId() + " client=" + clientId + " amount="
+                 + amount.setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+         return Optional.of(payment);
+@@ -667,7 +670,8 @@ public class InvoiceService {
+      * already been checked; one that belongs to a different invoice is refused.
+      */
+     @Transactional
+-    public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal amount, LocalDate date, String reference) {
++    public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
++            String reference) {
+         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isDraft()) {
+@@ -679,7 +683,7 @@ public class InvoiceService {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException("A credit note takes no payments.");
+             }
+-            requireWhole(invoice.currency(), amount, "The amount");
++            BigDecimal amount = converted(paidAmount, paidIn, invoice.currency());
+             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+             if (due.signum() <= 0) {
+@@ -709,7 +713,8 @@ public class InvoiceService {
+                         + " is the reference of a different invoice; this invoice's is "
+                         + PaymentReference.grouped(PaymentReference.of(invoice.getId())) + ".");
+             }
+-            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, applied, date, reference));
++            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, applied, date, reference)
++                    .paidIn(paidIn, paidAmount, invoice.currency()));
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
+                     + applied.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
+             recordWriteOff(invoice);
+@@ -731,8 +736,9 @@ public class InvoiceService {
+      * The payment keeps the reference of the first invoice it reaches.
+      */
+     @Transactional
+-    public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, List<String> references) {
+-        requireWhole(currencyOf(clientId), amount, "The amount");
++    public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
++            List<String> references) {
++        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId));
+         List<Invoice> ofClient = invoices.findByClientIdOrderByIdAsc(clientId);
+         List<Invoice> candidates = ofClient;
+         if (!references.isEmpty()) {
+@@ -783,7 +789,7 @@ public class InvoiceService {
+                     : "Those invoices have already been paid.");
+         }
+         String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
+-        return recordSpread(clientId, amount, date, reference, parts, true);
++        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, true);
+     }
+ 
+     /**
+@@ -795,9 +801,10 @@ public class InvoiceService {
+      * be the reference of one of the invoices.
+      */
+     @Transactional
+-    public Payment recordSplitPayment(Long clientId, BigDecimal amount, LocalDate date, String reference,
+-            List<PaymentAllocation> parts) {
+-        return recordSpread(clientId, amount, date, reference, parts, false);
++    public Payment recordSplitPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
++            String reference, List<PaymentAllocation> parts) {
++        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId));
++        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, false);
+     }
+ 
+     /**
+@@ -805,8 +812,8 @@ public class InvoiceService {
+      * credit may be held the parts may add up to less than the payment: the rest is held on the
+      * client's account as credit and recorded in the audit.
+      */
+-    private Payment recordSpread(Long clientId, BigDecimal amount, LocalDate date, String reference,
+-            List<PaymentAllocation> parts, boolean holdCredit) {
++    private Payment recordSpread(Long clientId, BigDecimal amount, BigDecimal paidAmount, Currency paidIn,
++            LocalDate date, String reference, List<PaymentAllocation> parts, boolean holdCredit) {
+         if (parts.isEmpty()) {
+             throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
+         }
+@@ -869,7 +876,8 @@ public class InvoiceService {
+             throw new InvoiceRejectedException(PaymentReference.grouped(reference)
+                     + " is not the reference of any of the invoices being paid.");
+         }
+-        Payment payment = payments.saveAndFlush(Payment.split(clientId, amount, date, reference, parts));
++        Payment payment = payments.saveAndFlush(Payment.split(clientId, amount, date, reference, parts)
++                .paidIn(paidIn, paidAmount, currency));
+         for (PaymentAllocation part : parts) {
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + part.getInvoiceId() + " amount="
+                     + part.getAmount().setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+@@ -879,6 +887,22 @@ public class InvoiceService {
+         return payment;
+     }
+ 
++    /**
++     * The amount paid in the currency (null for the client's own) converted into the client's currency
++     * through US dollars at the workspace rates; this is what is applied and checked. The amount must be
++     * whole in the currency it was paid in, and must still be more than zero once converted.
++     */
++    private BigDecimal converted(BigDecimal paidAmount, Currency paidIn, Currency clientCurrency) {
++        Currency from = paidIn == null ? clientCurrency : paidIn;
++        requireWhole(from, paidAmount, "The amount");
++        BigDecimal amount = exchangeRates.convert(paidAmount, from, clientCurrency);
++        if (amount.signum() <= 0) {
++            throw new InvoiceRejectedException("The amount is worth nothing once converted into "
++                    + clientCurrency.name() + ".");
++        }
++        return amount;
++    }
++
+     /** The currency the client is billed in; US dollars when there is no such client. */
+     private Currency currencyOf(Long clientId) {
+         return clients.findById(clientId).map(Client::getCurrency).orElse(Currency.USD);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index fb8703e..50280fa 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -13,6 +13,7 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
++import net.officefloor.hq.app.clients.Currency;
+ 
+ /** A payment received from a client on a date, allocated to its invoices. */
+ @Entity
+@@ -44,6 +45,14 @@ public class Payment {
+     /** How much of the payment's unused credit has been refunded to the client; it is no longer credit. */
+     private BigDecimal refunded = BigDecimal.ZERO;
+ 
++    /** The currency the payment was paid in when not the client's own; null when it was the client's. */
++    @Column(name = "paid_currency")
++    private String paidCurrency;
++
++    /** The amount paid in {@link #paidCurrency}; the amount is it converted into the client's currency. */
++    @Column(name = "paid_amount")
++    private BigDecimal paidAmount;
++
+     @ElementCollection
+     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
+     private List<PaymentAllocation> allocations = new ArrayList<>();
+@@ -101,6 +110,28 @@ public class Payment {
+         return payment;
+     }
+ 
++    /**
++     * Notes that the payment was paid as the amount in the currency (null for the client's own, which
++     * is then nothing to note); its amount is that converted into the client's currency.
++     */
++    public Payment paidIn(Currency currency, BigDecimal paid, Currency clientCurrency) {
++        if (currency != null && currency != clientCurrency) {
++            paidCurrency = currency.name();
++            paidAmount = paid;
++        }
++        return this;
++    }
++
++    /** The currency the payment was paid in: the given client's currency unless it was paid in another. */
++    public Currency paidCurrency(Currency clientCurrency) {
++        return paidCurrency == null ? clientCurrency : Currency.orUsd(paidCurrency);
++    }
++
++    /** The amount paid, in the currency it was paid in. */
++    public BigDecimal paidAmount() {
++        return paidAmount == null ? amount : paidAmount;
++    }
++
+     /** The credit note whose rest this payment holds as credit; null for a payment from the client. */
+     public Long getCreditNote() {
+         return creditNote;
+diff --git a/src/main/resources/db/migration/V24__payment_currency.sql b/src/main/resources/db/migration/V24__payment_currency.sql
+new file mode 100644
+index 0000000..51e3cad
+--- /dev/null
++++ b/src/main/resources/db/migration/V24__payment_currency.sql
+@@ -0,0 +1,4 @@
++-- The currency a payment was paid in and the amount paid in it, when not the client's own; the
++-- payment's amount is then that amount converted into the client's currency, which is what is applied.
++ALTER TABLE payment ADD COLUMN paid_currency VARCHAR(3);
++ALTER TABLE payment ADD COLUMN paid_amount DECIMAL(19, 2);
