@@ -1,0 +1,419 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 732a8b8..f61b3d5 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -102,6 +102,23 @@ function problemWithRetentionCap(cap: string): string {
+   return '';
+ }
+ 
++// An amount of retention to release: money, more than zero and to the cent, and no more than is held.
++function problemWithRelease(amount: string, held: string): string {
++  if (!/^-?\d+(\.\d+)?$/.test(amount)) {
++    return 'The amount to release must be a number, like 500 or 250.50.';
++  }
++  if (Number(amount) <= 0) {
++    return 'The amount to release must be more than zero.';
++  }
++  if (!TWO_DECIMALS.test(amount)) {
++    return 'The amount to release can have at most two decimals.';
++  }
++  if (Number(amount) > Number(held)) {
++    return 'The amount to release cannot be more than is still held.';
++  }
++  return '';
++}
++
+ // A cap on everything taken off, line discounts included: money, not negative and to the cent, e.g. 25 or 12.50.
+ function problemWithDiscountCap(cap: string): string {
+   if (!/^-?\d+(\.\d+)?$/.test(cap)) {
+@@ -193,7 +210,8 @@ function problemWith(line: NewLine): string {
+ // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
+ // server refuses to send it once that date is past. A draft can hold back retention, a percentage of
+ // the amount before tax, the subtotal less the discount (0 to 20); while held it is not part of the amount due, and once nothing else is due
+-// it can be released on the sent invoice, falling due 30 days later. A draft without retention can
++// it can be released on the sent invoice, all of it or an amount of what is still held, all that is
++// released falling due 30 days after the latest release. A draft without retention can
+ // instead be spread over 2 to 24 monthly instalments at an annual interest rate (0 to 30); the server
+ // works out the schedule from the grand total, dated from the issue date (and again when it is sent),
+ // and the amount due is then the plan total less what is paid.
+@@ -310,10 +328,16 @@ function problemWith(line: NewLine): string {
+               <th scope="row" colspan="8">
+                 Retention ({{ inv.retentionPct }}%@if (inv.retentionCap !== null) {, max
+                   {{ amount(inv.retentionCap) }}}@if (inv.retentionReleasedOn) {, released
+-                  {{ inv.retentionReleasedOn }}, due {{ inv.retentionDueDate }}} @else if (+inv.retention > 0) {, held back})
++                  {{ inv.retentionReleasedOn }}, due {{ inv.retentionDueDate }}}@if (+inv.retentionHeld > 0) {, held back})
+               </th>
+               <td data-testid="invoice-retention">{{ amount(inv.retention) }}</td>
+             </tr>
++            @if (+inv.retention > 0) {
++              <tr>
++                <th scope="row" colspan="8">Retention still held</th>
++                <td data-testid="invoice-retention-held">{{ amount(inv.retentionHeld) }}</td>
++              </tr>
++            }
+           </tfoot>
+         </table>
+ 
+@@ -534,14 +558,18 @@ function problemWith(line: NewLine): string {
+           inv.status !== 'VOID' &&
+           +inv.retentionHeld > 0
+         ) {
+-          <button
+-            type="button"
+-            data-testid="invoice-release-retention"
+-            [disabled]="releasing()"
+-            (click)="releaseRetention(inv.id)"
+-          >
+-            Release retention
+-          </button>
++          <form [formGroup]="releaseForm" (ngSubmit)="releaseRetention(inv.id, inv.retentionHeld)" aria-label="Release retention" novalidate>
++            <label for="retention-release-amount">Amount to release ({{ symbol() }}, empty for all still held)</label>
++            <input
++              id="retention-release-amount"
++              data-testid="retention-release-amount"
++              inputmode="decimal"
++              formControlName="amount"
++            />
++            <button type="submit" data-testid="invoice-release-retention" [disabled]="releasing()">
++              Release retention
++            </button>
++          </form>
+         }
+         @if (releaseError()) {
+           <p role="alert" data-testid="invoice-release-error">{{ releaseError() }}</p>
+@@ -790,6 +818,10 @@ export class InvoicePanel {
+     cap: new FormControl('', { nonNullable: true }),
+   });
+ 
++  protected readonly releaseForm = new FormGroup({
++    amount: new FormControl('', { nonNullable: true }),
++  });
++
+   protected readonly planForm = new FormGroup({
+     count: new FormControl('', { nonNullable: true }),
+     rate: new FormControl('', { nonNullable: true }),
+@@ -816,6 +848,7 @@ export class InvoicePanel {
+       this.retentionError.set('');
+       this.planForm.reset();
+       this.planError.set('');
++      this.releaseForm.reset();
+       this.releaseError.set('');
+       this.waiveError.set('');
+       this.writeOffError.set('');
+@@ -1052,12 +1085,20 @@ export class InvoicePanel {
+     });
+   }
+ 
+-  protected releaseRetention(invoiceId: number): void {
++  protected releaseRetention(invoiceId: number, held: string): void {
++    const amount = this.releaseForm.getRawValue().amount.trim();
++    const problem = amount ? problemWithRelease(amount, held) : '';
++    if (problem) {
++      this.releaseForm.markAllAsTouched();
++      this.releaseError.set(problem);
++      return;
++    }
+     this.releasing.set(true);
+     this.releaseError.set('');
+-    this.service.releaseRetention(invoiceId).subscribe({
++    this.service.releaseRetention(invoiceId, amount || undefined).subscribe({
+       next: (detail) => {
+         this.invoice.set(detail);
++        this.releaseForm.reset();
+         this.changed.emit(detail);
+         this.releasing.set(false);
+       },
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 1bb7479..d4cc67f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -128,7 +128,8 @@ export interface InvoiceDetail {
+   retentionCap: string | null;
+   retention: string;
+   retentionHeld: string;
+-  // The day (yyyy-mm-dd) the retention was released, and the day it then falls due; null while held.
++  // The day (yyyy-mm-dd) of the latest release of retention, and the day what was released falls due;
++  // null while none has been released.
+   retentionReleasedOn: string | null;
+   retentionDueDate: string | null;
+   // How many monthly instalments it is spread over (null without a plan), at the annual
+@@ -293,10 +294,11 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/plan`, { instalments, instalmentRate, planDownPct });
+   }
+ 
+-  // Releases the retention held back on a sent invoice, adding it to the amount due; refused (409)
+-  // while anything else is due or when there is nothing to release.
+-  releaseRetention(invoiceId: number): Observable<InvoiceDetail> {
+-    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, null);
++  // Releases an amount of the retention held back on a sent invoice (all still held when left out),
++  // adding it to the amount due; refused (400) for an amount of zero or less or with more than two
++  // decimals, or (409) more than is held, while anything else is due or when there is nothing to release.
++  releaseRetention(invoiceId: number, amount?: string): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, { amount });
+   }
+ 
+   // Writes off everything still owed on a sent invoice as a bad debt. Refused (409) on a draft, a void
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index e954fef..97e0452 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -41,7 +41,7 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -194,7 +194,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -208,6 +208,8 @@ public class TestSupportController {
+                     row.get("retentionCap") == null ? null : money(row.get("retentionCap"), "invoices[].retentionCap"),
+                     row.get("retentionReleasedOn") == null ? null
+                             : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"),
++                    row.get("retentionReleasedAmount") == null ? null
++                            : money(row.get("retentionReleasedAmount"), "invoices[].retentionReleasedAmount"),
+                     instalments(row.get("instalments"), "invoices[].instalments"),
+                     instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"),
+                     planDownPct(row.get("planDownPct"), "invoices[].planDownPct"),
+@@ -363,7 +365,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -385,6 +387,9 @@ public class TestSupportController {
+                     if (r.get("RETENTION_RELEASED_ON") != null) {
+                         row.put("retentionReleasedOn", r.get("RETENTION_RELEASED_ON").toString());
+                     }
++                    if (r.get("RETENTION_RELEASED_AMOUNT") != null) {
++                        row.put("retentionReleasedAmount", r.get("RETENTION_RELEASED_AMOUNT"));
++                    }
+                     if (r.get("INTEREST_WAIVED_ON") != null) {
+                         row.put("interestWaivedOn", r.get("INTEREST_WAIVED_ON").toString());
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 93bfeaa..6739609 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -99,9 +99,17 @@ public class Invoice {
+     @Column(name = "retention_cap")
+     private BigDecimal retentionCap;
+ 
++    /** The day of the latest release of retention; null while none has been released. */
+     @Column(name = "retention_released_on")
+     private LocalDate retentionReleasedOn;
+ 
++    /**
++     * How much of the retention has been released in all; null with a release day means everything
++     * that was held was released (a release recorded before part of it could be).
++     */
++    @Column(name = "retention_released_amount")
++    private BigDecimal retentionReleasedAmount;
++
+     /** The day the late fee and interest still unpaid were last waived; null when never. */
+     @Column(name = "interest_waived_on")
+     private LocalDate interestWaivedOn;
+@@ -506,12 +514,12 @@ public class Invoice {
+         this.retentionCap = retentionCap;
+     }
+ 
+-    /** The day the retention was released; null while it is still held. */
++    /** The day of the latest release of retention; null while none has been released. */
+     public LocalDate getRetentionReleasedOn() {
+         return retentionReleasedOn;
+     }
+ 
+-    /** The day released retention falls due, {@link #RETENTION_DUE_DAYS} after its release; null while held. */
++    /** The day released retention falls due, {@link #RETENTION_DUE_DAYS} after the latest release; null while none is released. */
+     public LocalDate retentionDueDate() {
+         return retentionReleasedOn == null ? null : retentionReleasedOn.plusDays(RETENTION_DUE_DAYS);
+     }
+@@ -544,8 +552,13 @@ public class Invoice {
+         this.writtenOffOn = on;
+     }
+ 
+-    /** Releases the retention on the given day, so it is added to the amount due. */
+-    public void releaseRetention(LocalDate on) {
++    /**
++     * Releases the given amount of the retention held on the given day, so it is added to the amount
++     * due; it has already been checked against what is held.
++     */
++    public void releaseRetention(LocalDate on, BigDecimal amount) {
++        BigDecimal before = retentionReleasedAmount == null ? BigDecimal.ZERO : retentionReleasedAmount;
++        this.retentionReleasedAmount = before.add(amount);
+         this.retentionReleasedOn = on;
+     }
+ 
+@@ -564,8 +577,8 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The retention still held back at the tax rate: all of it until it is released, less what credit
+-     * notes have cleared of it; then nothing. Nothing once the invoice is written off.
++     * The retention still held back at the tax rate: all of it less what has been released and what
++     * credit notes have cleared of it. Nothing once the invoice is written off.
+      */
+     public BigDecimal retentionHeld(BigDecimal taxRate) {
+         return isWrittenOff() ? zero() : retentionKept(taxRate);
+@@ -573,11 +586,13 @@ public class Invoice {
+ 
+     /** As {@link #retentionHeld}, but still what was held back when the invoice was written off. */
+     private BigDecimal retentionKept(BigDecimal taxRate) {
+-        if (retentionReleasedOn != null) {
++        if (retentionReleasedOn != null && retentionReleasedAmount == null) {
+             return zero();
+         }
+         BigDecimal cleared = retentionCredited == null ? BigDecimal.ZERO : retentionCredited;
+-        return retention(taxRate).subtract(cleared).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
++        BigDecimal released = retentionReleasedAmount == null ? BigDecimal.ZERO : retentionReleasedAmount;
++        return retention(taxRate).subtract(cleared).subtract(released).max(BigDecimal.ZERO)
++                .setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
+     /**
+@@ -595,9 +610,16 @@ public class Invoice {
+         return new BigDecimal[] { toDue.add(toRetention), toRetention };
+     }
+ 
+-    /** The retention released at the tax rate: nothing until it is released, then all of it. */
++    /**
++     * The retention released at the tax rate: nothing until some is released, then what was released
++     * (all of it for a release recorded without an amount).
++     */
+     public BigDecimal retentionReleased(BigDecimal taxRate) {
+-        return retentionReleasedOn == null ? zero() : retention(taxRate);
++        if (retentionReleasedOn == null) {
++            return zero();
++        }
++        return retentionReleasedAmount == null ? retention(taxRate)
++                : retentionReleasedAmount.setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 4d5c210..26362a1 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -108,8 +108,8 @@ public class InvoiceController {
+      * (null for an ordinary invoice) and {@code listedTotal} the total as listed, negative for a credit note.
+      * {@code retentionPct} (without trailing zeros) is the share of the amount before tax (subtotal less discount) held back as
+      * {@code retention}, rounded down to the cent and never more than {@code retentionCap} (null for no cap); {@code retentionHeld} is what is still held back (not
+-     * part of the amount due), {@code retentionReleasedOn} the day it was released (null while held) and
+-     * {@code retentionDueDate} the day released retention falls due. {@code instalments} is how many
++     * part of the amount due), {@code retentionReleasedOn} the day of the latest release (null while none is released) and
++     * {@code retentionDueDate} the day all that is released falls due. {@code instalments} is how many
+      * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
+      * (without trailing zeros), after a down payment of {@code planDownPct} percent of the grand total
+      * (without trailing zeros; instalment 0 when not 0); {@code schedule} lists them and {@code planTotal} is what they add up to
+@@ -296,6 +296,16 @@ public class InvoiceController {
+             BigDecimal retentionCap) {
+     }
+ 
++    /**
++     * How much of the retention held to release: more than zero with at most two decimals; null
++     * releases all that is still held.
++     */
++    public record NewRelease(
++            @DecimalMin(value = "0", inclusive = false, message = "The amount to release must be more than zero.")
++            @Digits(integer = 17, fraction = 2, message = "The amount to release can have at most two decimals.")
++            BigDecimal amount) {
++    }
++
+     /**
+      * A plan to spread a draft over: a whole number of monthly instalments from 2 to 24 and an annual
+      * interest rate from 0 to 30 with at most two decimals, and a down payment from 0 to 50 percent of
+@@ -489,10 +499,14 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
+-    /** Releases the retention held back on a sent invoice once nothing else is due. */
++    /**
++     * Releases the given amount of the retention held back on a sent invoice (all that is still held
++     * without one) once nothing else is due.
++     */
+     @PostMapping("/api/invoices/{id}/release-retention")
+-    public InvoiceDetail releaseRetention(@PathVariable Long id) {
+-        return invoices.releaseRetention(id)
++    public InvoiceDetail releaseRetention(@PathVariable Long id,
++            @Valid @RequestBody(required = false) NewRelease body) {
++        return invoices.releaseRetention(id, body == null ? null : body.amount())
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 8c2d1dc..a6b8ff9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -386,12 +386,15 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Releases the retention held back on a sent invoice today, adding it to the amount due (falling
+-     * due {@link Invoice#RETENTION_DUE_DAYS} days later), and records it in the audit; empty if no such
+-     * invoice. Refused while anything else is still due, or when there is no retention held to release.
++     * Releases the given amount of the retention held back on a sent invoice today (all that is still
++     * held when it is null), adding it to the amount due (all that is released falling due
++     * {@link Invoice#RETENTION_DUE_DAYS} days after the latest release), and records the amount
++     * released in the audit; empty if no such invoice. Refused while anything other than retention
++     * already released is still due, when there is no retention held to release, or when the amount is
++     * more than is held.
+      */
+     @Transactional
+-    public Optional<Invoice> releaseRetention(Long invoiceId) {
++    public Optional<Invoice> releaseRetention(Long invoiceId, BigDecimal amount) {
+         Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isDraft() || invoice.isVoid() || invoice.isCreditNote()) {
+@@ -405,14 +408,27 @@ public class InvoiceService {
+             if (held.signum() <= 0) {
+                 throw new InvoiceRejectedException("There is no retention held to release.");
+             }
++            BigDecimal release = amount == null ? held
++                    : amount.setScale(invoice.currency().scale(), RoundingMode.HALF_UP);
++            if (amount != null) {
++                requireWhole(invoice.currency(), amount, "The amount to release");
++                if (amount.signum() <= 0) {
++                    throw new InvoiceRejectedException("The amount to release must be more than zero.");
++                }
++                if (amount.compareTo(held) > 0) {
++                    throw new InvoiceRejectedException("The amount to release cannot be more than the "
++                            + invoice.currency().format(held) + " still held.");
++                }
++            }
+             BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), rate);
+-            if (due.signum() > 0) {
++            BigDecimal elseDue = due.subtract(due.min(invoice.retentionReleased(rate)).max(BigDecimal.ZERO));
++            if (elseDue.signum() > 0) {
+                 throw new InvoiceRejectedException("The retention can only be released once nothing else is due; "
+-                        + invoice.currency().format(due) + " is still due.");
++                        + invoice.currency().format(elseDue) + " is still due.");
+             }
+-            invoice.releaseRetention(today.date());
++            invoice.releaseRetention(today.date(), release);
+             invoices.saveAndFlush(invoice);
+-            audit.record("RETENTION_RELEASED id=" + invoice.getId() + " amount=" + held.toPlainString());
++            audit.record("RETENTION_RELEASED id=" + invoice.getId() + " amount=" + release.toPlainString());
+         });
+         return found;
+     }
+diff --git a/src/main/resources/db/migration/V36__retention_released_amount.sql b/src/main/resources/db/migration/V36__retention_released_amount.sql
+new file mode 100644
+index 0000000..86a6bba
+--- /dev/null
++++ b/src/main/resources/db/migration/V36__retention_released_amount.sql
+@@ -0,0 +1,3 @@
++-- How much of the retention has been released in all, in the invoice's currency. Null with a release
++-- day is a release recorded before partial releases: everything that was held was released.
++ALTER TABLE invoice ADD COLUMN retention_released_amount DECIMAL(19, 2);
