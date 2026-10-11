@@ -1,0 +1,120 @@
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index 8f7a9a6..8184831 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -61,9 +61,9 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
+   return '';
+ }
+ 
+-// Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`); once any
+-// invoice in the list has a part, the payment is spread over those invoices instead, and the parts
+-// must add up to it. The server refuses a payment on a draft, over what is due, or dated after today
++// Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`), or, when none
++// is open, to the client's unpaid invoices oldest first; once any invoice in the list has a part, the
++// payment is spread over those invoices instead, and the parts must add up to it. The server refuses a payment on a draft, over what is due, or dated after today
+ // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's.
+ @Component({
+   selector: 'app-payment-form',
+@@ -136,8 +136,6 @@ export class PaymentForm {
+     let problem = problemWithPayment(payment);
+     if (allocations.length > 0) {
+       problem = [problem, problemWithAllocations(payment, allocations)].filter((p) => p).join(' ');
+-    } else if (invoiceId === null) {
+-      problem = [problem, 'Enter how much of the payment goes to each invoice.'].filter((p) => p).join(' ');
+     }
+     if (problem) {
+       this.form.markAllAsTouched();
+@@ -157,7 +155,7 @@ export class PaymentForm {
+       );
+       this.saving.set(false);
+     };
+-    if (allocations.length > 0) {
++    if (allocations.length > 0 || invoiceId === null) {
+       this.service
+         .recordSplitPayment(this.clientId(), { ...payment, allocations })
+         .subscribe({
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index e501ffd..87d1757 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -243,14 +243,19 @@ public class InvoiceController {
+     }
+ 
+     /**
+-     * Records one payment spread over several of the client's invoices; answers the client's invoices
++     * Records one payment spread over several of the client's invoices, or, with no parts given,
++     * applied to its oldest unpaid invoices first; answers the client's invoices
+      * with their new statuses.
+      */
+     @PostMapping("/api/clients/{clientId}/payments")
+     @ResponseStatus(HttpStatus.CREATED)
+     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
+-        invoices.recordSplitPayment(clientId, body.amount(), body.date(), reference(body.reference()),
+-                body.allocations().stream().map(a -> new PaymentAllocation(a.invoiceId(), a.amount())).toList());
++        if (body.allocations().isEmpty()) {
++            invoices.recordAutoPayment(clientId, body.amount(), body.date(), reference(body.reference()));
++        } else {
++            invoices.recordSplitPayment(clientId, body.amount(), body.date(), reference(body.reference()),
++                    body.allocations().stream().map(a -> new PaymentAllocation(a.invoiceId(), a.amount())).toList());
++        }
+         return forClient(clientId);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 5cf6963..7519386 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -4,6 +4,7 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.math.RoundingMode;
+ import java.util.ArrayList;
++import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.Set;
+@@ -202,6 +203,45 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Records one payment of the amount on the date against the client's unpaid sent invoices, oldest
++     * issue date first (lower id first on the same date), paying each off in full before the next.
++     * A payment more than everything the client owes is refused; otherwise it is checked and recorded
++     * as a split payment over the invoices it reaches.
++     */
++    @Transactional
++    public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, String reference) {
++        List<Invoice> sent = invoices.findByClientIdOrderByIdAsc(clientId).stream()
++                .filter(i -> !i.isDraft())
++                .sorted(Comparator.comparing(Invoice::getIssueDate, Comparator.nullsLast(Comparator.naturalOrder()))
++                        .thenComparing(Invoice::getId))
++                .toList();
++        Map<Long, BigDecimal> paid = paid(sent);
++        BigDecimal owed = BigDecimal.ZERO;
++        BigDecimal left = amount;
++        List<PaymentAllocation> parts = new ArrayList<>();
++        for (Invoice invoice : sent) {
++            BigDecimal due = invoice.amountDue(paid.get(invoice.getId()), taxRate.percent());
++            if (due.signum() <= 0) {
++                continue;
++            }
++            owed = owed.add(due);
++            if (left.signum() > 0) {
++                BigDecimal part = left.min(due);
++                parts.add(new PaymentAllocation(invoice.getId(), part));
++                left = left.subtract(part);
++            }
++        }
++        if (owed.signum() <= 0) {
++            throw new InvoiceRejectedException("The client has no unpaid invoices to pay.");
++        }
++        if (left.signum() > 0) {
++            throw new InvoiceRejectedException("The payment is more than the $" + owed.setScale(2).toPlainString()
++                    + " the client owes.");
++        }
++        return recordSplitPayment(clientId, amount, date, reference, parts);
++    }
++
+     /**
+      * Records one payment of the amount on the date spread over several of the client's invoices, and
+      * records each part in the audit. The amounts have already been checked to be more than zero; they
