@@ -106,6 +106,11 @@ public class Invoice {
         this.status = InvoiceStatus.SENT;
     }
 
+    /** Puts a sent invoice back to draft, so it has to be sent again. */
+    public void reopen() {
+        this.status = InvoiceStatus.DRAFT;
+    }
+
     /** The status once the given amount has been paid against the grand total at the tax rate. */
     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate) {
         if (status != InvoiceStatus.SENT || paid.signum() <= 0) {

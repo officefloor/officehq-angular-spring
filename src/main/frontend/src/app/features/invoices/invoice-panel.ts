@@ -64,9 +64,9 @@ function problemWith(line: NewLine): string {
 }
 
 // One opened invoice: its status, its lines and its totals. A draft takes new lines and a
-// percentage discount, and can be sent; once sent, the server refuses further changes. A sent
-// invoice takes payments until nothing is due; the panel lists them with what has been paid and
-// what is still due.
+// percentage discount, and can be sent; a change to a sent invoice with no payments puts it back to
+// draft, and once paid anything the server refuses further changes. A sent invoice takes payments
+// until nothing is due; the panel lists them with what has been paid and what is still due.
 @Component({
   selector: 'app-invoice-panel',
   imports: [ReactiveFormsModule],

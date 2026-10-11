@@ -65,38 +65,56 @@ public class InvoiceService {
     }
 
     /**
-     * Adds a line to a draft invoice; empty if no such invoice. The line has already been checked;
-     * a sent invoice refuses it.
+     * Adds a line to an invoice; empty if no such invoice. The line has already been checked. A sent
+     * invoice with no payments goes back to draft; one with a payment refuses it.
      */
     @Transactional
     public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice,
             boolean taxExempt) {
         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
         found.ifPresent(invoice -> {
-            if (!invoice.isDraft()) {
-                throw new InvoiceRejectedException("Only a draft invoice can take new lines.");
-            }
+            boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
             invoice.addLine(new InvoiceLine(description, qty, unitPrice, taxExempt));
             invoices.saveAndFlush(invoice);
+            if (reopened) {
+                audit.record("INVOICE_REOPENED id=" + invoice.getId());
+            }
         });
         return found;
     }
 
     /**
-     * Gives a draft invoice a percentage discount; empty if no such invoice. The percentage has
-     * already been checked; a sent invoice refuses it.
+     * Gives an invoice a percentage discount; empty if no such invoice. The percentage has already
+     * been checked. A sent invoice with no payments goes back to draft; one with a payment refuses it.
      */
     @Transactional
     public Optional<Invoice> setDiscount(Long invoiceId, BigDecimal discountPct) {
         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
         found.ifPresent(invoice -> {
-            if (!invoice.isDraft()) {
-                throw new InvoiceRejectedException("Only a draft invoice can be given a discount.");
-            }
+            boolean reopened = reopenForChange(invoice, "A paid invoice cannot be given a discount.");
             invoice.setDiscountPct(discountPct);
             invoices.saveAndFlush(invoice);
+            if (reopened) {
+                audit.record("INVOICE_REOPENED id=" + invoice.getId());
+            }
         });
         return found;
+    }
+
+    /**
+     * Readies the invoice for a change: a draft stays as it is; a sent invoice with no payments goes
+     * back to draft, to be sent again; an invoice with any payment is refused with the message.
+     * Whether it went back to draft.
+     */
+    private boolean reopenForChange(Invoice invoice, String refusal) {
+        if (invoice.isDraft()) {
+            return false;
+        }
+        if (!payments.findForInvoice(invoice.getId()).isEmpty()) {
+            throw new InvoiceRejectedException(refusal);
+        }
+        invoice.reopen();
+        return true;
     }
 
     /**
