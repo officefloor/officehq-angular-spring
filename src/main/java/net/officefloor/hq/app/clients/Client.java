@@ -71,6 +71,13 @@ public class Client {
      */
     private String region;
 
+    /**
+     * The client's tax number, without spaces (see {@link TaxNumber}): with a valid one and a region
+     * outside the workspace's home region its invoices are reverse charged; null for no number.
+     */
+    @Column(name = "tax_number")
+    private String taxNumber;
+
     /** The highest late-interest rate a client can be given, as a percentage. */
     public static final int MAX_INTEREST_RATE = 30;
 
@@ -82,7 +89,7 @@ public class Client {
 
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
             Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
-            Integer graceDays, BigDecimal interestRate, String region) {
+            Integer graceDays, BigDecimal interestRate, String region, String taxNumber) {
         this.name = name;
         this.email = email;
         this.termsDays = termsDays;
@@ -95,6 +102,7 @@ public class Client {
         this.graceDays = graceDays == null ? Invoice.GRACE_DAYS : graceDays;
         this.interestRate = interestRate;
         this.region = region;
+        this.taxNumber = taxNumber;
     }
 
     public Long getId() {
@@ -147,5 +155,9 @@ public class Client {
 
     public String getRegion() {
         return region;
+    }
+
+    public String getTaxNumber() {
+        return taxNumber;
     }
 }

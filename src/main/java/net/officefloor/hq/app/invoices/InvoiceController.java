@@ -135,7 +135,7 @@ public class InvoiceController {
             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
-            String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn) {
+            String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -172,7 +172,7 @@ public class InvoiceController {
                     Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
                     i.getInterestSaved().toPlainString(),
                     i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
-                    i.getWrittenOffOn());
+                    i.getWrittenOffOn(), i.isReverseCharge());
         }
     }
 

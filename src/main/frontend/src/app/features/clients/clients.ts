@@ -12,6 +12,16 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
 // The grace period, in days past the due date, a client is given when none is set: a week.
 const STANDARD_GRACE_DAYS = 7;
 
+// A tax number (spaces already removed) is two letters then ten digits whose last two digits are
+// 97 less the remainder of the first eight divided by 97 (a remainder of 0 gives 97).
+function validTaxNumber(taxNumber: string): boolean {
+  if (!/^[A-Za-z]{2}\d{10}$/.test(taxNumber)) {
+    return false;
+  }
+  const remainder = Number(taxNumber.slice(2, 10)) % 97;
+  return (remainder === 0 ? 97 : 97 - remainder) === Number(taxNumber.slice(10));
+}
+
 // The workspace's clients: listed A to Z by name (ignoring capitals), with a form to add one.
 // Clicking a client lists that client's invoices beside the clients. Typing an invoice number into
 // the lookup box selects its client and opens the invoice; a mistyped number opens nothing.
@@ -160,6 +170,14 @@ const STANDARD_GRACE_DAYS = 7;
           maxlength="64"
           formControlName="region"
         />
+        <label for="client-tax-number">Tax number (optional, two letters then ten digits)</label>
+        <input
+          id="client-tax-number"
+          data-testid="client-form-tax-number"
+          type="text"
+          maxlength="64"
+          formControlName="taxNumber"
+        />
         <label for="client-early-pct">Early-payment discount % (optional)</label>
         <input
           id="client-early-pct"
@@ -253,6 +271,7 @@ export class Clients {
     graceDays: new FormControl<number | null>(null),
     interestRate: new FormControl<number | null>(null),
     region: new FormControl('', { nonNullable: true }),
+    taxNumber: new FormControl('', { nonNullable: true }),
     earlyPct: new FormControl<number | null>(null),
     earlyDays: new FormControl<number | null>(null),
     taxExempt: new FormControl(false, { nonNullable: true }),
@@ -289,6 +308,7 @@ export class Clients {
     const interest = this.form.controls.interestRate.value;
     const interestRate = interest === null || (interest as unknown) === '' ? null : Number(interest);
     const region = this.form.controls.region.value.trim();
+    const taxNumber = this.form.controls.taxNumber.value.replace(/ /g, '');
     const taxExempt = this.form.controls.taxExempt.value;
     const currency = this.form.controls.currency.value;
     const early = this.form.controls.earlyPct.value;
@@ -304,6 +324,7 @@ export class Clients {
       graceDays,
       interestRate,
       region,
+      taxNumber,
       earlyPct: earlyPayPct,
       earlyDays: earlyPayDays,
       taxExempt,
@@ -319,6 +340,7 @@ export class Clients {
       interestRate,
       earlyPayPct,
       earlyPayDays,
+      taxNumber,
     );
     if (problem) {
       this.form.markAllAsTouched();
@@ -340,6 +362,7 @@ export class Clients {
       graceDays: graceDays ?? STANDARD_GRACE_DAYS,
       interestRate,
       region: region || null,
+      taxNumber: taxNumber || null,
     };
     this.service.add(client).subscribe({
       next: (created) => {
@@ -401,6 +424,7 @@ export class Clients {
     interestRate: number | null,
     earlyPayPct: number | null,
     earlyPayDays: number | null,
+    taxNumber: string,
   ): string {
     const problems: string[] = [];
     if (!name) {
@@ -452,6 +476,11 @@ export class Clients {
     }
     if ((earlyPayPct === null || earlyPayPct === 0) !== (earlyPayDays === null)) {
       problems.push('Enter both the early-payment discount and its number of days, or neither.');
+    }
+    if (taxNumber && !validTaxNumber(taxNumber)) {
+      problems.push(
+        'Enter a tax number of two letters then ten digits whose last two digits check the first eight, or leave it blank.',
+      );
     }
     return problems.join(' ');
   }

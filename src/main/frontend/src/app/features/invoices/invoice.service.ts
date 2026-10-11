@@ -166,6 +166,9 @@ export interface InvoiceDetail {
   // The day (yyyy-mm-dd) it was written off as a bad debt, null when it was not; everything it still
   // owed then, late charges and retention included, is in `writtenOff`.
   writtenOffOn: string | null;
+  // Whether it is reverse charged: its client is registered (a valid tax number) outside the
+  // workspace's home region and accounts for the tax itself, so no line is taxed.
+  reverseCharge: boolean;
 }
 
 // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,

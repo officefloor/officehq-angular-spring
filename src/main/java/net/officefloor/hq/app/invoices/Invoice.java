@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import net.officefloor.hq.app.clients.Currency;
+import net.officefloor.hq.app.clients.TaxNumber;
 
 /** An invoice raised for a client, made of lines. */
 @Entity
@@ -150,6 +151,15 @@ public class Invoice {
      */
     @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_tax_rate_' || c.region)")
     private String regionTaxRate;
+
+    /**
+     * The tax number of the invoice's client when the client is in a region other than the workspace's
+     * home region; read from them, null when it has no number, no region, is in the home region or
+     * there is no home region. With a valid number the invoice is reverse charged (see {@link #isReverseCharge}).
+     */
+    @Formula("(SELECT c.tax_number FROM client c WHERE c.id = client_id AND c.region IS NOT NULL"
+            + " AND c.region <> (SELECT s.setting_value FROM app_setting s WHERE s.name = 'home_region'))")
+    private String outOfRegionTaxNumber;
 
     /** The id of the invoice this credit note credits; null for an ordinary invoice. */
     @Column(name = "credit_of")
@@ -296,12 +306,13 @@ public class Invoice {
     }
 
     /** A new, empty draft for a client, issued and due on the given dates. */
-    public static Invoice draft(Long clientId, boolean clientTaxExempt, String regionTaxRate, Currency currency,
-            LocalDate issueDate, LocalDate dueDate) {
+    public static Invoice draft(Long clientId, boolean clientTaxExempt, String regionTaxRate, String outOfRegionTaxNumber,
+            Currency currency, LocalDate issueDate, LocalDate dueDate) {
         Invoice invoice = new Invoice();
         invoice.clientId = clientId;
         invoice.clientTaxExempt = clientTaxExempt;
         invoice.regionTaxRate = regionTaxRate;
+        invoice.outOfRegionTaxNumber = outOfRegionTaxNumber;
         invoice.clientCurrency = currency.name();
         invoice.status = InvoiceStatus.DRAFT;
         invoice.issueDate = issueDate;
@@ -314,7 +325,7 @@ public class Invoice {
      * discount, issued and due on the given dates. Payments stay with this invoice.
      */
     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
-        Invoice copy = draft(clientId, clientTaxExempt, regionTaxRate, currency(), issueDate, dueDate);
+        Invoice copy = draft(clientId, clientTaxExempt, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, dueDate);
         copy.discountPct = discountPct;
         copy.discountAmount = discountAmount;
         copy.discountCap = discountCap;
@@ -333,7 +344,7 @@ public class Invoice {
      * discount, taxed as the original's lines are.
      */
     public Invoice creditNote(LocalDate issueDate) {
-        Invoice note = draft(clientId, clientTaxExempt, regionTaxRate, currency(), issueDate, null);
+        Invoice note = draft(clientId, clientTaxExempt, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, null);
         note.creditOf = id;
         return note;
     }
@@ -1769,6 +1780,14 @@ public class Invoice {
         return result;
     }
 
+    /**
+     * Whether the invoice is reverse charged: its client is registered (a valid tax number) in a region
+     * other than the workspace's home region and accounts for the tax itself, so no line is taxed.
+     */
+    public boolean isReverseCharge() {
+        return TaxNumber.isValid(outOfRegionTaxNumber);
+    }
+
     /** The rate lines without their own are taxed at: the client's regional rate, or the given workspace rate when it has none. */
     public BigDecimal clientTaxRate(BigDecimal workspaceRate) {
         return regionTaxRate == null ? workspaceRate : new BigDecimal(regionTaxRate.trim());
@@ -1777,7 +1796,7 @@ public class Invoice {
     /**
      * Each line's exact tax, in the order of the lines: the line's own rate (a percentage), or when it
      * has none the client's regional rate, or the given workspace rate when that has none either, on the line's amount less its share of the discount,
-     * unrounded. Tax-exempt lines, and every line of a tax-exempt client, have no tax.
+     * unrounded. Tax-exempt lines, and every line of a tax-exempt client or a reverse-charged invoice, have no tax.
      */
     private List<BigDecimal> exactLineTaxes(BigDecimal taxRate) {
         List<BigDecimal> shares = discountShares();
@@ -1785,7 +1804,7 @@ public class Invoice {
         List<BigDecimal> taxes = new ArrayList<>(lines.size());
         for (int i = 0; i < lines.size(); i++) {
             InvoiceLine line = lines.get(i);
-            taxes.add(clientTaxExempt || line.isTaxExempt() ? BigDecimal.ZERO
+            taxes.add(clientTaxExempt || isReverseCharge() || line.isTaxExempt() ? BigDecimal.ZERO
                     : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(clientRate)).movePointLeft(2));
         }
         return taxes;

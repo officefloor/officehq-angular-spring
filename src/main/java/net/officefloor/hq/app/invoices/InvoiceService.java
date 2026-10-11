@@ -112,11 +112,18 @@ public class InvoiceService {
     public Optional<Invoice> newDraft(Long clientId) {
         return clients.findById(clientId).map(client -> {
             LocalDate issued = today.date();
-            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), taxRate.forRegion(client.getRegion()), client.getCurrency(), issued, dueDateFor(clientId, issued));
+            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), taxRate.forRegion(client.getRegion()),
+                    outOfHomeRegion(client) ? client.getTaxNumber() : null, client.getCurrency(), issued, dueDateFor(clientId, issued));
             draft.setDiscountPct(client.getDiscountPct());
             draft.setRetentionPct(client.getRetentionPct());
             return invoices.save(draft);
         });
+    }
+
+    /** Whether the client is in a region other than the workspace's home region (when it has one). */
+    private boolean outOfHomeRegion(Client client) {
+        String home = taxRate.homeRegion();
+        return home != null && client.getRegion() != null && !client.getRegion().equals(home);
     }
 
     /**
@@ -726,6 +733,10 @@ public class InvoiceService {
         invoices.saveAndFlush(invoice);
         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
                 + " total=" + invoice.total(taxRate.percent()).toPlainString());
+        if (invoice.isReverseCharge()) {
+            audit.record("REVERSE_CHARGE id=" + invoice.getId() + " number=" + invoice.number()
+                    + " total=" + invoice.total(taxRate.percent()).toPlainString());
+        }
         if (!invoice.hasPlan()) {
             applyCredit(invoice);
         }

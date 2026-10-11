@@ -20,6 +20,9 @@ public class TaxRate {
     /** The prefix of the setting holding a region's rate, followed by the region (region_tax_rate_NY). */
     public static final String REGION_TAX_RATE = "region_tax_rate_";
 
+    /** The setting holding the workspace's home region: registered clients outside it are reverse charged. */
+    public static final String HOME_REGION = "home_region";
+
     private final JdbcTemplate jdbc;
 
     public TaxRate(JdbcTemplate jdbc) {
@@ -48,5 +51,11 @@ public class TaxRate {
                 .forEach(r -> rates.put(((String) r.get("NAME")).substring(REGION_TAX_RATE.length()),
                         new BigDecimal((String) r.get("SETTING_VALUE"))));
         return rates;
+    }
+
+    /** The workspace's home region; null when none is set. */
+    public String homeRegion() {
+        return jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class, HOME_REGION)
+                .stream().findFirst().orElse(null);
     }
 }

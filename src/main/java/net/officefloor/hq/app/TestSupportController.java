@@ -37,9 +37,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion");
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine");
@@ -162,6 +162,13 @@ public class TestSupportController {
                             TaxRate.REGION_TAX_RATE + region, rate.toPlainString());
                 }
             }
+            if (values.get("homeRegion") != null) {
+                String home = values.get("homeRegion").toString();
+                if (home.isBlank()) {
+                    throw refuse("settings.homeRegion must name a region");
+                }
+                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", TaxRate.HOME_REGION, home);
+            }
             for (Map<String, Object> rate : rows(values.get("fxRates"), "settings.fxRates")) {
                 only(rate, FX_RATE_FIELDS, "settings.fxRates[]");
                 if (rate.get("from") == null || rate.get("currency") == null || rate.get("usdPer") == null) {
@@ -189,7 +196,7 @@ public class TestSupportController {
             if (Currency.of(currency) == null) {
                 throw refuse("unsupported value of clients[].currency: " + currency);
             }
-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region"},
+            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number"},
                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
                     percent(row.get("discountPct"), "clients[].discountPct"),
                     flag(row.get("taxExempt"), "clients[].taxExempt"), currency,
@@ -198,7 +205,8 @@ public class TestSupportController {
                     percent(row.get("retentionPct"), "clients[].retentionPct"),
                     graceDays(row.get("graceDays"), "clients[].graceDays"),
                     interestRate(row.get("interestRate"), "clients[].interestRate"),
-                    row.get("region") == null ? null : row.get("region").toString());
+                    row.get("region") == null ? null : row.get("region").toString(),
+                    row.get("taxNumber") == null ? null : row.get("taxNumber").toString());
         }
         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
             only(row, INVOICE_FIELDS, "invoices[]");
@@ -352,6 +360,10 @@ public class TestSupportController {
         if (!regionTaxRates.isEmpty()) {
             settings.put("regionTaxRates", regionTaxRates);
         }
+        String homeRegion = this.taxRate.homeRegion();
+        if (homeRegion != null) {
+            settings.put("homeRegion", homeRegion);
+        }
         Map<String, BigDecimal> rates = exchangeRates.all();
         if (!rates.isEmpty()) {
             settings.put("usdPer", rates);
@@ -369,7 +381,7 @@ public class TestSupportController {
         if (!settings.isEmpty()) {
             out.put("settings", settings);
         }
-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region FROM client ORDER BY id").stream()
+        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -392,6 +404,9 @@ public class TestSupportController {
                     }
                     if (r.get("REGION") != null) {
                         row.put("region", r.get("REGION"));
+                    }
+                    if (r.get("TAX_NUMBER") != null) {
+                        row.put("taxNumber", r.get("TAX_NUMBER"));
                     }
                     return row;
                 }).toList());
