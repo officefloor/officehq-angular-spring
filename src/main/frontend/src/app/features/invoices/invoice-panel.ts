@@ -41,7 +41,7 @@ function problemWithDiscountAmount(amount: string): string {
   return '';
 }
 
-// A cap on a percentage discount: money, not negative and to the cent, e.g. 25 or 12.50.
+// A cap on everything taken off, line discounts included: money, not negative and to the cent, e.g. 25 or 12.50.
 function problemWithDiscountCap(cap: string): string {
   if (!/^-?\d+(\.\d+)?$/.test(cap)) {
     return 'The discount cap must be a number, like 25 or 12.50.';
@@ -176,10 +176,10 @@ function problemWith(line: NewLine): string {
             <tr>
               <th scope="row" colspan="7">
                 @if (+inv.discountAmount > 0) {
-                  Discount (fixed)
+                  Discount (fixed@if (inv.discountCap !== null) {, max {{ money(inv.discountCap) }} in all})
                 } @else {
                   Discount ({{ inv.discountPct }}%@if (inv.discountCap !== null) {, max
-                    {{ money(inv.discountCap) }}})
+                    {{ money(inv.discountCap) }} in all})
                 }
               </th>
               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>

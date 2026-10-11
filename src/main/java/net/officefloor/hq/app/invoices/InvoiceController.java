@@ -116,7 +116,7 @@ public class InvoiceController {
     /**
      * A discount to give: a percentage from 0 to 100 with at most two decimals, or a fixed amount
      * of money, not negative and to the cent. Exactly one of them. Optionally a cap, money not
-     * negative and to the cent, that a percentage never takes off more than.
+     * negative and to the cent, that everything taken off, line discounts included, never comes to more than.
      */
     public record NewDiscount(
             @DecimalMin(value = "0", message = "The discount must be from 0 to 100 percent.")

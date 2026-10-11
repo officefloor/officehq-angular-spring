@@ -98,7 +98,7 @@ public class Invoice {
         return discountAmount;
     }
 
-    /** The most a percentage discount takes off, to the cent; null when there is no cap. */
+    /** The most taken off the invoice in all, line discounts included, to the cent; null when there is no cap. */
     public BigDecimal getDiscountCap() {
         return discountCap;
     }
@@ -109,7 +109,7 @@ public class Invoice {
         this.discountAmount = BigDecimal.ZERO;
     }
 
-    /** Sets the most a percentage discount takes off, or null for no cap; it has already been checked as money. */
+    /** Sets the most taken off the invoice in all, or null for no cap; it has already been checked as money. */
     public void setDiscountCap(BigDecimal discountCap) {
         this.discountCap = discountCap;
     }
@@ -222,15 +222,20 @@ public class Invoice {
     /**
      * The amount taken off: the fixed amount when there is one (never more than the subtotal, should
      * lines have been changed since), otherwise the discount percentage of the subtotal, rounded half
-     * up to the cent and never more than the cap when there is one.
+     * up to the cent. When there is a cap, it limits everything taken off — the line discounts plus
+     * this — so this shrinks to what the line discounts leave under the cap, never below zero.
      */
     public BigDecimal discount() {
-        if (discountAmount.signum() > 0) {
-            return discountAmount.min(subtotal()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal discount = discountAmount.signum() > 0
+                ? discountAmount.min(subtotal()).setScale(2, RoundingMode.HALF_UP)
+                : subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP);
+        if (discountCap == null) {
+            return discount;
         }
-        BigDecimal pct = subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100))
-                .setScale(2, RoundingMode.HALF_UP);
-        return discountCap == null ? pct : pct.min(discountCap.setScale(2, RoundingMode.HALF_UP));
+        BigDecimal lineDiscounts = lines.stream().map(InvoiceLine::discount)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        BigDecimal left = discountCap.setScale(2, RoundingMode.HALF_UP).subtract(lineDiscounts).max(BigDecimal.ZERO.setScale(2));
+        return discount.min(left);
     }
 
     /**

@@ -119,7 +119,7 @@ public class InvoiceService {
 
     /**
      * Gives an invoice a percentage discount, or a fixed amount off when one is given; the one given
-     * clears the other, and the cap (null for none) limits a percentage. Empty if no such invoice. The values have already been checked; a fixed amount
+     * clears the other, and the cap (null for none) limits everything taken off, line discounts included. Empty if no such invoice. The values have already been checked; a fixed amount
      * over the subtotal is refused. A sent invoice with no payments goes back to draft; one with a
      * payment refuses it.
      */
