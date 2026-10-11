@@ -1,0 +1,384 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index 9bf1c14..f9e32df 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -197,10 +197,10 @@ export class ClientInvoices {
+ 
+   // An invoice was duplicated or credited: list the new draft and open it.
+   protected duplicated(detail: InvoiceDetail): void {
+-    const { id, number, status, listedTotal, issueDate, dueDate, creditOf } = detail;
++    const { id, number, status, listedTotal, issueDate, listedDueDate, creditOf } = detail;
+     this.invoices.update((list) => [
+       ...list,
+-      { id, number, status, total: listedTotal, issueDate, dueDate, creditOf },
++      { id, number, status, total: listedTotal, issueDate, dueDate: listedDueDate, creditOf },
+     ]);
+     this.selectedId.set(id);
+   }
+@@ -225,7 +225,7 @@ export class ClientInvoices {
+               ...i,
+               status: detail.status,
+               issueDate: detail.issueDate,
+-              dueDate: detail.dueDate,
++              dueDate: detail.listedDueDate,
+               total: detail.listedTotal,
+             }
+           : i,
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-format.ts b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+index b2dd3ff..809d0ca 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-format.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+@@ -1,4 +1,4 @@
+-import { InvoiceStatus } from './invoice.service';
++import { InstalmentStatus, InvoiceStatus } from './invoice.service';
+ 
+ const STATUS_LABEL: Record<InvoiceStatus, string> = {
+   DRAFT: 'Draft',
+@@ -12,12 +12,22 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
+   CREDITED: 'Credited',
+   RETENTION_HELD: 'Retention held',
+ };
++const INSTALMENT_STATUS_LABEL: Record<InstalmentStatus, string> = {
++  PAID: 'Paid',
++  PART_PAID: 'Part paid',
++  OVERDUE: 'Overdue',
++  DUE: 'Due',
++};
+ const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+ 
+ export function statusLabel(status: InvoiceStatus): string {
+   return STATUS_LABEL[status];
+ }
+ 
++export function instalmentStatusLabel(status: InstalmentStatus): string {
++  return INSTALMENT_STATUS_LABEL[status];
++}
++
+ // Money from the server is already to the cent, so the number shown is exact.
+ export function money(amount: string): string {
+   return MONEY.format(Number(amount));
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 88b24c6..dc45cdc 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -10,7 +10,7 @@ import {
+   NewDiscount,
+   NewLine,
+ } from './invoice.service';
+-import { TWO_DECIMALS, money, statusLabel } from './invoice-format';
++import { TWO_DECIMALS, instalmentStatusLabel, money, statusLabel } from './invoice-format';
+ import { PaymentForm } from './payment-form';
+ 
+ // A percentage from 0 to 100 with at most two decimals, e.g. 15 or 12.5; the server checks it again.
+@@ -290,6 +290,8 @@ function problemWith(line: NewLine): string {
+                 <th scope="col">Interest</th>
+                 <th scope="col">Principal</th>
+                 <th scope="col">Balance</th>
++                <th scope="col">Paid</th>
++                <th scope="col">Status</th>
+               </tr>
+             </thead>
+             <tbody>
+@@ -301,6 +303,8 @@ function problemWith(line: NewLine): string {
+                   <td data-testid="instalment-interest">{{ money(s.interest) }}</td>
+                   <td data-testid="instalment-principal">{{ money(s.principal) }}</td>
+                   <td data-testid="instalment-balance">{{ money(s.balance) }}</td>
++                  <td data-testid="instalment-paid">{{ money(s.paid) }}</td>
++                  <td data-testid="instalment-status">{{ instalmentStatusLabel(s.status) }}</td>
+                 </tr>
+               }
+             </tbody>
+@@ -308,6 +312,7 @@ function problemWith(line: NewLine): string {
+               <tr>
+                 <th scope="row" colspan="5">Plan total</th>
+                 <td data-testid="invoice-plan-total">{{ money(inv.planTotal ?? '0') }}</td>
++                <td colspan="2"></td>
+               </tr>
+             </tfoot>
+           </table>
+@@ -631,6 +636,7 @@ export class InvoicePanel {
+   protected readonly reversing = signal(false);
+   protected readonly reverseError = signal('');
+   protected readonly statusLabel = statusLabel;
++  protected readonly instalmentStatusLabel = instalmentStatusLabel;
+   protected readonly money = money;
+ 
+   protected readonly form = new FormGroup({
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index cdfbe29..83f0ce9 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -128,10 +128,15 @@ export interface InvoiceDetail {
+   instalmentRate: string;
+   schedule: InstalmentView[];
+   planTotal: string | null;
++  // The due date as listed (yyyy-mm-dd): for a plan, its next unpaid instalment's due date.
++  listedDueDate: string | null;
+ }
+ 
+ // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,
+-// interest, principal and the balance left after it, decimal strings to the cent.
++// interest, principal and the balance left after it, decimal strings to the cent; what has been paid
++// off it (payments pay the instalments in order) and its status.
++export type InstalmentStatus = 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE';
++
+ export interface InstalmentView {
+   number: number;
+   dueDate: string | null;
+@@ -139,6 +144,8 @@ export interface InstalmentView {
+   interest: string;
+   principal: string;
+   balance: string;
++  paid: string;
++  status: InstalmentStatus;
+ }
+ 
+ // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Instalment.java b/src/main/java/net/officefloor/hq/app/invoices/Instalment.java
+index a6b13bd..7ea424d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Instalment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Instalment.java
+@@ -9,4 +9,13 @@ import java.time.LocalDate;
+  */
+ public record Instalment(int number, LocalDate dueDate, BigDecimal payment, BigDecimal interest,
+         BigDecimal principal, BigDecimal balance) {
++
++    /** Where an instalment is: paid off, part paid, overdue (more than the grace period past due) or due. */
++    public enum Status {
++        PAID, PART_PAID, OVERDUE, DUE
++    }
++
++    /** What has been paid off an instalment, what is still unpaid on it, and its status on a day. */
++    public record Progress(Instalment instalment, BigDecimal paid, BigDecimal unpaid, Status status) {
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 3d77c11..758f6b5 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -428,6 +428,73 @@ public class Invoice {
+         return schedule(taxRate).stream().map(Instalment::payment).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
++    /**
++     * Each instalment of the plan at the tax rate once the given amount has been paid, on the given
++     * day: payments (with what credit notes took off and anything written off) pay the instalments in
++     * order, each paid off before the next. An instalment not paid off more than {@link #GRACE_DAYS}
++     * days after its due date is overdue; empty when there is no plan.
++     */
++    public List<Instalment.Progress> instalmentProgress(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
++        List<Instalment.Progress> progress = new ArrayList<>();
++        BigDecimal left = paid.add(getCredited()).add(writtenOff(paid, taxRate));
++        for (Instalment instalment : schedule(taxRate)) {
++            BigDecimal part = left.min(instalment.payment()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
++            left = left.subtract(part);
++            BigDecimal unpaid = instalment.payment().subtract(part);
++            Instalment.Status status;
++            if (unpaid.signum() <= 0) {
++                status = Instalment.Status.PAID;
++            } else if (instalment.dueDate() != null && today.isAfter(instalment.dueDate().plusDays(GRACE_DAYS))) {
++                status = Instalment.Status.OVERDUE;
++            } else if (part.signum() > 0) {
++                status = Instalment.Status.PART_PAID;
++            } else {
++                status = Instalment.Status.DUE;
++            }
++            progress.add(new Instalment.Progress(instalment, part, unpaid, status));
++        }
++        return progress;
++    }
++
++    /**
++     * What is overdue at the tax rate once the given amount has been paid, on the given day: for a plan,
++     * only what is unpaid on its overdue instalments; otherwise all that is due when it is overdue.
++     */
++    public BigDecimal overdueAmount(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
++        if (statusWhenPaid(paid, taxRate, today) != InvoiceStatus.OVERDUE) {
++            return BigDecimal.ZERO.setScale(2);
++        }
++        if (!hasPlan()) {
++            return amountDue(paid, taxRate);
++        }
++        return instalmentProgress(paid, taxRate, today).stream()
++                .filter(p -> p.status() == Instalment.Status.OVERDUE).map(Instalment.Progress::unpaid)
++                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++    }
++
++    /**
++     * The due date as listed once the given amount has been paid: for a plan, the due date of its
++     * next unpaid instalment (its own due date once all are paid); otherwise its own due date.
++     */
++    public LocalDate listedDueDate(BigDecimal paid, BigDecimal taxRate) {
++        if (!hasPlan() || status != InvoiceStatus.SENT) {
++            return dueDate;
++        }
++        return instalmentProgress(paid, taxRate, LocalDate.MIN).stream()
++                .filter(p -> p.unpaid().signum() > 0).map(p -> p.instalment().dueDate())
++                .findFirst().orElse(dueDate);
++    }
++
++    /**
++     * What is still unpaid on the earliest instalment not yet paid off, at the tax rate, once the
++     * given amount has been paid; zero when there is no plan or all are paid.
++     */
++    public BigDecimal earliestUnpaid(BigDecimal paid, BigDecimal taxRate) {
++        return instalmentProgress(paid, taxRate, LocalDate.MIN).stream()
++                .map(Instalment.Progress::unpaid).filter(u -> u.signum() > 0)
++                .findFirst().orElse(BigDecimal.ZERO.setScale(2));
++    }
++
+     public List<InvoiceLine> getLines() {
+         return lines;
+     }
+@@ -499,7 +566,8 @@ public class Invoice {
+      * tax rate: a sent invoice with something still due more than {@link #GRACE_DAYS} days after its
+      * due date is overdue, part paid or not. Held retention is never due, so never makes it overdue;
+      * released retention is due {@link #RETENTION_DUE_DAYS} days after its release, and payments go to
+-     * the rest of the invoice before it.
++     * the rest of the invoice before it. An invoice spread over instalments is instead overdue when any
++     * of its instalments is (see {@link #instalmentProgress}).
+      */
+     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
+         return statusWhenPaid(paid, null, taxRate, today);
+@@ -517,7 +585,12 @@ public class Invoice {
+         boolean due = amountDue.signum() > 0;
+         BigDecimal retentionDue = amountDue.min(retentionReleased(taxRate)).max(BigDecimal.ZERO);
+         boolean restDue = amountDue.subtract(retentionDue).signum() > 0;
+-        if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
++        if (hasPlan()) {
++            if (due && instalmentProgress(paid, taxRate, today).stream()
++                    .anyMatch(p -> p.status() == Instalment.Status.OVERDUE)) {
++                return InvoiceStatus.OVERDUE;
++            }
++        } else if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
+             return InvoiceStatus.OVERDUE;
+         }
+         if (retentionDue.signum() > 0 && today.isAfter(retentionDueDate().plusDays(GRACE_DAYS))) {
+@@ -593,8 +666,13 @@ public class Invoice {
+     /**
+      * Whether paying the amount on top of what was already paid is too small a part payment: under
+      * {@link #minimumPart} while leaving something still due (what would be written off counts as settled).
++     * For a plan the least is instead what is still unpaid on its earliest unpaid instalment.
+      */
+     public boolean isTooSmallPart(BigDecimal amount, BigDecimal paid, BigDecimal taxRate) {
++        if (hasPlan()) {
++            return amount.compareTo(earliestUnpaid(paid, taxRate)) < 0
++                    && amountDue(paid.add(amount), taxRate).signum() > 0;
++        }
+         return amount.compareTo(minimumPart(taxRate)) < 0 && amountDue(paid.add(amount), taxRate).signum() > 0;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index e847827..c2df806 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -40,7 +40,7 @@ public class InvoiceController {
+             LocalDate issueDate, LocalDate dueDate, Long creditOf) {
+         static InvoiceSummary of(Invoice i, BigDecimal taxRate, BigDecimal paid, LocalDate paidOn, LocalDate today) {
+             return new InvoiceSummary(i.getId(), i.number(), i.statusWhenPaid(paid, paidOn, taxRate, today),
+-                    listedTotal(i, taxRate), i.getIssueDate(), i.getDueDate(), i.getCreditOf());
++                    listedTotal(i, taxRate), i.getIssueDate(), i.listedDueDate(paid, taxRate), i.getCreditOf());
+         }
+     }
+ 
+@@ -107,14 +107,15 @@ public class InvoiceController {
+      * {@code retentionDueDate} the day released retention falls due. {@code instalments} is how many
+      * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
+      * (without trailing zeros); {@code schedule} lists them and {@code planTotal} is what they add up to
+-     * (null without a plan), from which what is paid comes off for the amount due.
++     * (null without a plan), from which what is paid comes off for the amount due. {@code listedDueDate}
++     * is the due date as listed: for a plan, its next unpaid instalment's.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
+             String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
+             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+-            String instalmentRate, List<InstalmentView> schedule, String planTotal) {
++            String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -139,8 +140,8 @@ public class InvoiceController {
+                     i.getRetentionPct().stripTrailingZeros().toPlainString(), i.retention(taxRate).toPlainString(),
+                     i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate(),
+                     i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
+-                    i.schedule(taxRate).stream().map(InstalmentView::of).toList(),
+-                    i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null);
++                    i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
++                    i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate));
+         }
+     }
+ 
+@@ -262,13 +263,15 @@ public class InvoiceController {
+ 
+     /**
+      * One instalment of a plan: its number, the day it falls due, and its payment, interest, principal
+-     * and the balance left after it, decimal strings to the cent.
++     * and the balance left after it, what has been paid off it, decimal strings to the cent; and its status.
+      */
+     public record InstalmentView(int number, LocalDate dueDate, String payment, String interest, String principal,
+-            String balance) {
+-        static InstalmentView of(Instalment i) {
++            String balance, String paid, Instalment.Status status) {
++        static InstalmentView of(Instalment.Progress p) {
++            Instalment i = p.instalment();
+             return new InstalmentView(i.number(), i.dueDate(), i.payment().toPlainString(),
+-                    i.interest().toPlainString(), i.principal().toPlainString(), i.balance().toPlainString());
++                    i.interest().toPlainString(), i.principal().toPlainString(), i.balance().toPlainString(),
++                    p.paid().toPlainString(), p.status());
+         }
+     }
+ 
+@@ -347,9 +350,7 @@ public class InvoiceController {
+             BigDecimal[] sums = owed.computeIfAbsent(i.getClientId(),
+                     k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) });
+             sums[0] = sums[0].add(due).add(i.retentionHeld(rate));
+-            if (i.statusWhenPaid(paid.get(i.getId()), rate, on) == InvoiceStatus.OVERDUE) {
+-                sums[1] = sums[1].add(due);
+-            }
++            sums[1] = sums[1].add(i.overdueAmount(paid.get(i.getId()), rate, on));
+         }
+         Map<Long, BigDecimal> credits = invoices.credits();
+         credits.keySet().forEach(clientId -> owed.computeIfAbsent(clientId,
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 3563274..43f14f3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -670,6 +670,11 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException("This invoice has already been paid.");
+             }
+             BigDecimal applied = amount.min(due);
++            if (invoice.hasPlan() && invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
++                throw new InvoiceRejectedException("A payment must be at least the $"
++                        + invoice.earliestUnpaid(paidSoFar, taxRate.percent()).toPlainString()
++                        + " still unpaid on the earliest unpaid instalment, unless it settles the plan.");
++            }
+             if (invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
+                 throw new InvoiceRejectedException("A part payment must be at least $"
+                         + invoice.minimumPart(taxRate.percent()).toPlainString()
+@@ -822,6 +827,11 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
+                         + number + " is more than the $" + due.toPlainString() + " it has due.");
+             }
++            if (invoice.hasPlan() && invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
++                throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
++                        + number + " is less than the $" + invoice.earliestUnpaid(paidSoFar, taxRate.percent()).toPlainString()
++                        + " still unpaid on its earliest unpaid instalment, unless it settles the plan.");
++            }
+             if (invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
+                 throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
+                         + number + " is less than $" + invoice.minimumPart(taxRate.percent()).toPlainString()
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index 393e163..c26bae6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -6,6 +6,8 @@ package net.officefloor.hq.app.invoices;
+  * paid late when the payment that cleared it (taking payments in date order) came after its due date;
+  * those follow from its payments and are never stored. A sent invoice with something still due
+  * more than a week (the grace period) after its due date is overdue, part paid or not; that follows from the date and is never stored.
++ * An invoice spread over instalments is instead overdue when any of its instalments is not paid off a
++ * week after that instalment's due date (payments pay the instalments in order).
+  * A sent invoice with no payments can be voided: it is then void for good, owes nothing and takes no
+  * payments or changes.
+  * A credit note is a draft until it is issued, when it becomes CREDIT_NOTE for good. A sent invoice
