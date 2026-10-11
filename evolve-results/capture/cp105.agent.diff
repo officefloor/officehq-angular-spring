@@ -1,0 +1,596 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 7574b2f..1125a25 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -253,7 +253,7 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="line-description">{{ l.description }}</td>
+                 <td data-testid="line-qty">{{ l.qty }}</td>
+                 <td data-testid="line-unit-type">{{ l.unitType ?? '' }}</td>
+-                <td data-testid="line-unit-price">{{ amount(l.unitPrice) }}</td>
++                <td data-testid="line-unit-price">{{ l.tiered ? 'Tiered from ' + amount(l.unitPrice) : amount(l.unitPrice) }}</td>
+                 <td data-testid="line-discount">{{ amount(l.discount) }}</td>
+                 <td data-testid="line-amount">{{ amount(l.amount) }}</td>
+                 <td data-testid="line-discount-share">{{ amount(l.discountShare) }}</td>
+@@ -905,7 +905,8 @@ export class InvoicePanel {
+       description: line.description,
+       qty: line.qty,
+       unitType: line.unitType ?? '',
+-      unitPrice: line.unitPrice,
++      // A tiered line has no price of its own: left empty, it is repriced from the rate card's bands.
++      unitPrice: line.tiered ? '' : line.unitPrice,
+       taxExempt: line.taxExempt,
+       discountPct: Number(line.discountPct) === 0 ? '' : line.discountPct,
+       taxRate: line.taxRate ?? '',
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index be7c878..fc46079 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -64,6 +64,9 @@ export interface InvoiceLineView {
+   taxRate: string | null;
+   // The id of the invoice line a credit note's line credits; null when none.
+   creditOfLine: number | null;
++  // Whether the line is priced in progressive tiers from the client's rate card; its `unitPrice` is
++  // then the first band's, and a change of quantity reprices it from the bands.
++  tiered: boolean;
+ }
+ 
+ // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 115bff2..84becc3 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -12,6 +12,7 @@ import java.util.Set;
+ import jakarta.persistence.EntityManager;
+ import net.officefloor.hq.app.clients.Client;
+ import net.officefloor.hq.app.clients.Currency;
++import net.officefloor.hq.app.clients.RateTiers;
+ import net.officefloor.hq.app.invoices.Invoice;
+ import net.officefloor.hq.app.invoices.InvoiceRepository;
+ import net.officefloor.hq.app.invoices.PaymentRepository;
+@@ -211,12 +212,18 @@ public class TestSupportController {
+             Long clientId = id(row.get("id") == null
+                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
+             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
+-                only(rate, Set.of("unitType", "unitPrice"), "clients[].rates[]");
++                only(rate, Set.of("unitType", "unitPrice", "tiers"), "clients[].rates[]");
+                 if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
+                     throw refuse("clients[].rates[].unitType is required");
+                 }
+-                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price) VALUES (?, ?, ?)", clientId,
+-                        rate.get("unitType").toString(), cents(rate.get("unitPrice"), "clients[].rates[].unitPrice"));
++                RateTiers tiers = tiers(rate.get("tiers"));
++                if ((tiers == null) == (rate.get("unitPrice") == null)) {
++                    throw refuse("clients[].rates[] needs either unitPrice or tiers");
++                }
++                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price, tiers) VALUES (?, ?, ?, ?)", clientId,
++                        rate.get("unitType").toString(),
++                        tiers != null ? null : cents(rate.get("unitPrice"), "clients[].rates[].unitPrice"),
++                        tiers == null ? null : tiers.format());
+             }
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+@@ -262,11 +269,12 @@ public class TestSupportController {
+                     skippedInstalment(row.get("skippedInstalment"), "invoices[].skippedInstalment"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
++                Object[] price = linePrice(invoiceId, line);
+                 insert("invoice_line", line.get("id"),
+-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type"},
++                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type"},
+                         invoiceId, text(line, "description"),
+                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
+-                        linePrice(invoiceId, line),
++                        price[0], price[1],
+                         flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"),
+                         percent(line.get("discountPct"), "invoices[].lineItems[].discountPct"),
+                         line.get("taxRate") == null ? null : percent(line.get("taxRate"), "invoices[].lineItems[].taxRate"),
+@@ -421,11 +429,23 @@ public class TestSupportController {
+                         row.put("taxNumber", r.get("TAX_NUMBER"));
+                     }
+                     List<Map<String, Object>> rateCard = jdbc.queryForList(
+-                            "SELECT unit_type, unit_price FROM client_rate WHERE client_id = ? ORDER BY unit_type",
++                            "SELECT unit_type, unit_price, tiers FROM client_rate WHERE client_id = ? ORDER BY unit_type",
+                             r.get("ID")).stream().map(c -> {
+                                 Map<String, Object> rate = new LinkedHashMap<>();
+                                 rate.put("unitType", c.get("UNIT_TYPE"));
+-                                rate.put("unitPrice", c.get("UNIT_PRICE"));
++                                RateTiers tiers = RateTiers.parse((String) c.get("TIERS"));
++                                if (tiers == null) {
++                                    rate.put("unitPrice", c.get("UNIT_PRICE"));
++                                } else {
++                                    rate.put("tiers", tiers.bands().stream().map(b -> {
++                                        Map<String, Object> band = new LinkedHashMap<>();
++                                        if (b.units() != null) {
++                                            band.put("units", b.units());
++                                        }
++                                        band.put("unitPrice", b.unitPrice());
++                                        return band;
++                                    }).toList());
++                                }
+                                 return rate;
+                             }).toList();
+                     if (!rateCard.isEmpty()) {
+@@ -549,21 +569,61 @@ public class TestSupportController {
+     }
+ 
+     /**
+-     * A seeded line's unit price: the one given, or else its invoice's client's rate for the line's
+-     * unit type; refused when neither is there.
++     * A seeded line's unit price and the tiers it is priced in (null for a single price): the price
++     * given, or else its invoice's client's rate for the line's unit type — a single price, or tiers
++     * whose first band's price is kept as the unit price; refused when neither is there.
+      */
+-    private BigDecimal linePrice(Long invoiceId, Map<String, Object> line) {
++    private Object[] linePrice(Long invoiceId, Map<String, Object> line) {
+         if (line.get("unitPrice") != null || line.get("unitType") == null) {
+-            return cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice");
++            return new Object[] {cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"), null};
+         }
+-        List<BigDecimal> rate = jdbc.queryForList("SELECT r.unit_price FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
+-                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", BigDecimal.class, invoiceId,
++        List<Map<String, Object>> rate = jdbc.queryForList("SELECT r.unit_price, r.tiers FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
++                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", invoiceId,
+                 line.get("unitType").toString().trim());
+         if (rate.isEmpty()) {
+             throw refuse("invoices[].lineItems[].unitPrice is required: the client has no rate for unitType "
+                     + line.get("unitType"));
+         }
+-        return rate.get(0);
++        RateTiers tiers = RateTiers.parse((String) rate.get(0).get("TIERS"));
++        if (tiers != null) {
++            return new Object[] {tiers.firstPrice(), tiers.format()};
++        }
++        return new Object[] {rate.get(0).get("UNIT_PRICE"), null};
++    }
++
++    /**
++     * A rate card entry's tiers: bands of {@code units} each with its {@code unitPrice}, the last with
++     * no units covering everything above; null when left out.
++     */
++    private static RateTiers tiers(Object value) {
++        if (value == null) {
++            return null;
++        }
++        List<Map<String, Object>> rows = rows(value, "clients[].rates[].tiers");
++        if (rows.isEmpty()) {
++            throw refuse("clients[].rates[].tiers needs at least one band");
++        }
++        List<RateTiers.Band> bands = new ArrayList<>();
++        for (int i = 0; i < rows.size(); i++) {
++            Map<String, Object> band = rows.get(i);
++            only(band, Set.of("units", "unitPrice"), "clients[].rates[].tiers[]");
++            boolean last = i == rows.size() - 1;
++            if (!last && band.get("units") == null) {
++                throw refuse("clients[].rates[].tiers[].units is required on every band but the last");
++            }
++            if (last && band.get("units") != null) {
++                throw refuse("clients[].rates[].tiers[].units must be left out of the last band, which covers the rest");
++            }
++            BigDecimal units = last ? null : cents(band.get("units"), "clients[].rates[].tiers[].units");
++            if (units != null && units.signum() <= 0) {
++                throw refuse("clients[].rates[].tiers[].units must be more than zero, not " + band.get("units"));
++            }
++            if (band.get("unitPrice") == null) {
++                throw refuse("clients[].rates[].tiers[].unitPrice is required");
++            }
++            bands.add(new RateTiers.Band(units, cents(band.get("unitPrice"), "clients[].rates[].tiers[].unitPrice")));
++        }
++        return new RateTiers(bands);
+     }
+ 
+     /** A whole number of days, not negative; null when left out. */
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 1e38259..4d8037a 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -85,12 +85,11 @@ public class Client {
+     @Column(name = "tax_number")
+     private String taxNumber;
+ 
+-    /** The client's rate card: its price per unit type (hour, day, ...); empty for none. */
++    /** The client's rate card: its price, single or tiered, per unit type (hour, day, ...); empty for none. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "client_rate", joinColumns = @JoinColumn(name = "client_id"))
+     @MapKeyColumn(name = "unit_type")
+-    @Column(name = "unit_price")
+-    private Map<String, BigDecimal> rates = new TreeMap<>();
++    private Map<String, ClientRate> rates = new TreeMap<>();
+ 
+     /** The highest late-interest rate a client can be given, as a percentage. */
+     public static final int MAX_INTEREST_RATE = 30;
+@@ -175,12 +174,12 @@ public class Client {
+         return taxNumber;
+     }
+ 
+-    public Map<String, BigDecimal> getRates() {
++    public Map<String, ClientRate> getRates() {
+         return rates;
+     }
+ 
+-    /** The client's price for the given unit type (matched ignoring case and surrounding spaces); null when not on its card. */
+-    public BigDecimal rateFor(String unitType) {
++    /** The client's rate for the given unit type (matched ignoring case and surrounding spaces); null when not on its card. */
++    public ClientRate rateFor(String unitType) {
+         if (unitType == null) {
+             return null;
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index c1ce8a2..922e11c 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -13,7 +13,9 @@ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.util.List;
++import java.util.List;
+ import java.util.Map;
++import java.util.stream.Collectors;
+ import java.util.TreeMap;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -30,12 +32,21 @@ public class ClientController {
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+             boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+             BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
+-            Map<String, BigDecimal> rates) {
++            Map<String, RateView> rates) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+                     c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
+-                    new TreeMap<>(c.getRates()));
++                    new TreeMap<>(c.getRates().entrySet().stream().collect(Collectors.toMap(
++                            Map.Entry::getKey, e -> RateView.of(e.getValue())))));
++        }
++    }
++
++    /** A rate card entry: its single unit price, or else its tiers (null when it has a single price). */
++    public record RateView(BigDecimal unitPrice, List<RateTiers.Band> tiers) {
++        static RateView of(ClientRate r) {
++            RateTiers tiers = r.tiers();
++            return new RateView(r.getUnitPrice(), tiers == null ? null : tiers.bands());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientRate.java b/src/main/java/net/officefloor/hq/app/clients/ClientRate.java
+new file mode 100644
+index 0000000..0f5a56a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientRate.java
+@@ -0,0 +1,30 @@
++package net.officefloor.hq.app.clients;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.math.BigDecimal;
++
++/** An entry of a client's rate card: a single unit price, or progressive tiers (see {@link RateTiers}). */
++@Embeddable
++public class ClientRate {
++
++    /** The single unit price; null when priced in tiers. */
++    @Column(name = "unit_price")
++    private BigDecimal unitPrice;
++
++    /** The tiers in their stored form; null for a single unit price. */
++    @Column(name = "tiers")
++    private String tiers;
++
++    protected ClientRate() {
++    }
++
++    public BigDecimal getUnitPrice() {
++        return unitPrice;
++    }
++
++    /** The tiers; null for a single unit price. */
++    public RateTiers tiers() {
++        return RateTiers.parse(tiers);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/RateTiers.java b/src/main/java/net/officefloor/hq/app/clients/RateTiers.java
+new file mode 100644
+index 0000000..f32d7ec
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/RateTiers.java
+@@ -0,0 +1,60 @@
++package net.officefloor.hq.app.clients;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.util.ArrayList;
++import java.util.List;
++
++/**
++ * A unit type priced in progressive tiers, like tax brackets: bands of units each with its own unit
++ * price, the last band (with no units) covering everything above. Stored as "units:unitPrice" joined
++ * by semicolons, the last band with no units ("10:20.00;40:15.00;:12.00").
++ */
++public record RateTiers(List<Band> bands) {
++
++    /** A band: its number of units (null for the last band, everything above) and their unit price. */
++    public record Band(BigDecimal units, BigDecimal unitPrice) {
++    }
++
++    /** The tiers in the stored form; null when there are none. */
++    public static RateTiers parse(String stored) {
++        if (stored == null || stored.isBlank()) {
++            return null;
++        }
++        List<Band> bands = new ArrayList<>();
++        for (String band : stored.split(";")) {
++            String[] parts = band.split(":", 2);
++            bands.add(new Band(parts[0].isBlank() ? null : new BigDecimal(parts[0]), new BigDecimal(parts[1])));
++        }
++        return new RateTiers(bands);
++    }
++
++    /** The stored form of the tiers. */
++    public String format() {
++        return String.join(";", bands.stream()
++                .map(b -> (b.units() == null ? "" : b.units().toPlainString()) + ":" + b.unitPrice().toPlainString())
++                .toList());
++    }
++
++    /** The first band's unit price. */
++    public BigDecimal firstPrice() {
++        return bands.get(0).unitPrice();
++    }
++
++    /**
++     * What the given quantity costs, starting from the first band: each band's units at that band's
++     * price, rounded half up to the given number of decimals (2, the cent; 0 for whole yen).
++     */
++    public BigDecimal total(BigDecimal qty, int scale) {
++        BigDecimal left = qty;
++        BigDecimal total = BigDecimal.ZERO;
++        for (int i = 0; i < bands.size() && left.signum() > 0; i++) {
++            Band band = bands.get(i);
++            boolean last = band.units() == null || i == bands.size() - 1;
++            BigDecimal units = last ? left : left.min(band.units());
++            total = total.add(units.multiply(band.unitPrice()));
++            left = left.subtract(units);
++        }
++        return total.setScale(scale, RoundingMode.HALF_UP);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 5bbb647..d63f732 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1689,19 +1689,20 @@ public class Invoice {
+      * the subtotal would then be less than a fixed discount on the invoice.
+      */
+     public boolean updateLine(Long lineId, String description, BigDecimal qty, String unitType, BigDecimal unitPrice,
+-            boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++            String tiers, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+         InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
+         if (line == null) {
+             return false;
+         }
+-        BigDecimal changed = new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate).amount(scale());
++        BigDecimal changed = new InvoiceLine(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate)
++                .amount(scale());
+         BigDecimal left = subtotal().subtract(line.amount(scale())).add(changed);
+         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
+             throw new InvoiceRejectedException("This line cannot be changed: the "
+                     + currency().format(left) + " subtotal would be less than the "
+                     + currency().format(discountAmount) + " discount.");
+         }
+-        line.update(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
++        line.update(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate);
+         return true;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index a52bd83..285ee43 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -81,10 +81,11 @@ public class InvoiceController {
+      * tax rate, null when it uses the workspace rate. {@code discountPct}
+      * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
+      * {@code amount} is after it. {@code creditOfLine} is the id of the line a credit note's line credits, null when none.
++     * {@code tiered} lines are priced in progressive tiers from the rate card; their {@code unitPrice} is the first band's.
+      */
+     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
+             String discount, String amount, String discountShare, String tax, boolean taxExempt, String taxRate,
+-            Long creditOfLine) {
++            Long creditOfLine, boolean tiered) {
+         static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax) {
+             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
+                     l.getUnitType(), l.getUnitPrice().setScale(2).toPlainString(),
+@@ -92,7 +93,7 @@ public class InvoiceController {
+                     l.amount(scale).toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
+                     l.isTaxExempt(),
+                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
+-                    l.getCreditOfLine());
++                    l.getCreditOfLine(), l.isTiered());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 90b37a2..0739d58 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import net.officefloor.hq.app.clients.RateTiers;
+ 
+ /**
+  * One line of an invoice: a quantity (up to two decimals) times a unit price, less the line's own
+@@ -48,6 +49,12 @@ public class InvoiceLine {
+     @Column(name = "unit_type")
+     private String unitType;
+ 
++    /**
++     * The progressive tiers the line is priced in, from its client's rate card (see {@link RateTiers});
++     * null when it has a single unit price. A tiered line keeps its first band's price as its unit price.
++     */
++    private String tiers;
++
+     protected InvoiceLine() {
+     }
+ 
+@@ -67,9 +74,15 @@ public class InvoiceLine {
+         this.unitType = unitType;
+     }
+ 
+-    /** A new line with the same description, quantity, unit type, price, discount, tax rate and exemption. */
++    public InvoiceLine(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
++            boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++        this(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
++        this.tiers = tiers;
++    }
++
++    /** A new line with the same description, quantity, unit type, price, tiers, discount, tax rate and exemption. */
+     public InvoiceLine copy() {
+-        return new InvoiceLine(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
++        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate);
+     }
+ 
+     /** A new credit note line crediting this line, with its description, quantity, price, discount, tax rate and exemption. */
+@@ -80,12 +93,13 @@ public class InvoiceLine {
+     }
+ 
+     /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
+-    public void update(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, boolean taxExempt,
+-            BigDecimal discountPct, BigDecimal taxRate) {
++    public void update(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
++            boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+         this.description = description;
+         this.unitType = unitType;
+         this.qty = qty;
+         this.unitPrice = unitPrice;
++        this.tiers = tiers;
+         this.taxExempt = taxExempt;
+         this.discountPct = discountPct;
+         this.taxRate = taxRate;
+@@ -111,6 +125,11 @@ public class InvoiceLine {
+         return unitPrice;
+     }
+ 
++    /** Whether the line is priced in progressive tiers rather than at its unit price. */
++    public boolean isTiered() {
++        return tiers != null;
++    }
++
+     public boolean isTaxExempt() {
+         return taxExempt;
+     }
+@@ -133,10 +152,14 @@ public class InvoiceLine {
+     }
+ 
+     /**
+-     * Quantity times unit price, rounded half up to the given number of decimals (2, the cent; 0 for
+-     * whole yen), before the line's discount.
++     * Quantity times unit price — or, for a tiered line, the total of its bands starting from the
++     * first — rounded half up to the given number of decimals (2, the cent; 0 for whole yen), before
++     * the line's discount.
+      */
+     public BigDecimal grossAmount(int scale) {
++        if (tiers != null) {
++            return RateTiers.parse(tiers).total(qty, scale);
++        }
+         return qty.multiply(unitPrice).setScale(scale, RoundingMode.HALF_UP);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index ce1f873..62baa26 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -21,8 +21,10 @@ import net.officefloor.hq.app.LateInterestRate;
+ import net.officefloor.hq.app.TaxRate;
+ import net.officefloor.hq.app.Today;
+ import net.officefloor.hq.app.clients.Client;
++import net.officefloor.hq.app.clients.ClientRate;
+ import net.officefloor.hq.app.clients.ClientRepository;
+ import net.officefloor.hq.app.clients.Currency;
++import net.officefloor.hq.app.clients.RateTiers;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -218,10 +220,10 @@ public class InvoiceService {
+             BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+         Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+-            BigDecimal price = linePrice(invoice, unitType, unitPrice);
+-            requireWhole(invoice.currency(), price, "The unit price");
++            LinePrice price = linePrice(invoice, unitType, unitPrice);
+             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
+-            invoice.addLine(new InvoiceLine(description, qty, unitType, price, taxExempt, discountPct, taxRate));
++            invoice.addLine(new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), taxExempt,
++                    discountPct, taxRate));
+             invoices.saveAndFlush(invoice);
+             if (reopened) {
+                 audit.record("INVOICE_REOPENED id=" + invoice.getId());
+@@ -270,10 +272,10 @@ public class InvoiceService {
+         if (!invoice.hasLine(lineId)) {
+             return Optional.empty();
+         }
+-        BigDecimal price = linePrice(invoice, unitType, unitPrice);
+-        requireWhole(invoice.currency(), price, "The unit price");
++        LinePrice price = linePrice(invoice, unitType, unitPrice);
+         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
+-        invoice.updateLine(lineId, description, qty, unitType, price, taxExempt, discountPct, taxRate);
++        invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), taxExempt,
++                discountPct, taxRate);
+         invoices.saveAndFlush(invoice);
+         if (reopened) {
+             audit.record("INVOICE_REOPENED id=" + invoice.getId());
+@@ -1370,24 +1372,35 @@ public class InvoiceService {
+      * Refuses an amount entered with more decimals than the currency has: whole yen for a yen client
+      * (the cent is already checked for the rest).
+      */
++    /** A line's unit price, and the tiers it is priced in (null when it has a single price). */
++    private record LinePrice(BigDecimal unitPrice, String tiers) {
++    }
++
+     /**
+-     * A line's unit price: the one entered, or else the client's rate for the line's unit type.
+-     * Refused when neither is there.
++     * A line's price: the unit price entered, or else the client's rate for the line's unit type —
++     * a single price, or tiers starting from the first band. Refused when neither is there, and a
++     * single price with more decimals than the currency has.
+      */
+-    private BigDecimal linePrice(Invoice invoice, String unitType, BigDecimal unitPrice) {
++    private LinePrice linePrice(Invoice invoice, String unitType, BigDecimal unitPrice) {
+         if (unitPrice != null) {
+-            return unitPrice;
++            requireWhole(invoice.currency(), unitPrice, "The unit price");
++            return new LinePrice(unitPrice, null);
+         }
+         if (unitType == null) {
+             throw new InvoiceRejectedException("Enter a unit price or a unit type.");
+         }
+         Client client = clients.findById(invoice.getClientId()).orElse(null);
+-        BigDecimal rate = client == null ? null : client.rateFor(unitType);
++        ClientRate rate = client == null ? null : client.rateFor(unitType);
+         if (rate == null) {
+             throw new InvoiceRejectedException("The client's rate card has no rate for " + unitType
+                     + "; enter a unit price.");
+         }
+-        return rate;
++        RateTiers tiers = rate.tiers();
++        if (tiers != null) {
++            return new LinePrice(tiers.firstPrice(), tiers.format());
++        }
++        requireWhole(invoice.currency(), rate.getUnitPrice(), "The unit price");
++        return new LinePrice(rate.getUnitPrice(), null);
+     }
+ 
+     private static void requireWhole(Currency currency, BigDecimal amount, String what) {
+diff --git a/src/main/resources/db/migration/V41__rate_tiers.sql b/src/main/resources/db/migration/V41__rate_tiers.sql
+new file mode 100644
+index 0000000..5ec0034
+--- /dev/null
++++ b/src/main/resources/db/migration/V41__rate_tiers.sql
+@@ -0,0 +1,7 @@
++-- A rate card entry priced in progressive tiers instead of one price: its bands as
++-- "units:unitPrice" joined by semicolons, the last band with no units (";:12.00"); NULL for a single price.
++ALTER TABLE client_rate ALTER COLUMN unit_price SET NULL;
++ALTER TABLE client_rate ADD COLUMN tiers VARCHAR(1024);
++
++-- The tiers a line was priced in from the rate card, in the same form; NULL when it has a single unit price.
++ALTER TABLE invoice_line ADD COLUMN tiers VARCHAR(1024);
