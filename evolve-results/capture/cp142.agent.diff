@@ -1,0 +1,171 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index e9c72ee..3e3af46 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -288,7 +288,7 @@ export class InvoiceService {
+     return this.http.get<ClientBalance[]>('/api/clients/balances');
+   }
+ 
+-  // Starts an empty draft for the client, issued today and due on the last day of the following month.
++  // Starts an empty draft for the client, issued today and due by the client's terms, else their region's, else on the last day of the following month.
+   newDraft(clientId: number): Observable<InvoiceSummary> {
+     return this.http.post<InvoiceSummary>(`/api/clients/${clientId}/invoices`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/RegionTerms.java b/src/main/java/net/officefloor/hq/app/RegionTerms.java
+new file mode 100644
+index 0000000..197d85e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/RegionTerms.java
+@@ -0,0 +1,50 @@
++package net.officefloor.hq.app;
++
++import java.util.Map;
++import java.util.Optional;
++import java.util.TreeMap;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++
++/**
++ * The standard payment terms regions set, the {@code region_terms_days_<region>} settings: an invoice
++ * for a client in such a region with no terms of their own is due that many days after it is issued
++ * instead of at the end of the next month (see InvoiceService).
++ */
++@Service
++public class RegionTerms {
++
++    /** The prefix of the setting holding a region's terms, followed by the region (region_terms_days_NY). */
++    public static final String REGION_TERMS_DAYS = "region_terms_days_";
++
++    private final JdbcTemplate jdbc;
++
++    public RegionTerms(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    /** Every region's terms in days, by region. */
++    public Map<String, Integer> all() {
++        Map<String, Integer> days = new TreeMap<>();
++        jdbc.queryForList("SELECT name, setting_value FROM app_setting WHERE name LIKE ? ORDER BY name", REGION_TERMS_DAYS + "%")
++                .forEach(r -> days.put(((String) r.get("NAME")).substring(REGION_TERMS_DAYS.length()),
++                        Integer.valueOf((String) r.get("SETTING_VALUE"))));
++        return days;
++    }
++
++    /** The region's terms in days; empty when the client has no region or the region sets none. */
++    public Optional<Integer> forRegion(String region) {
++        if (region == null) {
++            return Optional.empty();
++        }
++        return jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class,
++                REGION_TERMS_DAYS + region).stream().findFirst().map(Integer::valueOf);
++    }
++
++    /** Records the region's terms in days, replacing any it had. */
++    public void set(String region, int days) {
++        jdbc.update("DELETE FROM app_setting WHERE name = ?", REGION_TERMS_DAYS + region);
++        jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", REGION_TERMS_DAYS + region,
++                Integer.toString(days));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 061785e..3b37a11 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -40,7 +40,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "withholdingThreshold");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold");
+     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
+     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+@@ -80,10 +80,13 @@ public class TestSupportController {
+ 
+     private final RegionGrace regionGrace;
+ 
++    private final RegionTerms regionTerms;
++
+     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
+             PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
+             CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList, Today today, LateInterestRate lateInterestRate,
+-            VolumeDiscounts volumeDiscounts, RegionGrace regionGrace) {
++            VolumeDiscounts volumeDiscounts, RegionGrace regionGrace, RegionTerms regionTerms) {
++        this.regionTerms = regionTerms;
+         this.regionGrace = regionGrace;
+         this.volumeDiscounts = volumeDiscounts;
+         this.lateInterestRate = lateInterestRate;
+@@ -245,6 +248,18 @@ public class TestSupportController {
+                     regionGrace.set(region, graceDays(e.getValue(), "settings.regionGraceDays." + region));
+                 }
+             }
++            if (values.get("regionTermsDays") != null) {
++                if (!(values.get("regionTermsDays") instanceof Map<?, ?> terms)) {
++                    throw refuse("settings.regionTermsDays must be an object of days by region");
++                }
++                for (Map.Entry<?, ?> e : terms.entrySet()) {
++                    String region = e.getKey().toString();
++                    if (region.isBlank() || e.getValue() == null) {
++                        throw refuse("settings.regionTermsDays needs a region and days, not " + region + ": " + e.getValue());
++                    }
++                    regionTerms.set(region, days(e.getValue(), "settings.regionTermsDays." + region));
++                }
++            }
+             if (values.get("homeRegion") != null) {
+                 String home = values.get("homeRegion").toString();
+                 if (home.isBlank()) {
+@@ -556,6 +571,10 @@ public class TestSupportController {
+         if (!regionGraceDays.isEmpty()) {
+             settings.put("regionGraceDays", regionGraceDays);
+         }
++        Map<String, Integer> regionTermsDays = this.regionTerms.all();
++        if (!regionTermsDays.isEmpty()) {
++            settings.put("regionTermsDays", regionTermsDays);
++        }
+         Map<String, BigDecimal> regionTaxRates = this.taxRate.regions();
+         if (!regionTaxRates.isEmpty()) {
+             settings.put("regionTaxRates", regionTaxRates);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index db62447..d36bd58 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -20,6 +20,7 @@ import net.officefloor.hq.app.ExchangeRates;
+ import net.officefloor.hq.app.FxFee;
+ import net.officefloor.hq.app.LateInterestRate;
+ import net.officefloor.hq.app.PriceList;
++import net.officefloor.hq.app.RegionTerms;
+ import net.officefloor.hq.app.TaxRate;
+ import net.officefloor.hq.app.Today;
+ import net.officefloor.hq.app.clients.Client;
+@@ -52,9 +53,13 @@ public class InvoiceService {
+ 
+     private final FxFee fxFee;
+ 
++    private final RegionTerms regionTerms;
++
+     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
+             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
+-            LateInterestRate lateInterestRate, CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList) {
++            LateInterestRate lateInterestRate, CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList,
++            RegionTerms regionTerms) {
++        this.regionTerms = regionTerms;
+         this.priceList = priceList;
+         this.cardSurcharge = cardSurcharge;
+         this.fxFee = fxFee;
+@@ -203,12 +208,13 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * An invoice for a client with payment terms is due that many days after it is issued; otherwise
+-     * as {@link #dueDateFor(LocalDate)}.
++     * An invoice for a client with payment terms is due that many days after it is issued; for a
++     * client without, in a region with standard terms, the region's days after; otherwise as
++     * {@link #dueDateFor(LocalDate)}.
+      */
+     private LocalDate dueDateFor(Long clientId, LocalDate issued) {
+         return clients.findById(clientId)
+-                .map(Client::getTermsDays)
++                .flatMap(c -> Optional.ofNullable(c.getTermsDays()).or(() -> regionTerms.forRegion(c.getRegion())))
+                 .map(days -> issued.plusDays(days))
+                 .orElseGet(() -> dueDateFor(issued));
+     }
