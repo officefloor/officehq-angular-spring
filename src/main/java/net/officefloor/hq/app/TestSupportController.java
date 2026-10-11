@@ -40,13 +40,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "withholdingThreshold");
     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
     private static final String MINIMUM_CHARGE = "minimum_charge";
 
     private static final String INTEREST_THRESHOLD = "interest_threshold";
+    /** The setting holding the workspace's withholding threshold in US dollars (see Invoice#withholding). */
+    private static final String WITHHOLDING_THRESHOLD = "withholding_threshold";
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil");
     private static final Set<String> INVOICE_FIELDS =
@@ -158,6 +160,11 @@ public class TestSupportController {
                 BigDecimal threshold = money(values.get("interestThreshold"), "settings.interestThreshold");
                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                         INTEREST_THRESHOLD, threshold.toPlainString());
+            }
+            if (values.get("withholdingThreshold") != null) {
+                BigDecimal threshold = money(values.get("withholdingThreshold"), "settings.withholdingThreshold");
+                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                        WITHHOLDING_THRESHOLD, threshold.toPlainString());
             }
             if (values.get("cardSurchargePct") != null) {
                 BigDecimal rate = percent(values.get("cardSurchargePct"), "settings.cardSurchargePct");
@@ -535,6 +542,11 @@ public class TestSupportController {
                 String.class, INTEREST_THRESHOLD);
         if (!interestThreshold.isEmpty()) {
             settings.put("interestThreshold", new BigDecimal(interestThreshold.get(0)));
+        }
+        List<String> withholdingThreshold = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+                String.class, WITHHOLDING_THRESHOLD);
+        if (!withholdingThreshold.isEmpty()) {
+            settings.put("withholdingThreshold", new BigDecimal(withholdingThreshold.get(0)));
         }
         Map<String, BigDecimal> regionMaxInterest = this.lateInterestRate.regionMaximums();
         if (!regionMaxInterest.isEmpty()) {

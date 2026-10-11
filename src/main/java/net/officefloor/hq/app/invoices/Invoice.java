@@ -305,6 +305,13 @@ public class Invoice {
     @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'interest_threshold')")
     private String interestThresholdUsd;
 
+    /**
+     * The workspace's withholding threshold in US dollars, as stored (the {@code withholding_threshold}
+     * setting); null when none is set.
+     */
+    @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'withholding_threshold')")
+    private String withholdingThresholdUsd;
+
     /** The client's own annual late-interest rate, a percentage; null for the workspace's. Read from the client. */
     @Formula("(SELECT c.interest_rate FROM client c WHERE c.id = client_id)")
     private BigDecimal clientInterestRate;
@@ -807,13 +814,18 @@ public class Invoice {
     /**
      * The withholding: the client's withholding percentage of the amount before tax, rounded down to
      * the cent. The client pays it to its tax office instead, so it is never owed. Nothing for a credit
-     * note, nor for a reverse-charged invoice: the client pays it all.
+     * note, nor for a reverse-charged invoice, nor for one whose amount before tax is under the
+     * workspace's withholding threshold: the client pays it all.
      */
     public BigDecimal withholding(BigDecimal taxRate) {
         if (isCreditNote() || isReverseCharge() || withholdingPct == null || withholdingPct.signum() <= 0) {
             return zero();
         }
-        return beforeTax(taxRate).multiply(withholdingPct).divide(BigDecimal.valueOf(100))
+        BigDecimal beforeTax = beforeTax(taxRate);
+        if (beforeTax.compareTo(withholdingThreshold()) < 0) {
+            return zero();
+        }
+        return beforeTax.multiply(withholdingPct).divide(BigDecimal.valueOf(100))
                 .setScale(scale(), RoundingMode.DOWN);
     }
 
@@ -900,6 +912,17 @@ public class Invoice {
             return zero();
         }
         return currency().divideDownToStep(new BigDecimal(interestThresholdUsd.trim()), usdPerOn(issueDate));
+    }
+
+    /**
+     * The amount before tax an invoice must reach before anything is withheld: the workspace's threshold
+     * in US dollars converted at the issue date's rate, rounded down to the step; 0 when none is set.
+     */
+    private BigDecimal withholdingThreshold() {
+        if (withholdingThresholdUsd == null) {
+            return zero();
+        }
+        return currency().divideDownToStep(new BigDecimal(withholdingThresholdUsd.trim()), usdPerOn(issueDate));
     }
 
     /** The late interest charged on the invoice itself, released retention left out (see {@link #accrueLateInterest}). */
