@@ -1,0 +1,42 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 5cbceec..81ad006 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -565,8 +565,8 @@ public class Invoice {
+      * interest, and a payment from then on pays it first. A sent invoice not
+      * spread over instalments, with something still owed more than {@link #graceDays()} days after its
+      * due date, earns interest from the end of its grace period ({@link #graceDays()} days after its due
+-     * date), compounded daily at rate / 365: a balance B owing for
+-     * d days earns B x ((1 + rate / 100 / 365)^d - 1), rounded half up to the cent. Each payment after
++     * date), compounded daily at rate / 360 (Actual/360): a balance B owing for
++     * d days earns B x ((1 + rate / 100 / 360)^d - 1), rounded half up to the cent. Each payment after
+      * the grace period ends a period; every period earns interest on what the invoice still owed during it
+      * (earlier interest, the fee and retention left out), and a payment pays the fee, then the interest
+      * earned so far, then the invoice. An invoice spread over instalments instead earns interest
+@@ -608,7 +608,7 @@ public class Invoice {
+             return;
+         }
+         BigDecimal daily = earnsInterest
+-                ? BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36500), MathContext.DECIMAL128))
++                ? BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128))
+                 : null;
+         LocalDate overdueOn = dueDate.plusDays(graceDays() + 1);
+         BigDecimal charged = BigDecimal.ZERO;
+@@ -679,7 +679,7 @@ public class Invoice {
+      * off has already come off the schedule). Payments, in the order they were made, pay each instalment's
+      * interest earned so far and then the instalment itself, earliest instalment first. An instalment
+      * still not paid off more than {@link #graceDays()} days after its due date earns interest by the
+-     * same rule as an invoice: from the end of its own grace period, compounded daily at rate / 365, on
++     * same rule as an invoice: from the end of its own grace period, compounded daily at rate / 360 (Actual/360), on
+      * what is still unpaid of it, with each payment after its grace period ending a period.
+      */
+     private void accrueInstalmentInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+@@ -701,7 +701,7 @@ public class Invoice {
+             inOrder.add(new Part(inOrder.get(inOrder.size() - 1).on(), Long.MAX_VALUE, getInterestSaved()));
+         }
+         BigDecimal[] left = inOrder.stream().map(Part::amount).toArray(BigDecimal[]::new);
+-        BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36500), MathContext.DECIMAL128));
++        BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
+         List<BigDecimal> charges = new ArrayList<>();
+         BigDecimal total = BigDecimal.ZERO;
+         for (Instalment instalment : schedule(taxRate)) {
