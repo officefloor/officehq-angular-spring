@@ -242,6 +242,13 @@ public class Invoice {
     @Formula("(SELECT c.interest_rate FROM client c WHERE c.id = client_id)")
     private BigDecimal clientInterestRate;
 
+    /**
+     * The legal maximum annual late-interest rate of the client's region, a percentage; read from the
+     * workspace's regional caps, null when the client has no region or it has no cap.
+     */
+    @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_max_interest_' || c.region)")
+    private String regionMaxInterest;
+
     /** The early discount the invoice was settled with; 0 when none was taken. */
     @Column(name = "early_discount")
     private BigDecimal earlyDiscount = BigDecimal.ZERO;
@@ -1620,9 +1627,16 @@ public class Invoice {
     /** The standard days past its due date an invoice is given before it becomes overdue: a week's grace. */
     public static final int GRACE_DAYS = 7;
 
-    /** The annual late-interest rate this invoice is charged: its client's own, else the workspace's. */
+    /**
+     * The annual late-interest rate this invoice is charged: its client's own, else the workspace's,
+     * but no more than the legal maximum of the client's region.
+     */
     public BigDecimal lateInterestRate(BigDecimal workspaceRate) {
-        return clientInterestRate == null ? workspaceRate : clientInterestRate;
+        BigDecimal rate = clientInterestRate == null ? workspaceRate : clientInterestRate;
+        if (regionMaxInterest == null || rate == null) {
+            return rate;
+        }
+        return rate.min(new BigDecimal(regionMaxInterest.trim()));
     }
 
     /** Days past its due date this invoice is given before it becomes overdue: its client's grace period. */

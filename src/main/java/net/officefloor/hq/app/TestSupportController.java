@@ -39,7 +39,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges", "regionMaxInterest");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
     private static final String MINIMUM_CHARGE = "minimum_charge";
@@ -66,9 +66,12 @@ public class TestSupportController {
 
     private final Today today;
 
+    private final LateInterestRate lateInterestRate;
+
     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
             PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
-            CardSurcharge cardSurcharge, PriceList priceList, Today today) {
+            CardSurcharge cardSurcharge, PriceList priceList, Today today, LateInterestRate lateInterestRate) {
+        this.lateInterestRate = lateInterestRate;
         this.today = today;
         this.priceList = priceList;
         this.cardSurcharge = cardSurcharge;
@@ -188,6 +191,19 @@ public class TestSupportController {
                     }
                     jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                             TaxRate.REGION_TAX_RATE + region, rate.toPlainString());
+                }
+            }
+            if (values.get("regionMaxInterest") != null) {
+                if (!(values.get("regionMaxInterest") instanceof Map<?, ?> caps)) {
+                    throw refuse("settings.regionMaxInterest must be an object of percentages by region");
+                }
+                for (Map.Entry<?, ?> e : caps.entrySet()) {
+                    String region = e.getKey().toString();
+                    if (region.isBlank() || e.getValue() == null) {
+                        throw refuse("settings.regionMaxInterest needs a region and a rate, not " + region + ": " + e.getValue());
+                    }
+                    lateInterestRate.setRegionMaximum(region,
+                            percent(e.getValue(), "settings.regionMaxInterest." + region));
                 }
             }
             if (values.get("homeRegion") != null) {
@@ -463,6 +479,10 @@ public class TestSupportController {
                 String.class, MINIMUM_CHARGE);
         if (!minimumCharge.isEmpty()) {
             settings.put("minimumCharge", new BigDecimal(minimumCharge.get(0)));
+        }
+        Map<String, BigDecimal> regionMaxInterest = this.lateInterestRate.regionMaximums();
+        if (!regionMaxInterest.isEmpty()) {
+            settings.put("regionMaxInterest", regionMaxInterest);
         }
         Map<String, BigDecimal> regionTaxRates = this.taxRate.regions();
         if (!regionTaxRates.isEmpty()) {
