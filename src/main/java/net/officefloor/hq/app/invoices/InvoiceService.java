@@ -345,12 +345,18 @@ public class InvoiceService {
             if (invoice.isVoid()) {
                 throw new InvoiceRejectedException("A void invoice takes no payments.");
             }
-            BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
+            BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+            BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
             if (due.signum() <= 0) {
                 throw new InvoiceRejectedException("This invoice has already been paid.");
             }
             if (amount.compareTo(due) > 0) {
                 throw new InvoiceRejectedException("The payment is more than the $" + due.toPlainString() + " due.");
+            }
+            if (invoice.isTooSmallPart(amount, paidSoFar, taxRate.percent())) {
+                throw new InvoiceRejectedException("A part payment must be at least $"
+                        + invoice.minimumPart(taxRate.percent()).toPlainString()
+                        + " (10% of the total), unless it settles the invoice.");
             }
             LocalDate now = today.date();
             if (date.isAfter(now)) {
@@ -463,10 +469,16 @@ public class InvoiceService {
             if (invoice.isVoid()) {
                 throw new InvoiceRejectedException(number + " is void and takes no payments.");
             }
-            BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
+            BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+            BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
             if (part.getAmount().compareTo(due) > 0) {
                 throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
                         + number + " is more than the $" + due.toPlainString() + " it has due.");
+            }
+            if (invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
+                throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
+                        + number + " is less than $" + invoice.minimumPart(taxRate.percent()).toPlainString()
+                        + " (10% of its total), unless it settles the invoice.");
             }
             if (invoice.getIssueDate() != null && date.isBefore(invoice.getIssueDate())) {
                 throw new InvoiceRejectedException("The payment date cannot be before the issue date of " + number

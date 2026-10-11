@@ -28,6 +28,9 @@ public class Invoice {
     /** Payments that leave less than this still due have the rest written off. */
     public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("1.00");
 
+    /** A part payment must be at least this share of the grand total, unless it settles the invoice. */
+    public static final BigDecimal MINIMUM_PART_SHARE = new BigDecimal("0.10");
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -266,6 +269,19 @@ public class Invoice {
         return paid.signum() > 0 && left.signum() > 0 && left.compareTo(WRITE_OFF_LIMIT) < 0
                 ? left.setScale(2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO.setScale(2);
+    }
+
+    /** The least a part payment may be at the tax rate: {@link #MINIMUM_PART_SHARE} of the grand total. */
+    public BigDecimal minimumPart(BigDecimal taxRate) {
+        return total(taxRate).multiply(MINIMUM_PART_SHARE).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Whether paying the amount on top of what was already paid is too small a part payment: under
+     * {@link #minimumPart} while leaving something still due (what would be written off counts as settled).
+     */
+    public boolean isTooSmallPart(BigDecimal amount, BigDecimal paid, BigDecimal taxRate) {
+        return amount.compareTo(minimumPart(taxRate)) < 0 && amountDue(paid.add(amount), taxRate).signum() > 0;
     }
 
     /** Adds a line to the end of the invoice. */
