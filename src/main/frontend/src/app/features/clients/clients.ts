@@ -117,6 +117,17 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
           step="0.01"
           formControlName="discountPct"
         />
+        <label for="client-retention">Standard retention % (optional)</label>
+        <input
+          id="client-retention"
+          data-testid="client-form-retention-pct"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          max="20"
+          step="0.01"
+          formControlName="retentionPct"
+        />
         <label for="client-early-pct">Early-payment discount % (optional)</label>
         <input
           id="client-early-pct"
@@ -203,6 +214,7 @@ export class Clients {
     }),
     terms: new FormControl<number | null>(null),
     discountPct: new FormControl<number | null>(null),
+    retentionPct: new FormControl<number | null>(null),
     earlyPct: new FormControl<number | null>(null),
     earlyDays: new FormControl<number | null>(null),
     taxExempt: new FormControl(false, { nonNullable: true }),
@@ -232,6 +244,8 @@ export class Clients {
     const termsDays = terms === null || (terms as unknown) === '' ? null : Number(terms);
     const discount = this.form.controls.discountPct.value;
     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
+    const retention = this.form.controls.retentionPct.value;
+    const retentionPct = retention === null || (retention as unknown) === '' ? null : Number(retention);
     const taxExempt = this.form.controls.taxExempt.value;
     const currency = this.form.controls.currency.value;
     const early = this.form.controls.earlyPct.value;
@@ -243,12 +257,13 @@ export class Clients {
       email,
       terms: termsDays,
       discountPct,
+      retentionPct,
       earlyPct: earlyPayPct,
       earlyDays: earlyPayDays,
       taxExempt,
       currency,
     });
-    const problem = this.problemWith(name, email, termsDays, discountPct, earlyPayPct, earlyPayDays);
+    const problem = this.problemWith(name, email, termsDays, discountPct, retentionPct, earlyPayPct, earlyPayDays);
     if (problem) {
       this.form.markAllAsTouched();
       this.error.set(problem);
@@ -265,6 +280,7 @@ export class Clients {
       currency,
       earlyPayPct: earlyPayPct ?? 0,
       earlyPayDays,
+      retentionPct: retentionPct ?? 0,
     };
     this.service.add(client).subscribe({
       next: (created) => {
@@ -320,6 +336,7 @@ export class Clients {
     email: string,
     termsDays: number | null,
     discountPct: number | null,
+    retentionPct: number | null,
     earlyPayPct: number | null,
     earlyPayDays: number | null,
   ): string {
@@ -342,6 +359,13 @@ export class Clients {
         problems.push('The standard discount must be from 0 to 100 percent.');
       } else if (Math.abs(Math.round(discountPct * 100) - discountPct * 100) > 1e-6) {
         problems.push('The standard discount can have at most two decimals.');
+      }
+    }
+    if (retentionPct !== null) {
+      if (!(Number.isFinite(retentionPct) && retentionPct >= 0 && retentionPct <= 20)) {
+        problems.push('The standard retention must be from 0 to 20 percent.');
+      } else if (Math.abs(Math.round(retentionPct * 100) - retentionPct * 100) > 1e-6) {
+        problems.push('The standard retention can have at most two decimals.');
       }
     }
     if (earlyPayPct !== null) {

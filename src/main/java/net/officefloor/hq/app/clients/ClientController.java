@@ -26,10 +26,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClientController {
 
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
-            boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays) {
+            boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+            BigDecimal retentionPct) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
-                    c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays());
+                    c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+                    c.getRetentionPct());
         }
     }
 
@@ -60,7 +62,11 @@ public class ClientController {
             BigDecimal earlyPayPct,
             @Min(value = 1, message = "The early-payment window must be from 1 to 365 days.")
             @Max(value = 365, message = "The early-payment window must be from 1 to 365 days.")
-            Integer earlyPayDays) {
+            Integer earlyPayDays,
+            @DecimalMin(value = "0", message = "The standard retention must be from 0 to 20 percent.")
+            @DecimalMax(value = "20", message = "The standard retention must be from 0 to 20 percent.")
+            @Digits(integer = 2, fraction = 2, message = "The standard retention can have at most two decimals.")
+            BigDecimal retentionPct) {
 
         @AssertTrue(message = "Enter both the early-payment discount and its number of days, or neither.")
         public boolean isEarlyPayComplete() {
@@ -89,6 +95,7 @@ public class ClientController {
     @ResponseStatus(HttpStatus.CREATED)
     public ClientView add(@Valid @RequestBody NewClient body) {
         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
-                Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays()));
+                Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
+                body.retentionPct()));
     }
 }

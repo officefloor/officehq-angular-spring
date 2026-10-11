@@ -46,11 +46,15 @@ public class Client {
     @Column(name = "early_pay_days")
     private Integer earlyPayDays;
 
+    /** The standard retention percentage (0 to 20) new invoices for this client start with; 0 is none. */
+    @Column(name = "retention_pct")
+    private BigDecimal retentionPct = BigDecimal.ZERO;
+
     protected Client() {
     }
 
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
-            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays) {
+            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct) {
         this.name = name;
         this.email = email;
         this.termsDays = termsDays;
@@ -59,6 +63,7 @@ public class Client {
         this.currency = currency == null ? Currency.USD : currency;
         this.earlyPayPct = earlyPayPct == null ? BigDecimal.ZERO : earlyPayPct;
         this.earlyPayDays = earlyPayDays;
+        this.retentionPct = retentionPct == null ? BigDecimal.ZERO : retentionPct;
     }
 
     public Long getId() {
@@ -95,5 +100,9 @@ public class Client {
 
     public Integer getEarlyPayDays() {
         return earlyPayDays;
+    }
+
+    public BigDecimal getRetentionPct() {
+        return retentionPct;
     }
 }

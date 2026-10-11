@@ -104,7 +104,7 @@ public class InvoiceService {
 
     /**
      * An empty draft for the client, issued today, due on the client's terms and starting with the
-     * client's standard discount; empty if no such client.
+     * client's standard discount and retention; empty if no such client.
      */
     @Transactional
     public Optional<Invoice> newDraft(Long clientId) {
@@ -112,13 +112,14 @@ public class InvoiceService {
             LocalDate issued = today.date();
             Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), client.getCurrency(), issued, dueDateFor(clientId, issued));
             draft.setDiscountPct(client.getDiscountPct());
+            draft.setRetentionPct(client.getRetentionPct());
             return invoices.save(draft);
         });
     }
 
     /**
      * A new draft for the invoice's client with copies of its lines and the same invoice discount,
-     * issued today and due as any new invoice is, and records it in the audit; empty if no such
+     * retention and instalment plan (not the client's standard ones), issued today and due as any new invoice is, and records it in the audit; empty if no such
      * invoice. Payments are not copied.
      */
     @Transactional
