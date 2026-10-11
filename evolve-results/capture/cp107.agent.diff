@@ -1,0 +1,234 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 6b1b9df..b35dd68 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -322,6 +322,10 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="invoice-discount-reason">{{ inv.discountReason }}</td>
+               </tr>
+             }
++            <tr>
++              <th scope="row" colspan="9">Minimum charge</th>
++              <td data-testid="invoice-minimum-charge">{{ amount(inv.minimumCharge) }}</td>
++            </tr>
+             @if (inv.reverseCharge) {
+               <tr>
+                 <td colspan="10" data-testid="invoice-reverse-charge">Reverse charge</td>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index a013a81..0a5a741 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -181,6 +181,9 @@ export interface InvoiceDetail {
+   // Whether it is reverse charged: its client is registered (a valid tax number) outside the
+   // workspace's home region and accounts for the tax itself, so no line is taxed.
+   reverseCharge: boolean;
++  // What the amount after its discounts falls short of the workspace's minimum charge, added to the
++  // invoice and taxed at the client's rate; "0.00" when there is none.
++  minimumCharge: string;
+ }
+ 
+ // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 0bc33df..c23f7e6 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -38,7 +38,9 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge");
++    /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
++    private static final String MINIMUM_CHARGE = "minimum_charge";
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates");
+     private static final Set<String> INVOICE_FIELDS =
+@@ -120,6 +122,11 @@ public class TestSupportController {
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                         LateFee.LATE_FEE, fee.toPlainString());
+             }
++            if (values.get("minimumCharge") != null) {
++                BigDecimal minimum = money(values.get("minimumCharge"), "settings.minimumCharge");
++                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
++                        MINIMUM_CHARGE, minimum.toPlainString());
++            }
+             if (values.get("usdPer") != null) {
+                 if (!(values.get("usdPer") instanceof Map<?, ?> rates)) {
+                     throw refuse("settings.usdPer must be an object of rates by currency code");
+@@ -377,6 +384,11 @@ public class TestSupportController {
+         if (!lateFee.isEmpty()) {
+             settings.put("lateFee", new BigDecimal(lateFee.get(0)));
+         }
++        List<String> minimumCharge = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
++                String.class, MINIMUM_CHARGE);
++        if (!minimumCharge.isEmpty()) {
++            settings.put("minimumCharge", new BigDecimal(minimumCharge.get(0)));
++        }
+         Map<String, BigDecimal> regionTaxRates = this.taxRate.regions();
+         if (!regionTaxRates.isEmpty()) {
+             settings.put("regionTaxRates", regionTaxRates);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 5f2eb63..7578df8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -191,6 +191,13 @@ public class Invoice {
+     private String datedRates;
+ 
+     /** The latest day a payment (not reversed) was applied to the invoice; null when none was. */
++    /**
++     * The workspace's minimum charge in US dollars, as stored (the {@code minimum_charge} setting); null
++     * when none is set.
++     */
++    @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'minimum_charge')")
++    private String minimumChargeUsd;
++
+     @Formula("(SELECT MAX(COALESCE(a.applied_date, p.payment_date)) FROM payment_allocation a, payment p WHERE a.invoice_id = id AND p.id = a.payment_id AND p.reversed = FALSE)")
+     private LocalDate lastPaidOn;
+ 
+@@ -1806,6 +1813,7 @@ public class Invoice {
+      * Each line's exact tax, in the order of the lines: the line's own rate (a percentage), or when it
+      * has none the client's regional rate, or the given workspace rate when that has none either, on the line's amount less its share of the discount,
+      * unrounded. Tax-exempt lines, and every line of a tax-exempt client or a reverse-charged invoice, have no tax.
++     * The minimum charge's exact tax at the client's rate follows, as one more line.
+      */
+     private List<BigDecimal> exactLineTaxes(BigDecimal taxRate) {
+         List<BigDecimal> shares = discountShares();
+@@ -1816,6 +1824,7 @@ public class Invoice {
+             taxes.add(clientTaxExempt || isReverseCharge() || line.isTaxExempt() ? BigDecimal.ZERO
+                     : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(clientRate)).movePointLeft(2));
+         }
++        taxes.add(clientTaxExempt || isReverseCharge() ? BigDecimal.ZERO : minimumCharge().multiply(clientRate).movePointLeft(2));
+         return taxes;
+     }
+ 
+@@ -1825,14 +1834,14 @@ public class Invoice {
+      * cents of its exact share (rounded down), then the cents left over go one each to the lines with
+      * the largest leftover fractions; between equal fractions the cent goes to the line with the
+      * larger exact tax, and between equal exact taxes too to the lower line id. The line taxes add up
+-     * to the invoice tax.
++     * to the invoice tax, less the minimum charge's share, which is split as one more line after them.
+      */
+     public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
+         if (clientPricesIncludeTax) {
+             return inclusiveLineTaxes(taxRate);
+         }
+         List<BigDecimal> exact = exactLineTaxes(taxRate);
+-        int n = lines.size();
++        int n = exact.size();
+         BigInteger taxCents = roundTax(exact).movePointRight(scale()).toBigIntegerExact();
+         int common = exact.stream().mapToInt(BigDecimal::scale).max().orElse(0);
+         BigInteger[] weights = new BigInteger[n];
+@@ -1875,7 +1884,7 @@ public class Invoice {
+         }
+         order.sort(Comparator.<Integer, BigInteger>comparing(i -> leftovers[i]).reversed()
+                 .thenComparing(Comparator.<Integer, BigInteger>comparing(i -> weights[i]).reversed())
+-                .thenComparing(i -> lines.get(i).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
++                .thenComparing(i -> i < lines.size() ? lines.get(i).getId() : null, Comparator.nullsLast(Comparator.naturalOrder())));
+         int left = taxCents.subtract(given).intValueExact();
+         for (int k = 0; k < left; k++) {
+             int i = order.get(k);
+@@ -1883,8 +1892,8 @@ public class Invoice {
+         }
+         boolean flipped = exact.stream().reduce(BigDecimal.ZERO, BigDecimal::add).signum() < 0;
+         List<BigDecimal> result = new ArrayList<>(n);
+-        for (BigInteger share : shares) {
+-            result.add(new BigDecimal(flipped ? share.negate() : share, scale()));
++        for (int i = 0; i < lines.size(); i++) {
++            result.add(new BigDecimal(flipped ? shares[i].negate() : shares[i], scale()));
+         }
+         return result;
+     }
+@@ -1922,7 +1931,8 @@ public class Invoice {
+ 
+     /**
+      * The tax inside tax-inclusive prices: the total of the taxed lines' amounts after their discount
+-     * shares, less that total divided by 1 plus the client's rate, rounded once, half up to the cent.
++     * shares and the minimum charge, less that total divided by 1 plus the client's rate, rounded once,
++     * half up to the cent.
+      */
+     private BigDecimal inclusiveTax(BigDecimal taxRate) {
+         List<BigDecimal> shares = discountShares();
+@@ -1932,6 +1942,9 @@ public class Invoice {
+                 taxed = taxed.add(lines.get(i).amount(scale()).subtract(shares.get(i)));
+             }
+         }
++        if (!clientTaxExempt && !isReverseCharge()) {
++            taxed = taxed.add(minimumCharge());
++        }
+         return taxed.subtract(taxed.divide(inclusiveDivisor(taxRate), scale(), RoundingMode.HALF_UP));
+     }
+ 
+@@ -1960,6 +1973,11 @@ public class Invoice {
+             taxes.add(tax);
+             given = given.add(tax);
+         }
++        if (!clientTaxExempt && !isReverseCharge()) {
++            // The minimum charge keeps its own tax, which is not a line's.
++            BigDecimal minimum = minimumCharge();
++            given = given.add(minimum.subtract(minimum.divide(divisor, scale(), RoundingMode.HALF_UP)));
++        }
+         order.sort(Comparator.<Integer, BigDecimal>comparing(amounts::get).reversed().thenComparing(i -> i));
+         BigDecimal cent = BigDecimal.ONE.movePointLeft(scale());
+         int missing = inclusiveTax(taxRate).subtract(given).movePointRight(scale()).intValueExact();
+@@ -1972,20 +1990,33 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The amount before tax: the subtotal less the discount, less the tax inside it when the client's
+-     * prices include tax.
++     * The minimum charge: what the subtotal less the discount falls short of the workspace's minimum
++     * charge, converted from US dollars at the issue date's rate and rounded down to the step. Nothing
++     * when no minimum is set, for a credit note, or for an invoice with no lines.
++     */
++    public BigDecimal minimumCharge() {
++        if (minimumChargeUsd == null || isCreditNote() || lines.isEmpty()) {
++            return zero();
++        }
++        BigDecimal minimum = currency().divideDownToStep(new BigDecimal(minimumChargeUsd.trim()), usdPerOn(issueDate));
++        return minimum.subtract(subtotal().subtract(discount())).max(zero());
++    }
++
++    /**
++     * The amount before tax: the subtotal less the discount plus the minimum charge, less the tax inside
++     * it when the client's prices include tax.
+      */
+     public BigDecimal beforeTax(BigDecimal taxRate) {
+-        BigDecimal amount = subtotal().subtract(discount());
++        BigDecimal amount = subtotal().subtract(discount()).add(minimumCharge());
+         return clientPricesIncludeTax ? amount.subtract(tax(taxRate)) : amount;
+     }
+ 
+     /**
+-     * The grand total: the subtotal less the discount, plus tax at the given rate — or, when the
+-     * client's prices include tax, the subtotal less the discount, which already holds it.
++     * The grand total: the subtotal less the discount plus the minimum charge, plus tax at the given
++     * rate — or, when the client's prices include tax, that amount, which already holds it.
+      */
+     public BigDecimal total(BigDecimal taxRate) {
+-        BigDecimal amount = subtotal().subtract(discount());
++        BigDecimal amount = subtotal().subtract(discount()).add(minimumCharge());
+         return clientPricesIncludeTax ? amount : amount.add(tax(taxRate));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index afd92fa..13c48ff 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -139,7 +139,8 @@ public class InvoiceController {
+             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
+-            String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge) {
++            String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
++            String minimumCharge) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -177,7 +178,7 @@ public class InvoiceController {
+                     Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
+                     i.getInterestSaved().toPlainString(),
+                     i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
+-                    i.getWrittenOffOn(), i.isReverseCharge());
++                    i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString());
+         }
+     }
+ 
