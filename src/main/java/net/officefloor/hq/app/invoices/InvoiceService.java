@@ -426,7 +426,7 @@ public class InvoiceService {
                 }
             }
             BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), rate);
-            BigDecimal elseDue = due.subtract(due.min(invoice.retentionReleased(rate)).max(BigDecimal.ZERO));
+            BigDecimal elseDue = due.subtract(due.min(invoice.retentionReleased(rate).add(invoice.getRetentionInterest())).max(BigDecimal.ZERO));
             if (elseDue.signum() > 0) {
                 throw new InvoiceRejectedException("The retention can only be released once nothing else is due; "
                         + invoice.currency().format(elseDue) + " is still due.");

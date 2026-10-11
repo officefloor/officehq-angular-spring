@@ -239,6 +239,10 @@ public class Invoice {
     @Transient
     private BigDecimal lateInterest = BigDecimal.ZERO;
 
+    /** The part of {@link #lateInterest} charged on released retention (see {@link #accrueRetentionInterest}); not stored. */
+    @Transient
+    private BigDecimal retentionInterest = BigDecimal.ZERO;
+
     /**
      * The late fee charged (see {@link #accrueLateInterest}), in the invoice's currency; not stored,
      * worked out again each time the invoice is read.
@@ -712,7 +716,8 @@ public class Invoice {
      * charges were waived (after the day's payments), the fee and interest still unpaid are written off
      * (kept as what was waived) and that day ends a period: interest starts again from it on what is
      * still owed, and no new fee is charged. A written-off invoice is charged only up to the day it was
-     * written off.
+     * written off. Released retention still unpaid also earns interest (see
+     * {@link #accrueRetentionInterest}).
      */
     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
             BigDecimal lateFeeUsd, LocalDate asOf) {
@@ -721,12 +726,20 @@ public class Invoice {
         this.lateInterest = BigDecimal.ZERO;
         this.lateFee = BigDecimal.ZERO;
         this.lateWaived = BigDecimal.ZERO;
+        this.retentionInterest = BigDecimal.ZERO;
         this.instalmentInterest = List.of();
         this.instalmentFees = List.of();
         if (status == InvoiceStatus.SENT && !isCreditNote() && hasPlan()) {
             accrueInstalmentInterest(payments, taxRate, annualRate, lateFeeUsd, today);
             return;
         }
+        accrueInvoiceInterest(payments, taxRate, annualRate, lateFeeUsd, today);
+        accrueRetentionInterest(payments, taxRate, annualRate, today);
+    }
+
+    /** The late interest charged on the invoice itself, released retention left out (see {@link #accrueLateInterest}). */
+    private void accrueInvoiceInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+            BigDecimal lateFeeUsd, LocalDate today) {
         if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || dueDate == null
                 || !today.isAfter(dueDate.plusDays(graceDays()))) {
             return;
@@ -836,6 +849,104 @@ public class Invoice {
         this.lateFee = fee.subtract(feeWaived);
         this.lateInterest = charged.subtract(interestWaived);
         this.lateWaived = feeWaived.add(interestWaived);
+    }
+
+    /**
+     * Works out the late interest released retention has been charged by the given day, at the annual
+     * rate (a percentage), and adds it to the late interest. Payments, in the order they were made, pay
+     * the rest of the invoice with its late fee and interest first; what is left of them pays the
+     * released retention, then its interest earned so far. Released retention still unpaid more than
+     * {@link #graceDays()} days after it falls due ({@link #retentionDueDate()}) earns interest by the
+     * same rule as an invoice: from the end of its grace period, compounded daily at rate / 360
+     * (Actual/360), with each payment after its grace period ending a period. Charges waived on a day
+     * after the grace period ends are written off as for the invoice, and interest starts again from then.
+     */
+    private void accrueRetentionInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+            LocalDate today) {
+        LocalDate due = retentionDueDate();
+        if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || due == null
+                || annualRate == null || annualRate.signum() <= 0 || !today.isAfter(due.plusDays(graceDays()))) {
+            return;
+        }
+        BigDecimal released = retentionReleased(taxRate);
+        if (released.signum() <= 0) {
+            return;
+        }
+        record Part(LocalDate on, Long paymentId, BigDecimal amount) {
+        }
+        List<Part> inOrder = payments.stream().filter(p -> !p.isReversed())
+                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
+                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
+                .filter(p -> !p.on().isAfter(today))
+                .sorted(Comparator.comparing(Part::on).thenComparing(Part::paymentId)).toList();
+        // What the payments leave once the rest of the invoice, its fee and its interest are paid.
+        BigDecimal ahead = payableBeforeInterest(taxRate).subtract(released).add(getLateFee()).add(getLateInterest());
+        List<Part> toRetention = new ArrayList<>();
+        for (Part part : inOrder) {
+            BigDecimal toAhead = part.amount().min(ahead).max(BigDecimal.ZERO);
+            ahead = ahead.subtract(toAhead);
+            if (part.amount().subtract(toAhead).signum() > 0) {
+                toRetention.add(new Part(part.on(), part.paymentId(), part.amount().subtract(toAhead)));
+            }
+        }
+        LocalDate graceEnd = due.plusDays(graceDays());
+        BigDecimal paidInGrace = toRetention.stream().filter(p -> !p.on().isAfter(graceEnd))
+                .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (released.subtract(paidInGrace).signum() <= 0) {
+            return;
+        }
+        BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
+        BigDecimal owed = released;
+        BigDecimal charged = BigDecimal.ZERO;
+        BigDecimal unpaidInterest = BigDecimal.ZERO;
+        BigDecimal waived = BigDecimal.ZERO;
+        LocalDate from = graceEnd;
+        LocalDate waiveOn = interestWaivedOn != null && interestWaivedOn.isAfter(graceEnd)
+                && !interestWaivedOn.isAfter(today) ? interestWaivedOn : null;
+        for (Part part : toRetention) {
+            if (waiveOn != null && part.on().isAfter(waiveOn)) {
+                if (owed.signum() > 0) {
+                    BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
+                    charged = charged.add(earned);
+                    unpaidInterest = unpaidInterest.add(earned);
+                }
+                from = waiveOn;
+                waived = unpaidInterest;
+                unpaidInterest = BigDecimal.ZERO;
+                waiveOn = null;
+            }
+            if (part.on().isAfter(from) && owed.signum() > 0) {
+                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
+                charged = charged.add(earned);
+                unpaidInterest = unpaidInterest.add(earned);
+                from = part.on();
+            }
+            BigDecimal toOwed = part.amount().min(owed).max(BigDecimal.ZERO);
+            BigDecimal rest = part.amount().subtract(toOwed);
+            BigDecimal toInterest = rest.min(unpaidInterest).max(BigDecimal.ZERO);
+            unpaidInterest = unpaidInterest.subtract(toInterest);
+            owed = owed.subtract(toOwed).subtract(rest.subtract(toInterest));
+        }
+        if (waiveOn != null) {
+            if (owed.signum() > 0) {
+                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
+                charged = charged.add(earned);
+                unpaidInterest = unpaidInterest.add(earned);
+            }
+            from = waiveOn;
+            waived = unpaidInterest;
+        }
+        if (owed.signum() > 0) {
+            charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
+        }
+        this.retentionInterest = charged.subtract(waived);
+        this.lateInterest = this.lateInterest.add(retentionInterest);
+        this.lateWaived = this.lateWaived.add(waived);
+    }
+
+    /** The part of the late interest charged on released retention, to the cent; 0 when none is. */
+    public BigDecimal getRetentionInterest() {
+        return retentionInterest.setScale(scale(), RoundingMode.HALF_UP);
     }
 
     /**
@@ -1358,7 +1469,7 @@ public class Invoice {
         }
         BigDecimal amountDue = amountDue(paid, taxRate);
         boolean due = amountDue.signum() > 0;
-        BigDecimal retentionDue = amountDue.min(retentionReleased(taxRate)).max(BigDecimal.ZERO);
+        BigDecimal retentionDue = amountDue.min(retentionReleased(taxRate).add(getRetentionInterest())).max(BigDecimal.ZERO);
         boolean restDue = amountDue.subtract(retentionDue).signum() > 0;
         if (hasPlan()) {
             if (due && instalmentProgress(paid, taxRate, today).stream()
