@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.ExchangeRates;
+import net.officefloor.hq.app.LateFee;
 import net.officefloor.hq.app.LateInterestRate;
 import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
@@ -39,11 +40,13 @@ public class InvoiceService {
     private final EntityManager entityManager;
     private final ExchangeRates exchangeRates;
     private final LateInterestRate lateInterestRate;
+    private final LateFee lateFee;
 
     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
-            LateInterestRate lateInterestRate) {
+            LateInterestRate lateInterestRate, LateFee lateFee) {
         this.lateInterestRate = lateInterestRate;
+        this.lateFee = lateFee;
         this.exchangeRates = exchangeRates;
         this.entityManager = entityManager;
         this.invoices = invoices;
@@ -77,7 +80,10 @@ public class InvoiceService {
         return withInterest(invoices.findByClientIdOrderByIdAsc(clientId));
     }
 
-    /** Works out the late interest each of the invoices has been charged by today (see {@link Invoice#accrueLateInterest}). */
+    /**
+     * Works out the late fee and late interest each of the invoices has been charged by today (see
+     * {@link Invoice#accrueLateInterest}).
+     */
     private List<Invoice> withInterest(List<Invoice> list) {
         if (list.isEmpty()) {
             return list;
@@ -85,8 +91,9 @@ public class InvoiceService {
         List<Payment> found = payments.findForInvoices(list.stream().map(Invoice::getId).toList());
         BigDecimal rate = taxRate.percent();
         BigDecimal annual = lateInterestRate.percent();
+        BigDecimal feeUsd = lateFee.usd();
         LocalDate now = today.date();
-        list.forEach(i -> i.accrueLateInterest(found, rate, annual, now));
+        list.forEach(i -> i.accrueLateInterest(found, rate, annual, feeUsd, now));
         return list;
     }
 

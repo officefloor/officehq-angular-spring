@@ -372,6 +372,12 @@ function problemWith(line: NewLine): string {
             }
             @if (inv.creditOf === null) {
               <tr>
+                <th scope="row" colspan="4">Late fee</th>
+                <td data-testid="invoice-late-fee">{{ amount(inv.lateFee) }}</td>
+              </tr>
+            }
+            @if (inv.creditOf === null) {
+              <tr>
                 <th scope="row" colspan="4">Late interest</th>
                 <td data-testid="invoice-interest">{{ amount(inv.lateInterest) }}</td>
               </tr>

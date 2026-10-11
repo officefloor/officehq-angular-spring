@@ -36,7 +36,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "lateInterestRate");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "lateInterestRate", "lateFee");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
@@ -109,6 +109,11 @@ public class TestSupportController {
                 BigDecimal rate = percent(values.get("lateInterestRate"), "settings.lateInterestRate");
                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                         LateInterestRate.LATE_INTEREST_RATE, rate.toPlainString());
+            }
+            if (values.get("lateFee") != null) {
+                BigDecimal fee = money(values.get("lateFee"), "settings.lateFee");
+                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                        LateFee.LATE_FEE, fee.toPlainString());
             }
             if (values.get("usdPer") != null) {
                 if (!(values.get("usdPer") instanceof Map<?, ?> rates)) {
@@ -278,6 +283,11 @@ public class TestSupportController {
                 String.class, LateInterestRate.LATE_INTEREST_RATE);
         if (!lateInterestRate.isEmpty()) {
             settings.put("lateInterestRate", new BigDecimal(lateInterestRate.get(0)));
+        }
+        List<String> lateFee = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+                String.class, LateFee.LATE_FEE);
+        if (!lateFee.isEmpty()) {
+            settings.put("lateFee", new BigDecimal(lateFee.get(0)));
         }
         Map<String, BigDecimal> rates = exchangeRates.all();
         if (!rates.isEmpty()) {

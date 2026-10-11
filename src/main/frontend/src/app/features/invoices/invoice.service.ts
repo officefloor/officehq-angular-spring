@@ -142,6 +142,8 @@ export interface InvoiceDetail {
   settleAmount: string | null;
   // The late interest charged on it so far ("0.00" when none): part of `amountDue`.
   lateInterest: string;
+  // The late fee charged on it ("0.00" when none), in its currency: part of `amountDue`.
+  lateFee: string;
 }
 
 // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,
