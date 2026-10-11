@@ -1,0 +1,615 @@
+diff --git a/src/main/java/net/officefloor/hq/app/PriceList.java b/src/main/java/net/officefloor/hq/app/PriceList.java
+index 2d38b48..a48eaac 100644
+--- a/src/main/java/net/officefloor/hq/app/PriceList.java
++++ b/src/main/java/net/officefloor/hq/app/PriceList.java
+@@ -12,7 +12,8 @@ import org.springframework.stereotype.Service;
+ /**
+  * The workspace price list (the {@code price_list_rate} table): a price in US dollars per unit type,
+  * a single price or tiers (see {@link RateTiers}), for unit types a client's own rate card doesn't
+- * cover. A line priced from it gets each price, or each band's price, converted into the client's
++ * cover. An entry can take effect from a date (one without a date has always applied); a line is
++ * priced at the latest entry for its unit type in force on the invoice's issue date. A line priced from it gets each price, or each band's price, converted into the client's
+  * currency at the rates on the invoice's issue date, rounded down to the currency's step.
+  */
+ @Service
+@@ -26,8 +27,11 @@ public class PriceList {
+         this.exchangeRates = exchangeRates;
+     }
+ 
+-    /** An entry of the price list: its unit type and a single unit price or tiers, in US dollars. */
+-    public record Entry(String unitType, BigDecimal unitPrice, RateTiers tiers) {
++    /**
++     * An entry of the price list: its unit type, the date it takes effect from (null for always) and a single
++     * unit price or tiers, in US dollars.
++     */
++    public record Entry(String unitType, LocalDate from, BigDecimal unitPrice, RateTiers tiers) {
+     }
+ 
+     /** A price converted into a client's currency: a single unit price, or tiers in their stored form. */
+@@ -36,23 +40,27 @@ public class PriceList {
+ 
+     /** Every entry, by unit type. */
+     public List<Entry> all() {
+-        return jdbc.query("SELECT unit_type, unit_price, tiers FROM price_list_rate ORDER BY unit_type",
+-                (rs, n) -> new Entry(rs.getString(1), rs.getBigDecimal(2), RateTiers.parse(rs.getString(3))));
++        return jdbc.query("SELECT unit_type, effective_from, unit_price, tiers FROM price_list_rate"
++                + " ORDER BY unit_type, effective_from NULLS FIRST",
++                (rs, n) -> new Entry(rs.getString(1), rs.getObject(2, LocalDate.class), rs.getBigDecimal(3),
++                        RateTiers.parse(rs.getString(4))));
+     }
+ 
+-    /** Adds an entry: a single unit price, or tiers. */
+-    public void add(String unitType, BigDecimal unitPrice, RateTiers tiers) {
+-        jdbc.update("INSERT INTO price_list_rate (unit_type, unit_price, tiers) VALUES (?, ?, ?)", unitType,
+-                tiers == null ? unitPrice : null, tiers == null ? null : tiers.format());
++    /** Adds an entry from the date (null for always): a single unit price, or tiers. */
++    public void add(String unitType, LocalDate from, BigDecimal unitPrice, RateTiers tiers) {
++        jdbc.update("INSERT INTO price_list_rate (unit_type, effective_from, unit_price, tiers) VALUES (?, ?, ?, ?)", unitType,
++                from, tiers == null ? unitPrice : null, tiers == null ? null : tiers.format());
+     }
+ 
+     /**
+-     * The price list's price for the unit type (matched ignoring case) converted into the currency at
+-     * the rates on the date, or null when the price list has none.
++     * The price list's price for the unit type (matched ignoring case) in force on the date, converted
++     * into the currency at the rates on the date, or null when the price list has none in force.
+      */
+     public Converted priceFor(String unitType, Currency currency, LocalDate on) {
+         List<Map<String, Object>> found = jdbc.queryForList(
+-                "SELECT unit_price, tiers FROM price_list_rate WHERE LOWER(unit_type) = LOWER(?)", unitType.trim());
++                "SELECT unit_price, tiers FROM price_list_rate WHERE LOWER(unit_type) = LOWER(?)"
++                        + " AND (effective_from IS NULL OR effective_from <= ?) ORDER BY effective_from DESC NULLS LAST LIMIT 1",
++                unitType.trim(), on);
+         if (found.isEmpty()) {
+             return null;
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 2fd4ea7..32ea037 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -230,7 +230,7 @@ public class TestSupportController {
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", TaxRate.HOME_REGION, home);
+             }
+             for (Map<String, Object> rate : rows(values.get("rates"), "settings.rates")) {
+-                only(rate, Set.of("unitType", "unitPrice", "tiers"), "settings.rates[]");
++                only(rate, Set.of("unitType", "from", "unitPrice", "tiers"), "settings.rates[]");
+                 if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
+                     throw refuse("settings.rates[].unitType is required");
+                 }
+@@ -239,6 +239,7 @@ public class TestSupportController {
+                     throw refuse("settings.rates[] needs either unitPrice or tiers");
+                 }
+                 priceList.add(rate.get("unitType").toString(),
++                        rate.get("from") == null ? null : date(rate.get("from"), "settings.rates[].from"),
+                         tiers != null ? null : cents(rate.get("unitPrice"), "settings.rates[].unitPrice"), tiers);
+             }
+             for (Map<String, Object> change : rows(values.get("taxRateChanges"), "settings.taxRateChanges")) {
+@@ -310,7 +311,7 @@ public class TestSupportController {
+             Long clientId = id(row.get("id") == null
+                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
+             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
+-                only(rate, Set.of("unitType", "unitPrice", "tiers", "increment", "minUnits", "taxRate"), "clients[].rates[]");
++                only(rate, Set.of("unitType", "from", "unitPrice", "tiers", "increment", "minUnits", "taxRate"), "clients[].rates[]");
+                 if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
+                     throw refuse("clients[].rates[].unitType is required");
+                 }
+@@ -328,8 +329,9 @@ public class TestSupportController {
+                 if (minUnits != null && minUnits.signum() <= 0) {
+                     throw refuse("clients[].rates[].minUnits must be more than zero, not " + rate.get("minUnits"));
+                 }
+-                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price, tiers, increment, min_units, tax_rate) VALUES (?, ?, ?, ?, ?, ?, ?)", clientId,
++                jdbc.update("INSERT INTO client_rate (client_id, unit_type, effective_from, unit_price, tiers, increment, min_units, tax_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", clientId,
+                         rate.get("unitType").toString(),
++                        rate.get("from") == null ? null : date(rate.get("from"), "clients[].rates[].from"),
+                         tiers != null ? null : cents(rate.get("unitPrice"), "clients[].rates[].unitPrice"),
+                         tiers == null ? null : tiers.format(), increment, minUnits,
+                         rate.get("taxRate") == null ? null : percent(rate.get("taxRate"), "clients[].rates[].taxRate"));
+@@ -560,7 +562,7 @@ public class TestSupportController {
+             settings.put("volumeDiscounts", volumeDiscountRows);
+         }
+         List<Map<String, Object>> priceListRates = priceList.all().stream()
+-                .map(e -> rate(e.unitType(), e.unitPrice(), e.tiers())).toList();
++                .map(e -> rate(e.unitType(), e.from(), e.unitPrice(), e.tiers())).toList();
+         if (!priceListRates.isEmpty()) {
+             settings.put("rates", priceListRates);
+         }
+@@ -600,9 +602,11 @@ public class TestSupportController {
+                         row.put("taxNumber", r.get("TAX_NUMBER"));
+                     }
+                     List<Map<String, Object>> rateCard = jdbc.queryForList(
+-                            "SELECT unit_type, unit_price, tiers, increment, min_units, tax_rate FROM client_rate WHERE client_id = ? ORDER BY unit_type",
++                            "SELECT unit_type, effective_from, unit_price, tiers, increment, min_units, tax_rate FROM client_rate WHERE client_id = ? ORDER BY unit_type, effective_from NULLS FIRST",
+                             r.get("ID")).stream().map(c -> {
+-                                Map<String, Object> entry = rate((String) c.get("UNIT_TYPE"), (BigDecimal) c.get("UNIT_PRICE"),
++                                Map<String, Object> entry = rate((String) c.get("UNIT_TYPE"),
++                                        c.get("EFFECTIVE_FROM") == null ? null : ((java.sql.Date) c.get("EFFECTIVE_FROM")).toLocalDate(),
++                                        (BigDecimal) c.get("UNIT_PRICE"),
+                                         RateTiers.parse((String) c.get("TIERS")));
+                                 if (c.get("INCREMENT") != null) {
+                                     entry.put("increment", c.get("INCREMENT"));
+@@ -740,31 +744,32 @@ public class TestSupportController {
+ 
+     /**
+      * A seeded line's unit price and the tiers it is priced in (null for a single price): the price
+-     * given, or else its invoice's client's rate for the line's unit type — a single price, or tiers
+-     * whose first band's price is kept as the unit price; refused when neither is there — and whether
+-     * the line is priced from the card.
++     * given, or else its invoice's client's rate for the line's unit type in force on the invoice's issue
++     * date — a single price, or tiers whose first band's price is kept as the unit price — or else the price
++     * list's then; refused when neither is there — and whether the line is priced from the rates, which a
++     * draft's line follows.
+      */
+     private Object[] linePrice(Long invoiceId, Map<String, Object> line) {
+         if (line.get("unitPrice") != null || line.get("unitType") == null) {
+             return new Object[] {cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"), null, false};
+         }
++        Map<String, Object> invoice = jdbc.queryForMap("SELECT i.status, i.issue_date, c.currency FROM invoice i JOIN client c ON c.id = i.client_id WHERE i.id = ?", invoiceId);
++        LocalDate on = invoiceDate(invoice.get("ISSUE_DATE"));
++        // A draft's line priced from the rates follows them; a sent invoice's has its price fixed.
++        boolean draft = "DRAFT".equals(invoice.get("STATUS"));
+         List<Map<String, Object>> rate = jdbc.queryForList("SELECT r.unit_price, r.tiers FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
+-                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", invoiceId,
+-                line.get("unitType").toString().trim());
++                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?) AND (r.effective_from IS NULL OR r.effective_from <= ?) "
++                + "ORDER BY r.effective_from DESC NULLS LAST LIMIT 1", invoiceId,
++                line.get("unitType").toString().trim(), on);
+         if (rate.isEmpty()) {
+-            Map<String, Object> invoice = jdbc.queryForMap("SELECT i.issue_date, c.currency FROM invoice i JOIN client c ON c.id = i.client_id WHERE i.id = ?", invoiceId);
+-            LocalDate on = invoice.get("ISSUE_DATE") == null ? today.date()
+-                    : ((java.sql.Date) invoice.get("ISSUE_DATE")).toLocalDate();
+             PriceList.Converted listed = priceList.priceFor(line.get("unitType").toString(),
+                     Currency.orUsd((String) invoice.get("CURRENCY")), on);
+             if (listed == null) {
+                 throw refuse("invoices[].lineItems[].unitPrice is required: neither the client's rate card nor the price list has unitType "
+-                        + line.get("unitType"));
++                        + line.get("unitType") + " in force on the issue date");
+             }
+-            return new Object[] {listed.unitPrice(), listed.tiers(), false};
++            return new Object[] {listed.unitPrice(), listed.tiers(), draft};
+         }
+-        // A draft's line priced from the card follows it; a sent invoice's has its price fixed.
+-        boolean draft = "DRAFT".equals(jdbc.queryForObject("SELECT status FROM invoice WHERE id = ?", String.class, invoiceId));
+         RateTiers tiers = RateTiers.parse((String) rate.get(0).get("TIERS"));
+         if (tiers != null) {
+             return new Object[] {tiers.firstPrice(), tiers.format(), draft};
+@@ -772,21 +777,34 @@ public class TestSupportController {
+         return new Object[] {rate.get(0).get("UNIT_PRICE"), null, draft};
+     }
+ 
+-    /** A seeded line's billing increment or minimum units: its invoice's client's given column for the line's unit type; null for none. */
++    /** The day an invoice's rates are taken on: its issue date, or today when it has none. */
++    private LocalDate invoiceDate(Object issueDate) {
++        return issueDate == null ? today.date() : ((java.sql.Date) issueDate).toLocalDate();
++    }
++
++    /**
++     * A seeded line's billing increment or minimum units: its invoice's client's given column for the line's unit type
++     * in the entry in force on the invoice's issue date; null for none.
++     */
+     private BigDecimal lineRate(Long invoiceId, Map<String, Object> line, String column) {
+         if (line.get("unitType") == null) {
+             return null;
+         }
++        LocalDate on = invoiceDate(jdbc.queryForMap("SELECT issue_date FROM invoice WHERE id = ?", invoiceId).get("ISSUE_DATE"));
+         List<BigDecimal> found = jdbc.queryForList("SELECT r." + column + " FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
+-                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", BigDecimal.class, invoiceId,
+-                line.get("unitType").toString().trim());
++                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?) AND (r.effective_from IS NULL OR r.effective_from <= ?) "
++                + "ORDER BY r.effective_from DESC NULLS LAST LIMIT 1", BigDecimal.class, invoiceId,
++                line.get("unitType").toString().trim(), on);
+         return found.isEmpty() ? null : found.get(0);
+     }
+ 
+-    /** A rate card or price list entry as read back: its unit type and a single unitPrice or tiers. */
+-    private static Map<String, Object> rate(String unitType, BigDecimal unitPrice, RateTiers tiers) {
++    /** A rate card or price list entry as read back: its unit type, the date it takes effect from if any, and a single unitPrice or tiers. */
++    private static Map<String, Object> rate(String unitType, LocalDate from, BigDecimal unitPrice, RateTiers tiers) {
+         Map<String, Object> rate = new LinkedHashMap<>();
+         rate.put("unitType", unitType);
++        if (from != null) {
++            rate.put("from", from.toString());
++        }
+         if (tiers == null) {
+             rate.put("unitPrice", unitPrice);
+         } else {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 984381e..0ae5ba3 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -12,10 +12,11 @@ import jakarta.persistence.CollectionTable;
+ import jakarta.persistence.ElementCollection;
+ import jakarta.persistence.FetchType;
+ import jakarta.persistence.JoinColumn;
+-import jakarta.persistence.MapKeyColumn;
+ import java.math.BigDecimal;
+-import java.util.Map;
+-import java.util.TreeMap;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.List;
+ import net.officefloor.hq.app.invoices.Invoice;
+ 
+ /** A client invoices are raised for. */
+@@ -103,11 +104,13 @@ public class Client {
+     @Column(name = "minimum_charge")
+     private BigDecimal minimumCharge;
+ 
+-    /** The client's rate card: its price, single or tiered, per unit type (hour, day, ...); empty for none. */
++    /**
++     * The client's rate card: its prices, single or tiered, per unit type (hour, day, ...), each from a date or
++     * always; empty for none.
++     */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "client_rate", joinColumns = @JoinColumn(name = "client_id"))
+-    @MapKeyColumn(name = "unit_type")
+-    private Map<String, ClientRate> rates = new TreeMap<>();
++    private List<ClientRate> rates = new ArrayList<>();
+ 
+     /** The highest late-interest rate a client can be given, as a percentage. */
+     public static final int MAX_INTEREST_RATE = 30;
+@@ -207,16 +210,17 @@ public class Client {
+         return taxNumber;
+     }
+ 
+-    public Map<String, ClientRate> getRates() {
++    public List<ClientRate> getRates() {
+         return rates;
+     }
+ 
+-    /** The client's rate for the given unit type (matched ignoring case and surrounding spaces); null when not on its card. */
+-    public ClientRate rateFor(String unitType) {
+-        if (unitType == null) {
+-            return null;
+-        }
+-        return rates.entrySet().stream().filter(r -> r.getKey().equalsIgnoreCase(unitType.trim()))
+-                .map(Map.Entry::getValue).findFirst().orElse(null);
++    /**
++     * The client's rate for the given unit type (matched ignoring case and surrounding spaces) in force on the date:
++     * the latest entry from on or before it, an entry with no date before any dated one; null when none is.
++     */
++    public ClientRate rateFor(String unitType, LocalDate on) {
++        return rates.stream().filter(r -> r.isFor(unitType) && r.inForceOn(on))
++                .max(Comparator.comparing(ClientRate::getEffectiveFrom, Comparator.nullsFirst(Comparator.naturalOrder())))
++                .orElse(null);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 97692a5..2f3c3a3 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -12,11 +12,8 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import java.util.List;
+-import java.util.List;
+-import java.util.Map;
+-import java.util.stream.Collectors;
+-import java.util.TreeMap;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -32,22 +29,24 @@ public class ClientController {
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+             BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
+-            Map<String, RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge) {
++            List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
+-                    new TreeMap<>(c.getRates().entrySet().stream().collect(Collectors.toMap(
+-                            Map.Entry::getKey, e -> RateView.of(e.getValue())))), c.getWithholdingPct(), c.getMinimumCharge());
++                    c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge());
+         }
+     }
+ 
+-    /** A rate card entry: its single unit price, or else its tiers (null when it has a single price). */
+-    public record RateView(BigDecimal unitPrice, List<RateTiers.Band> tiers, BigDecimal increment, BigDecimal minUnits,
++    /**
++     * A rate card entry: its unit type, the date it takes effect from (null for always), and its single unit price,
++     * or else its tiers (null when it has a single price).
++     */
++    public record RateView(String unitType, LocalDate from, BigDecimal unitPrice, List<RateTiers.Band> tiers, BigDecimal increment, BigDecimal minUnits,
+             BigDecimal taxRate) {
+         static RateView of(ClientRate r) {
+             RateTiers tiers = r.tiers();
+-            return new RateView(r.getUnitPrice(), tiers == null ? null : tiers.bands(), r.getIncrement(), r.getMinUnits(), r.getTaxRate());
++            return new RateView(r.getUnitType(), r.getEffectiveFrom(), r.getUnitPrice(), tiers == null ? null : tiers.bands(), r.getIncrement(), r.getMinUnits(), r.getTaxRate());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientRate.java b/src/main/java/net/officefloor/hq/app/clients/ClientRate.java
+index eea0b33..d7c61d3 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientRate.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientRate.java
+@@ -3,11 +3,23 @@ package net.officefloor.hq.app.clients;
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Embeddable;
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ 
+-/** An entry of a client's rate card: a single unit price, or progressive tiers (see {@link RateTiers}). */
++/**
++ * An entry of a client's rate card: a single unit price, or progressive tiers (see {@link RateTiers}), for a
++ * unit type from a date (or always).
++ */
+ @Embeddable
+ public class ClientRate {
+ 
++    /** The unit type (hour, day, ...) the entry prices. */
++    @Column(name = "unit_type")
++    private String unitType;
++
++    /** The date the entry takes effect from; null for one that has always applied. */
++    @Column(name = "effective_from")
++    private LocalDate effectiveFrom;
++
+     /** The single unit price; null when priced in tiers. */
+     @Column(name = "unit_price")
+     private BigDecimal unitPrice;
+@@ -34,19 +46,47 @@ public class ClientRate {
+     protected ClientRate() {
+     }
+ 
+-    /** A single unit price, billed in the given increment and minimum units (null for none). */
+-    public ClientRate(BigDecimal unitPrice, BigDecimal increment, BigDecimal minUnits) {
++    /**
++     * A single unit price for the unit type from the date (null for always), billed in the given increment and
++     * minimum units (null for none).
++     */
++    public ClientRate(String unitType, LocalDate effectiveFrom, BigDecimal unitPrice, BigDecimal increment, BigDecimal minUnits) {
++        this.unitType = unitType;
++        this.effectiveFrom = effectiveFrom;
+         this.unitPrice = unitPrice;
+         this.increment = increment;
+         this.minUnits = minUnits;
+     }
+ 
+-    /** A single unit price, billed in the given increment and minimum units and taxed at the given rate (null for none). */
+-    public ClientRate(BigDecimal unitPrice, BigDecimal increment, BigDecimal minUnits, BigDecimal taxRate) {
+-        this(unitPrice, increment, minUnits);
++    /**
++     * A single unit price for the unit type from the date (null for always), billed in the given increment and
++     * minimum units and taxed at the given rate (null for none).
++     */
++    public ClientRate(String unitType, LocalDate effectiveFrom, BigDecimal unitPrice, BigDecimal increment, BigDecimal minUnits,
++            BigDecimal taxRate) {
++        this(unitType, effectiveFrom, unitPrice, increment, minUnits);
+         this.taxRate = taxRate;
+     }
+ 
++    public String getUnitType() {
++        return unitType;
++    }
++
++    /** The date the entry takes effect from; null for always. */
++    public LocalDate getEffectiveFrom() {
++        return effectiveFrom;
++    }
++
++    /** Whether the entry is for the unit type, matched ignoring case and surrounding spaces. */
++    public boolean isFor(String type) {
++        return type != null && unitType.equalsIgnoreCase(type.trim());
++    }
++
++    /** Whether the entry has taken effect by the date. */
++    public boolean inForceOn(LocalDate on) {
++        return effectiveFrom == null || !effectiveFrom.isAfter(on);
++    }
++
+     public BigDecimal getUnitPrice() {
+         return unitPrice;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 4c74605..22dd6e2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -177,10 +177,11 @@ public class Invoice {
+     private String regionRateChanges;
+ 
+     /**
+-     * The tax rates of the client's rate card entries that have one, as "unit type" and rate separated by
+-     * CHAR(31), entries separated by CHAR(30); null when none has. Read from the client's rate card.
++     * The tax rates of the client's rate card entries, as "unit type", the date the entry takes effect from
++     * (empty for always) and rate (empty for none) separated by CHAR(31), entries separated by CHAR(30); null
++     * when the card is empty. Read from the client's rate card.
+      */
+-    @Formula("(SELECT LISTAGG(r.unit_type || CHAR(31) || CAST(r.tax_rate AS VARCHAR), CHAR(30)) WITHIN GROUP (ORDER BY r.unit_type) FROM client_rate r WHERE r.client_id = client_id AND r.tax_rate IS NOT NULL)")
++    @Formula("(SELECT LISTAGG(r.unit_type || CHAR(31) || COALESCE(CAST(r.effective_from AS VARCHAR), '') || CHAR(31) || COALESCE(CAST(r.tax_rate AS VARCHAR), ''), CHAR(30)) WITHIN GROUP (ORDER BY r.unit_type) FROM client_rate r WHERE r.client_id = client_id)")
+     private String cardTaxRates;
+ 
+     /** The issue date of the invoice this credit note credits; null for an ordinary invoice. */
+@@ -1951,19 +1952,27 @@ public class Invoice {
+ 
+     /**
+      * The tax rate of the client's rate card entry for the unit type (matched ignoring case and surrounding
+-     * spaces); null when the unit type is not on the card or its entry has no tax rate.
++     * spaces) in force on the issue date (the latest entry while there is none); null when the unit type has
++     * no entry in force or its entry has no tax rate.
+      */
+     private BigDecimal cardTaxRate(String unitType) {
+         if (unitType == null || cardTaxRates == null) {
+             return null;
+         }
++        String rate = null;
++        LocalDate latest = null;
+         for (String entry : cardTaxRates.split("\u001e")) {
+-            int at = entry.lastIndexOf('\u001f');
+-            if (at >= 0 && entry.substring(0, at).equalsIgnoreCase(unitType.trim())) {
+-                return new BigDecimal(entry.substring(at + 1).trim());
++            String[] parts = entry.split("\u001f", -1);
++            if (parts.length != 3 || !parts[0].equalsIgnoreCase(unitType.trim())) {
++                continue;
++            }
++            LocalDate from = parts[1].isBlank() ? LocalDate.MIN : LocalDate.parse(parts[1].trim());
++            if ((issueDate == null || !from.isAfter(issueDate)) && (latest == null || from.isAfter(latest))) {
++                latest = from;
++                rate = parts[2];
+             }
+         }
+-        return null;
++        return rate == null || rate.isBlank() ? null : new BigDecimal(rate.trim());
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index c7a3e13..ece84a1 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -79,8 +79,9 @@ public class InvoiceLine {
+     private boolean overtime;
+ 
+     /**
+-     * Whether the line's price comes from its client's rate card for its unit type: on a draft it follows the
+-     * card when that rate is changed. Sending fixes the price on the line and clears it.
++     * Whether the line's price comes from the rates for its unit type (its client's rate card, or else the price
++     * list): on a draft it follows the card when that rate is changed, and sending reprices it at the rates in force
++     * on the day it is sent, then fixes the price on the line and clears it.
+      */
+     @Column(name = "card_priced")
+     private boolean cardPriced;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 1801a17..8fdcc85 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -584,35 +584,31 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Puts a single price for the unit type on the client's rate card, adding it or replacing its price
+-     * (its increment, minimum units and tax rate are kept); empty if no such client. The price has already been
+-     * checked. The lines of the client's drafts priced from the card in that unit type are repriced
+-     * straight away; sent invoices keep the prices they were sent with.
++     * Puts a single price for the unit type on the client's rate card: replaces the price of its entry in force
++     * today (its date, increment, minimum units and tax rate are kept), or adds an entry that has always applied
++     * when none is; empty if no such client. The price has already been checked. The lines of the client's drafts
++     * priced from the rates in that unit type are repriced straight away; sent invoices keep the prices they were
++     * sent with.
+      */
+     @Transactional
+     public Optional<Client> setRate(Long clientId, String unitType, BigDecimal unitPrice) {
+         Optional<Client> found = clients.findById(clientId);
+         found.ifPresent(client -> {
+             String type = unitType.trim();
+-            String key = client.getRates().keySet().stream().filter(k -> k.equalsIgnoreCase(type)).findFirst().orElse(type);
+-            ClientRate old = client.getRates().get(key);
++            ClientRate old = client.rateFor(type, today.date());
+             requireWhole(client.getCurrency(), unitPrice, "The price");
+-            client.getRates().put(key, new ClientRate(unitPrice, old == null ? null : old.getIncrement(),
+-                    old == null ? null : old.getMinUnits(), old == null ? null : old.getTaxRate()));
++            if (old != null) {
++                client.getRates().remove(old);
++            }
++            client.getRates().add(old == null ? new ClientRate(type, null, unitPrice, null, null)
++                    : new ClientRate(old.getUnitType(), old.getEffectiveFrom(), unitPrice, old.getIncrement(), old.getMinUnits(),
++                            old.getTaxRate()));
+             clients.saveAndFlush(client);
+             for (Invoice invoice : invoices.findByClientIdOrderByIdAsc(clientId)) {
+                 if (!invoice.isDraft()) {
+                     continue;
+                 }
+-                boolean changed = false;
+-                for (InvoiceLine line : invoice.getLines()) {
+-                    if (line.isCardPriced() && line.getUnitType() != null && line.getUnitType().trim().equalsIgnoreCase(type)) {
+-                        LinePrice price = linePrice(invoice, line.getUnitType(), null);
+-                        line.reprice(price.unitPrice(), price.tiers(), price.increment(), price.minUnits());
+-                        changed = true;
+-                    }
+-                }
+-                if (changed) {
++                if (repriceFromRates(invoice, type, invoice.getIssueDate() == null ? today.date() : invoice.getIssueDate())) {
+                     invoices.saveAndFlush(invoice);
+                 }
+             }
+@@ -620,6 +616,23 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Reprices the draft's lines priced from the rates (all of them, or those of the given unit type) at the
++     * rates in force on the date; whether any was.
++     */
++    private boolean repriceFromRates(Invoice invoice, String unitType, LocalDate on) {
++        boolean changed = false;
++        for (InvoiceLine line : invoice.getLines()) {
++            if (line.isCardPriced() && line.getUnitType() != null
++                    && (unitType == null || line.getUnitType().trim().equalsIgnoreCase(unitType))) {
++                LinePrice price = linePrice(invoice, line.getUnitType(), null, on);
++                line.reprice(price.unitPrice(), price.tiers(), price.increment(), price.minUnits());
++                changed = true;
++            }
++        }
++        return changed;
++    }
++
+     /**
+      * Readies the invoice for a change: a draft stays as it is; a sent invoice with no payments goes
+      * back to draft, to be sent again; an invoice with any payment is refused with the message.
+@@ -801,6 +814,7 @@ public class InvoiceService {
+      */
+     private void markSent(Invoice invoice) {
+         LocalDate issued = today.date();
++        repriceFromRates(invoice, null, issued);
+         invoice.markSent(issued, dueDateFor(invoice.getClientId(), issued));
+         invoices.saveAndFlush(invoice);
+         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
+@@ -1493,15 +1507,21 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * A line's price: the unit price entered, or else the client's rate for the line's unit type —
+-     * a single price, or tiers starting from the first band — or, when the card has none, the
+-     * workspace price list's converted into the client's currency (see {@link PriceList}). Refused when neither is there, and a
+-     * single price with more decimals than the currency has. Either way the line is billed in the
+-     * increment, and at least the minimum units, the client's rate card has for its unit type, if any.
++     * A line's price: the unit price entered, or else the client's rate for the line's unit type in force on the
++     * invoice's issue date (today while it has none) — a single price, or tiers starting from the first band — or,
++     * when the card has none in force, the workspace price list's in force then, converted into the client's currency
++     * (see {@link PriceList}). Refused when neither is there, and a single price with more decimals than the currency
++     * has. Either way the line is billed in the increment, and at least the minimum units, the client's rate card has
++     * for its unit type then, if any. A price from the rates follows them while the invoice is a draft.
+      */
+     private LinePrice linePrice(Invoice invoice, String unitType, BigDecimal unitPrice) {
++        return linePrice(invoice, unitType, unitPrice, invoice.getIssueDate() == null ? today.date() : invoice.getIssueDate());
++    }
++
++    /** A line's price as {@link #linePrice(Invoice, String, BigDecimal)}, at the rates in force on the given date. */
++    private LinePrice linePrice(Invoice invoice, String unitType, BigDecimal unitPrice, LocalDate on) {
+         Client client = unitType == null ? null : clients.findById(invoice.getClientId()).orElse(null);
+-        ClientRate rate = client == null ? null : client.rateFor(unitType);
++        ClientRate rate = client == null ? null : client.rateFor(unitType, on);
+         BigDecimal increment = rate == null ? null : rate.getIncrement();
+         BigDecimal minUnits = rate == null ? null : rate.getMinUnits();
+         if (unitPrice != null) {
+@@ -1512,13 +1532,12 @@ public class InvoiceService {
+             throw new InvoiceRejectedException("Enter a unit price or a unit type.");
+         }
+         if (rate == null) {
+-            LocalDate on = invoice.getIssueDate() == null ? today.date() : invoice.getIssueDate();
+             PriceList.Converted listed = priceList.priceFor(unitType, invoice.currency(), on);
+             if (listed == null) {
+                 throw new InvoiceRejectedException("The client's rate card has no rate for " + unitType
+                         + "; enter a unit price.");
+             }
+-            return new LinePrice(listed.unitPrice(), listed.tiers(), null, null);
++            return new LinePrice(listed.unitPrice(), listed.tiers(), null, null, true);
+         }
+         RateTiers tiers = rate.tiers();
+         if (tiers != null) {
+diff --git a/src/main/resources/db/migration/V58__rate_effective_from.sql b/src/main/resources/db/migration/V58__rate_effective_from.sql
+new file mode 100644
+index 0000000..554697a
+--- /dev/null
++++ b/src/main/resources/db/migration/V58__rate_effective_from.sql
+@@ -0,0 +1,7 @@
++-- The date a rate card or price list entry takes effect from; NULL for one that has always applied.
++-- A unit type can have several entries, one per date: a line is priced at the latest in force on its
++-- invoice's issue date.
++ALTER TABLE client_rate DROP PRIMARY KEY;
++ALTER TABLE client_rate ADD COLUMN effective_from DATE;
++ALTER TABLE price_list_rate DROP PRIMARY KEY;
++ALTER TABLE price_list_rate ADD COLUMN effective_from DATE;
