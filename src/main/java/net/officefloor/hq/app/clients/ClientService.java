@@ -5,7 +5,10 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Lists and adds clients. Clients are listed A to Z by name, ignoring capitals. */
+/**
+ * Lists and adds clients. Clients are listed A to Z by name, ignoring capitals. No two clients share
+ * an email address, ignoring capitals.
+ */
 @Service
 public class ClientService {
 
@@ -27,6 +30,10 @@ public class ClientService {
 
     @Transactional
     public Client add(String name, String email) {
-        return clients.save(new Client(name.trim(), email.trim()));
+        String address = email.trim();
+        if (clients.existsByEmailIgnoreCase(address)) {
+            throw new ClientRejectedException("Another client already has the email " + address + ".");
+        }
+        return clients.save(new Client(name.trim(), address));
     }
 }
