@@ -204,8 +204,9 @@ public class InvoiceService {
     }
 
     /**
-     * Records one payment of the amount on the date against the client's unpaid sent invoices, oldest
-     * issue date first (lower id first on the same date), paying each off in full before the next.
+     * Records one payment of the amount on the date against the client's unpaid sent invoices, earliest
+     * due date first (lower id first on the same due date) so overdue invoices are cleared first,
+     * paying each off in full before the next.
      * A payment more than everything the client owes is refused; otherwise it is checked and recorded
      * as a split payment over the invoices it reaches.
      */
@@ -213,7 +214,7 @@ public class InvoiceService {
     public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, String reference) {
         List<Invoice> sent = invoices.findByClientIdOrderByIdAsc(clientId).stream()
                 .filter(i -> !i.isDraft())
-                .sorted(Comparator.comparing(Invoice::getIssueDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(Invoice::getId))
                 .toList();
         Map<Long, BigDecimal> paid = paid(sent);
