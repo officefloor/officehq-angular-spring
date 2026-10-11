@@ -36,7 +36,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "lateInterestRate");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
@@ -104,6 +104,11 @@ public class TestSupportController {
                 BigDecimal rate = percent(values.get("taxRate"), "settings.taxRate");
                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", TaxRate.TAX_RATE,
                         rate.toPlainString());
+            }
+            if (values.get("lateInterestRate") != null) {
+                BigDecimal rate = percent(values.get("lateInterestRate"), "settings.lateInterestRate");
+                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                        LateInterestRate.LATE_INTEREST_RATE, rate.toPlainString());
             }
             if (values.get("usdPer") != null) {
                 if (!(values.get("usdPer") instanceof Map<?, ?> rates)) {
@@ -268,6 +273,11 @@ public class TestSupportController {
         Map<String, Object> settings = new LinkedHashMap<>();
         if (!taxRate.isEmpty()) {
             settings.put("taxRate", new BigDecimal(taxRate.get(0)));
+        }
+        List<String> lateInterestRate = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+                String.class, LateInterestRate.LATE_INTEREST_RATE);
+        if (!lateInterestRate.isEmpty()) {
+            settings.put("lateInterestRate", new BigDecimal(lateInterestRate.get(0)));
         }
         Map<String, BigDecimal> rates = exchangeRates.all();
         if (!rates.isEmpty()) {

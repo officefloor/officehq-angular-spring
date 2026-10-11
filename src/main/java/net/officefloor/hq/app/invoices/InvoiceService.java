@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.ExchangeRates;
+import net.officefloor.hq.app.LateInterestRate;
 import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
 import net.officefloor.hq.app.clients.Client;
@@ -37,9 +38,12 @@ public class InvoiceService {
     private final Audit audit;
     private final EntityManager entityManager;
     private final ExchangeRates exchangeRates;
+    private final LateInterestRate lateInterestRate;
 
     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
-            Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates) {
+            Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
+            LateInterestRate lateInterestRate) {
+        this.lateInterestRate = lateInterestRate;
         this.exchangeRates = exchangeRates;
         this.entityManager = entityManager;
         this.invoices = invoices;
@@ -52,18 +56,43 @@ public class InvoiceService {
 
     @Transactional(readOnly = true)
     public List<Invoice> forClient(Long clientId) {
-        return invoices.findByClientIdOrderByIdAsc(clientId);
+        return loadForClient(clientId);
     }
 
     /** Every invoice of every client, with its lines. */
     @Transactional(readOnly = true)
     public List<Invoice> all() {
-        return invoices.findAllByOrderByIdAsc();
+        return withInterest(invoices.findAllByOrderByIdAsc());
+    }
+
+    /** The invoice with its lines and the late interest it has been charged; empty if no such invoice. */
+    private Optional<Invoice> load(Long id) {
+        Optional<Invoice> found = invoices.findWithLinesById(id);
+        found.ifPresent(invoice -> withInterest(List.of(invoice)));
+        return found;
+    }
+
+    /** The client's invoices, lowest id first, with their lines and the late interest they have been charged. */
+    private List<Invoice> loadForClient(Long clientId) {
+        return withInterest(invoices.findByClientIdOrderByIdAsc(clientId));
+    }
+
+    /** Works out the late interest each of the invoices has been charged by today (see {@link Invoice#accrueLateInterest}). */
+    private List<Invoice> withInterest(List<Invoice> list) {
+        if (list.isEmpty()) {
+            return list;
+        }
+        List<Payment> found = payments.findForInvoices(list.stream().map(Invoice::getId).toList());
+        BigDecimal rate = taxRate.percent();
+        BigDecimal annual = lateInterestRate.percent();
+        LocalDate now = today.date();
+        list.forEach(i -> i.accrueLateInterest(found, rate, annual, now));
+        return list;
     }
 
     @Transactional(readOnly = true)
     public Optional<Invoice> find(Long id) {
-        return invoices.findWithLinesById(id);
+        return load(id);
     }
 
     /**
@@ -87,7 +116,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> duplicate(Long invoiceId) {
-        return invoices.findWithLinesById(invoiceId).map(original -> {
+        return load(invoiceId).map(original -> {
             if (original.isCreditNote()) {
                 throw new InvoiceRejectedException("A credit note cannot be duplicated.");
             }
@@ -105,7 +134,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> creditNote(Long invoiceId) {
-        return invoices.findWithLinesById(invoiceId).map(original -> {
+        return load(invoiceId).map(original -> {
             if (original.isCreditNote()) {
                 throw new InvoiceRejectedException("A credit note cannot itself be credited.");
             }
@@ -143,7 +172,7 @@ public class InvoiceService {
     @Transactional
     public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice,
             boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             requireWhole(invoice.currency(), unitPrice, "The unit price");
             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
@@ -163,7 +192,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> removeLine(Long invoiceId, Long lineId) {
-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        Optional<Invoice> found = load(invoiceId);
         if (found.isEmpty()) {
             return found;
         }
@@ -188,7 +217,7 @@ public class InvoiceService {
     @Transactional
     public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
             BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        Optional<Invoice> found = load(invoiceId);
         if (found.isEmpty()) {
             return found;
         }
@@ -216,7 +245,7 @@ public class InvoiceService {
     @Transactional
     public Optional<Invoice> setDiscount(Long invoiceId, BigDecimal discountPct, BigDecimal discountAmount,
             BigDecimal discountCap, String discountReason) {
-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isCreditNote()) {
                 throw new InvoiceRejectedException("A credit note has no discount.");
@@ -254,7 +283,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> setDueDate(Long invoiceId, LocalDate dueDate) {
-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (!invoice.isDraft()) {
                 throw new InvoiceRejectedException("Only a draft's due date can be set.");
@@ -271,7 +300,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> setRetention(Long invoiceId, BigDecimal retentionPct) {
-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isCreditNote()) {
                 throw new InvoiceRejectedException("A credit note holds back no retention.");
@@ -295,7 +324,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> setPlan(Long invoiceId, int instalments, BigDecimal instalmentRate) {
-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isCreditNote()) {
                 throw new InvoiceRejectedException("A credit note cannot be spread over instalments.");
@@ -319,7 +348,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> releaseRetention(Long invoiceId) {
-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isDraft() || invoice.isVoid() || invoice.isCreditNote()) {
                 throw new InvoiceRejectedException("Retention can only be released on a sent invoice.");
@@ -374,7 +403,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> send(Long invoiceId) {
-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isVoid()) {
                 throw new InvoiceRejectedException("A void invoice cannot be sent.");
@@ -413,7 +442,7 @@ public class InvoiceService {
      */
     @Transactional
     public void sendAllDrafts(Long clientId) {
-        invoices.findByClientIdOrderByIdAsc(clientId).stream()
+        loadForClient(clientId).stream()
                 .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty() && !invoice.discountLacksReason()
                         && !invoice.dueDatePassedBy(today.date()))
                 .forEach(invoice -> {
@@ -430,7 +459,7 @@ public class InvoiceService {
      * invoice (not void).
      */
     private String creditNoteRefusal(Invoice note) {
-        Invoice original = invoices.findWithLinesById(note.getCreditOf()).orElse(null);
+        Invoice original = load(note.getCreditOf()).orElse(null);
         if (original == null || original.isDraft() || original.isVoid()) {
             return "The invoice this credits is not a sent invoice, so the credit note cannot be issued.";
         }
@@ -444,9 +473,10 @@ public class InvoiceService {
      */
     private void issue(Invoice note) {
         BigDecimal rate = taxRate.percent();
-        Invoice original = invoices.findWithLinesById(note.getCreditOf()).orElseThrow();
+        Invoice original = load(note.getCreditOf()).orElseThrow();
         // Read again what it has been credited: another credit note may just have been issued against it.
         entityManager.refresh(original);
+        withInterest(List.of(original));
         BigDecimal total = note.total(rate);
         BigDecimal[] taken = original.creditTaken(total, paid(List.of(original)).get(original.getId()), rate);
         note.markIssued(today.date(), rate, taken[0], taken[1]);
@@ -600,7 +630,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> voidInvoice(Long invoiceId) {
-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isVoid()) {
                 throw new InvoiceRejectedException("This invoice is already void.");
@@ -672,7 +702,7 @@ public class InvoiceService {
     @Transactional
     public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
             String reference) {
-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isDraft()) {
                 throw new InvoiceRejectedException("Send the invoice before recording a payment.");
@@ -750,7 +780,7 @@ public class InvoiceService {
     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
             List<String> references) {
         BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId));
-        List<Invoice> ofClient = invoices.findByClientIdOrderByIdAsc(clientId);
+        List<Invoice> ofClient = loadForClient(clientId);
         List<Invoice> candidates = ofClient;
         if (!references.isEmpty()) {
             Set<Long> named = new HashSet<>();
@@ -848,7 +878,7 @@ public class InvoiceService {
             if (!seen.add(part.getInvoiceId())) {
                 throw new InvoiceRejectedException("Each invoice can take only one part of the payment.");
             }
-            Invoice invoice = invoices.findWithLinesById(part.getInvoiceId())
+            Invoice invoice = load(part.getInvoiceId())
                     .filter(i -> i.getClientId().equals(clientId))
                     .orElseThrow(() -> new InvoiceRejectedException("A part of the payment goes to an invoice of another client."));
             String number = InvoiceNumber.of(invoice.getId());
@@ -940,6 +970,7 @@ public class InvoiceService {
 
     /** Records in the audit what a payment just recorded left written off on the invoice, if anything. */
     private void recordWriteOff(Invoice invoice) {
+        withInterest(List.of(invoice));
         BigDecimal writtenOff = invoice.writtenOff(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
         if (writtenOff.signum() > 0) {
             audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + writtenOff.toPlainString());
@@ -967,7 +998,7 @@ public class InvoiceService {
             payment.reverse();
             payments.saveAndFlush(payment);
             // An invoice the payment settled early is no longer paid off, so its early discount lapses.
-            payment.getAllocations().forEach(a -> invoices.findWithLinesById(a.getInvoiceId()).ifPresent(invoice -> {
+            payment.getAllocations().forEach(a -> load(a.getInvoiceId()).ifPresent(invoice -> {
                 if (invoice.getEarlyDiscountTaken().signum() > 0) {
                     invoice.takeEarlyDiscount(BigDecimal.ZERO);
                     invoices.saveAndFlush(invoice);

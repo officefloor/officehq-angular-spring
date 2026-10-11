@@ -140,6 +140,8 @@ export interface InvoiceDetail {
   // settle it today while its early-payment window is open (null otherwise).
   earlyDiscount: string;
   settleAmount: string | null;
+  // The late interest charged on it so far ("0.00" when none): part of `amountDue`.
+  lateInterest: string;
 }
 
 // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,

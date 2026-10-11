@@ -12,12 +12,14 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import org.hibernate.annotations.Formula;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -152,6 +154,13 @@ public class Invoice {
     /** How many credit notes have been issued against this invoice; read from them. */
     @Formula("(SELECT COUNT(*) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
     private int creditNotesIssued;
+
+    /**
+     * The late interest charged so far (see {@link #accrueLateInterest}); not stored, worked out again
+     * each time the invoice is read.
+     */
+    @Transient
+    private BigDecimal lateInterest = BigDecimal.ZERO;
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "invoice_id", nullable = false)
@@ -410,8 +419,77 @@ public class Invoice {
      * is spread over instalments) less what is credited and held.
      */
     private BigDecimal payable(BigDecimal taxRate) {
+        return payableBeforeInterest(taxRate).add(getLateInterest());
+    }
+
+    /** As {@link #payable}, but without the late interest charged. */
+    private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
         BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate);
         return owed.subtract(getCredited()).subtract(retentionHeld(taxRate)).subtract(getEarlyDiscountTaken());
+    }
+
+    /** The late interest charged, to the cent; 0 when none is. */
+    public BigDecimal getLateInterest() {
+        return lateInterest.setScale(scale(), RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Works out the late interest charged by the given day at the annual rate (a percentage) from the
+     * payments (those not reversed count), and keeps it as part of what is payable. A sent invoice not
+     * spread over instalments, with something still owed more than {@link #GRACE_DAYS} days after its
+     * due date, earns interest from its due date, compounded daily at rate / 365: a balance B owing for
+     * d days earns B x ((1 + rate / 100 / 365)^d - 1), rounded half up to the cent. Each payment after
+     * the due date ends a period; every period earns interest on what the invoice still owed during it
+     * (earlier interest and retention left out), and a payment pays the interest earned so far first,
+     * then the invoice.
+     */
+    public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate, LocalDate today) {
+        this.lateInterest = BigDecimal.ZERO;
+        if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || dueDate == null || annualRate == null
+                || annualRate.signum() <= 0 || !today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
+            return;
+        }
+        record Part(LocalDate on, Long paymentId, BigDecimal amount) {
+        }
+        List<Part> inOrder = payments.stream().filter(p -> !p.isReversed())
+                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
+                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
+                .filter(p -> !p.on().isAfter(today))
+                .sorted(Comparator.comparing(Part::on).thenComparing(Part::paymentId)).toList();
+        BigDecimal owed = payableBeforeInterest(taxRate).subtract(retentionReleased(taxRate));
+        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(dueDate.plusDays(GRACE_DAYS)))
+                .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (owed.subtract(paidInGrace).signum() <= 0) {
+            return;
+        }
+        BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36500), MathContext.DECIMAL128));
+        BigDecimal charged = BigDecimal.ZERO;
+        BigDecimal unpaidInterest = BigDecimal.ZERO;
+        LocalDate from = dueDate;
+        for (Part part : inOrder) {
+            if (part.on().isAfter(dueDate) && owed.signum() > 0) {
+                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
+                charged = charged.add(earned);
+                unpaidInterest = unpaidInterest.add(earned);
+                from = part.on();
+            }
+            BigDecimal toInterest = part.amount().min(unpaidInterest).max(BigDecimal.ZERO);
+            unpaidInterest = unpaidInterest.subtract(toInterest);
+            owed = owed.subtract(part.amount().subtract(toInterest));
+        }
+        if (owed.signum() > 0) {
+            charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
+        }
+        this.lateInterest = charged;
+    }
+
+    /** The interest the balance earns over the days at the daily growth factor, rounded half up to the cent. */
+    private BigDecimal interestOn(BigDecimal balance, BigDecimal daily, long days) {
+        if (days <= 0) {
+            return zero();
+        }
+        return balance.multiply(daily.pow((int) days, MathContext.DECIMAL128).subtract(BigDecimal.ONE))
+                .setScale(scale(), RoundingMode.HALF_UP);
     }
 
     /**
