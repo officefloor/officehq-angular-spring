@@ -207,11 +207,11 @@ public class InvoiceController {
         return list.stream().map(i -> InvoiceSummary.of(i, rate, paid.get(i.getId()), on)).toList();
     }
 
-    /** The balance of each client that has a sent invoice; a client not listed owes nothing. */
+    /** The balance of each client that has a sent invoice; a client not listed owes nothing. Void invoices do not count. */
     @GetMapping("/api/clients/balances")
     public List<ClientBalance> balances() {
         BigDecimal rate = taxRate.percent();
-        List<Invoice> sent = invoices.all().stream().filter(i -> !i.isDraft()).toList();
+        List<Invoice> sent = invoices.all().stream().filter(i -> !i.isDraft() && !i.isVoid()).toList();
         Map<Long, BigDecimal> paid = invoices.paid(sent);
         LocalDate on = today.date();
         Map<Long, BigDecimal[]> owed = new TreeMap<>();
@@ -271,6 +271,13 @@ public class InvoiceController {
     @PostMapping("/api/invoices/{id}/send")
     public InvoiceDetail send(@PathVariable Long id) {
         return invoices.send(id)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    @PostMapping("/api/invoices/{id}/void")
+    public InvoiceDetail voidInvoice(@PathVariable Long id) {
+        return invoices.voidInvoice(id)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

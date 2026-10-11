@@ -101,6 +101,16 @@ public class Invoice {
         return status == InvoiceStatus.DRAFT;
     }
 
+    /** Whether the invoice has been voided: it no longer counts, takes no payments and cannot be changed. */
+    public boolean isVoid() {
+        return status == InvoiceStatus.VOID;
+    }
+
+    /** Voids a sent invoice. */
+    public void markVoid() {
+        this.status = InvoiceStatus.VOID;
+    }
+
     /** Marks the invoice sent; its issue and due dates stay as they are. */
     public void markSent() {
         this.status = InvoiceStatus.SENT;

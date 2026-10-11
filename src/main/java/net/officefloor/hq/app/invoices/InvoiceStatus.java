@@ -5,7 +5,9 @@ package net.officefloor.hq.app.invoices;
  * part paid while some of it has been paid and some is still due, and paid once nothing is due;
  * those two follow from its payments and are never stored. A sent invoice with something still due
  * after its due date is overdue, part paid or not; that follows from the date and is never stored.
+ * A sent invoice with no payments can be voided: it is then void for good, owes nothing and takes no
+ * payments or changes.
  */
 public enum InvoiceStatus {
-    DRAFT, SENT, PART_PAID, PAID, OVERDUE
+    DRAFT, SENT, PART_PAID, PAID, OVERDUE, VOID
 }

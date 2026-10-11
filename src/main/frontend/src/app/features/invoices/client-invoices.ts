@@ -7,7 +7,7 @@ import { money, statusLabel } from './invoice-format';
 // One client's invoices, each with its status, total, issue and due dates. Clicking an invoice
 // opens it in the invoice panel beside the list; New invoice starts an empty draft and opens it.
 // An invoice looked up by its number is opened as soon as its client's invoices are shown.
-// Every sent invoice has a box for its part of a payment; once any is filled, the payment recorded
+// Every sent invoice that is not void has a box for its part of a payment; once any is filled, the payment recorded
 // (in the panel, or below the list when no invoice is open) is spread over those invoices.
 @Component({
   selector: 'app-client-invoices',
@@ -73,7 +73,7 @@ import { money, statusLabel } from './invoice-format';
               <td data-testid="invoice-issue">{{ i.issueDate }}</td>
               <td data-testid="invoice-due">{{ i.dueDate }}</td>
               <td>
-                @if (i.status !== 'DRAFT') {
+                @if (i.status !== 'DRAFT' && i.status !== 'VOID') {
                   <input
                     class="allocate"
                     data-testid="invoice-allocate"

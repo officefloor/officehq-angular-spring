@@ -38,7 +38,7 @@ public class TestSupportController {
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "allocations");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
-    private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
+    private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;

@@ -69,6 +69,8 @@ function problemWith(line: NewLine): string {
 // The panel shows the invoice's RF payment reference; a payment may quote one, which must pass the
 // ISO 11649 check and be this invoice's. When parts of a payment are filled in on the list, the
 // payment is spread over those invoices instead; each payment shows how much of it went here.
+// A sent invoice with no payments can be voided; the server refuses to void a draft or one with
+// payments, and refuses any payment or change to a void invoice.
 @Component({
   selector: 'app-invoice-panel',
   imports: [ReactiveFormsModule, PaymentForm],
@@ -187,6 +189,15 @@ function problemWith(line: NewLine): string {
           }
         }
 
+        @if (inv.status !== 'VOID') {
+          <button type="button" data-testid="invoice-void" [disabled]="voiding()" (click)="voidInvoice(inv.id)">
+            Void invoice
+          </button>
+        }
+        @if (voidError()) {
+          <p role="alert" data-testid="invoice-void-error">{{ voidError() }}</p>
+        }
+
         <form [formGroup]="form" (ngSubmit)="addLine(inv.id)" aria-label="Add a line" novalidate>
           <label for="line-description">Description</label>
           <input
@@ -276,6 +287,8 @@ export class InvoicePanel {
   protected readonly discountError = signal('');
   protected readonly sending = signal(false);
   protected readonly sendError = signal('');
+  protected readonly voiding = signal(false);
+  protected readonly voidError = signal('');
   protected readonly statusLabel = statusLabel;
   protected readonly money = money;
 
@@ -300,6 +313,7 @@ export class InvoicePanel {
       this.discountForm.reset();
       this.discountError.set('');
       this.sendError.set('');
+      this.voidError.set('');
       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
       onCleanup(() => sub.unsubscribe());
     });
@@ -395,6 +409,25 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The invoice could not be sent.',
         );
         this.sending.set(false);
+      },
+    });
+  }
+
+  protected voidInvoice(invoiceId: number): void {
+    this.voiding.set(true);
+    this.voidError.set('');
+    this.service.void(invoiceId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.voiding.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.voidError.set(
+          typeof detail === 'string' && detail ? detail : 'The invoice could not be voided.',
+        );
+        this.voiding.set(false);
       },
     });
   }

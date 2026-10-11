@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Lists a client's invoices, opens one, starts new drafts, adds lines to them, gives them a discount,
- * sends them and records payments against them.
+ * sends them, voids them and records payments against them.
  */
 @Service
 public class InvoiceService {
@@ -120,6 +120,9 @@ public class InvoiceService {
         if (invoice.isDraft()) {
             return false;
         }
+        if (invoice.isVoid()) {
+            throw new InvoiceRejectedException("A void invoice cannot be changed.");
+        }
         if (!payments.findForInvoice(invoice.getId()).isEmpty()) {
             throw new InvoiceRejectedException(refusal);
         }
@@ -135,6 +138,9 @@ public class InvoiceService {
     public Optional<Invoice> send(Long invoiceId) {
         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
         found.ifPresent(invoice -> {
+            if (invoice.isVoid()) {
+                throw new InvoiceRejectedException("A void invoice cannot be sent.");
+            }
             if (!invoice.isDraft()) {
                 throw new InvoiceRejectedException("This invoice has already been sent.");
             }
@@ -145,6 +151,30 @@ public class InvoiceService {
             invoices.saveAndFlush(invoice);
             audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
                     + " total=" + invoice.total(taxRate.percent()).toPlainString());
+        });
+        return found;
+    }
+
+    /**
+     * Voids a sent invoice with no payments, and records it in the audit; empty if no such invoice. A
+     * draft, an invoice already void, or one with any payment is refused.
+     */
+    @Transactional
+    public Optional<Invoice> voidInvoice(Long invoiceId) {
+        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        found.ifPresent(invoice -> {
+            if (invoice.isVoid()) {
+                throw new InvoiceRejectedException("This invoice is already void.");
+            }
+            if (invoice.isDraft()) {
+                throw new InvoiceRejectedException("A draft cannot be voided; only a sent invoice can.");
+            }
+            if (!payments.findForInvoice(invoice.getId()).isEmpty()) {
+                throw new InvoiceRejectedException("An invoice with payments cannot be voided.");
+            }
+            invoice.markVoid();
+            invoices.saveAndFlush(invoice);
+            audit.record("INVOICE_VOIDED id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId()));
         });
         return found;
     }
@@ -181,6 +211,9 @@ public class InvoiceService {
         found.ifPresent(invoice -> {
             if (invoice.isDraft()) {
                 throw new InvoiceRejectedException("Send the invoice before recording a payment.");
+            }
+            if (invoice.isVoid()) {
+                throw new InvoiceRejectedException("A void invoice takes no payments.");
             }
             BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
             if (due.signum() <= 0) {
@@ -219,7 +252,7 @@ public class InvoiceService {
     @Transactional
     public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, String reference) {
         List<Invoice> sent = invoices.findByClientIdOrderByIdAsc(clientId).stream()
-                .filter(i -> !i.isDraft())
+                .filter(i -> !i.isDraft() && !i.isVoid())
                 .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(Invoice::getId))
                 .toList();
@@ -284,6 +317,9 @@ public class InvoiceService {
             String number = InvoiceNumber.of(invoice.getId());
             if (invoice.isDraft()) {
                 throw new InvoiceRejectedException("Send " + number + " before recording a payment against it.");
+            }
+            if (invoice.isVoid()) {
+                throw new InvoiceRejectedException(number + " is void and takes no payments.");
             }
             BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
             if (part.getAmount().compareTo(due) > 0) {

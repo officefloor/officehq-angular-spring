@@ -4,8 +4,9 @@ import { Observable } from 'rxjs';
 
 // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
 // nothing is due; it is OVERDUE while something is still due after its due date, part paid or not.
-// The server works this out from its payments and today's date.
-export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID' | 'OVERDUE';
+// The server works this out from its payments and today's date. A VOID invoice was voided while sent
+// and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
+export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID' | 'OVERDUE' | 'VOID';
 
 // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
 // server: the grand total — the lines' subtotal less any discount plus tax.
@@ -156,6 +157,12 @@ export class InvoiceService {
   // Sends a draft invoice, keeping its issue and due dates; refused (409) when it has no lines.
   send(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/send`, null);
+  }
+
+  // Voids a sent invoice with no payments; refused (409) for a draft, a void invoice or one with
+  // payments. Answers the invoice with its new status.
+  void(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/void`, null);
   }
 
   // Records a payment against a sent invoice that still has something due; refused (409) when it
