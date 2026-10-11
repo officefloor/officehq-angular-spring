@@ -59,7 +59,7 @@ export interface InvoicePaymentView {
 // percentage taken off the subtotal, without trailing zeros ("12.5"), and `discountAmount` the fixed
 // amount taken off instead ("0.00" when the discount is a percentage); `discountCap` is the most taken
 // off in all, line discounts included (null when uncapped); `discount` is the amount the invoice
-// discount takes off, rounded half up to the cent and shrunk so the total taken off stays within the cap; `taxRate` is the workspace's tax percentage (without
+// discount takes off, rounded down to the cent (a percentage) and shrunk so the total taken off stays within the cap; `taxRate` is the workspace's tax percentage (without
 // trailing zeros, "0" when none is set); `discountReason` is why the discount was given (null when none) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
 // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
 // `amountDue` is the total less that and less `writtenOff`: when payments leave less than $1.00 due,

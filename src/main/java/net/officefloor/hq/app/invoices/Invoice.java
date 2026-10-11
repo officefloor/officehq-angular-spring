@@ -387,14 +387,14 @@ public class Invoice {
 
     /**
      * The amount taken off: the fixed amount when there is one (never more than the subtotal, should
-     * lines have been changed since), otherwise the discount percentage of the subtotal, rounded half
-     * up to the cent. When there is a cap, it limits everything taken off — the line discounts plus
+     * lines have been changed since), otherwise the discount percentage of the subtotal, rounded down
+     * to the cent. When there is a cap, it limits everything taken off — the line discounts plus
      * this — so this shrinks to what the line discounts leave under the cap, never below zero.
      */
     public BigDecimal discount() {
         BigDecimal discount = discountAmount.signum() > 0
                 ? discountAmount.min(subtotal()).setScale(2, RoundingMode.HALF_UP)
-                : subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP);
+                : subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.DOWN);
         if (discountCap == null) {
             return discount;
         }

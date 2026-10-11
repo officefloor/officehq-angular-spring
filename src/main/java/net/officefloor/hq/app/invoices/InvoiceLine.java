@@ -107,10 +107,10 @@ public class InvoiceLine {
         return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
     }
 
-    /** The line's discount: its percentage of the gross amount, rounded half up to the cent. */
+    /** The line's discount: its percentage of the gross amount, rounded down to the cent. */
     public BigDecimal discount() {
         return grossAmount().multiply(discountPct).divide(BigDecimal.valueOf(100))
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(2, RoundingMode.DOWN);
     }
 
     /** The line amount: the gross amount less the line's discount. */
