@@ -1,0 +1,275 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 127325b..5249127 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -35,9 +35,9 @@ export interface Client {
+   // The percentage (0 to 100) taken off every price the client's lines take from its rate card or the
+   // price list, each band's price included; 0 is none. A price typed on a line is not reduced.
+   rateDiscountPct: number;
+-  // Days (0 to 30, a week as standard) past its due date an invoice or instalment is given before it
+-  // is overdue and earns late interest.
+-  graceDays: number;
++  // Days (0 to 30) past its due date an invoice or instalment is given before it is overdue and earns
++  // late interest; null for the grace period of the client's region, else a week.
++  graceDays: number | null;
+   // The client's own annual late-interest rate (0 to 30 percent) charged instead of the workspace's;
+   // null for the workspace's, 0 for never charged late interest.
+   interestRate: number | null;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index bc9405c..5cdc536 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -9,8 +9,6 @@ import { Client, ClientService, byName } from './client.service';
+ // A proper email address: a mailbox, an @, and a domain with at least one dot — name@company.com,
+ // not name@company (a typo). The same rule the server applies.
+ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+-// The grace period, in days past the due date, a client is given when none is set: a week.
+-const STANDARD_GRACE_DAYS = 7;
+ 
+ // A tax number (spaces already removed) is two letters then ten digits whose last two digits are
+ // 97 less the remainder of the first eight divided by 97 (a remainder of 0 gives 97).
+@@ -174,7 +172,7 @@ function validTaxNumber(taxNumber: string): boolean {
+           step="0.01"
+           formControlName="rateDiscountPct"
+         />
+-        <label for="client-grace">Grace period in days, 0 to 30 (optional, a week if left out)</label>
++        <label for="client-grace">Grace period in days, 0 to 30 (optional, the region's or else a week if left out)</label>
+         <input
+           id="client-grace"
+           data-testid="client-form-grace-days"
+@@ -435,7 +433,7 @@ export class Clients {
+       withholdingPct: withholdingPct ?? 0,
+       minimumCharge,
+       rateDiscountPct: rateDiscountPct ?? 0,
+-      graceDays: graceDays ?? STANDARD_GRACE_DAYS,
++      graceDays,
+       interestRate,
+       region: region || null,
+       taxNumber: taxNumber || null,
+diff --git a/src/main/java/net/officefloor/hq/app/RegionGrace.java b/src/main/java/net/officefloor/hq/app/RegionGrace.java
+new file mode 100644
+index 0000000..0e158b8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/RegionGrace.java
+@@ -0,0 +1,39 @@
++package net.officefloor.hq.app;
++
++import java.util.Map;
++import java.util.TreeMap;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++
++/**
++ * The grace periods regions set, the {@code region_grace_days_<region>} settings: a client in such a
++ * region with no grace period of their own is given the region's instead of the standard week
++ * (invoices read it themselves, see Invoice).
++ */
++@Service
++public class RegionGrace {
++
++    /** The prefix of the setting holding a region's grace period, followed by the region (region_grace_days_NY). */
++    public static final String REGION_GRACE_DAYS = "region_grace_days_";
++
++    private final JdbcTemplate jdbc;
++
++    public RegionGrace(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    /** Every region's grace period in days, by region. */
++    public Map<String, Integer> all() {
++        Map<String, Integer> days = new TreeMap<>();
++        jdbc.queryForList("SELECT name, setting_value FROM app_setting WHERE name LIKE ? ORDER BY name", REGION_GRACE_DAYS + "%")
++                .forEach(r -> days.put(((String) r.get("NAME")).substring(REGION_GRACE_DAYS.length()),
++                        Integer.valueOf((String) r.get("SETTING_VALUE"))));
++        return days;
++    }
++
++    /** Records the region's grace period in days. */
++    public void set(String region, int days) {
++        jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", REGION_GRACE_DAYS + region,
++                Integer.toString(days));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 25be03c..f512d8b 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -40,7 +40,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays");
+     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
+     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+@@ -76,10 +76,13 @@ public class TestSupportController {
+ 
+     private final VolumeDiscounts volumeDiscounts;
+ 
++    private final RegionGrace regionGrace;
++
+     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
+             PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
+             CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList, Today today, LateInterestRate lateInterestRate,
+-            VolumeDiscounts volumeDiscounts) {
++            VolumeDiscounts volumeDiscounts, RegionGrace regionGrace) {
++        this.regionGrace = regionGrace;
+         this.volumeDiscounts = volumeDiscounts;
+         this.lateInterestRate = lateInterestRate;
+         this.today = today;
+@@ -223,6 +226,18 @@ public class TestSupportController {
+                             percent(e.getValue(), "settings.regionMaxInterest." + region));
+                 }
+             }
++            if (values.get("regionGraceDays") != null) {
++                if (!(values.get("regionGraceDays") instanceof Map<?, ?> graces)) {
++                    throw refuse("settings.regionGraceDays must be an object of days by region");
++                }
++                for (Map.Entry<?, ?> e : graces.entrySet()) {
++                    String region = e.getKey().toString();
++                    if (region.isBlank() || e.getValue() == null) {
++                        throw refuse("settings.regionGraceDays needs a region and days, not " + region + ": " + e.getValue());
++                    }
++                    regionGrace.set(region, graceDays(e.getValue(), "settings.regionGraceDays." + region));
++                }
++            }
+             if (values.get("homeRegion") != null) {
+                 String home = values.get("homeRegion").toString();
+                 if (home.isBlank()) {
+@@ -525,6 +540,10 @@ public class TestSupportController {
+         if (!regionMaxInterest.isEmpty()) {
+             settings.put("regionMaxInterest", regionMaxInterest);
+         }
++        Map<String, Integer> regionGraceDays = this.regionGrace.all();
++        if (!regionGraceDays.isEmpty()) {
++            settings.put("regionGraceDays", regionGraceDays);
++        }
+         Map<String, BigDecimal> regionTaxRates = this.taxRate.regions();
+         if (!regionTaxRates.isEmpty()) {
+             settings.put("regionTaxRates", regionTaxRates);
+@@ -600,7 +619,9 @@ public class TestSupportController {
+                     if (r.get("MINIMUM_CHARGE") != null) {
+                         row.put("minimumCharge", r.get("MINIMUM_CHARGE"));
+                     }
+-                    row.put("graceDays", r.get("GRACE_DAYS"));
++                    if (r.get("GRACE_DAYS") != null) {
++                        row.put("graceDays", r.get("GRACE_DAYS"));
++                    }
+                     if (r.get("INTEREST_RATE") != null) {
+                         row.put("interestRate", r.get("INTEREST_RATE"));
+                     }
+@@ -886,11 +907,11 @@ public class TestSupportController {
+         }
+     }
+ 
+-    /** A grace period of 0 to 30 whole days; the standard week when left out. */
+-    private static int graceDays(Object value, String field) {
++    /** A grace period of 0 to 30 whole days; null (the region's, else the standard week) when left out. */
++    private static Integer graceDays(Object value, String field) {
+         Integer days = days(value, field);
+         if (days == null) {
+-            return Invoice.GRACE_DAYS;
++            return null;
+         }
+         if (days > Client.MAX_GRACE_DAYS) {
+             throw refuse(field + " must be from 0 to " + Client.MAX_GRACE_DAYS + " days, not " + value);
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index e9dc7c8..50ab70c 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -17,7 +17,6 @@ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.List;
+-import net.officefloor.hq.app.invoices.Invoice;
+ 
+ /** A client invoices are raised for. */
+ @Entity
+@@ -79,10 +78,10 @@ public class Client {
+ 
+     /**
+      * Days past its due date an invoice or instalment for this client is given before it is overdue,
+-     * and earns late interest: 0 to {@link #MAX_GRACE_DAYS}, a week as standard.
++     * and earns late interest: 0 to {@link #MAX_GRACE_DAYS}; null for their region's, else a week.
+      */
+     @Column(name = "grace_days")
+-    private int graceDays = Invoice.GRACE_DAYS;
++    private Integer graceDays;
+ 
+     /**
+      * The client's own annual late-interest rate (0 to {@link #MAX_INTEREST_RATE} percent) charged
+@@ -150,7 +149,7 @@ public class Client {
+         this.earlyPayPct = earlyPayPct == null ? BigDecimal.ZERO : earlyPayPct;
+         this.earlyPayDays = earlyPayDays;
+         this.retentionPct = retentionPct == null ? BigDecimal.ZERO : retentionPct;
+-        this.graceDays = graceDays == null ? Invoice.GRACE_DAYS : graceDays;
++        this.graceDays = graceDays;
+         this.interestRate = interestRate;
+         this.region = region;
+         this.taxNumber = taxNumber;
+@@ -219,7 +218,7 @@ public class Client {
+         return minimumCharge;
+     }
+ 
+-    public int getGraceDays() {
++    public Integer getGraceDays() {
+         return graceDays;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 1c8f109..3481c4b 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -28,7 +28,7 @@ public class ClientController {
+ 
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+-            BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
++            BigDecimal retentionPct, Integer graceDays, BigDecimal interestRate, String region, String taxNumber,
+             List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
+             LocalDate taxExemptUntil) {
+         static ClientView of(Client c) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 35b90da..88f9824 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -291,8 +291,11 @@ public class Invoice {
+         return withholdingPct == null ? BigDecimal.ZERO : withholdingPct;
+     }
+ 
+-    /** The client's grace period in days; read from the client. */
+-    @Formula("(SELECT c.grace_days FROM client c WHERE c.id = client_id)")
++    /**
++     * The client's grace period in days: their own, else their region's; read from the client and the
++     * workspace's regional grace periods, null when neither is set.
++     */
++    @Formula("(SELECT COALESCE(c.grace_days, (SELECT CAST(s.setting_value AS INT) FROM app_setting s WHERE s.name = 'region_grace_days_' || c.region)) FROM client c WHERE c.id = client_id)")
+     private Integer clientGraceDays;
+ 
+     /**
+@@ -1625,7 +1628,10 @@ public class Invoice {
+         return rate.min(new BigDecimal(regionMaxInterest.trim()));
+     }
+ 
+-    /** Days past its due date this invoice is given before it becomes overdue: its client's grace period. */
++    /**
++     * Days past its due date this invoice is given before it becomes overdue: its client's grace
++     * period, else their region's, else the standard week.
++     */
+     public int graceDays() {
+         return clientGraceDays == null ? GRACE_DAYS : clientGraceDays;
+     }
+diff --git a/src/main/resources/db/migration/V63__region_grace_days.sql b/src/main/resources/db/migration/V63__region_grace_days.sql
+new file mode 100644
+index 0000000..d1c66f4
+--- /dev/null
++++ b/src/main/resources/db/migration/V63__region_grace_days.sql
+@@ -0,0 +1,6 @@
++-- A client's grace period is now optional: null gives the client the grace period of their region
++-- (the region_grace_days_<region> setting), or the standard week when the region sets none. Until
++-- now every client without a grace period of their own was stored with the standard week.
++ALTER TABLE client ALTER COLUMN grace_days DROP DEFAULT;
++ALTER TABLE client ALTER COLUMN grace_days SET NULL;
++UPDATE client SET grace_days = NULL WHERE grace_days = 7;
