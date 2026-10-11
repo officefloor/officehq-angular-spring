@@ -1,9 +1,15 @@
 import { Component } from '@angular/core';
+import { Clients } from '../clients/clients';
 
-// The base home page (empty). A page is an Angular component like this one, plus one entry in
-// app.routes.ts.
+// The home page: the invoice workspace.
 @Component({
   selector: 'app-home',
-  template: `<p data-testid="home-empty">Nothing here yet.</p>`,
+  imports: [Clients],
+  template: `
+    <div data-testid="workspace">
+      <h1>Invoice workspace</h1>
+      <app-clients />
+    </div>
+  `,
 })
 export class Home {}
