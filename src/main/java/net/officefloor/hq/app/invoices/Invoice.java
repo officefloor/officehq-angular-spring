@@ -610,12 +610,14 @@ public class Invoice {
 
     /**
      * Sets a fixed amount taken off the subtotal, clearing any percentage; it has already been checked
-     * as money. An amount over the subtotal is refused.
+     * as money. An amount over the subtotal of the lines it is taken off (see {@link #discountableSubtotal()}) is refused.
      */
     public void setDiscountAmount(BigDecimal discountAmount) {
-        if (discountAmount.compareTo(subtotal()) > 0) {
+        BigDecimal discountable = discountableSubtotal();
+        if (discountAmount.compareTo(discountable) > 0) {
             throw new InvoiceRejectedException("The discount cannot be more than the subtotal of "
-                    + currency().format(subtotal()) + ".");
+                    + currency().format(discountable)
+                    + (discountable.compareTo(subtotal()) == 0 ? "" : " of the lines not priced from a rate card or the price list") + ".");
         }
         this.discountAmount = discountAmount;
         this.discountPct = BigDecimal.ZERO;
@@ -1542,7 +1544,7 @@ public class Invoice {
      */
     public void markSent(LocalDate issueDate, LocalDate dueDate) {
         this.status = InvoiceStatus.SENT;
-        lines.forEach(l -> l.setCardPriced(false));
+        lines.forEach(InvoiceLine::fixPrice);
         this.issueDate = issueDate;
         if (!manualDueDate) {
             this.dueDate = dueDate;
@@ -1750,7 +1752,7 @@ public class Invoice {
         int index = lines.indexOf(line);
         lines.remove(line);
         // Removing a tiered line reprices the others of its unit type, so what is left is worked out without it.
-        BigDecimal left = subtotal();
+        BigDecimal left = discountableSubtotal();
         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
             lines.add(index, line);
             throw new InvoiceRejectedException("This line cannot be removed: the "
@@ -1774,7 +1776,7 @@ public class Invoice {
         InvoiceLine was = line.copy();
         line.update(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);
         // Changing a tiered line reprices the others of its unit type, so the subtotal is worked out with it changed.
-        BigDecimal left = subtotal();
+        BigDecimal left = discountableSubtotal();
         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
             line.update(was.getDescription(), was.getQty(), was.getUnitType(), was.getUnitPrice(), was.tiers(), was.getIncrement(), was.getMinUnits(), was.isOvertime(),
                     was.isTaxExempt(), was.getDiscountPct(), was.getTaxRate());
@@ -1795,15 +1797,25 @@ public class Invoice {
     }
 
     /**
-     * The amount taken off: the fixed amount when there is one (never more than the subtotal, should
-     * lines have been changed since), otherwise the discount percentage of the subtotal, rounded down
-     * to the cent; the volume discount instead when that is more. When there is a cap, it limits everything taken off — the line discounts plus
+     * The part of the subtotal the invoice discount is worked out on and shared over: the amounts of the lines not
+     * priced from the rates (a rate card or the price list), whose prices are already negotiated.
+     */
+    public BigDecimal discountableSubtotal() {
+        return lines.stream().filter(l -> !l.isRatePriced()).map(l -> l.amount(scale()))
+                .reduce(zero(), BigDecimal::add);
+    }
+
+    /**
+     * The amount taken off: the fixed amount when there is one (never more than the discountable subtotal, should
+     * lines have been changed since), otherwise the discount percentage of the discountable subtotal (see
+     * {@link #discountableSubtotal()}), rounded down to the cent; the volume discount instead when that is more. When there is a cap, it limits everything taken off — the line discounts plus
      * this — so this shrinks to what the line discounts leave under the cap, never below zero.
      */
     public BigDecimal discount() {
+        BigDecimal discountable = discountableSubtotal();
         BigDecimal discount = discountAmount.signum() > 0
-                ? discountAmount.min(subtotal()).setScale(scale(), RoundingMode.HALF_UP)
-                : subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+                ? discountAmount.min(discountable).setScale(scale(), RoundingMode.HALF_UP)
+                : discountable.multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
         discount = discount.max(volumeDiscount());
         if (discountCap == null) {
             return discount;
@@ -1817,7 +1829,7 @@ public class Invoice {
     /**
      * The volume discount: the percentage of the highest of the workspace's volume discount thresholds
      * the subtotal is over (each converted from US dollars at the issue date's rate and rounded down
-     * to the step) of the subtotal, rounded down to the cent. Nothing when it passes none, or for a
+     * to the step) of the discountable subtotal (see {@link #discountableSubtotal()}), rounded down to the cent. Nothing when it passes none, or for a
      * credit note.
      */
     public BigDecimal volumeDiscount() {
@@ -1835,25 +1847,25 @@ public class Invoice {
                 pct = new BigDecimal(parts[1].trim());
             }
         }
-        return subtotal.multiply(pct).movePointLeft(2).setScale(scale(), RoundingMode.DOWN);
+        return discountableSubtotal().multiply(pct).movePointLeft(2).setScale(scale(), RoundingMode.DOWN);
     }
 
     /**
      * Each line's share of the discount, in the order of the lines. The discount's cents are split in
-     * proportion to the line amounts: each line first gets the whole cents of its exact share
+     * proportion to the amounts of the lines not priced from the rates (the others get none): each line first gets the whole cents of its exact share
      * (rounded down), then the cents left over go one each to the lines with the largest leftover
      * fractions; between equal fractions the cent goes to the line with the larger amount, and between
      * equal amounts too to the lower line id. The shares add up to the discount.
      */
     public List<BigDecimal> discountShares() {
         BigInteger discountCents = discount().movePointRight(scale()).toBigIntegerExact();
-        BigInteger subtotalCents = subtotal().movePointRight(scale()).toBigIntegerExact();
+        BigInteger subtotalCents = discountableSubtotal().movePointRight(scale()).toBigIntegerExact();
         int n = lines.size();
         BigInteger[] shares = new BigInteger[n];
         BigInteger[] leftovers = new BigInteger[n];
         BigInteger given = BigInteger.ZERO;
         for (int i = 0; i < n; i++) {
-            if (subtotalCents.signum() == 0) {
+            if (subtotalCents.signum() == 0 || lines.get(i).isRatePriced()) {
                 shares[i] = BigInteger.ZERO;
                 leftovers[i] = BigInteger.ZERO;
             } else {

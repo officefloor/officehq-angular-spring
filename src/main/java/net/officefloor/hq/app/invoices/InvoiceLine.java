@@ -86,6 +86,13 @@ public class InvoiceLine {
     @Column(name = "card_priced")
     private boolean cardPriced;
 
+    /**
+     * Whether the line was priced from the rates for its unit type (its client's rate card, or else the price list), at a
+     * price already negotiated: it takes no share of the invoice discount. Sending keeps it.
+     */
+    @Column(name = "rate_priced")
+    private boolean ratePriced;
+
     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
@@ -122,7 +129,9 @@ public class InvoiceLine {
 
     /** A new line with the same description, quantity, unit type, price, tiers, discount, tax rate and exemption. */
     public InvoiceLine copy() {
-        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);
+        InvoiceLine copy = new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);
+        copy.ratePriced = ratePriced;
+        return copy;
     }
 
     /** A new credit note line crediting this line, with its description, quantity, price, discount, tax rate and exemption. */
@@ -156,6 +165,17 @@ public class InvoiceLine {
 
     void setCardPriced(boolean cardPriced) {
         this.cardPriced = cardPriced;
+        this.ratePriced = cardPriced;
+    }
+
+    /** Fixes the price on the line, so it no longer follows the rates; it stays priced from them. */
+    void fixPrice() {
+        this.cardPriced = false;
+    }
+
+    /** Whether the line was priced from the rates (rate card or price list), and so takes no invoice discount. */
+    public boolean isRatePriced() {
+        return ratePriced;
     }
 
     /** Prices the line afresh from its client's rate card: the rate's single price or tiers, increment and minimum units. */

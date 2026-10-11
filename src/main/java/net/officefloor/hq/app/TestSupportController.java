@@ -383,7 +383,7 @@ public class TestSupportController {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 Object[] price = linePrice(invoiceId, line);
                 insert("invoice_line", line.get("id"),
-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced"},
+                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced"},
                         invoiceId, text(line, "description"),
                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
                         price[0], price[1],
@@ -394,7 +394,7 @@ public class TestSupportController {
                         line.get("unitType") == null ? null : line.get("unitType").toString(),
                         lineRate(invoiceId, line, "increment"), lineRate(invoiceId, line, "min_units"),
                         flag(line.get("overtime"), "invoices[].lineItems[].overtime"),
-                        price[2]);
+                        price[2], price[3]);
             }
         }
         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
@@ -751,7 +751,7 @@ public class TestSupportController {
      */
     private Object[] linePrice(Long invoiceId, Map<String, Object> line) {
         if (line.get("unitPrice") != null || line.get("unitType") == null) {
-            return new Object[] {cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"), null, false};
+            return new Object[] {cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"), null, false, false};
         }
         Map<String, Object> invoice = jdbc.queryForMap("SELECT i.status, i.issue_date, c.currency FROM invoice i JOIN client c ON c.id = i.client_id WHERE i.id = ?", invoiceId);
         LocalDate on = invoiceDate(invoice.get("ISSUE_DATE"));
@@ -768,13 +768,13 @@ public class TestSupportController {
                 throw refuse("invoices[].lineItems[].unitPrice is required: neither the client's rate card nor the price list has unitType "
                         + line.get("unitType") + " in force on the issue date");
             }
-            return new Object[] {listed.unitPrice(), listed.tiers(), draft};
+            return new Object[] {listed.unitPrice(), listed.tiers(), draft, true};
         }
         RateTiers tiers = RateTiers.parse((String) rate.get(0).get("TIERS"));
         if (tiers != null) {
-            return new Object[] {tiers.firstPrice(), tiers.format(), draft};
+            return new Object[] {tiers.firstPrice(), tiers.format(), draft, true};
         }
-        return new Object[] {rate.get(0).get("UNIT_PRICE"), null, draft};
+        return new Object[] {rate.get(0).get("UNIT_PRICE"), null, draft, true};
     }
 
     /** The day an invoice's rates are taken on: its issue date, or today when it has none. */
