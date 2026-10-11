@@ -67,6 +67,7 @@ function problemWith(line: NewLine): string {
               <th scope="col">Unit price</th>
               <th scope="col">Amount</th>
               <th scope="col">Discount share</th>
+              <th scope="col">Tax</th>
             </tr>
           </thead>
           <tbody>
@@ -77,28 +78,29 @@ function problemWith(line: NewLine): string {
                 <td data-testid="line-unit-price">{{ money(l.unitPrice) }}</td>
                 <td data-testid="line-amount">{{ money(l.amount) }}</td>
                 <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
+                <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
               </tr>
             } @empty {
               <tr>
-                <td colspan="5" data-testid="line-empty">No lines yet.</td>
+                <td colspan="6" data-testid="line-empty">No lines yet.</td>
               </tr>
             }
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row" colspan="4">Subtotal</th>
+              <th scope="row" colspan="5">Subtotal</th>
               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="4">Discount ({{ inv.discountPct }}%)</th>
+              <th scope="row" colspan="5">Discount ({{ inv.discountPct }}%)</th>
               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="4">Tax ({{ inv.taxRate }}%)</th>
+              <th scope="row" colspan="5">Tax ({{ inv.taxRate }}%)</th>
               <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="4">Total</th>
+              <th scope="row" colspan="5">Total</th>
               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
             </tr>
           </tfoot>
@@ -137,6 +139,13 @@ function problemWith(line: NewLine): string {
             formControlName="unitPrice"
             required
           />
+          <input
+            id="line-exempt"
+            type="checkbox"
+            data-testid="line-form-exempt"
+            formControlName="taxExempt"
+          />
+          <label for="line-exempt">Tax exempt</label>
           <button type="submit" data-testid="line-form-submit" [disabled]="saving()">
             Add line
           </button>
@@ -191,6 +200,7 @@ export class InvoicePanel {
     description: new FormControl('', { nonNullable: true }),
     qty: new FormControl('', { nonNullable: true }),
     unitPrice: new FormControl('', { nonNullable: true }),
+    taxExempt: new FormControl(false, { nonNullable: true }),
   });
 
   protected readonly discountForm = new FormGroup({
@@ -217,6 +227,7 @@ export class InvoicePanel {
       description: raw.description.trim(),
       qty: raw.qty.trim(),
       unitPrice: raw.unitPrice.trim().replace(/^\$/, ''),
+      taxExempt: raw.taxExempt,
     };
     const problem = problemWith(line);
     if (problem) {

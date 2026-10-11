@@ -61,13 +61,14 @@ public class InvoiceService {
      * a sent invoice refuses it.
      */
     @Transactional
-    public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice) {
+    public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice,
+            boolean taxExempt) {
         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
         found.ifPresent(invoice -> {
             if (!invoice.isDraft()) {
                 throw new InvoiceRejectedException("Only a draft invoice can take new lines.");
             }
-            invoice.addLine(new InvoiceLine(description, qty, unitPrice));
+            invoice.addLine(new InvoiceLine(description, qty, unitPrice, taxExempt));
             invoices.saveAndFlush(invoice);
         });
         return found;

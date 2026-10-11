@@ -35,7 +35,7 @@ public class TestSupportController {
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice");
+    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
 
     private final Audit audit;
@@ -116,10 +116,11 @@ public class TestSupportController {
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 insert("invoice_line", line.get("id"),
-                        new String[] {"invoice_id", "description", "qty", "unit_price"},
+                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt"},
                         invoiceId, text(line, "description"),
                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
-                        cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"));
+                        cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"),
+                        flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"));
             }
         }
         // Keep generated ids clear of the seeded ones.
@@ -165,13 +166,14 @@ public class TestSupportController {
                     row.put("dueDate", r.get("DUE_DATE") == null ? null : r.get("DUE_DATE").toString());
                     row.put("discountPct", r.get("DISCOUNT_PCT"));
                     row.put("lineItems", jdbc.queryForList(
-                            "SELECT id, description, qty, unit_price FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                            "SELECT id, description, qty, unit_price, tax_exempt FROM invoice_line WHERE invoice_id = ? ORDER BY id",
                             r.get("ID")).stream().map(l -> {
                                 Map<String, Object> line = new LinkedHashMap<>();
                                 line.put("id", l.get("ID"));
                                 line.put("description", l.get("DESCRIPTION"));
                                 line.put("qty", l.get("QTY"));
                                 line.put("unitPrice", l.get("UNIT_PRICE"));
+                                line.put("taxExempt", l.get("TAX_EXEMPT"));
                                 return line;
                             }).toList());
                     return row;
@@ -192,6 +194,17 @@ public class TestSupportController {
         }
         jdbc.update("INSERT INTO " + table + " (" + cols + ") VALUES (" + marks + ")", values);
         return jdbc.queryForObject("SELECT MAX(id) FROM " + table, Long.class);
+    }
+
+    /** A true/false flag; false when left out. */
+    private static boolean flag(Object value, String where) {
+        if (value == null) {
+            return false;
+        }
+        if (!(value instanceof Boolean b)) {
+            throw refuse(where + " must be true or false");
+        }
+        return b;
     }
 
     private static void only(Map<String, Object> row, Set<String> fields, String where) {

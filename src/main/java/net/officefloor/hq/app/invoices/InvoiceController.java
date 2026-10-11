@@ -38,20 +38,21 @@ public class InvoiceController {
     /**
      * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
      * money is a decimal string to the cent. {@code discountShare} is the line's share of the
-     * invoice discount.
+     * invoice discount; {@code taxExempt} lines are left out of the taxed amount.
      */
     public record LineView(Long id, String description, String qty, String unitPrice, String amount,
-            String discountShare) {
+            String discountShare, boolean taxExempt) {
         static LineView of(InvoiceLine l, BigDecimal discountShare) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
                     l.getUnitPrice().setScale(2).toPlainString(), l.amount().toPlainString(),
-                    discountShare.toPlainString());
+                    discountShare.toPlainString(), l.isTaxExempt());
         }
     }
 
     /**
      * An opened invoice: its lines, subtotal, discount percentage (without trailing zeros, "12.5"),
-     * the amount it takes off, the tax rate (without trailing zeros) and the tax charged, and the
+     * the amount it takes off, the tax rate (without trailing zeros) and the tax charged on the taxable
+     * lines less their discount shares, and the
      * grand total (money as decimal strings to the cent).
      */
     public record InvoiceDetail(Long id, String number, Long clientId, InvoiceStatus status, LocalDate issueDate,
@@ -78,7 +79,10 @@ public class InvoiceController {
             BigDecimal discountPct) {
     }
 
-    /** A line to add: a description, a quantity above zero and a unit price of at least $0.01. */
+    /**
+     * A line to add: a description, a quantity above zero and a unit price of at least $0.01, and
+     * whether it is tax exempt (taxable when left out).
+     */
     public record NewLine(
             @NotBlank(message = "Enter a description.")
             @Size(max = 255, message = "The description must be at most 255 characters.")
@@ -90,7 +94,8 @@ public class InvoiceController {
             @NotNull(message = "Enter a unit price.")
             @DecimalMin(value = "0.01", message = "The unit price must be at least $0.01.")
             @Digits(integer = 17, fraction = 2, message = "The unit price can have at most two decimals.")
-            BigDecimal unitPrice) {
+            BigDecimal unitPrice,
+            Boolean taxExempt) {
     }
 
     private final InvoiceService invoices;
@@ -141,7 +146,8 @@ public class InvoiceController {
     @PostMapping("/api/invoices/{id}/lines")
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
-        return invoices.addLine(id, body.description().trim(), body.qty(), body.unitPrice())
+        return invoices.addLine(id, body.description().trim(), body.qty(), body.unitPrice(),
+                Boolean.TRUE.equals(body.taxExempt()))
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

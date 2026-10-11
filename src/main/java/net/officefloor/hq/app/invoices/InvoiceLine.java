@@ -25,13 +25,18 @@ public class InvoiceLine {
     @Column(name = "unit_price")
     private BigDecimal unitPrice;
 
+    /** Whether the line is left out of the taxed amount, e.g. postage. */
+    @Column(name = "tax_exempt")
+    private boolean taxExempt;
+
     protected InvoiceLine() {
     }
 
-    public InvoiceLine(String description, BigDecimal qty, BigDecimal unitPrice) {
+    public InvoiceLine(String description, BigDecimal qty, BigDecimal unitPrice, boolean taxExempt) {
         this.description = description;
         this.qty = qty;
         this.unitPrice = unitPrice;
+        this.taxExempt = taxExempt;
     }
 
     public Long getId() {
@@ -48,6 +53,10 @@ public class InvoiceLine {
 
     public BigDecimal getUnitPrice() {
         return unitPrice;
+    }
+
+    public boolean isTaxExempt() {
+        return taxExempt;
     }
 
     /** Quantity times unit price, rounded half up to the cent. */

@@ -172,11 +172,19 @@ public class Invoice {
     }
 
     /**
-     * The tax charged at the given rate (a percentage): the rate on what is left once the discount
-     * has come off the subtotal, rounded half up to the cent.
+     * The tax charged at the given rate (a percentage): each taxable line's amount less its share of
+     * the discount, added up, and the rate charged on that, rounded half up to the cent. Tax-exempt
+     * lines are left out.
      */
     public BigDecimal tax(BigDecimal taxRate) {
-        return subtotal().subtract(discount()).multiply(taxRate).divide(BigDecimal.valueOf(100))
+        List<BigDecimal> shares = discountShares();
+        BigDecimal taxable = BigDecimal.ZERO;
+        for (int i = 0; i < lines.size(); i++) {
+            if (!lines.get(i).isTaxExempt()) {
+                taxable = taxable.add(lines.get(i).amount().subtract(shares.get(i)));
+            }
+        }
+        return taxable.multiply(taxRate).divide(BigDecimal.valueOf(100))
                 .setScale(2, RoundingMode.HALF_UP);
     }
 
