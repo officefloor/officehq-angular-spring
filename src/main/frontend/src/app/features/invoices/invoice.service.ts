@@ -55,7 +55,7 @@ export class InvoiceService {
     return this.http.get<InvoiceSummary[]>(`/api/clients/${clientId}/invoices`);
   }
 
-  // Starts an empty draft for the client, issued today and due 30 days later.
+  // Starts an empty draft for the client, issued today and due on the last day of the following month.
   newDraft(clientId: number): Observable<InvoiceSummary> {
     return this.http.post<InvoiceSummary>(`/api/clients/${clientId}/invoices`, null);
   }
