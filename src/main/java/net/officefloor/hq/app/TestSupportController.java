@@ -37,7 +37,7 @@ public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
@@ -134,10 +134,12 @@ public class TestSupportController {
             if (Currency.of(currency) == null) {
                 throw refuse("unsupported value of clients[].currency: " + currency);
             }
-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency"},
+            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days"},
                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
                     percent(row.get("discountPct"), "clients[].discountPct"),
-                    flag(row.get("taxExempt"), "clients[].taxExempt"), currency);
+                    flag(row.get("taxExempt"), "clients[].taxExempt"), currency,
+                    percent(row.get("earlyPayPct"), "clients[].earlyPayPct"),
+                    days(row.get("earlyPayDays"), "clients[].earlyPayDays"));
         }
         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
             only(row, INVOICE_FIELDS, "invoices[]");
@@ -274,7 +276,7 @@ public class TestSupportController {
         if (!settings.isEmpty()) {
             out.put("settings", settings);
         }
-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency FROM client ORDER BY id").stream()
+        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -286,6 +288,10 @@ public class TestSupportController {
                     row.put("discountPct", r.get("DISCOUNT_PCT"));
                     row.put("taxExempt", r.get("TAX_EXEMPT"));
                     row.put("currency", r.get("CURRENCY"));
+                    row.put("earlyPayPct", r.get("EARLY_PAY_PCT"));
+                    if (r.get("EARLY_PAY_DAYS") != null) {
+                        row.put("earlyPayDays", r.get("EARLY_PAY_DAYS"));
+                    }
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(

@@ -364,10 +364,22 @@ function problemWith(line: NewLine): string {
                 <td data-testid="invoice-credited">{{ amount(inv.credited) }}</td>
               </tr>
             }
+            @if (inv.creditOf === null) {
+              <tr>
+                <th scope="row" colspan="4">Early-payment discount</th>
+                <td data-testid="invoice-early-discount">{{ amount(inv.earlyDiscount) }}</td>
+              </tr>
+            }
             <tr>
               <th scope="row" colspan="4">Amount due</th>
               <td data-testid="invoice-amount-due">{{ amount(inv.amountDue) }}</td>
             </tr>
+            @if (inv.settleAmount !== null) {
+              <tr>
+                <th scope="row" colspan="4">Settles it if paid now (early-payment discount)</th>
+                <td data-testid="invoice-settle-amount">{{ amount(inv.settleAmount) }}</td>
+              </tr>
+            }
             <tr>
               <th scope="row" colspan="4">Written off (worth under $1.00 left)</th>
               <td data-testid="invoice-written-off">{{ amount(inv.writtenOff) }}</td>

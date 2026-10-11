@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.clients;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -25,10 +26,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClientController {
 
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
-            boolean taxExempt, Currency currency) {
+            boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
-                    c.isTaxExempt(), c.getCurrency());
+                    c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays());
         }
     }
 
@@ -52,7 +53,19 @@ public class ClientController {
             Boolean taxExempt,
             /** The currency the client is billed in; US dollars when left out. */
             @Pattern(regexp = "USD|EUR|GBP|JPY|CHF", message = "The currency must be USD, EUR, GBP, JPY or CHF.")
-            String currency) {
+            String currency,
+            @DecimalMin(value = "0", message = "The early-payment discount must be from 0 to 100 percent.")
+            @DecimalMax(value = "100", message = "The early-payment discount must be from 0 to 100 percent.")
+            @Digits(integer = 3, fraction = 2, message = "The early-payment discount can have at most two decimals.")
+            BigDecimal earlyPayPct,
+            @Min(value = 1, message = "The early-payment window must be from 1 to 365 days.")
+            @Max(value = 365, message = "The early-payment window must be from 1 to 365 days.")
+            Integer earlyPayDays) {
+
+        @AssertTrue(message = "Enter both the early-payment discount and its number of days, or neither.")
+        public boolean isEarlyPayComplete() {
+            return (earlyPayPct == null || earlyPayPct.signum() == 0) == (earlyPayDays == null);
+        }
     }
 
     /**
@@ -76,6 +89,6 @@ public class ClientController {
     @ResponseStatus(HttpStatus.CREATED)
     public ClientView add(@Valid @RequestBody NewClient body) {
         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
-                Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency())));
+                Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays()));
     }
 }

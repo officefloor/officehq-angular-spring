@@ -117,6 +117,28 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
           step="0.01"
           formControlName="discountPct"
         />
+        <label for="client-early-pct">Early-payment discount % (optional)</label>
+        <input
+          id="client-early-pct"
+          data-testid="client-form-early-pct"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          max="100"
+          step="0.01"
+          formControlName="earlyPct"
+        />
+        <label for="client-early-days">Paid within days of issue for the early discount</label>
+        <input
+          id="client-early-days"
+          data-testid="client-form-early-days"
+          type="number"
+          inputmode="numeric"
+          min="1"
+          max="365"
+          step="1"
+          formControlName="earlyDays"
+        />
         <label for="client-currency">Currency</label>
         <select id="client-currency" data-testid="client-form-currency" formControlName="currency">
           @for (code of currencies; track code) {
@@ -181,6 +203,8 @@ export class Clients {
     }),
     terms: new FormControl<number | null>(null),
     discountPct: new FormControl<number | null>(null),
+    earlyPct: new FormControl<number | null>(null),
+    earlyDays: new FormControl<number | null>(null),
     taxExempt: new FormControl(false, { nonNullable: true }),
     currency: new FormControl<Currency>('USD', { nonNullable: true }),
   });
@@ -210,8 +234,21 @@ export class Clients {
     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
     const taxExempt = this.form.controls.taxExempt.value;
     const currency = this.form.controls.currency.value;
-    this.form.setValue({ name, email, terms: termsDays, discountPct, taxExempt, currency });
-    const problem = this.problemWith(name, email, termsDays, discountPct);
+    const early = this.form.controls.earlyPct.value;
+    const earlyPayPct = early === null || (early as unknown) === '' ? null : Number(early);
+    const earlyDays = this.form.controls.earlyDays.value;
+    const earlyPayDays = earlyDays === null || (earlyDays as unknown) === '' ? null : Number(earlyDays);
+    this.form.setValue({
+      name,
+      email,
+      terms: termsDays,
+      discountPct,
+      earlyPct: earlyPayPct,
+      earlyDays: earlyPayDays,
+      taxExempt,
+      currency,
+    });
+    const problem = this.problemWith(name, email, termsDays, discountPct, earlyPayPct, earlyPayDays);
     if (problem) {
       this.form.markAllAsTouched();
       this.error.set(problem);
@@ -219,7 +256,17 @@ export class Clients {
     }
     this.saving.set(true);
     this.error.set('');
-    this.service.add({ name, email, termsDays, discountPct: discountPct ?? 0, taxExempt, currency }).subscribe({
+    const client = {
+      name,
+      email,
+      termsDays,
+      discountPct: discountPct ?? 0,
+      taxExempt,
+      currency,
+      earlyPayPct: earlyPayPct ?? 0,
+      earlyPayDays,
+    };
+    this.service.add(client).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created].sort(byName));
         this.form.reset();
@@ -273,6 +320,8 @@ export class Clients {
     email: string,
     termsDays: number | null,
     discountPct: number | null,
+    earlyPayPct: number | null,
+    earlyPayDays: number | null,
   ): string {
     const problems: string[] = [];
     if (!name) {
@@ -294,6 +343,19 @@ export class Clients {
       } else if (Math.abs(Math.round(discountPct * 100) - discountPct * 100) > 1e-6) {
         problems.push('The standard discount can have at most two decimals.');
       }
+    }
+    if (earlyPayPct !== null) {
+      if (!(Number.isFinite(earlyPayPct) && earlyPayPct >= 0 && earlyPayPct <= 100)) {
+        problems.push('The early-payment discount must be from 0 to 100 percent.');
+      } else if (Math.abs(Math.round(earlyPayPct * 100) - earlyPayPct * 100) > 1e-6) {
+        problems.push('The early-payment discount can have at most two decimals.');
+      }
+    }
+    if (earlyPayDays !== null && !(Number.isInteger(earlyPayDays) && earlyPayDays >= 1 && earlyPayDays <= 365)) {
+      problems.push('The early-payment window must be from 1 to 365 days.');
+    }
+    if ((earlyPayPct === null || earlyPayPct === 0) !== (earlyPayDays === null)) {
+      problems.push('Enter both the early-payment discount and its number of days, or neither.');
     }
     return problems.join(' ');
   }

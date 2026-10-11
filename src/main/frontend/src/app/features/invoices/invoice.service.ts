@@ -136,6 +136,10 @@ export interface InvoiceDetail {
   listedDueDate: string | null;
   // The currency the client is billed in: every amount is in it (whole yen for a yen client).
   currency: Currency;
+  // The early-payment discount it was settled with ("0.00" when none was taken), and what would
+  // settle it today while its early-payment window is open (null otherwise).
+  earlyDiscount: string;
+  settleAmount: string | null;
 }
 
 // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,

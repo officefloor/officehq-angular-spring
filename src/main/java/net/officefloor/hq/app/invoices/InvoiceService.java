@@ -689,6 +689,14 @@ public class InvoiceService {
             if (due.signum() <= 0) {
                 throw new InvoiceRejectedException("This invoice has already been paid.");
             }
+            LocalDate now = today.date();
+            BigDecimal early = BigDecimal.ZERO;
+            BigDecimal settle = date.isAfter(now) ? null : invoice.settleAmount(paidSoFar, taxRate.percent(), date);
+            if (settle != null && amount.compareTo(settle) >= 0) {
+                early = invoice.earlyDiscount(taxRate.percent());
+                invoice.takeEarlyDiscount(early);
+                due = settle;
+            }
             BigDecimal applied = amount.min(due);
             if (invoice.hasPlan() && invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
                 throw new InvoiceRejectedException("A payment must be at least the "
@@ -700,7 +708,6 @@ public class InvoiceService {
                         + invoice.currency().format(invoice.minimumPart(taxRate.percent()))
                         + " (10% of the total), unless it settles the invoice.");
             }
-            LocalDate now = today.date();
             if (date.isAfter(now)) {
                 throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
             }
@@ -717,6 +724,10 @@ public class InvoiceService {
                     .paidIn(paidIn, paidAmount, invoice.currency()));
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
                     + applied.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
+            if (early.signum() > 0) {
+                invoices.saveAndFlush(invoice);
+                audit.record("EARLY_DISCOUNT id=" + invoice.getId() + " amount=" + early.toPlainString());
+            }
             recordWriteOff(invoice);
             recordCreditHeld(payment);
         });
@@ -955,6 +966,13 @@ public class InvoiceService {
             }
             payment.reverse();
             payments.saveAndFlush(payment);
+            // An invoice the payment settled early is no longer paid off, so its early discount lapses.
+            payment.getAllocations().forEach(a -> invoices.findWithLinesById(a.getInvoiceId()).ifPresent(invoice -> {
+                if (invoice.getEarlyDiscountTaken().signum() > 0) {
+                    invoice.takeEarlyDiscount(BigDecimal.ZERO);
+                    invoices.saveAndFlush(invoice);
+                }
+            }));
             audit.record("PAYMENT_REVERSED id=" + payment.getId() + " amount="
                     + payment.getAmount().setScale(currencyOf(payment.getClientId()).scale(), RoundingMode.UNNECESSARY)
                             .toPlainString());

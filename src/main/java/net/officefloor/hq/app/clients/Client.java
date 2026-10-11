@@ -38,17 +38,27 @@ public class Client {
     @Enumerated(EnumType.STRING)
     private Currency currency = Currency.USD;
 
+    /** The percentage of the grand total taken off an invoice paid off early; 0 is none. */
+    @Column(name = "early_pay_pct")
+    private BigDecimal earlyPayPct = BigDecimal.ZERO;
+
+    /** How many days after its issue date an invoice counts as paid off early; null when never. */
+    @Column(name = "early_pay_days")
+    private Integer earlyPayDays;
+
     protected Client() {
     }
 
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
-            Currency currency) {
+            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays) {
         this.name = name;
         this.email = email;
         this.termsDays = termsDays;
         this.discountPct = discountPct == null ? BigDecimal.ZERO : discountPct;
         this.taxExempt = taxExempt;
         this.currency = currency == null ? Currency.USD : currency;
+        this.earlyPayPct = earlyPayPct == null ? BigDecimal.ZERO : earlyPayPct;
+        this.earlyPayDays = earlyPayDays;
     }
 
     public Long getId() {
@@ -77,5 +87,13 @@ public class Client {
 
     public Currency getCurrency() {
         return currency;
+    }
+
+    public BigDecimal getEarlyPayPct() {
+        return earlyPayPct;
+    }
+
+    public Integer getEarlyPayDays() {
+        return earlyPayDays;
     }
 }

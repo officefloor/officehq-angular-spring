@@ -114,6 +114,18 @@ public class Invoice {
     @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'usd_per_' || c.currency)")
     private String usdPer;
 
+    /** The client's early-payment discount, a percentage of the grand total; read from the client. */
+    @Formula("(SELECT c.early_pay_pct FROM client c WHERE c.id = client_id)")
+    private BigDecimal earlyPayPct;
+
+    /** How many days after the issue date the invoice counts as paid off early; read from the client. */
+    @Formula("(SELECT c.early_pay_days FROM client c WHERE c.id = client_id)")
+    private Integer earlyPayDays;
+
+    /** The early discount the invoice was settled with; 0 when none was taken. */
+    @Column(name = "early_discount")
+    private BigDecimal earlyDiscount = BigDecimal.ZERO;
+
     /** An issued credit note's grand total, kept when it is issued; null until then. */
     @Column(name = "credit_total")
     private BigDecimal creditTotal;
@@ -399,7 +411,51 @@ public class Invoice {
      */
     private BigDecimal payable(BigDecimal taxRate) {
         BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate);
-        return owed.subtract(getCredited()).subtract(retentionHeld(taxRate));
+        return owed.subtract(getCredited()).subtract(retentionHeld(taxRate)).subtract(getEarlyDiscountTaken());
+    }
+
+    /**
+     * The early-payment discount on offer at the tax rate: the client's early-payment percentage of the
+     * grand total, rounded down to the cent; nothing for a credit note, or an invoice holding back
+     * retention or spread over instalments.
+     */
+    public BigDecimal earlyDiscount(BigDecimal taxRate) {
+        if (isCreditNote() || hasPlan() || retentionPct.signum() > 0 || earlyPayDays == null
+                || earlyPayPct == null || earlyPayPct.signum() <= 0) {
+            return zero();
+        }
+        return total(taxRate).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+    }
+
+    /**
+     * Whether a sent invoice not yet settled early can still be paid off early on the given day: within
+     * the client's early-payment days of its issue date, with an early discount on offer.
+     */
+    public boolean isEarlyWindowOpen(LocalDate on, BigDecimal taxRate) {
+        return status == InvoiceStatus.SENT && issueDate != null && getEarlyDiscountTaken().signum() == 0
+                && earlyDiscount(taxRate).signum() > 0 && !on.isAfter(issueDate.plusDays(earlyPayDays));
+    }
+
+    /**
+     * What would settle the invoice on the given day once the given amount has been paid: what is due
+     * less the early discount while the early window is open; null when it is not.
+     */
+    public BigDecimal settleAmount(BigDecimal paid, BigDecimal taxRate, LocalDate on) {
+        BigDecimal due = amountDue(paid, taxRate);
+        if (!isEarlyWindowOpen(on, taxRate) || due.signum() <= 0) {
+            return null;
+        }
+        return due.subtract(earlyDiscount(taxRate)).max(zero());
+    }
+
+    /** The early discount the invoice was settled with, to the cent; 0 when none was taken. */
+    public BigDecimal getEarlyDiscountTaken() {
+        return (earlyDiscount == null ? BigDecimal.ZERO : earlyDiscount).setScale(scale(), RoundingMode.HALF_UP);
+    }
+
+    /** Settles the invoice with the early discount (0 to clear it again). */
+    public void takeEarlyDiscount(BigDecimal amount) {
+        this.earlyDiscount = amount;
     }
 
     /** Whether the invoice is spread over monthly instalments. */

@@ -113,6 +113,8 @@ public class InvoiceController {
      * (null without a plan), from which what is paid comes off for the amount due. {@code listedDueDate}
      * is the due date as listed: for a plan, its next unpaid instalment's. {@code currency} is the
      * currency its client is billed in, which every amount is in (whole yen for a yen client).
+     * {@code earlyDiscount} is the early-payment discount it was settled with (0 when none), and
+     * {@code settleAmount} what would settle it today while its early-payment window is open (null otherwise).
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
@@ -120,7 +122,7 @@ public class InvoiceController {
             String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
             String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
-            Currency currency) {
+            Currency currency, String earlyDiscount, String settleAmount) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -147,7 +149,8 @@ public class InvoiceController {
                     i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
                     i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
                     i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate),
-                    i.currency());
+                    i.currency(), i.getEarlyDiscountTaken().toPlainString(),
+                    Optional.ofNullable(i.settleAmount(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null));
         }
     }
 
