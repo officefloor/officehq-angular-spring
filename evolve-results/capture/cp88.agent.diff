@@ -1,0 +1,105 @@
+diff --git a/src/main/frontend/src/app/features/invoices/refund-form.ts b/src/main/frontend/src/app/features/invoices/refund-form.ts
+index de8a723..5ce5441 100644
+--- a/src/main/frontend/src/app/features/invoices/refund-form.ts
++++ b/src/main/frontend/src/app/features/invoices/refund-form.ts
+@@ -8,7 +8,7 @@ import { CURRENCIES, Currency, TWO_DECIMALS, symbolOf } from './invoice-format';
+ // Refunds the client's unused credit: an amount more than zero with at most two decimals, and the
+ // date it was refunded, in the currency picked (the client's own by default). An amount in another
+ // currency is converted by the server into the client's through US dollars at the rates on the refund
+-// date, rounded to their currency's step. It comes out of the oldest payment's credit first; the
++// date, rounded down to their currency's step. It comes out of the oldest payment's credit first; the
+ // server refuses a date after today or before a payment it would come from, or more than the client's
+ // credit once converted.
+ @Component({
+diff --git a/src/main/java/net/officefloor/hq/app/ExchangeRates.java b/src/main/java/net/officefloor/hq/app/ExchangeRates.java
+index 466fd50..85753de 100644
+--- a/src/main/java/net/officefloor/hq/app/ExchangeRates.java
++++ b/src/main/java/net/officefloor/hq/app/ExchangeRates.java
+@@ -1,7 +1,6 @@
+ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
+-import java.math.MathContext;
+ import java.sql.Date;
+ import java.time.LocalDate;
+ import java.util.LinkedHashMap;
+@@ -78,13 +77,13 @@ public class ExchangeRates {
+ 
+     /**
+      * The amount paid in one currency converted into another through US dollars: amount x (dollars per
+-     * unit paid) / (dollars per unit of the other), at the rates in force on the date, rounded half up
+-     * to the other's step.
++     * unit paid) / (dollars per unit of the other), at the rates in force on the date, worked out exactly
++     * and rounded down to the other's step, so the client is never credited more than was received.
+      */
+     public BigDecimal convert(BigDecimal amount, Currency from, Currency to, LocalDate on) {
+         if (from == to) {
+             return amount.setScale(to.scale());
+         }
+-        return to.roundToStep(amount.multiply(usdPer(from, on)).divide(usdPer(to, on), MathContext.DECIMAL128));
++        return to.divideDownToStep(amount.multiply(usdPer(from, on)), usdPer(to, on));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Currency.java b/src/main/java/net/officefloor/hq/app/clients/Currency.java
+index 202f1e1..23273c9 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Currency.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Currency.java
+@@ -31,13 +31,18 @@ public enum Currency {
+         return amount.stripTrailingZeros().scale() <= scale;
+     }
+ 
++    /** This currency's step: whole yen, 0.05 for Swiss francs, otherwise the cent. */
++    public BigDecimal step() {
++        return this == CHF ? new BigDecimal("0.05") : BigDecimal.ONE.movePointLeft(scale);
++    }
++
+     /**
+-     * The amount rounded half up to this currency's step: whole yen, 0.05 for Swiss francs, otherwise
+-     * the cent.
++     * The exact quotient amount / divisor rounded down (towards zero) to this currency's step, worked
++     * out in decimals in one division so that a quotient landing on a step stays on it.
+      */
+-    public BigDecimal roundToStep(BigDecimal amount) {
+-        BigDecimal step = this == CHF ? new BigDecimal("0.05") : BigDecimal.ONE.movePointLeft(scale);
+-        return amount.divide(step, 0, RoundingMode.HALF_UP).multiply(step).setScale(scale);
++    public BigDecimal divideDownToStep(BigDecimal amount, BigDecimal divisor) {
++        BigDecimal step = step();
++        return amount.divide(divisor.multiply(step), 0, RoundingMode.DOWN).multiply(step).setScale(scale);
+     }
+ 
+     /** The amount with its symbol and thousands separators, e.g. €1,234.50 or ¥1,235. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 433a2a8..59d92bc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -625,14 +625,14 @@ public class Invoice {
+ 
+     /**
+      * The late fee in the invoice's currency: the fee in US dollars converted as a payment in another
+-     * currency is, through the workspace rate on the day it is charged, rounded half up to the
+-     * currency's step.
++     * currency is, through the workspace rate on the day it is charged, worked out exactly and
++     * rounded down to the currency's step.
+      */
+     private BigDecimal lateFeeIn(BigDecimal feeUsd, LocalDate on) {
+         if (currency() == Currency.USD) {
+             return feeUsd.setScale(scale(), RoundingMode.HALF_UP);
+         }
+-        return currency().roundToStep(feeUsd.divide(usdPerOn(on), MathContext.DECIMAL128));
++        return currency().divideDownToStep(feeUsd, usdPerOn(on));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 5282559..d39668a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -684,7 +684,7 @@ public class InvoiceService {
+     /**
+      * Refunds the amount of the client's unused credit on the date, never a deposit held for one of its
+      * drafts. The amount is in the currency refunded in (null for the client's own) and comes off the
+-     * credit converted into the client's currency through US dollars at the rates on the date, rounded
++     * credit converted into the client's currency through US dollars at the rates on the date, rounded down
+      * to their currency's step: the oldest payment's credit first
+      * (lower id first on the same date), then the next, each part recorded in the audit; empty if no
+      * such client. The amount has already been checked; a date after today or before a payment it
