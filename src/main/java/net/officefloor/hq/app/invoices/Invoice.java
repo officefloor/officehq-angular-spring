@@ -111,12 +111,22 @@ public class Invoice {
         this.status = InvoiceStatus.DRAFT;
     }
 
-    /** The status once the given amount has been paid against the grand total at the tax rate. */
-    public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate) {
-        if (status != InvoiceStatus.SENT || paid.signum() <= 0) {
+    /**
+     * The status on the given day once the given amount has been paid against the grand total at the
+     * tax rate: a sent invoice with something still due after its due date is overdue, part paid or not.
+     */
+    public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
+        if (status != InvoiceStatus.SENT) {
             return status;
         }
-        return amountDue(paid, taxRate).signum() > 0 ? InvoiceStatus.PART_PAID : InvoiceStatus.PAID;
+        boolean due = amountDue(paid, taxRate).signum() > 0;
+        if (due && dueDate != null && today.isAfter(dueDate)) {
+            return InvoiceStatus.OVERDUE;
+        }
+        if (paid.signum() <= 0) {
+            return status;
+        }
+        return due ? InvoiceStatus.PART_PAID : InvoiceStatus.PAID;
     }
 
     /** What is still due once the given amount has been paid: the grand total less it. */

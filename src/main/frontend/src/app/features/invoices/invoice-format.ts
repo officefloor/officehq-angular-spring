@@ -5,6 +5,7 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   SENT: 'Sent',
   PART_PAID: 'Part paid',
   PAID: 'Paid',
+  OVERDUE: 'Overdue',
 };
 const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 

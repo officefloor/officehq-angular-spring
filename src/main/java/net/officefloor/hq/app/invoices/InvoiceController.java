@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 import net.officefloor.hq.app.TaxRate;
+import net.officefloor.hq.app.Today;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,13 +29,13 @@ public class InvoiceController {
 
     /**
      * An invoice as listed: its total is a decimal string to the cent, e.g. "25.25"; its status
-     * follows what has been paid.
+     * follows what has been paid and whether it is past due.
      */
     public record InvoiceSummary(Long id, String number, InvoiceStatus status, String total,
             LocalDate issueDate, LocalDate dueDate) {
-        static InvoiceSummary of(Invoice i, BigDecimal taxRate, BigDecimal paid) {
+        static InvoiceSummary of(Invoice i, BigDecimal taxRate, BigDecimal paid, LocalDate today) {
             BigDecimal total = i.total(taxRate);
-            return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.statusWhenPaid(paid, taxRate),
+            return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.statusWhenPaid(paid, taxRate, today),
                     total.toPlainString(), i.getIssueDate(), i.getDueDate());
         }
     }
@@ -80,7 +81,7 @@ public class InvoiceController {
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discount,
             String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue) {
-        static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments) {
+        static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
             List<BigDecimal> shares = i.discountShares();
@@ -89,7 +90,7 @@ public class InvoiceController {
                     .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n), taxes.get(n))).toList();
             return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()),
                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
-                    i.statusWhenPaid(paid, taxRate), i.getIssueDate(), i.getDueDate(),
+                    i.statusWhenPaid(paid, taxRate, today), i.getIssueDate(), i.getDueDate(),
                     lines, i.subtotal().toPlainString(),
                     i.getDiscountPct().stripTrailingZeros().toPlainString(), i.discount().toPlainString(),
                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
@@ -173,18 +174,20 @@ public class InvoiceController {
 
     private final InvoiceService invoices;
     private final TaxRate taxRate;
+    private final Today today;
 
-    public InvoiceController(InvoiceService invoices, TaxRate taxRate) {
+    public InvoiceController(InvoiceService invoices, TaxRate taxRate, Today today) {
         this.invoices = invoices;
         this.taxRate = taxRate;
+        this.today = today;
     }
 
     private InvoiceSummary summary(Invoice i) {
-        return InvoiceSummary.of(i, taxRate.percent(), invoices.paid(List.of(i)).get(i.getId()));
+        return InvoiceSummary.of(i, taxRate.percent(), invoices.paid(List.of(i)).get(i.getId()), today.date());
     }
 
     private InvoiceDetail detail(Invoice i) {
-        return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()));
+        return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()), today.date());
     }
 
     @GetMapping("/api/clients/{clientId}/invoices")
@@ -192,7 +195,8 @@ public class InvoiceController {
         BigDecimal rate = taxRate.percent();
         List<Invoice> list = invoices.forClient(clientId);
         Map<Long, BigDecimal> paid = invoices.paid(list);
-        return list.stream().map(i -> InvoiceSummary.of(i, rate, paid.get(i.getId()))).toList();
+        LocalDate on = today.date();
+        return list.stream().map(i -> InvoiceSummary.of(i, rate, paid.get(i.getId()), on)).toList();
     }
 
     @PostMapping("/api/clients/{clientId}/invoices")

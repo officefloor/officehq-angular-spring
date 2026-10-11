@@ -3,8 +3,9 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
-// nothing is due; the server works this out from its payments.
-export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID';
+// nothing is due; it is OVERDUE while something is still due after its due date, part paid or not.
+// The server works this out from its payments and today's date.
+export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID' | 'OVERDUE';
 
 // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
 // server: the grand total — the lines' subtotal less any discount plus tax.
