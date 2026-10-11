@@ -37,6 +37,9 @@ public class Payment {
     /** Whether the payment has been reversed (a bounced cheque): it then no longer counts. */
     private boolean reversed;
 
+    /** How much of the payment's unused credit has been refunded to the client; it is no longer credit. */
+    private BigDecimal refunded = BigDecimal.ZERO;
+
     @ElementCollection
     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
     private List<PaymentAllocation> allocations = new ArrayList<>();
@@ -113,16 +116,28 @@ public class Payment {
         reversed = true;
     }
 
+    public BigDecimal getRefunded() {
+        return refunded;
+    }
+
+    /** Refunds part of this payment's unused credit to the client. */
+    public void refund(BigDecimal part) {
+        refunded = refunded.add(part);
+    }
+
     public List<PaymentAllocation> getAllocations() {
         return allocations;
     }
 
-    /** The part of this payment applied to no invoice: credit on the client's account; none once reversed. */
+    /**
+     * The part of this payment applied to no invoice and not refunded: credit on the client's account;
+     * none once reversed.
+     */
     public BigDecimal credit() {
         if (reversed) {
             return BigDecimal.ZERO;
         }
-        return amount.subtract(allocations.stream().map(PaymentAllocation::getAmount)
+        return amount.subtract(refunded).subtract(allocations.stream().map(PaymentAllocation::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
     }
 

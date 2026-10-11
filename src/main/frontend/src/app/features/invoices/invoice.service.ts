@@ -244,8 +244,15 @@ export class InvoiceService {
     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/deposits`, deposit);
   }
 
+  // Refunds the client's unused credit, the oldest payment's first; refused (409) when dated after
+  // today or before a payment it would come from, or more than the client's credit. Answers the
+  // client's invoices.
+  refundCredit(clientId: number, refund: { amount: string; date: string }): Observable<InvoiceSummary[]> {
+    return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/refunds`, refund);
+  }
+
   // Reverses a payment (a bounced cheque) on every invoice it was applied to; refused (409) when it
-  // has already been reversed. Answers the opened invoice with its payments and new status.
+  // has already been reversed or has had credit refunded. Answers the opened invoice with its payments and new status.
   reversePayment(invoiceId: number, paymentId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments/${paymentId}/reverse`, null);
   }

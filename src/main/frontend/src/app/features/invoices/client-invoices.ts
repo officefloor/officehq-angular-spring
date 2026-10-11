@@ -1,6 +1,7 @@
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { InvoiceDetail, InvoiceService, InvoiceSummary, NewAllocation } from './invoice.service';
 import { PaymentForm } from './payment-form';
+import { RefundForm } from './refund-form';
 import { InvoicePanel } from './invoice-panel';
 import { money, statusLabel } from './invoice-format';
 
@@ -9,9 +10,10 @@ import { money, statusLabel } from './invoice-format';
 // An invoice looked up by its number is opened as soon as its client's invoices are shown.
 // Every sent invoice that is not void has a box for its part of a payment; once any is filled, the payment recorded
 // (in the panel, or below the list when no invoice is open) is spread over those invoices.
+// The client's unused credit can be refunded from the refund form below the list.
 @Component({
   selector: 'app-client-invoices',
-  imports: [InvoicePanel, PaymentForm],
+  imports: [InvoicePanel, PaymentForm, RefundForm],
   styles: `
     :host {
       display: flex;
@@ -96,6 +98,7 @@ import { money, statusLabel } from './invoice-format';
           }
         </tbody>
       </table>
+      <app-refund-form [clientId]="clientId()" (refunded)="splitRecorded($event)" />
     </section>
 
     @if (selectedId(); as id) {

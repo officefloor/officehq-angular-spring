@@ -350,6 +350,57 @@ public class InvoiceService {
         return Optional.of(payment);
     }
 
+    /**
+     * Refunds the amount of the client's unused credit on the date: the oldest payment's credit first
+     * (lower id first on the same date), then the next, each part recorded in the audit; empty if no
+     * such client. The amount has already been checked; a date after today or before a payment it
+     * would come from, or an amount more than the client's credit, is refused.
+     */
+    @Transactional
+    public Optional<Long> refundCredit(Long clientId, BigDecimal amount, LocalDate date) {
+        if (clients.findById(clientId).isEmpty()) {
+            return Optional.empty();
+        }
+        LocalDate now = today.date();
+        if (date.isAfter(now)) {
+            throw new InvoiceRejectedException("The refund date cannot be after today (" + now + ").");
+        }
+        List<Payment> from = new ArrayList<>();
+        List<BigDecimal> parts = new ArrayList<>();
+        BigDecimal left = amount;
+        BigDecimal credit = BigDecimal.ZERO;
+        for (Payment payment : payments.findForClient(clientId)) {
+            BigDecimal unused = payment.credit();
+            if (unused.signum() <= 0) {
+                continue;
+            }
+            credit = credit.add(unused);
+            if (left.signum() <= 0) {
+                continue;
+            }
+            BigDecimal part = unused.min(left);
+            if (date.isBefore(payment.getDate())) {
+                throw new InvoiceRejectedException("The refund cannot be dated before the payment of "
+                        + payment.getDate() + " it would come from.");
+            }
+            from.add(payment);
+            parts.add(part);
+            left = left.subtract(part);
+        }
+        if (left.signum() > 0) {
+            throw new InvoiceRejectedException("The refund cannot be more than the client's unused credit of $"
+                    + credit.setScale(2, RoundingMode.UNNECESSARY).toPlainString() + ".");
+        }
+        for (int i = 0; i < from.size(); i++) {
+            Payment payment = from.get(i);
+            payment.refund(parts.get(i));
+            payments.saveAndFlush(payment);
+            audit.record("CREDIT_REFUNDED payment=" + payment.getId() + " amount="
+                    + parts.get(i).setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        }
+        return Optional.of(clientId);
+    }
+
     /** The unused credit of each client that has any, by client id. */
     @Transactional(readOnly = true)
     public Map<Long, BigDecimal> credits() {
@@ -638,7 +689,8 @@ public class InvoiceService {
 
     /**
      * Reverses the payment (a bounced cheque), undoing it on every invoice it was applied to, and
-     * records it in the audit; empty if no such payment. A payment already reversed is refused.
+     * records it in the audit; empty if no such payment. A payment already reversed, or one that has
+     * had any of its credit refunded, is refused.
      */
     @Transactional
     public Optional<Payment> reversePayment(Long paymentId) {
@@ -646,6 +698,9 @@ public class InvoiceService {
         found.ifPresent(payment -> {
             if (payment.isReversed()) {
                 throw new InvoiceRejectedException("This payment has already been reversed.");
+            }
+            if (payment.getRefunded().signum() > 0) {
+                throw new InvoiceRejectedException("This payment has had credit refunded, so it cannot be reversed.");
             }
             payment.reverse();
             payments.saveAndFlush(payment);

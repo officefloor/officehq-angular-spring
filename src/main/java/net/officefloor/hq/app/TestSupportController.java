@@ -36,7 +36,7 @@ public class TestSupportController {
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "allocations");
+    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "allocations");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID");
 
@@ -136,11 +136,12 @@ public class TestSupportController {
             if (row.get("date") == null) {
                 throw refuse("payments[].date is required");
             }
-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed"},
+            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded"},
                     id(row.get("clientId")), cents(row.get("amount"), "payments[].amount"),
                     date(row.get("date"), "payments[].date"),
                     row.get("reference") == null ? null : row.get("reference").toString(),
-                    flag(row.get("reversed"), "payments[].reversed"));
+                    flag(row.get("reversed"), "payments[].reversed"),
+                    money(row.get("refunded"), "payments[].refunded"));
             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
                 if (allocation.get("invoiceId") == null) {
@@ -224,7 +225,7 @@ public class TestSupportController {
                             }).toList());
                     return row;
                 }).toList());
-        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference, reversed FROM payment ORDER BY id")
+        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference, reversed, refunded FROM payment ORDER BY id")
                 .stream().map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -233,6 +234,7 @@ public class TestSupportController {
                     row.put("date", r.get("PAYMENT_DATE").toString());
                     row.put("reference", r.get("REFERENCE"));
                     row.put("reversed", r.get("REVERSED"));
+                    row.put("refunded", r.get("REFUNDED"));
                     row.put("allocations", jdbc.queryForList(
                             "SELECT invoice_id, amount, applied_date FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
                             r.get("ID")).stream().map(a -> {

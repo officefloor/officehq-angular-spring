@@ -202,6 +202,16 @@ public class InvoiceController {
             LocalDate date) {
     }
 
+    /** A refund of unused credit: an amount more than zero with at most two decimals, and the date it was refunded. */
+    public record NewRefund(
+            @NotNull(message = "Enter an amount.")
+            @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
+            @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
+            BigDecimal amount,
+            @NotNull(message = "Enter the date it was refunded.")
+            LocalDate date) {
+    }
+
     /** A due date to set on a draft by hand. */
     public record NewDueDate(
             @NotNull(message = "Enter the due date.")
@@ -437,6 +447,15 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> recordDeposit(@PathVariable Long clientId, @Valid @RequestBody NewDeposit body) {
         invoices.recordDeposit(clientId, body.amount(), body.date())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+        return forClient(clientId);
+    }
+
+    /** Refunds the client's unused credit, oldest payment's first; answers the client's invoices. */
+    @PostMapping("/api/clients/{clientId}/refunds")
+    @ResponseStatus(HttpStatus.CREATED)
+    public List<InvoiceSummary> refundCredit(@PathVariable Long clientId, @Valid @RequestBody NewRefund body) {
+        invoices.refundCredit(clientId, body.amount(), body.date())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
         return forClient(clientId);
     }
