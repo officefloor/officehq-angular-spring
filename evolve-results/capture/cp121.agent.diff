@@ -1,0 +1,353 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 9768366..f261148 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -775,6 +775,13 @@ function problemWith(line: NewLine): string {
+             inputmode="decimal"
+             formControlName="taxRate"
+           />
++          <input
++            id="line-overtime"
++            type="checkbox"
++            data-testid="line-form-overtime"
++            formControlName="overtime"
++          />
++          <label for="line-overtime">Overtime (time and a half)</label>
+           <input
+             id="line-exempt"
+             type="checkbox"
+@@ -906,6 +913,7 @@ export class InvoicePanel {
+     qty: new FormControl('', { nonNullable: true }),
+     unitType: new FormControl('', { nonNullable: true }),
+     unitPrice: new FormControl('', { nonNullable: true }),
++    overtime: new FormControl(false, { nonNullable: true }),
+     taxExempt: new FormControl(false, { nonNullable: true }),
+     discountPct: new FormControl('', { nonNullable: true }),
+     taxRate: new FormControl('', { nonNullable: true }),
+@@ -981,7 +989,9 @@ export class InvoicePanel {
+       qty: line.qty,
+       unitType: line.unitType ?? '',
+       // A tiered line has no price of its own: left empty, it is repriced from the rate card's bands.
+-      unitPrice: line.tiered ? '' : line.unitPrice,
++      // An overtime line keeps the price it was given; time and a half is worked out on it again.
++      unitPrice: line.tiered ? '' : line.basePrice,
++      overtime: line.overtime,
+       taxExempt: line.taxExempt,
+       discountPct: Number(line.discountPct) === 0 ? '' : line.discountPct,
+       taxRate: line.taxRate ?? '',
+@@ -1001,6 +1011,7 @@ export class InvoicePanel {
+     const line: NewLine = {
+       description: raw.description.trim(),
+       qty: raw.qty.trim(),
++      overtime: raw.overtime,
+       taxExempt: raw.taxExempt,
+     };
+     const unitType = raw.unitType.trim();
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 8a1a7b8..e9d4c86 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -74,6 +74,10 @@ export interface InvoiceLineView {
+   // next whole increment its unit type has on the client's rate card (`qty` itself without one), and
+   // then at least the minimum units it has there.
+   billedQty: string;
++  // Whether the line is work out of hours, charged at time and a half: its `unitPrice` (and, when
++  // tiered, each band's price) is 1.5 times `basePrice`, the price it was given, rounded half up to the cent.
++  overtime: boolean;
++  basePrice: string;
+ }
+ 
+ // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
+@@ -245,6 +249,7 @@ export interface NewLine {
+   qty: string;
+   unitType?: string;
+   unitPrice?: string;
++  overtime: boolean;
+   taxExempt: boolean;
+   discountPct?: string;
+   taxRate?: string;
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index b9c227d..ebcf294 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -47,7 +47,7 @@ public class TestSupportController {
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "lineItems");
+-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType");
++    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
+@@ -339,7 +339,7 @@ public class TestSupportController {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+                 insert("invoice_line", line.get("id"),
+-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units"},
++                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime"},
+                         invoiceId, text(line, "description"),
+                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
+                         price[0], price[1],
+@@ -348,7 +348,8 @@ public class TestSupportController {
+                         line.get("taxRate") == null ? null : percent(line.get("taxRate"), "invoices[].lineItems[].taxRate"),
+                         line.get("creditOfLine") == null ? null : id(line.get("creditOfLine")),
+                         line.get("unitType") == null ? null : line.get("unitType").toString(),
+-                        lineRate(invoiceId, line, "increment"), lineRate(invoiceId, line, "min_units"));
++                        lineRate(invoiceId, line, "increment"), lineRate(invoiceId, line, "min_units"),
++                        flag(line.get("overtime"), "invoices[].lineItems[].overtime"));
+             }
+         }
+         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
+@@ -598,7 +599,7 @@ public class TestSupportController {
+                         row.put("discountReason", r.get("DISCOUNT_REASON"));
+                     }
+                     row.put("lineItems", jdbc.queryForList(
+-                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line FROM invoice_line WHERE invoice_id = ? ORDER BY id",
++                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+                                 Map<String, Object> line = new LinkedHashMap<>();
+                                 line.put("id", l.get("ID"));
+@@ -609,6 +610,7 @@ public class TestSupportController {
+                                 }
+                                 line.put("unitPrice", l.get("UNIT_PRICE"));
+                                 line.put("taxExempt", l.get("TAX_EXEMPT"));
++                                line.put("overtime", l.get("OVERTIME"));
+                                 line.put("discountPct", l.get("DISCOUNT_PCT"));
+                                 if (l.get("TAX_RATE") != null) {
+                                     line.put("taxRate", l.get("TAX_RATE"));
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 25a322a..68a59c5 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1816,17 +1816,18 @@ public class Invoice {
+      * the subtotal would then be less than a fixed discount on the invoice.
+      */
+     public boolean updateLine(Long lineId, String description, BigDecimal qty, String unitType, BigDecimal unitPrice,
+-            String tiers, BigDecimal increment, BigDecimal minUnits, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++            String tiers, BigDecimal increment, BigDecimal minUnits, boolean overtime, boolean taxExempt, BigDecimal discountPct,
++            BigDecimal taxRate) {
+         InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
+         if (line == null) {
+             return false;
+         }
+         InvoiceLine was = line.copy();
+-        line.update(description, qty, unitType, unitPrice, tiers, increment, minUnits, taxExempt, discountPct, taxRate);
++        line.update(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);
+         // Changing a tiered line reprices the others of its unit type, so the subtotal is worked out with it changed.
+         BigDecimal left = subtotal();
+         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
+-            line.update(was.getDescription(), was.getQty(), was.getUnitType(), was.getUnitPrice(), was.tiers(), was.getIncrement(), was.getMinUnits(),
++            line.update(was.getDescription(), was.getQty(), was.getUnitType(), was.getUnitPrice(), was.tiers(), was.getIncrement(), was.getMinUnits(), was.isOvertime(),
+                     was.isTaxExempt(), was.getDiscountPct(), was.getTaxRate());
+             throw new InvoiceRejectedException("This line cannot be changed: the "
+                     + currency().format(left) + " subtotal would be less than the "
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index c4bcbfc..8237b5b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -85,21 +85,24 @@ public class InvoiceController {
+      * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
+      * {@code amount} is after it. {@code creditOfLine} is the id of the line a credit note's line credits, null when none.
+      * {@code tiered} lines are priced in progressive tiers from the rate card; their {@code unitPrice} is the first band's.
++     * {@code overtime} lines are charged at time and a half: {@code unitPrice} (and each band's price) is 1.5 times the
++     * price given, rounded half up to the cent; {@code basePrice} is the price given, before overtime.
+      * {@code billedQty} (without trailing zeros) is the quantity the line is priced on: its quantity rounded up to the next
+      * whole increment of its unit type's rate card entry (as entered without one), and then at least its minimum units.
+      */
+     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
+             String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,
+-            Long creditOfLine, boolean tiered, String billedQty) {
++            Long creditOfLine, boolean tiered, String billedQty, boolean overtime, String basePrice) {
+         static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax) {
+             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
+-                    l.getUnitType(), l.getUnitPrice().setScale(2).toPlainString(),
++                    l.getUnitType(), l.chargedUnitPrice().setScale(2).toPlainString(),
+                     l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount(scale).toPlainString(),
+                     l.amount(scale).toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
+                     l.amount(scale).subtract(discountShare).subtract(includedTax).toPlainString(),
+                     l.isTaxExempt(),
+                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
+-                    l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString());
++                    l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString(), l.isOvertime(),
++                    l.getUnitPrice().setScale(2).toPlainString());
+         }
+     }
+ 
+@@ -242,6 +245,7 @@ public class InvoiceController {
+             @DecimalMin(value = "0.01", message = "The unit price must be at least $0.01.")
+             @Digits(integer = 17, fraction = 2, message = "The unit price can have at most two decimals.")
+             BigDecimal unitPrice,
++            Boolean overtime,
+             Boolean taxExempt,
+             @DecimalMin(value = "0", message = "The line discount must be from 0 to 100 percent.")
+             @DecimalMax(value = "100", message = "The line discount must be from 0 to 100 percent.")
+@@ -496,7 +500,7 @@ public class InvoiceController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
+         return invoices.addLine(id, body.description().trim(), body.qty(), unitType(body), body.unitPrice(),
+-                Boolean.TRUE.equals(body.taxExempt()),
++                Boolean.TRUE.equals(body.overtime()), Boolean.TRUE.equals(body.taxExempt()),
+                 body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+@@ -506,7 +510,7 @@ public class InvoiceController {
+     public InvoiceDetail updateLine(@PathVariable Long id, @PathVariable Long lineId,
+             @Valid @RequestBody NewLine body) {
+         return invoices.updateLine(id, lineId, body.description().trim(), body.qty(), unitType(body), body.unitPrice(),
+-                Boolean.TRUE.equals(body.taxExempt()),
++                Boolean.TRUE.equals(body.overtime()), Boolean.TRUE.equals(body.taxExempt()),
+                 body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 53df39c..2a2ebcc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -72,6 +72,12 @@ public class InvoiceLine {
+     @Column(name = "billing_min_units")
+     private BigDecimal minUnits;
+ 
++    /**
++     * Whether the line is work out of hours, charged at time and a half: its unit price (and, when tiered, each
++     * band's price) is 1.5 times the price it was given, rounded half up to the cent.
++     */
++    private boolean overtime;
++
+     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
+     @ManyToOne(fetch = FetchType.LAZY)
+     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
+@@ -97,16 +103,18 @@ public class InvoiceLine {
+     }
+ 
+     public InvoiceLine(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
+-            BigDecimal increment, BigDecimal minUnits, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++            BigDecimal increment, BigDecimal minUnits, boolean overtime, boolean taxExempt, BigDecimal discountPct,
++            BigDecimal taxRate) {
+         this(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
+         this.tiers = tiers;
+         this.increment = increment;
+         this.minUnits = minUnits;
++        this.overtime = overtime;
+     }
+ 
+     /** A new line with the same description, quantity, unit type, price, tiers, discount, tax rate and exemption. */
+     public InvoiceLine copy() {
+-        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, minUnits, taxExempt, discountPct, taxRate);
++        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);
+     }
+ 
+     /** A new credit note line crediting this line, with its description, quantity, price, discount, tax rate and exemption. */
+@@ -118,9 +126,11 @@ public class InvoiceLine {
+ 
+     /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
+     public void update(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
+-            BigDecimal increment, BigDecimal minUnits, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++            BigDecimal increment, BigDecimal minUnits, boolean overtime, boolean taxExempt, BigDecimal discountPct,
++            BigDecimal taxRate) {
+         this.increment = increment;
+         this.minUnits = minUnits;
++        this.overtime = overtime;
+         this.description = description;
+         this.unitType = unitType;
+         this.qty = qty;
+@@ -152,10 +162,29 @@ public class InvoiceLine {
+         return unitType;
+     }
+ 
++    /** The price the line was given (from the rate card, the price list or typed in), before any overtime. */
+     public BigDecimal getUnitPrice() {
+         return unitPrice;
+     }
+ 
++    /** Whether the line is charged at time and a half. */
++    public boolean isOvertime() {
++        return overtime;
++    }
++
++    /** The unit price the line is charged: its price, or 1.5 times it rounded half up to the cent when overtime. */
++    public BigDecimal chargedUnitPrice() {
++        return charged(unitPrice);
++    }
++
++    /** The given price as charged on this line: 1.5 times it, rounded half up to the cent, when overtime. */
++    private BigDecimal charged(BigDecimal price) {
++        return overtime ? price.multiply(OVERTIME_RATE).setScale(2, RoundingMode.HALF_UP) : price;
++    }
++
++    /** Overtime is charged at time and a half. */
++    private static final BigDecimal OVERTIME_RATE = new BigDecimal("1.5");
++
+     /** The increment the line is billed in; null for none. */
+     public BigDecimal getIncrement() {
+         return increment;
+@@ -208,16 +237,21 @@ public class InvoiceLine {
+     }
+ 
+     /**
+-     * Billed quantity times unit price — or, for a tiered line, the charge for its billed units at the bands they
++     * Billed quantity times the charged unit price (time and a half when overtime) — or, for a tiered line, the charge for its billed units at the bands they
+      * fall in, carrying on from where the invoice's earlier lines of its unit type stopped — rounded half up to the given number of decimals (2, the cent; 0 for whole yen), before
+      * the line's discount.
+      */
+     public BigDecimal grossAmount(int scale) {
+         if (tiers != null) {
+             BigDecimal before = invoice == null ? BigDecimal.ZERO : invoice.tieredUnitsBefore(this);
+-            return RateTiers.parse(tiers).charge(before, billedQty(), scale);
++            RateTiers bands = RateTiers.parse(tiers);
++            if (overtime) {
++                bands = new RateTiers(bands.bands().stream()
++                        .map(b -> new RateTiers.Band(b.units(), charged(b.unitPrice()))).toList());
++            }
++            return bands.charge(before, billedQty(), scale);
+         }
+-        return billedQty().multiply(unitPrice).setScale(scale, RoundingMode.HALF_UP);
++        return billedQty().multiply(chargedUnitPrice()).setScale(scale, RoundingMode.HALF_UP);
+     }
+ 
+     /** The line's discount: its percentage of the gross amount, rounded down to the given number of decimals. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 62cfd93..c5d33cc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -224,12 +224,12 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, String unitType,
+-            BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++            BigDecimal unitPrice, boolean overtime, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+         Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             LinePrice price = linePrice(invoice, unitType, unitPrice);
+             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
+-            invoice.addLine(new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), taxExempt,
++            invoice.addLine(new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
+                     discountPct, taxRate));
+             invoices.saveAndFlush(invoice);
+             if (reopened) {
+@@ -270,7 +270,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
+-            String unitType, BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++            String unitType, BigDecimal unitPrice, boolean overtime, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+         Optional<Invoice> found = load(invoiceId);
+         if (found.isEmpty()) {
+             return found;
+@@ -281,7 +281,7 @@ public class InvoiceService {
+         }
+         LinePrice price = linePrice(invoice, unitType, unitPrice);
+         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
+-        invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), taxExempt,
++        invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
+                 discountPct, taxRate);
+         invoices.saveAndFlush(invoice);
+         if (reopened) {
+diff --git a/src/main/resources/db/migration/V51__line_overtime.sql b/src/main/resources/db/migration/V51__line_overtime.sql
+new file mode 100644
+index 0000000..26372a5
+--- /dev/null
++++ b/src/main/resources/db/migration/V51__line_overtime.sql
+@@ -0,0 +1,3 @@
++-- Whether the line is work out of hours, charged at time and a half: its unit price (and each band's price
++-- when tiered) is 1.5 times its stored price, rounded half up to the cent.
++ALTER TABLE invoice_line ADD COLUMN overtime BOOLEAN DEFAULT FALSE NOT NULL;
