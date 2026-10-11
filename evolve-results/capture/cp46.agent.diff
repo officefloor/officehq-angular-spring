@@ -1,0 +1,381 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 56e8c01..6e54b91 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -127,7 +127,9 @@ function problemWith(line: NewLine): string {
+ // A sent invoice with no payments can be voided; the server refuses to void a draft or one with
+ // payments, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
+ // cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
+-// be duplicated into a new draft for the same client, which then opens.
++// be duplicated into a new draft for the same client, which then opens. A draft's due date can be set
++// by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
++// server refuses to send it once that date is past.
+ @Component({
+   selector: 'app-invoice-panel',
+   imports: [ReactiveFormsModule, PaymentForm],
+@@ -294,6 +296,15 @@ function problemWith(line: NewLine): string {
+         }
+ 
+         @if (inv.status === 'DRAFT') {
++          <form [formGroup]="dueForm" (ngSubmit)="setDueDate(inv.id)" aria-label="Due date" novalidate>
++            <label for="invoice-due-date">Due date (up to 120 days after the issue date)</label>
++            <input id="invoice-due-date" type="date" data-testid="invoice-due-input" formControlName="dueDate" />
++            <button type="submit" data-testid="invoice-due-submit" [disabled]="savingDue()">Set due date</button>
++            @if (dueError()) {
++              <p role="alert" data-testid="invoice-due-error">{{ dueError() }}</p>
++            }
++          </form>
++
+           <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv.id)">
+             Send invoice
+           </button>
+@@ -446,6 +457,8 @@ export class InvoicePanel {
+   protected readonly editingLineId = signal<number | null>(null);
+   protected readonly savingDiscount = signal(false);
+   protected readonly discountError = signal('');
++  protected readonly savingDue = signal(false);
++  protected readonly dueError = signal('');
+   protected readonly sending = signal(false);
+   protected readonly sendError = signal('');
+   protected readonly duplicating = signal(false);
+@@ -473,6 +486,10 @@ export class InvoicePanel {
+     reason: new FormControl('', { nonNullable: true }),
+   });
+ 
++  protected readonly dueForm = new FormGroup({
++    dueDate: new FormControl('', { nonNullable: true }),
++  });
++
+   constructor() {
+     effect((onCleanup) => {
+       const id = this.invoiceId();
+@@ -483,6 +500,8 @@ export class InvoicePanel {
+       this.error.set('');
+       this.discountForm.reset();
+       this.discountError.set('');
++      this.dueForm.reset();
++      this.dueError.set('');
+       this.sendError.set('');
+       this.voidError.set('');
+       this.duplicateError.set('');
+@@ -630,6 +649,32 @@ export class InvoicePanel {
+     this.service.open(invoiceId).subscribe((detail) => this.invoice.set(detail));
+   }
+ 
++  protected setDueDate(invoiceId: number): void {
++    const dueDate = this.dueForm.getRawValue().dueDate.trim();
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
++      this.dueForm.markAllAsTouched();
++      this.dueError.set('Enter the due date as a date, like 2026-04-30.');
++      return;
++    }
++    this.savingDue.set(true);
++    this.dueError.set('');
++    this.service.setDueDate(invoiceId, dueDate).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.dueForm.reset();
++        this.savingDue.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.dueError.set(
++          typeof detail === 'string' && detail ? detail : 'The due date could not be set.',
++        );
++        this.savingDue.set(false);
++      },
++    });
++  }
++
+   protected send(invoiceId: number): void {
+     this.sending.set(true);
+     this.sendError.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 085d7ca..baf0da9 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -89,6 +89,8 @@ export interface InvoiceDetail {
+   writtenOff: string;
+   // The date (yyyy-mm-dd) of the payment that cleared it, payments in date order; null while not fully paid.
+   paidDate: string | null;
++  // Whether the due date was set by hand; it is then kept when the invoice is sent.
++  manualDueDate: boolean;
+ }
+ 
+ // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
+@@ -187,7 +189,14 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/discount`, discount);
+   }
+ 
+-  // Sends a draft invoice, keeping its issue and due dates; refused (409) when it has no lines.
++  // Sets a draft's due date (yyyy-mm-dd) by hand; refused (409) when it is before the issue date or
++  // more than 120 days after it. Answers the invoice with its new due date.
++  setDueDate(invoiceId: number, dueDate: string): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/due-date`, { dueDate });
++  }
++
++  // Sends a draft invoice, issuing it today and due on the client's terms, or keeping a due date set
++  // by hand; refused (409) when it has no lines or a due date set by hand is before today.
+   send(invoiceId: number): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/send`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index ef3a117..b68e8db 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -34,7 +34,7 @@ public class TestSupportController {
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "allocations");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
+@@ -105,14 +105,15 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+                     percent(row.get("discountPct"), "invoices[].discountPct"),
+                     money(row.get("discountAmount"), "invoices[].discountAmount"),
+                     row.get("discountCap") == null ? null : money(row.get("discountCap"), "invoices[].discountCap"),
+-                    row.get("discountReason") == null ? null : row.get("discountReason").toString());
++                    row.get("discountReason") == null ? null : row.get("discountReason").toString(),
++                    flag(row.get("manualDueDate"), "invoices[].manualDueDate"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 insert("invoice_line", line.get("id"),
+@@ -184,7 +185,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -194,6 +195,7 @@ public class TestSupportController {
+                     row.put("dueDate", r.get("DUE_DATE") == null ? null : r.get("DUE_DATE").toString());
+                     row.put("discountPct", r.get("DISCOUNT_PCT"));
+                     row.put("discountAmount", r.get("DISCOUNT_AMOUNT"));
++                    row.put("manualDueDate", r.get("MANUAL_DUE_DATE"));
+                     if (r.get("DISCOUNT_CAP") != null) {
+                         row.put("discountCap", r.get("DISCOUNT_CAP"));
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 150aca7..239bd70 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -25,6 +25,9 @@ import java.util.List;
+ @Table(name = "invoice")
+ public class Invoice {
+ 
++    /** A due date set by hand can be at most this many days after the issue date. */
++    public static final int MAX_DUE_DAYS = 120;
++
+     /** Payments that leave less than this still due have the rest written off. */
+     public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("1.00");
+ 
+@@ -47,6 +50,9 @@ public class Invoice {
+     @Column(name = "due_date")
+     private LocalDate dueDate;
+ 
++    @Column(name = "manual_due_date")
++    private boolean manualDueDate;
++
+     @Column(name = "discount_pct")
+     private BigDecimal discountPct = BigDecimal.ZERO;
+ 
+@@ -189,11 +195,43 @@ public class Invoice {
+         this.status = InvoiceStatus.VOID;
+     }
+ 
+-    /** Marks the invoice sent, issued on the given date and due on the given date. */
++    /** Whether the due date was set by hand; it is then kept when the invoice is sent. */
++    public boolean isManualDueDate() {
++        return manualDueDate;
++    }
++
++    /**
++     * Sets the due date by hand: not before the issue date nor more than {@link #MAX_DUE_DAYS} days
++     * after it, or it is refused.
++     */
++    public void setDueDate(LocalDate dueDate) {
++        if (issueDate != null && dueDate.isBefore(issueDate)) {
++            throw new InvoiceRejectedException(
++                    "The due date cannot be before the issue date (" + issueDate + ").");
++        }
++        if (issueDate != null && dueDate.isAfter(issueDate.plusDays(MAX_DUE_DAYS))) {
++            throw new InvoiceRejectedException("The due date can be at most " + MAX_DUE_DAYS
++                    + " days after the issue date, so no later than " + issueDate.plusDays(MAX_DUE_DAYS) + ".");
++        }
++        this.dueDate = dueDate;
++        this.manualDueDate = true;
++    }
++
++    /**
++     * Marks the invoice sent, issued on the given date and due on the given date, unless its due date
++     * was set by hand, which is kept.
++     */
+     public void markSent(LocalDate issueDate, LocalDate dueDate) {
+         this.status = InvoiceStatus.SENT;
+         this.issueDate = issueDate;
+-        this.dueDate = dueDate;
++        if (!manualDueDate) {
++            this.dueDate = dueDate;
++        }
++    }
++
++    /** Whether a due date set by hand is already past on the given send date. */
++    public boolean dueDatePassedBy(LocalDate sendDate) {
++        return manualDueDate && dueDate != null && dueDate.isBefore(sendDate);
+     }
+ 
+     /** Puts a sent invoice back to draft, so it has to be sent again. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 12419a6..47a17a3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -95,7 +95,7 @@ public class InvoiceController {
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+-            String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate) {
++            String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -115,7 +115,8 @@ public class InvoiceController {
+                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
+                     i.total(taxRate).toPlainString(),
+                     payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
+-                    i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn);
++                    i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
++                    i.isManualDueDate());
+         }
+     }
+ 
+@@ -189,6 +190,12 @@ public class InvoiceController {
+             String reference) {
+     }
+ 
++    /** A due date to set on a draft by hand. */
++    public record NewDueDate(
++            @NotNull(message = "Enter the due date.")
++            LocalDate dueDate) {
++    }
++
+     /** The part of a split payment that goes to one invoice: more than zero, with at most two decimals. */
+     public record NewAllocation(
+             @NotNull(message = "Choose the invoice each part of the payment goes to.")
+@@ -327,6 +334,13 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    @PutMapping("/api/invoices/{id}/due-date")
++    public InvoiceDetail setDueDate(@PathVariable Long id, @Valid @RequestBody NewDueDate body) {
++        return invoices.setDueDate(id, body.dueDate())
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     @PostMapping("/api/invoices/{id}/duplicate")
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail duplicate(@PathVariable Long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+index acd3533..a61983d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RestControllerAdvice(assignableTypes = InvoiceController.class)
+ public class InvoiceErrors {
+ 
+-    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "discountAmount", "discountCap", "discountReason", "discountGiven", "amount", "date", "reference");
++    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "discountAmount", "discountCap", "discountReason", "discountGiven", "amount", "date", "reference", "dueDate");
+ 
+     @ExceptionHandler(MethodArgumentNotValidException.class)
+     public ProblemDetail invalid(MethodArgumentNotValidException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 4f1d931..0918918 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -202,6 +202,24 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Sets a draft's due date by hand, kept when it is sent; empty if no such invoice. A date before
++     * the issue date or more than {@link Invoice#MAX_DUE_DAYS} days after it is refused, as is any
++     * invoice that is not a draft.
++     */
++    @Transactional
++    public Optional<Invoice> setDueDate(Long invoiceId, LocalDate dueDate) {
++        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        found.ifPresent(invoice -> {
++            if (!invoice.isDraft()) {
++                throw new InvoiceRejectedException("Only a draft's due date can be set.");
++            }
++            invoice.setDueDate(dueDate);
++            invoices.saveAndFlush(invoice);
++        });
++        return found;
++    }
++
+     /**
+      * Readies the invoice for a change: a draft stays as it is; a sent invoice with no payments goes
+      * back to draft, to be sent again; an invoice with any payment is refused with the message.
+@@ -222,8 +240,10 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Sends a draft invoice, issuing it today and making it due on the client's terms, and records it in the audit; empty if
+-     * no such invoice. An invoice already sent, with no lines, or whose discount needs a reason but has none, is refused.
++     * Sends a draft invoice, issuing it today and making it due on the client's terms (or keeping a due
++     * date set by hand), and records it in the audit; empty if no such invoice. An invoice already
++     * sent, with no lines, whose discount needs a reason but has none, or whose due date set by hand is
++     * before today, is refused.
+      */
+     @Transactional
+     public Optional<Invoice> send(Long invoiceId) {
+@@ -242,6 +262,10 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException(
+                         "The discount is more than 20% of the subtotal; give it a reason before sending the invoice.");
+             }
++            if (invoice.dueDatePassedBy(today.date())) {
++                throw new InvoiceRejectedException("The due date (" + invoice.getDueDate()
++                        + ") is already past; set a later due date before sending the invoice.");
++            }
+             markSent(invoice);
+         });
+         return found;
+@@ -249,12 +273,14 @@ public class InvoiceService {
+ 
+     /**
+      * Sends each of the client's drafts that has at least one line, lowest id first, as {@link #send}
+-     * would; drafts with no lines, or whose discount needs a reason but has none, stay drafts.
++     * would; drafts with no lines, whose discount needs a reason but has none, or whose due date set by
++     * hand is already past, stay drafts.
+      */
+     @Transactional
+     public void sendAllDrafts(Long clientId) {
+         invoices.findByClientIdOrderByIdAsc(clientId).stream()
+-                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty() && !invoice.discountLacksReason())
++                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty() && !invoice.discountLacksReason()
++                        && !invoice.dueDatePassedBy(today.date()))
+                 .forEach(this::markSent);
+     }
+ 
+diff --git a/src/main/resources/db/migration/V14__invoice_manual_due_date.sql b/src/main/resources/db/migration/V14__invoice_manual_due_date.sql
+new file mode 100644
+index 0000000..8c44dbc
+--- /dev/null
++++ b/src/main/resources/db/migration/V14__invoice_manual_due_date.sql
+@@ -0,0 +1,2 @@
++-- Whether the due date was set by hand on the draft; such a due date is kept when the invoice is sent.
++ALTER TABLE invoice ADD COLUMN manual_due_date BOOLEAN DEFAULT FALSE NOT NULL;
