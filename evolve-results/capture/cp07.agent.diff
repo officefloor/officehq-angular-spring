@@ -1,0 +1,367 @@
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index c3bc957..e104808 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { ClientInvoices } from '../invoices/client-invoices';
++import { InvoiceService } from '../invoices/invoice.service';
+ import { Client, ClientService, byName } from './client.service';
+ 
+ // A proper email address: a mailbox, an @, and a domain with at least one dot — name@company.com,
+@@ -9,7 +10,8 @@ import { Client, ClientService, byName } from './client.service';
+ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+ 
+ // The workspace's clients: listed A to Z by name (ignoring capitals), with a form to add one.
+-// Clicking a client lists that client's invoices beside the clients.
++// Clicking a client lists that client's invoices beside the clients. Typing an invoice number into
++// the lookup box selects its client and opens the invoice; a mistyped number opens nothing.
+ @Component({
+   selector: 'app-clients',
+   imports: [ReactiveFormsModule, ClientInvoices],
+@@ -39,16 +41,33 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+   `,
+   template: `
+     <section aria-labelledby="clients-heading">
++      <form [formGroup]="lookup" (ngSubmit)="findInvoice()" aria-label="Open an invoice" novalidate>
++        <label for="invoice-lookup">Invoice number</label>
++        <input
++          id="invoice-lookup"
++          data-testid="invoice-lookup-input"
++          formControlName="number"
++          placeholder="INV-0000075"
++          required
++        />
++        <button type="submit" data-testid="invoice-lookup-submit" [disabled]="looking()">
++          Open invoice
++        </button>
++        @if (lookupError()) {
++          <p role="alert" data-testid="invoice-lookup-error">{{ lookupError() }}</p>
++        }
++      </form>
++
+       <h2 id="clients-heading">Clients</h2>
+ 
+       <ul data-testid="client-list">
+         @for (c of clients(); track c.id) {
+-          <li [attr.data-testid]="'client-row-' + c.id" (click)="selectedId.set(c.id)">
++          <li [attr.data-testid]="'client-row-' + c.id" (click)="selectClient(c.id)">
+             <button
+               type="button"
+               class="client"
+               [attr.aria-pressed]="selectedId() === c.id"
+-              (click)="$event.stopPropagation(); selectedId.set(c.id)"
++              (click)="$event.stopPropagation(); selectClient(c.id)"
+             >
+               <span data-testid="client-name">{{ c.name }}</span>
+               <span data-testid="client-email">{{ c.email }}</span>
+@@ -80,12 +99,17 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+     </section>
+ 
+     @if (selected(); as client) {
+-      <app-client-invoices [clientId]="client.id" [clientName]="client.name" />
++      <app-client-invoices
++        [clientId]="client.id"
++        [clientName]="client.name"
++        [openInvoice]="openInvoice()"
++      />
+     }
+   `,
+ })
+ export class Clients {
+   private readonly service = inject(ClientService);
++  private readonly invoiceService = inject(InvoiceService);
+ 
+   protected readonly clients = signal<Client[]>([]);
+   protected readonly saving = signal(false);
+@@ -95,6 +119,13 @@ export class Clients {
+     () => this.clients().find((c) => c.id === this.selectedId()) ?? null,
+   );
+ 
++  protected readonly looking = signal(false);
++  protected readonly lookupError = signal('');
++  protected readonly openInvoice = signal<{ id: number; clientId: number } | null>(null);
++  protected readonly lookup = new FormGroup({
++    number: new FormControl('', { nonNullable: true }),
++  });
++
+   protected readonly form = new FormGroup({
+     name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+     email: new FormControl('', {
+@@ -135,6 +166,37 @@ export class Clients {
+     });
+   }
+ 
++  protected selectClient(id: number): void {
++    this.openInvoice.set(null);
++    this.selectedId.set(id);
++  }
++
++  // Opens the invoice with the typed number and selects its client. The server checks the number's
++  // check digit and refuses a mistyped one.
++  protected findInvoice(): void {
++    const number = this.lookup.controls.number.value.trim();
++    if (!number) {
++      this.lookupError.set('Enter an invoice number, like INV-0000075.');
++      return;
++    }
++    this.looking.set(true);
++    this.lookupError.set('');
++    this.invoiceService.openByNumber(number).subscribe({
++      next: (found) => {
++        this.selectedId.set(found.clientId);
++        this.openInvoice.set({ id: found.id, clientId: found.clientId });
++        this.looking.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.lookupError.set(
++          typeof detail === 'string' && detail ? detail : 'The invoice could not be opened.',
++        );
++        this.looking.set(false);
++      },
++    });
++  }
++
+   // What is wrong with the client, or '' when it can be saved. A duplicate email is checked here
+   // for a quick answer; the server is the authority.
+   private problemWith(name: string, email: string): string {
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index 645f62d..241ed96 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -1,10 +1,11 @@
+-import { Component, effect, inject, input, signal } from '@angular/core';
++import { Component, effect, inject, input, signal, untracked } from '@angular/core';
+ import { InvoiceDetail, InvoiceService, InvoiceSummary } from './invoice.service';
+ import { InvoicePanel } from './invoice-panel';
+ import { money, statusLabel } from './invoice-format';
+ 
+ // One client's invoices, each with its status, total, issue and due dates. Clicking an invoice
+ // opens it in the invoice panel beside the list; New invoice starts an empty draft and opens it.
++// An invoice looked up by its number is opened as soon as its client's invoices are shown.
+ @Component({
+   selector: 'app-client-invoices',
+   imports: [InvoicePanel],
+@@ -57,7 +58,7 @@ import { money, statusLabel } from './invoice-format';
+                   class="open"
+                   (click)="$event.stopPropagation(); selectedId.set(i.id)"
+                 >
+-                  #{{ i.id }}
++                  <span data-testid="invoice-number">{{ i.number }}</span>
+                 </button>
+               </td>
+               <td data-testid="invoice-status">{{ statusLabel(i.status) }}</td>
+@@ -84,6 +85,9 @@ export class ClientInvoices {
+ 
+   readonly clientId = input.required<number>();
+   readonly clientName = input('');
++  // An invoice to open, looked up by number; a new object for each lookup, so the same invoice
++  // can be opened again.
++  readonly openInvoice = input<{ id: number; clientId: number } | null>(null);
+ 
+   protected readonly invoices = signal<InvoiceSummary[]>([]);
+   protected readonly selectedId = signal<number | null>(null);
+@@ -95,10 +99,17 @@ export class ClientInvoices {
+     effect((onCleanup) => {
+       const id = this.clientId();
+       this.invoices.set([]);
+-      this.selectedId.set(null);
++      const open = untracked(this.openInvoice);
++      this.selectedId.set(open?.clientId === id ? open.id : null);
+       const sub = this.service.forClient(id).subscribe((list) => this.invoices.set(list));
+       onCleanup(() => sub.unsubscribe());
+     });
++    effect(() => {
++      const open = this.openInvoice();
++      if (open && open.clientId === untracked(this.clientId)) {
++        this.selectedId.set(open.id);
++      }
++    });
+   }
+ 
+   protected newDraft(): void {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 98f3567..c2985b6 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -36,7 +36,9 @@ function problemWith(line: NewLine): string {
+   imports: [ReactiveFormsModule],
+   template: `
+     <section data-testid="invoice-panel" aria-labelledby="invoice-panel-heading">
+-      <h2 id="invoice-panel-heading">Invoice #{{ invoiceId() }}</h2>
++      <h2 id="invoice-panel-heading">
++        Invoice <span data-testid="invoice-panel-number">{{ invoice()?.number }}</span>
++      </h2>
+       @if (invoice(); as inv) {
+         <p>Status: <span data-testid="invoice-panel-status">{{ statusLabel(inv.status) }}</span></p>
+         <table>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index a789d6d..855c984 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -8,6 +8,8 @@ export type InvoiceStatus = 'DRAFT' | 'SENT';
+ // server: each line's quantity times unit price rounded half up to the cent, then added up.
+ export interface InvoiceSummary {
+   id: number;
++  // INV-, the id padded to six digits, then a Luhn check digit, e.g. INV-0000075.
++  number: string;
+   status: InvoiceStatus;
+   total: string;
+   issueDate: string | null;
+@@ -27,6 +29,7 @@ export interface InvoiceLineView {
+ // An opened invoice with its lines and totals, all worked out by the server.
+ export interface InvoiceDetail {
+   id: number;
++  number: string;
+   clientId: number;
+   status: InvoiceStatus;
+   issueDate: string | null;
+@@ -61,6 +64,11 @@ export class InvoiceService {
+     return this.http.get<InvoiceDetail>(`/api/invoices/${id}`);
+   }
+ 
++  // Opens the invoice with a typed number; refused (400) when its check digit does not match.
++  openByNumber(number: string): Observable<InvoiceDetail> {
++    return this.http.get<InvoiceDetail>(`/api/invoices/by-number/${encodeURIComponent(number)}`);
++  }
++
+   // Adds a line to a draft invoice; answers the invoice with its new lines and totals.
+   addLine(invoiceId: number, line: NewLine): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines`, line);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index c804ed3..19ed1fe 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -22,11 +22,11 @@ import org.springframework.web.server.ResponseStatusException;
+ public class InvoiceController {
+ 
+     /** An invoice as listed: its total is a decimal string to the cent, e.g. "25.25". */
+-    public record InvoiceSummary(Long id, InvoiceStatus status, String total, LocalDate issueDate,
+-            LocalDate dueDate) {
++    public record InvoiceSummary(Long id, String number, InvoiceStatus status, String total,
++            LocalDate issueDate, LocalDate dueDate) {
+         static InvoiceSummary of(Invoice i) {
+             BigDecimal total = i.total();
+-            return new InvoiceSummary(i.getId(), i.getStatus(), total.toPlainString(), i.getIssueDate(),
++            return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.getStatus(), total.toPlainString(), i.getIssueDate(),
+                     i.getDueDate());
+         }
+     }
+@@ -43,11 +43,11 @@ public class InvoiceController {
+     }
+ 
+     /** An opened invoice: its lines, subtotal and grand total (money as decimal strings to the cent). */
+-    public record InvoiceDetail(Long id, Long clientId, InvoiceStatus status, LocalDate issueDate,
++    public record InvoiceDetail(Long id, String number, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String total) {
+         static InvoiceDetail of(Invoice i) {
+             String total = i.total().toPlainString();
+-            return new InvoiceDetail(i.getId(), i.getClientId(), i.getStatus(), i.getIssueDate(), i.getDueDate(),
++            return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()), i.getClientId(), i.getStatus(), i.getIssueDate(), i.getDueDate(),
+                     i.getLines().stream().map(LineView::of).toList(), total, total);
+         }
+     }
+@@ -91,6 +91,16 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /** Opens the invoice with a typed number; a number whose check digit is wrong is refused. */
++    @GetMapping("/api/invoices/by-number/{number}")
++    public InvoiceDetail openByNumber(@PathVariable String number) {
++        Long id = InvoiceNumber.idOf(number).orElseThrow(() -> new ResponseStatusException(
++                HttpStatus.BAD_REQUEST, number.trim() + " is mistyped: check the invoice number."));
++        return invoices.find(id).map(InvoiceDetail::of)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
++                        "There is no invoice " + number.trim() + "."));
++    }
++
+     @PostMapping("/api/invoices/{id}/lines")
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+index 806d6c9..261f617 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+@@ -7,6 +7,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
+ import org.springframework.web.bind.MethodArgumentNotValidException;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.RestControllerAdvice;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ /** Turns a refused invoice change into a problem response whose detail says what is wrong. */
+ @RestControllerAdvice(assignableTypes = InvoiceController.class)
+@@ -32,6 +33,11 @@ public class InvoiceErrors {
+                 "Enter the quantity and unit price as numbers, like 1.5 and 12.35.");
+     }
+ 
++    @ExceptionHandler(ResponseStatusException.class)
++    public ProblemDetail status(ResponseStatusException e) {
++        return ProblemDetail.forStatusAndDetail(e.getStatusCode(), e.getReason());
++    }
++
+     @ExceptionHandler(InvoiceRejectedException.class)
+     public ProblemDetail rejected(InvoiceRejectedException e) {
+         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceNumber.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceNumber.java
+new file mode 100644
+index 0000000..ce77747
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceNumber.java
+@@ -0,0 +1,55 @@
++package net.officefloor.hq.app.invoices;
++
++import java.util.Optional;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++/**
++ * An invoice's number, made from its id: INV-, the id padded to six digits, then a Luhn check
++ * digit over those six digits — so invoice 7 is INV-0000075.
++ */
++public final class InvoiceNumber {
++
++    private static final Pattern FORM = Pattern.compile("INV-(\\d{6})(\\d)");
++
++    private InvoiceNumber() {
++    }
++
++    /** The number of the invoice with this id. */
++    public static String of(long id) {
++        String digits = String.format("%06d", id);
++        return "INV-" + digits + checkDigit(digits);
++    }
++
++    /**
++     * The invoice id a typed number stands for. Empty when it is not of the form INV-nnnnnnn or its
++     * check digit does not match — the number was mistyped.
++     */
++    public static Optional<Long> idOf(String typed) {
++        Matcher m = FORM.matcher(typed.trim().toUpperCase());
++        if (!m.matches() || checkDigit(m.group(1)) != m.group(2).charAt(0) - '0') {
++            return Optional.empty();
++        }
++        return Optional.of(Long.parseLong(m.group(1)));
++    }
++
++    /**
++     * Luhn: from the rightmost digit, double every second digit (the rightmost, the third from the
++     * right, ...), subtracting 9 from any result over 9; the check digit brings the sum of all the
++     * digits up to the next multiple of ten.
++     */
++    static int checkDigit(String digits) {
++        int sum = 0;
++        for (int i = 0; i < digits.length(); i++) {
++            int d = digits.charAt(digits.length() - 1 - i) - '0';
++            if (i % 2 == 0) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++        }
++        return (10 - sum % 10) % 10;
++    }
++}
