@@ -1,0 +1,151 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index f09881f..502b2fe 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -41,6 +41,9 @@ import { money, statusLabel } from './invoice-format';
+       <button type="button" data-testid="invoice-new" [disabled]="creating()" (click)="newDraft()">
+         New invoice
+       </button>
++      <button type="button" data-testid="invoice-send-all" [disabled]="sendingAll()" (click)="sendAllDrafts()">
++        Send all drafts
++      </button>
+       <table data-testid="invoice-list">
+         <thead>
+           <tr>
+@@ -98,6 +101,7 @@ import { money, statusLabel } from './invoice-format';
+     @if (selectedId(); as id) {
+       <app-invoice-panel
+         [invoiceId]="id"
++        [reload]="reloadPanel()"
+         [allocations]="allocations()"
+         (changed)="totalChanged($event)"
+         (split)="splitRecorded($event)"
+@@ -127,6 +131,9 @@ export class ClientInvoices {
+   protected readonly invoices = signal<InvoiceSummary[]>([]);
+   protected readonly selectedId = signal<number | null>(null);
+   protected readonly creating = signal(false);
++  protected readonly sendingAll = signal(false);
++  // Bumped to make the invoice panel load its invoice again.
++  protected readonly reloadPanel = signal(0);
+   // The part of a payment typed for each invoice, by id, as entered.
+   protected readonly allocated = signal<Record<number, string>>({});
+   // The parts that have been filled in, for the payment form.
+@@ -168,6 +175,21 @@ export class ClientInvoices {
+     });
+   }
+ 
++  // Sends every draft with lines: show their new statuses and dates, and load the open invoice
++  // again so the panel shows it as sent.
++  protected sendAllDrafts(): void {
++    this.sendingAll.set(true);
++    this.service.sendAllDrafts(this.clientId()).subscribe({
++      next: (list) => {
++        this.invoices.set(list);
++        this.reloadPanel.update((n) => n + 1);
++        this.sendingAll.set(false);
++        this.changed.emit();
++      },
++      error: () => this.sendingAll.set(false),
++    });
++  }
++
+   // An invoice was duplicated: list the new draft and open it.
+   protected duplicated(detail: InvoiceDetail): void {
+     const { id, number, status, total, issueDate, dueDate } = detail;
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index adeb6a2..87eb0a5 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -392,6 +392,8 @@ export class InvoicePanel {
+   private readonly service = inject(InvoiceService);
+ 
+   readonly invoiceId = input.required<number>();
++  // Bumped when the invoice was changed elsewhere (sent with the client's other drafts), to load it again.
++  readonly reload = input(0);
+   // The invoice after a change made here, so the list can show its new total.
+   readonly changed = output<InvoiceDetail>();
+   // The parts of a payment filled in on the list; when any is, a payment is spread over them.
+@@ -435,6 +437,7 @@ export class InvoicePanel {
+   constructor() {
+     effect((onCleanup) => {
+       const id = this.invoiceId();
++      this.reload();
+       this.invoice.set(null);
+       this.form.reset();
+       this.error.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 1f2985c..e07488d 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -178,6 +178,12 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/send`, null);
+   }
+ 
++  // Sends every draft of the client that has at least one line, lowest id first; drafts with no
++  // lines stay drafts. Answers the client's invoices with their new statuses.
++  sendAllDrafts(clientId: number): Observable<InvoiceSummary[]> {
++    return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/invoices/send-drafts`, null);
++  }
++
+   // Copies an invoice into a new draft for the same client: its lines and invoice discount, issued
+   // today and due as any new invoice; payments are not copied. Answers the new draft.
+   duplicate(invoiceId: number): Observable<InvoiceDetail> {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index f57389a..75aa72f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -261,6 +261,13 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+     }
+ 
++    /** Sends every draft of the client that has a line; answers the client's invoices with their new statuses. */
++    @PostMapping("/api/clients/{clientId}/invoices/send-drafts")
++    public List<InvoiceSummary> sendAllDrafts(@PathVariable Long clientId) {
++        invoices.sendAllDrafts(clientId);
++        return forClient(clientId);
++    }
++
+     @GetMapping("/api/invoices/{id}")
+     public InvoiceDetail open(@PathVariable Long id) {
+         return invoices.find(id).map(this::detail)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 3db533b..40f5dfc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -207,15 +207,31 @@ public class InvoiceService {
+             if (invoice.getLines().isEmpty()) {
+                 throw new InvoiceRejectedException("Add at least one line before sending the invoice.");
+             }
+-            LocalDate issued = today.date();
+-            invoice.markSent(issued, dueDateFor(invoice.getClientId(), issued));
+-            invoices.saveAndFlush(invoice);
+-            audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
+-                    + " total=" + invoice.total(taxRate.percent()).toPlainString());
++            markSent(invoice);
+         });
+         return found;
+     }
+ 
++    /**
++     * Sends each of the client's drafts that has at least one line, lowest id first, as {@link #send}
++     * would; drafts with no lines stay drafts.
++     */
++    @Transactional
++    public void sendAllDrafts(Long clientId) {
++        invoices.findByClientIdOrderByIdAsc(clientId).stream()
++                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty())
++                .forEach(this::markSent);
++    }
++
++    /** Issues the draft today, due on the client's terms, and records it in the audit. */
++    private void markSent(Invoice invoice) {
++        LocalDate issued = today.date();
++        invoice.markSent(issued, dueDateFor(invoice.getClientId(), issued));
++        invoices.saveAndFlush(invoice);
++        audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
++                + " total=" + invoice.total(taxRate.percent()).toPlainString());
++    }
++
+     /**
+      * Voids a sent invoice with no payments, and records it in the audit; empty if no such invoice. A
+      * draft, an invoice already void, or one with any payment is refused.
