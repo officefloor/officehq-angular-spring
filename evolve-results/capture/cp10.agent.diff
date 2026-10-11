@@ -1,0 +1,276 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index ed64d4c..e33fa7f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -91,6 +91,10 @@ function problemWith(line: NewLine): string {
+               <th scope="row" colspan="3">Discount ({{ inv.discountPct }}%)</th>
+               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="3">Tax ({{ inv.taxRate }}%)</th>
++              <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="3">Total</th>
+               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 1bcf4d0..4e91690 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -5,7 +5,7 @@ import { Observable } from 'rxjs';
+ export type InvoiceStatus = 'DRAFT' | 'SENT';
+ 
+ // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
+-// server: each line's quantity times unit price rounded half up to the cent, then added up.
++// server: the grand total — the lines' subtotal less any discount plus tax.
+ export interface InvoiceSummary {
+   id: number;
+   // INV-, the id padded to six digits, then a Luhn check digit, e.g. INV-0000075.
+@@ -28,7 +28,9 @@ export interface InvoiceLineView {
+ 
+ // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
+ // percentage taken off the subtotal, without trailing zeros ("12.5"); `discount` is the amount it
+-// takes off, rounded half up to the cent; `total` is the subtotal less the discount.
++// takes off, rounded half up to the cent; `taxRate` is the workspace's tax percentage (without
++// trailing zeros, "0" when none is set) and `tax` is that rate on the subtotal, before the discount,
++// rounded half up to the cent; `total` is the subtotal less the discount plus the tax.
+ export interface InvoiceDetail {
+   id: number;
+   number: string;
+@@ -40,6 +42,8 @@ export interface InvoiceDetail {
+   subtotal: string;
+   discountPct: string;
+   discount: string;
++  taxRate: string;
++  tax: string;
+   total: string;
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/TaxRate.java b/src/main/java/net/officefloor/hq/app/TaxRate.java
+new file mode 100644
+index 0000000..8d3f4cf
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/TaxRate.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.List;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++
++/**
++ * The workspace's tax rate: the stored {@code tax_rate} setting, a percentage such as 10. With no
++ * rate set there is no tax, so the rate is 0.
++ */
++@Service
++public class TaxRate {
++
++    static final String TAX_RATE = "tax_rate";
++
++    private final JdbcTemplate jdbc;
++
++    public TaxRate(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    public BigDecimal percent() {
++        List<String> rate = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
++                String.class, TAX_RATE);
++        return rate.isEmpty() ? BigDecimal.ZERO : new BigDecimal(rate.get(0));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index acf1be2..223b226 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -30,7 +30,8 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
+-    private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "clients", "invoices");
++    private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
+@@ -73,6 +74,19 @@ public class TestSupportController {
+             LocalDate asOf = date(fixture.get("asOf"), "asOf");
+             jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", Today.AS_OF, asOf.toString());
+         }
++        if (fixture.get("settings") != null) {
++            if (!(fixture.get("settings") instanceof Map<?, ?> settings)) {
++                throw refuse("settings must be an object");
++            }
++            @SuppressWarnings("unchecked")
++            Map<String, Object> values = (Map<String, Object>) settings;
++            only(values, SETTINGS_FIELDS, "settings");
++            if (values.get("taxRate") != null) {
++                BigDecimal rate = percent(values.get("taxRate"), "settings.taxRate");
++                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", TaxRate.TAX_RATE,
++                        rate.toPlainString());
++            }
++        }
+         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
+             only(row, CLIENT_FIELDS, "clients[]");
+             Object id = row.get("id");
+@@ -127,6 +141,11 @@ public class TestSupportController {
+         if (!asOf.isEmpty()) {
+             out.put("asOf", asOf.get(0));
+         }
++        List<String> taxRate = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
++                String.class, TaxRate.TAX_RATE);
++        if (!taxRate.isEmpty()) {
++            out.put("settings", Map.of("taxRate", new BigDecimal(taxRate.get(0))));
++        }
+         out.put("clients", jdbc.queryForList("SELECT id, name, email FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+@@ -219,7 +238,7 @@ public class TestSupportController {
+         return number;
+     }
+ 
+-    /** A percentage from 0 to 100 with at most two decimals; none given is no discount. */
++    /** A percentage from 0 to 100 with at most two decimals; none given is zero. */
+     private static BigDecimal percent(Object value, String field) {
+         if (value == null) {
+             return BigDecimal.ZERO;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index d3a02ce..42b457f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -119,8 +119,17 @@ public class Invoice {
+                 .setScale(2, RoundingMode.HALF_UP);
+     }
+ 
+-    /** The subtotal less the discount. */
+-    public BigDecimal total() {
+-        return subtotal().subtract(discount());
++    /**
++     * The tax charged at the given rate (a percentage): the rate on the subtotal, before any
++     * discount comes off, rounded half up to the cent.
++     */
++    public BigDecimal tax(BigDecimal taxRate) {
++        return subtotal().multiply(taxRate).divide(BigDecimal.valueOf(100))
++                .setScale(2, RoundingMode.HALF_UP);
++    }
++
++    /** The grand total: the subtotal less the discount, plus tax at the given rate. */
++    public BigDecimal total(BigDecimal taxRate) {
++        return subtotal().subtract(discount()).add(tax(taxRate));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 15bfbcb..9767ec4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.TaxRate;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -26,8 +27,8 @@ public class InvoiceController {
+     /** An invoice as listed: its total is a decimal string to the cent, e.g. "25.25". */
+     public record InvoiceSummary(Long id, String number, InvoiceStatus status, String total,
+             LocalDate issueDate, LocalDate dueDate) {
+-        static InvoiceSummary of(Invoice i) {
+-            BigDecimal total = i.total();
++        static InvoiceSummary of(Invoice i, BigDecimal taxRate) {
++            BigDecimal total = i.total(taxRate);
+             return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.getStatus(), total.toPlainString(), i.getIssueDate(),
+                     i.getDueDate());
+         }
+@@ -46,16 +47,18 @@ public class InvoiceController {
+ 
+     /**
+      * An opened invoice: its lines, subtotal, discount percentage (without trailing zeros, "12.5"),
+-     * the amount it takes off and the grand total (money as decimal strings to the cent).
++     * the amount it takes off, the tax rate (without trailing zeros) and the tax charged, and the
++     * grand total (money as decimal strings to the cent).
+      */
+     public record InvoiceDetail(Long id, String number, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discount,
+-            String total) {
+-        static InvoiceDetail of(Invoice i) {
++            String taxRate, String tax, String total) {
++        static InvoiceDetail of(Invoice i, BigDecimal taxRate) {
+             return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()), i.getClientId(), i.getStatus(), i.getIssueDate(), i.getDueDate(),
+                     i.getLines().stream().map(LineView::of).toList(), i.subtotal().toPlainString(),
+                     i.getDiscountPct().stripTrailingZeros().toPlainString(), i.discount().toPlainString(),
+-                    i.total().toPlainString());
++                    taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
++                    i.total(taxRate).toPlainString());
+         }
+     }
+ 
+@@ -84,26 +87,37 @@ public class InvoiceController {
+     }
+ 
+     private final InvoiceService invoices;
++    private final TaxRate taxRate;
+ 
+-    public InvoiceController(InvoiceService invoices) {
++    public InvoiceController(InvoiceService invoices, TaxRate taxRate) {
+         this.invoices = invoices;
++        this.taxRate = taxRate;
++    }
++
++    private InvoiceSummary summary(Invoice i) {
++        return InvoiceSummary.of(i, taxRate.percent());
++    }
++
++    private InvoiceDetail detail(Invoice i) {
++        return InvoiceDetail.of(i, taxRate.percent());
+     }
+ 
+     @GetMapping("/api/clients/{clientId}/invoices")
+     public List<InvoiceSummary> forClient(@PathVariable Long clientId) {
+-        return invoices.forClient(clientId).stream().map(InvoiceSummary::of).toList();
++        BigDecimal rate = taxRate.percent();
++        return invoices.forClient(clientId).stream().map(i -> InvoiceSummary.of(i, rate)).toList();
+     }
+ 
+     @PostMapping("/api/clients/{clientId}/invoices")
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceSummary newDraft(@PathVariable Long clientId) {
+-        return invoices.newDraft(clientId).map(InvoiceSummary::of)
++        return invoices.newDraft(clientId).map(this::summary)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+     }
+ 
+     @GetMapping("/api/invoices/{id}")
+     public InvoiceDetail open(@PathVariable Long id) {
+-        return invoices.find(id).map(InvoiceDetail::of)
++        return invoices.find(id).map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
+@@ -112,7 +126,7 @@ public class InvoiceController {
+     public InvoiceDetail openByNumber(@PathVariable String number) {
+         Long id = InvoiceNumber.idOf(number).orElseThrow(() -> new ResponseStatusException(
+                 HttpStatus.BAD_REQUEST, number.trim() + " is mistyped: check the invoice number."));
+-        return invoices.find(id).map(InvoiceDetail::of)
++        return invoices.find(id).map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                         "There is no invoice " + number.trim() + "."));
+     }
+@@ -121,14 +135,14 @@ public class InvoiceController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
+         return invoices.addLine(id, body.description().trim(), body.qty(), body.unitPrice())
+-                .map(InvoiceDetail::of)
++                .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
+     @PutMapping("/api/invoices/{id}/discount")
+     public InvoiceDetail setDiscount(@PathVariable Long id, @Valid @RequestBody NewDiscount body) {
+         return invoices.setDiscount(id, body.discountPct())
+-                .map(InvoiceDetail::of)
++                .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ }
