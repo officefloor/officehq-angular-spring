@@ -1,0 +1,441 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index c2985b6..ed64d4c 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -7,6 +7,23 @@ import { money, statusLabel } from './invoice-format';
+ // A positive decimal with at most two decimals, e.g. 1, 1.5 or 12.35. The server applies the same rules.
+ const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+ 
++// A percentage from 0 to 100 with at most two decimals, e.g. 15 or 12.5; the server checks it again.
++function problemWithDiscount(pct: string): string {
++  if (!pct) {
++    return 'Enter a discount percentage.';
++  }
++  if (!/^-?\d+(\.\d+)?$/.test(pct)) {
++    return 'The discount must be a number, like 15 or 12.5.';
++  }
++  if (Number(pct) < 0 || Number(pct) > 100) {
++    return 'The discount must be from 0 to 100 percent.';
++  }
++  if (!TWO_DECIMALS.test(pct)) {
++    return 'The discount can have at most two decimals.';
++  }
++  return '';
++}
++
+ // What is wrong with a line, or '' when it can be added.
+ function problemWith(line: NewLine): string {
+   const problems: string[] = [];
+@@ -30,7 +47,8 @@ function problemWith(line: NewLine): string {
+   return problems.join(' ');
+ }
+ 
+-// One opened invoice: its status, its lines and its totals. A draft takes new lines.
++// One opened invoice: its status, its lines and its totals. A draft takes new lines and a
++// percentage discount.
+ @Component({
+   selector: 'app-invoice-panel',
+   imports: [ReactiveFormsModule],
+@@ -69,6 +87,10 @@ function problemWith(line: NewLine): string {
+               <th scope="row" colspan="3">Subtotal</th>
+               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="3">Discount ({{ inv.discountPct }}%)</th>
++              <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="3">Total</th>
+               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
+@@ -108,6 +130,28 @@ function problemWith(line: NewLine): string {
+               <p role="alert" data-testid="line-form-error">{{ error() }}</p>
+             }
+           </form>
++
++          <form
++            [formGroup]="discountForm"
++            (ngSubmit)="setDiscount(inv.id)"
++            aria-label="Discount"
++            novalidate
++          >
++            <label for="discount-pct">Discount (%)</label>
++            <input
++              id="discount-pct"
++              data-testid="discount-form-pct"
++              inputmode="decimal"
++              formControlName="pct"
++              required
++            />
++            <button type="submit" data-testid="discount-form-submit" [disabled]="savingDiscount()">
++              Apply discount
++            </button>
++            @if (discountError()) {
++              <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
++            }
++          </form>
+         }
+       }
+     </section>
+@@ -123,6 +167,8 @@ export class InvoicePanel {
+   protected readonly invoice = signal<InvoiceDetail | null>(null);
+   protected readonly saving = signal(false);
+   protected readonly error = signal('');
++  protected readonly savingDiscount = signal(false);
++  protected readonly discountError = signal('');
+   protected readonly statusLabel = statusLabel;
+   protected readonly money = money;
+ 
+@@ -132,12 +178,18 @@ export class InvoicePanel {
+     unitPrice: new FormControl('', { nonNullable: true }),
+   });
+ 
++  protected readonly discountForm = new FormGroup({
++    pct: new FormControl('', { nonNullable: true }),
++  });
++
+   constructor() {
+     effect((onCleanup) => {
+       const id = this.invoiceId();
+       this.invoice.set(null);
+       this.form.reset();
+       this.error.set('');
++      this.discountForm.reset();
++      this.discountError.set('');
+       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
+       onCleanup(() => sub.unsubscribe());
+     });
+@@ -174,4 +226,31 @@ export class InvoicePanel {
+       },
+     });
+   }
++
++  protected setDiscount(invoiceId: number): void {
++    const pct = this.discountForm.getRawValue().pct.trim().replace(/%$/, '').trim();
++    const problem = problemWithDiscount(pct);
++    if (problem) {
++      this.discountForm.markAllAsTouched();
++      this.discountError.set(problem);
++      return;
++    }
++    this.savingDiscount.set(true);
++    this.discountError.set('');
++    this.service.setDiscount(invoiceId, pct).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.discountForm.reset();
++        this.savingDiscount.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.discountError.set(
++          typeof detail === 'string' && detail ? detail : 'The discount could not be applied.',
++        );
++        this.savingDiscount.set(false);
++      },
++    });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 6614ada..1bcf4d0 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -26,7 +26,9 @@ export interface InvoiceLineView {
+   amount: string;
+ }
+ 
+-// An opened invoice with its lines and totals, all worked out by the server.
++// An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
++// percentage taken off the subtotal, without trailing zeros ("12.5"); `discount` is the amount it
++// takes off, rounded half up to the cent; `total` is the subtotal less the discount.
+ export interface InvoiceDetail {
+   id: number;
+   number: string;
+@@ -36,6 +38,8 @@ export interface InvoiceDetail {
+   dueDate: string | null;
+   lines: InvoiceLineView[];
+   subtotal: string;
++  discountPct: string;
++  discount: string;
+   total: string;
+ }
+ 
+@@ -73,4 +77,10 @@ export class InvoiceService {
+   addLine(invoiceId: number, line: NewLine): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines`, line);
+   }
++
++  // Gives a draft invoice a percentage discount (0 to 100, up to two decimals); answers the
++  // invoice with its new totals.
++  setDiscount(invoiceId: number, discountPct: string): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/discount`, { discountPct });
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index efe1866..acf1be2 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -33,7 +33,7 @@ public class TestSupportController {
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "clients", "invoices");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
+ 
+@@ -94,10 +94,11 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+-                    row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"));
++                    row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
++                    percent(row.get("discountPct"), "invoices[].discountPct"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 insert("invoice_line", line.get("id"),
+@@ -135,7 +136,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -143,6 +144,7 @@ public class TestSupportController {
+                     row.put("status", r.get("STATUS"));
+                     row.put("issueDate", r.get("ISSUE_DATE") == null ? null : r.get("ISSUE_DATE").toString());
+                     row.put("dueDate", r.get("DUE_DATE") == null ? null : r.get("DUE_DATE").toString());
++                    row.put("discountPct", r.get("DISCOUNT_PCT"));
+                     row.put("lineItems", jdbc.queryForList(
+                             "SELECT id, description, qty, unit_price FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+@@ -217,6 +219,18 @@ public class TestSupportController {
+         return number;
+     }
+ 
++    /** A percentage from 0 to 100 with at most two decimals; none given is no discount. */
++    private static BigDecimal percent(Object value, String field) {
++        if (value == null) {
++            return BigDecimal.ZERO;
++        }
++        BigDecimal number = cents(value, field);
++        if (number.signum() < 0 || number.compareTo(BigDecimal.valueOf(100)) > 0) {
++            throw refuse(field + " must be from 0 to 100, not " + value);
++        }
++        return number;
++    }
++
+     @SuppressWarnings("unchecked")
+     private static List<Map<String, Object>> rows(Object value, String key) {
+         if (value == null) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 75994aa..d3a02ce 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -13,6 +13,7 @@ import jakarta.persistence.OneToMany;
+ import jakarta.persistence.OrderBy;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+@@ -38,6 +39,9 @@ public class Invoice {
+     @Column(name = "due_date")
+     private LocalDate dueDate;
+ 
++    @Column(name = "discount_pct")
++    private BigDecimal discountPct = BigDecimal.ZERO;
++
+     @OneToMany(cascade = CascadeType.ALL)
+     @JoinColumn(name = "invoice_id", nullable = false)
+     @OrderBy("id")
+@@ -76,6 +80,16 @@ public class Invoice {
+         return dueDate;
+     }
+ 
++    /** The percentage taken off the subtotal, 0 to 100 with up to two decimals. */
++    public BigDecimal getDiscountPct() {
++        return discountPct;
++    }
++
++    /** Sets the percentage taken off the subtotal; it has already been checked. */
++    public void setDiscountPct(BigDecimal discountPct) {
++        this.discountPct = discountPct;
++    }
++
+     public List<InvoiceLine> getLines() {
+         return lines;
+     }
+@@ -91,11 +105,22 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The sum of the line amounts, each already rounded half up to the cent — so the total matches
+-     * what a client gets by adding up the lines shown.
++     * The sum of the line amounts, each already rounded half up to the cent — so the subtotal
++     * matches what a client gets by adding up the lines shown.
+      */
+-    public BigDecimal total() {
++    public BigDecimal subtotal() {
+         return lines.stream().map(InvoiceLine::amount)
+                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
++
++    /** The amount taken off: the discount percentage of the subtotal, rounded half up to the cent. */
++    public BigDecimal discount() {
++        return subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100))
++                .setScale(2, RoundingMode.HALF_UP);
++    }
++
++    /** The subtotal less the discount. */
++    public BigDecimal total() {
++        return subtotal().subtract(discount());
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 19ed1fe..15bfbcb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.invoices;
+ 
+ import jakarta.validation.Valid;
++import jakarta.validation.constraints.DecimalMax;
+ import jakarta.validation.constraints.DecimalMin;
+ import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotBlank;
+@@ -13,6 +14,7 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
+@@ -42,16 +44,30 @@ public class InvoiceController {
+         }
+     }
+ 
+-    /** An opened invoice: its lines, subtotal and grand total (money as decimal strings to the cent). */
++    /**
++     * An opened invoice: its lines, subtotal, discount percentage (without trailing zeros, "12.5"),
++     * the amount it takes off and the grand total (money as decimal strings to the cent).
++     */
+     public record InvoiceDetail(Long id, String number, Long clientId, InvoiceStatus status, LocalDate issueDate,
+-            LocalDate dueDate, List<LineView> lines, String subtotal, String total) {
++            LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discount,
++            String total) {
+         static InvoiceDetail of(Invoice i) {
+-            String total = i.total().toPlainString();
+             return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()), i.getClientId(), i.getStatus(), i.getIssueDate(), i.getDueDate(),
+-                    i.getLines().stream().map(LineView::of).toList(), total, total);
++                    i.getLines().stream().map(LineView::of).toList(), i.subtotal().toPlainString(),
++                    i.getDiscountPct().stripTrailingZeros().toPlainString(), i.discount().toPlainString(),
++                    i.total().toPlainString());
+         }
+     }
+ 
++    /** A discount to give: a percentage from 0 to 100 with at most two decimals. */
++    public record NewDiscount(
++            @NotNull(message = "Enter a discount percentage.")
++            @DecimalMin(value = "0", message = "The discount must be from 0 to 100 percent.")
++            @DecimalMax(value = "100", message = "The discount must be from 0 to 100 percent.")
++            @Digits(integer = 3, fraction = 2, message = "The discount can have at most two decimals.")
++            BigDecimal discountPct) {
++    }
++
+     /** A line to add: a description, a quantity above zero and a unit price of at least $0.01. */
+     public record NewLine(
+             @NotBlank(message = "Enter a description.")
+@@ -108,4 +124,11 @@ public class InvoiceController {
+                 .map(InvoiceDetail::of)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
++
++    @PutMapping("/api/invoices/{id}/discount")
++    public InvoiceDetail setDiscount(@PathVariable Long id, @Valid @RequestBody NewDiscount body) {
++        return invoices.setDiscount(id, body.discountPct())
++                .map(InvoiceDetail::of)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+index 261f617..985618e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RestControllerAdvice(assignableTypes = InvoiceController.class)
+ public class InvoiceErrors {
+ 
+-    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice");
++    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct");
+ 
+     @ExceptionHandler(MethodArgumentNotValidException.class)
+     public ProblemDetail invalid(MethodArgumentNotValidException e) {
+@@ -23,14 +23,14 @@ public class InvoiceErrors {
+                 .map(f -> f.getDefaultMessage())
+                 .distinct()
+                 .reduce((a, b) -> a + " " + b)
+-                .orElse("The line is not valid.");
++                .orElse("The change is not valid.");
+         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
+     }
+ 
+     @ExceptionHandler(HttpMessageNotReadableException.class)
+     public ProblemDetail unreadable(HttpMessageNotReadableException e) {
+         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
+-                "Enter the quantity and unit price as numbers, like 1.5 and 12.35.");
++                "Enter the numbers as numbers, like 1.5 and 12.35.");
+     }
+ 
+     @ExceptionHandler(ResponseStatusException.class)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index c9521f3..0302427 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -9,7 +9,7 @@ import net.officefloor.hq.app.clients.ClientRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** Lists a client's invoices, opens one, starts new drafts and adds lines to them. */
++/** Lists a client's invoices, opens one, starts new drafts, adds lines to them and gives them a discount. */
+ @Service
+ public class InvoiceService {
+ 
+@@ -65,4 +65,21 @@ public class InvoiceService {
+         });
+         return found;
+     }
++
++    /**
++     * Gives a draft invoice a percentage discount; empty if no such invoice. The percentage has
++     * already been checked; a sent invoice refuses it.
++     */
++    @Transactional
++    public Optional<Invoice> setDiscount(Long invoiceId, BigDecimal discountPct) {
++        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        found.ifPresent(invoice -> {
++            if (!invoice.isDraft()) {
++                throw new InvoiceRejectedException("Only a draft invoice can be given a discount.");
++            }
++            invoice.setDiscountPct(discountPct);
++            invoices.saveAndFlush(invoice);
++        });
++        return found;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V3__invoice_discount.sql b/src/main/resources/db/migration/V3__invoice_discount.sql
+new file mode 100644
+index 0000000..f883da5
+--- /dev/null
++++ b/src/main/resources/db/migration/V3__invoice_discount.sql
+@@ -0,0 +1,2 @@
++-- A draft's percentage discount off its subtotal, 0 to 100 with up to two decimals; 0 is none.
++ALTER TABLE invoice ADD COLUMN discount_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
