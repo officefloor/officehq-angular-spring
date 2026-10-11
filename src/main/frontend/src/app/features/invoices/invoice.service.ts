@@ -228,6 +228,8 @@ export class InvoiceService {
 
   // Records one payment spread over several of the client's invoices; refused (409) unless the parts
   // add up to the payment and each goes to a sent invoice of the client, no more than it has due.
+  // With no parts it goes to the invoices whose references are quoted (comma separated), earliest due
+  // date first, refused when one is mistyped (400), not the client's, or they owe less than the payment.
   // Answers the client's invoices with their new statuses.
   recordSplitPayment(clientId: number, payment: NewSplitPayment): Observable<InvoiceSummary[]> {
     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment);

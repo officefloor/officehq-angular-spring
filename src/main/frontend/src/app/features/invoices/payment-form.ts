@@ -47,8 +47,14 @@ function invoiceNumberChecks(typed: string): boolean {
   return (10 - (sum % 10)) % 10 === Number(m[2]);
 }
 
-// What is wrong with a payment, or '' when it can be recorded.
-function problemWithPayment(payment: NewPayment): string {
+// Whether a typed reference (an RF reference or an invoice number) passes its check.
+function quotedReferenceChecks(reference: string): boolean {
+  return reference.startsWith('INV') ? invoiceNumberChecks(reference) : referenceChecks(reference);
+}
+
+// What is wrong with a payment, or '' when it can be recorded. With `several` the reference box may
+// hold several references separated by commas, each checked on its own.
+function problemWithPayment(payment: NewPayment, several: boolean): string {
   const problems: string[] = [];
   if (!payment.amount) {
     problems.push('Enter an amount.');
@@ -60,13 +66,18 @@ function problemWithPayment(payment: NewPayment): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(payment.date)) {
     problems.push('Enter the date it was paid.');
   }
-  if (
-    payment.reference &&
-    !(payment.reference.startsWith('INV')
-      ? invoiceNumberChecks(payment.reference)
-      : referenceChecks(payment.reference))
-  ) {
-    problems.push('The payment reference is mistyped: check it against the invoice.');
+  const quoted = several
+    ? payment.reference.split(',').filter((r) => r)
+    : payment.reference
+      ? [payment.reference]
+      : [];
+  const mistyped = quoted.filter((r) => !quotedReferenceChecks(r));
+  if (mistyped.length > 0) {
+    problems.push(
+      quoted.length > 1
+        ? `Mistyped payment reference: ${mistyped.join(', ')}. Check it against the invoice.`
+        : 'The payment reference is mistyped: check it against the invoice.',
+    );
   }
   return problems.join(' ');
 }
@@ -88,7 +99,8 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
 }
 
 // Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`), or, when none
-// is open, to the client's invoice with the quoted reference, or without one to the client's unpaid invoices earliest due date first; once any invoice in the list has a part, the
+// is open, to the client's invoices whose references are quoted (several may be, separated by
+// commas: RF references or invoice numbers, applied earliest due date first), or without one to the client's unpaid invoices earliest due date first; once any invoice in the list has a part, the
 // payment is spread over those invoices instead, and the parts must add up to it. The server refuses a payment on a draft, over what is due, or dated after today
 // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
 // invoice number may be quoted instead: it must pass its Luhn check and stands for that invoice's reference.
@@ -113,7 +125,13 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
         formControlName="date"
         required
       />
-      <label for="payment-reference">Reference or invoice number quoted (optional)</label>
+      <label for="payment-reference">
+        @if (invoiceId() === null) {
+          References or invoice numbers quoted, separated by commas (optional)
+        } @else {
+          Reference or invoice number quoted (optional)
+        }
+      </label>
       <input
         id="payment-reference"
         data-testid="payment-form-reference"
@@ -160,7 +178,7 @@ export class PaymentForm {
     };
     const allocations = this.allocations();
     const invoiceId = this.invoiceId();
-    let problem = problemWithPayment(payment);
+    let problem = problemWithPayment(payment, allocations.length === 0 && invoiceId === null);
     if (allocations.length > 0) {
       problem = [problem, problemWithAllocations(payment, allocations)].filter((p) => p).join(' ');
     }

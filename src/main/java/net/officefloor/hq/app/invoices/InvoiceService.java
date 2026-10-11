@@ -415,21 +415,35 @@ public class InvoiceService {
      * paying each off in full before the next.
      * A payment more than everything the client owes is refused; otherwise it is checked and recorded
      * as a split payment over the invoices it reaches.
-     * A reference (null when none, already checked) instead sends the whole payment to the client's
-     * invoice with that reference; one that is not the reference of any of the client's invoices is refused.
+     * References (empty when none, each already checked) instead limit the payment to the client's
+     * invoices with those references, applied in the same order; one that is not the reference of any
+     * of the client's invoices is refused, as is a payment more than those invoices owe together.
+     * The payment keeps the reference of the first invoice it reaches.
      */
     @Transactional
-    public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, String reference) {
-        if (reference != null) {
-            Invoice named = invoices.findByClientIdOrderByIdAsc(clientId).stream()
-                    .filter(i -> reference.equals(PaymentReference.of(i.getId())))
-                    .findFirst()
-                    .orElseThrow(() -> new InvoiceRejectedException(PaymentReference.grouped(reference)
-                            + " is not the reference of any of this client's invoices."));
-            return recordSplitPayment(clientId, amount, date, reference,
-                    List.of(new PaymentAllocation(named.getId(), amount)));
+    public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, List<String> references) {
+        List<Invoice> ofClient = invoices.findByClientIdOrderByIdAsc(clientId);
+        List<Invoice> candidates = ofClient;
+        if (!references.isEmpty()) {
+            Set<Long> named = new HashSet<>();
+            for (String reference : references) {
+                Invoice invoice = ofClient.stream()
+                        .filter(i -> reference.equals(PaymentReference.of(i.getId())))
+                        .findFirst()
+                        .orElseThrow(() -> new InvoiceRejectedException(PaymentReference.grouped(reference)
+                                + " is not the reference of any of this client's invoices."));
+                String number = InvoiceNumber.of(invoice.getId());
+                if (invoice.isDraft()) {
+                    throw new InvoiceRejectedException("Send " + number + " before recording a payment against it.");
+                }
+                if (invoice.isVoid()) {
+                    throw new InvoiceRejectedException(number + " is void and takes no payments.");
+                }
+                named.add(invoice.getId());
+            }
+            candidates = ofClient.stream().filter(i -> named.contains(i.getId())).toList();
         }
-        List<Invoice> sent = invoices.findByClientIdOrderByIdAsc(clientId).stream()
+        List<Invoice> sent = candidates.stream()
                 .filter(i -> !i.isDraft() && !i.isVoid())
                 .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(Invoice::getId))
@@ -451,12 +465,14 @@ public class InvoiceService {
             }
         }
         if (owed.signum() <= 0) {
-            throw new InvoiceRejectedException("The client has no unpaid invoices to pay.");
+            throw new InvoiceRejectedException(references.isEmpty() ? "The client has no unpaid invoices to pay."
+                    : "Those invoices have already been paid.");
         }
         if (left.signum() > 0) {
             throw new InvoiceRejectedException("The payment is more than the $" + owed.setScale(2).toPlainString()
-                    + " the client owes.");
+                    + (references.isEmpty() ? " the client owes." : " those invoices owe together."));
         }
+        String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
         return recordSplitPayment(clientId, amount, date, reference, parts);
     }
 

@@ -10,6 +10,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -214,7 +215,7 @@ public class InvoiceController {
             BigDecimal amount,
             @NotNull(message = "Enter the date it was paid.")
             LocalDate date,
-            @Size(max = 64, message = "The reference must be at most 64 characters.")
+            @Size(max = 255, message = "The references must be at most 255 characters.")
             String reference,
             @NotNull(message = "Enter how much of the payment goes to each invoice.")
             List<@Valid NewAllocation> allocations) {
@@ -365,14 +366,15 @@ public class InvoiceController {
 
     /**
      * Records one payment spread over several of the client's invoices, or, with no parts given,
-     * applied wholly to the invoice with the quoted reference or, with none, to its oldest unpaid invoices first; answers the client's invoices
+     * applied to the invoices whose references are quoted (several may be, separated by commas) or, with none,
+     * to all its unpaid invoices, earliest due date first; answers the client's invoices
      * with their new statuses.
      */
     @PostMapping("/api/clients/{clientId}/payments")
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
         if (body.allocations().isEmpty()) {
-            invoices.recordAutoPayment(clientId, body.amount(), body.date(), reference(body.reference()));
+            invoices.recordAutoPayment(clientId, body.amount(), body.date(), references(body.reference()));
         } else {
             invoices.recordSplitPayment(clientId, body.amount(), body.date(), reference(body.reference()),
                     body.allocations().stream().map(a -> new PaymentAllocation(a.invoiceId(), a.amount())).toList());
@@ -393,6 +395,21 @@ public class InvoiceController {
                 : PaymentReference.parse(typed);
         return parsed.orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.BAD_REQUEST, typed.trim() + " is mistyped: check the payment reference."));
+    }
+
+    /**
+     * The references quoted, separated by commas, each without spaces and in the order typed (an
+     * invoice number standing for its RF reference); empty when none was. A mistyped one is refused.
+     */
+    private static List<String> references(String typed) {
+        if (typed == null || typed.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(typed.split(","))
+                .filter(part -> !part.isBlank())
+                .map(InvoiceController::reference)
+                .distinct()
+                .toList();
     }
 
     @PostMapping("/api/invoices/{id}/payments")
