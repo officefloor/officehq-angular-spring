@@ -1,0 +1,500 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index d313b19..a5629cc 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -370,6 +370,12 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="invoice-early-discount">{{ amount(inv.earlyDiscount) }}</td>
+               </tr>
+             }
++            @if (inv.creditOf === null) {
++              <tr>
++                <th scope="row" colspan="4">Late interest</th>
++                <td data-testid="invoice-interest">{{ amount(inv.lateInterest) }}</td>
++              </tr>
++            }
+             <tr>
+               <th scope="row" colspan="4">Amount due</th>
+               <td data-testid="invoice-amount-due">{{ amount(inv.amountDue) }}</td>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 21e7206..b7281b8 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -140,6 +140,8 @@ export interface InvoiceDetail {
+   // settle it today while its early-payment window is open (null otherwise).
+   earlyDiscount: string;
+   settleAmount: string | null;
++  // The late interest charged on it so far ("0.00" when none): part of `amountDue`.
++  lateInterest: string;
+ }
+ 
+ // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,
+diff --git a/src/main/java/net/officefloor/hq/app/LateInterestRate.java b/src/main/java/net/officefloor/hq/app/LateInterestRate.java
+new file mode 100644
+index 0000000..08f0088
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/LateInterestRate.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.List;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++
++/**
++ * The workspace's annual late-interest rate: the stored {@code late_interest_rate} setting, a
++ * percentage such as 12. With no rate set no late interest is charged, so the rate is 0.
++ */
++@Service
++public class LateInterestRate {
++
++    static final String LATE_INTEREST_RATE = "late_interest_rate";
++
++    private final JdbcTemplate jdbc;
++
++    public LateInterestRate(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    public BigDecimal percent() {
++        List<String> rate = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
++                String.class, LATE_INTEREST_RATE);
++        return rate.isEmpty() ? BigDecimal.ZERO : new BigDecimal(rate.get(0));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 347006e..df1a27b 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -36,7 +36,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "lateInterestRate");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
+@@ -105,6 +105,11 @@ public class TestSupportController {
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", TaxRate.TAX_RATE,
+                         rate.toPlainString());
+             }
++            if (values.get("lateInterestRate") != null) {
++                BigDecimal rate = percent(values.get("lateInterestRate"), "settings.lateInterestRate");
++                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
++                        LateInterestRate.LATE_INTEREST_RATE, rate.toPlainString());
++            }
+             if (values.get("usdPer") != null) {
+                 if (!(values.get("usdPer") instanceof Map<?, ?> rates)) {
+                     throw refuse("settings.usdPer must be an object of rates by currency code");
+@@ -269,6 +274,11 @@ public class TestSupportController {
+         if (!taxRate.isEmpty()) {
+             settings.put("taxRate", new BigDecimal(taxRate.get(0)));
+         }
++        List<String> lateInterestRate = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
++                String.class, LateInterestRate.LATE_INTEREST_RATE);
++        if (!lateInterestRate.isEmpty()) {
++            settings.put("lateInterestRate", new BigDecimal(lateInterestRate.get(0)));
++        }
+         Map<String, BigDecimal> rates = exchangeRates.all();
+         if (!rates.isEmpty()) {
+             settings.put("usdPer", rates);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 61d3d2e..9eec2fc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -12,12 +12,14 @@ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.OneToMany;
+ import jakarta.persistence.OrderBy;
+ import jakarta.persistence.Table;
++import jakarta.persistence.Transient;
+ import org.hibernate.annotations.Formula;
+ import java.math.BigDecimal;
+ import java.math.BigInteger;
+ import java.math.MathContext;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.List;
+@@ -153,6 +155,13 @@ public class Invoice {
+     @Formula("(SELECT COUNT(*) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
+     private int creditNotesIssued;
+ 
++    /**
++     * The late interest charged so far (see {@link #accrueLateInterest}); not stored, worked out again
++     * each time the invoice is read.
++     */
++    @Transient
++    private BigDecimal lateInterest = BigDecimal.ZERO;
++
+     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+     @JoinColumn(name = "invoice_id", nullable = false)
+     @OrderBy("id")
+@@ -410,10 +419,79 @@ public class Invoice {
+      * is spread over instalments) less what is credited and held.
+      */
+     private BigDecimal payable(BigDecimal taxRate) {
++        return payableBeforeInterest(taxRate).add(getLateInterest());
++    }
++
++    /** As {@link #payable}, but without the late interest charged. */
++    private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
+         BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate);
+         return owed.subtract(getCredited()).subtract(retentionHeld(taxRate)).subtract(getEarlyDiscountTaken());
+     }
+ 
++    /** The late interest charged, to the cent; 0 when none is. */
++    public BigDecimal getLateInterest() {
++        return lateInterest.setScale(scale(), RoundingMode.HALF_UP);
++    }
++
++    /**
++     * Works out the late interest charged by the given day at the annual rate (a percentage) from the
++     * payments (those not reversed count), and keeps it as part of what is payable. A sent invoice not
++     * spread over instalments, with something still owed more than {@link #GRACE_DAYS} days after its
++     * due date, earns interest from its due date, compounded daily at rate / 365: a balance B owing for
++     * d days earns B x ((1 + rate / 100 / 365)^d - 1), rounded half up to the cent. Each payment after
++     * the due date ends a period; every period earns interest on what the invoice still owed during it
++     * (earlier interest and retention left out), and a payment pays the interest earned so far first,
++     * then the invoice.
++     */
++    public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate, LocalDate today) {
++        this.lateInterest = BigDecimal.ZERO;
++        if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || dueDate == null || annualRate == null
++                || annualRate.signum() <= 0 || !today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
++            return;
++        }
++        record Part(LocalDate on, Long paymentId, BigDecimal amount) {
++        }
++        List<Part> inOrder = payments.stream().filter(p -> !p.isReversed())
++                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
++                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
++                .filter(p -> !p.on().isAfter(today))
++                .sorted(Comparator.comparing(Part::on).thenComparing(Part::paymentId)).toList();
++        BigDecimal owed = payableBeforeInterest(taxRate).subtract(retentionReleased(taxRate));
++        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(dueDate.plusDays(GRACE_DAYS)))
++                .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
++        if (owed.subtract(paidInGrace).signum() <= 0) {
++            return;
++        }
++        BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36500), MathContext.DECIMAL128));
++        BigDecimal charged = BigDecimal.ZERO;
++        BigDecimal unpaidInterest = BigDecimal.ZERO;
++        LocalDate from = dueDate;
++        for (Part part : inOrder) {
++            if (part.on().isAfter(dueDate) && owed.signum() > 0) {
++                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
++                charged = charged.add(earned);
++                unpaidInterest = unpaidInterest.add(earned);
++                from = part.on();
++            }
++            BigDecimal toInterest = part.amount().min(unpaidInterest).max(BigDecimal.ZERO);
++            unpaidInterest = unpaidInterest.subtract(toInterest);
++            owed = owed.subtract(part.amount().subtract(toInterest));
++        }
++        if (owed.signum() > 0) {
++            charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
++        }
++        this.lateInterest = charged;
++    }
++
++    /** The interest the balance earns over the days at the daily growth factor, rounded half up to the cent. */
++    private BigDecimal interestOn(BigDecimal balance, BigDecimal daily, long days) {
++        if (days <= 0) {
++            return zero();
++        }
++        return balance.multiply(daily.pow((int) days, MathContext.DECIMAL128).subtract(BigDecimal.ONE))
++                .setScale(scale(), RoundingMode.HALF_UP);
++    }
++
+     /**
+      * The early-payment discount on offer at the tax rate: the client's early-payment percentage of the
+      * grand total, rounded down to the cent; nothing for a credit note, or an invoice holding back
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 65878e6..7ffe2bf 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -115,6 +115,7 @@ public class InvoiceController {
+      * currency its client is billed in, which every amount is in (whole yen for a yen client).
+      * {@code earlyDiscount} is the early-payment discount it was settled with (0 when none), and
+      * {@code settleAmount} what would settle it today while its early-payment window is open (null otherwise).
++     * {@code lateInterest} is the late interest charged on it so far, part of the amount due.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -122,7 +123,7 @@ public class InvoiceController {
+             String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
+             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+             String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+-            Currency currency, String earlyDiscount, String settleAmount) {
++            Currency currency, String earlyDiscount, String settleAmount, String lateInterest) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -150,7 +151,8 @@ public class InvoiceController {
+                     i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
+                     i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate),
+                     i.currency(), i.getEarlyDiscountTaken().toPlainString(),
+-                    Optional.ofNullable(i.settleAmount(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null));
++                    Optional.ofNullable(i.settleAmount(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
++                    i.getLateInterest().toPlainString());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 5194145..a80a34b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -14,6 +14,7 @@ import java.util.Map;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.ExchangeRates;
++import net.officefloor.hq.app.LateInterestRate;
+ import net.officefloor.hq.app.TaxRate;
+ import net.officefloor.hq.app.Today;
+ import net.officefloor.hq.app.clients.Client;
+@@ -37,9 +38,12 @@ public class InvoiceService {
+     private final Audit audit;
+     private final EntityManager entityManager;
+     private final ExchangeRates exchangeRates;
++    private final LateInterestRate lateInterestRate;
+ 
+     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
+-            Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates) {
++            Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
++            LateInterestRate lateInterestRate) {
++        this.lateInterestRate = lateInterestRate;
+         this.exchangeRates = exchangeRates;
+         this.entityManager = entityManager;
+         this.invoices = invoices;
+@@ -52,18 +56,43 @@ public class InvoiceService {
+ 
+     @Transactional(readOnly = true)
+     public List<Invoice> forClient(Long clientId) {
+-        return invoices.findByClientIdOrderByIdAsc(clientId);
++        return loadForClient(clientId);
+     }
+ 
+     /** Every invoice of every client, with its lines. */
+     @Transactional(readOnly = true)
+     public List<Invoice> all() {
+-        return invoices.findAllByOrderByIdAsc();
++        return withInterest(invoices.findAllByOrderByIdAsc());
++    }
++
++    /** The invoice with its lines and the late interest it has been charged; empty if no such invoice. */
++    private Optional<Invoice> load(Long id) {
++        Optional<Invoice> found = invoices.findWithLinesById(id);
++        found.ifPresent(invoice -> withInterest(List.of(invoice)));
++        return found;
++    }
++
++    /** The client's invoices, lowest id first, with their lines and the late interest they have been charged. */
++    private List<Invoice> loadForClient(Long clientId) {
++        return withInterest(invoices.findByClientIdOrderByIdAsc(clientId));
++    }
++
++    /** Works out the late interest each of the invoices has been charged by today (see {@link Invoice#accrueLateInterest}). */
++    private List<Invoice> withInterest(List<Invoice> list) {
++        if (list.isEmpty()) {
++            return list;
++        }
++        List<Payment> found = payments.findForInvoices(list.stream().map(Invoice::getId).toList());
++        BigDecimal rate = taxRate.percent();
++        BigDecimal annual = lateInterestRate.percent();
++        LocalDate now = today.date();
++        list.forEach(i -> i.accrueLateInterest(found, rate, annual, now));
++        return list;
+     }
+ 
+     @Transactional(readOnly = true)
+     public Optional<Invoice> find(Long id) {
+-        return invoices.findWithLinesById(id);
++        return load(id);
+     }
+ 
+     /**
+@@ -87,7 +116,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> duplicate(Long invoiceId) {
+-        return invoices.findWithLinesById(invoiceId).map(original -> {
++        return load(invoiceId).map(original -> {
+             if (original.isCreditNote()) {
+                 throw new InvoiceRejectedException("A credit note cannot be duplicated.");
+             }
+@@ -105,7 +134,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> creditNote(Long invoiceId) {
+-        return invoices.findWithLinesById(invoiceId).map(original -> {
++        return load(invoiceId).map(original -> {
+             if (original.isCreditNote()) {
+                 throw new InvoiceRejectedException("A credit note cannot itself be credited.");
+             }
+@@ -143,7 +172,7 @@ public class InvoiceService {
+     @Transactional
+     public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice,
+             boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             requireWhole(invoice.currency(), unitPrice, "The unit price");
+             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
+@@ -163,7 +192,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> removeLine(Long invoiceId, Long lineId) {
+-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        Optional<Invoice> found = load(invoiceId);
+         if (found.isEmpty()) {
+             return found;
+         }
+@@ -188,7 +217,7 @@ public class InvoiceService {
+     @Transactional
+     public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
+             BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        Optional<Invoice> found = load(invoiceId);
+         if (found.isEmpty()) {
+             return found;
+         }
+@@ -216,7 +245,7 @@ public class InvoiceService {
+     @Transactional
+     public Optional<Invoice> setDiscount(Long invoiceId, BigDecimal discountPct, BigDecimal discountAmount,
+             BigDecimal discountCap, String discountReason) {
+-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException("A credit note has no discount.");
+@@ -254,7 +283,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> setDueDate(Long invoiceId, LocalDate dueDate) {
+-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             if (!invoice.isDraft()) {
+                 throw new InvoiceRejectedException("Only a draft's due date can be set.");
+@@ -271,7 +300,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> setRetention(Long invoiceId, BigDecimal retentionPct) {
+-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException("A credit note holds back no retention.");
+@@ -295,7 +324,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> setPlan(Long invoiceId, int instalments, BigDecimal instalmentRate) {
+-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException("A credit note cannot be spread over instalments.");
+@@ -319,7 +348,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> releaseRetention(Long invoiceId) {
+-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isDraft() || invoice.isVoid() || invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException("Retention can only be released on a sent invoice.");
+@@ -374,7 +403,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> send(Long invoiceId) {
+-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isVoid()) {
+                 throw new InvoiceRejectedException("A void invoice cannot be sent.");
+@@ -413,7 +442,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public void sendAllDrafts(Long clientId) {
+-        invoices.findByClientIdOrderByIdAsc(clientId).stream()
++        loadForClient(clientId).stream()
+                 .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty() && !invoice.discountLacksReason()
+                         && !invoice.dueDatePassedBy(today.date()))
+                 .forEach(invoice -> {
+@@ -430,7 +459,7 @@ public class InvoiceService {
+      * invoice (not void).
+      */
+     private String creditNoteRefusal(Invoice note) {
+-        Invoice original = invoices.findWithLinesById(note.getCreditOf()).orElse(null);
++        Invoice original = load(note.getCreditOf()).orElse(null);
+         if (original == null || original.isDraft() || original.isVoid()) {
+             return "The invoice this credits is not a sent invoice, so the credit note cannot be issued.";
+         }
+@@ -444,9 +473,10 @@ public class InvoiceService {
+      */
+     private void issue(Invoice note) {
+         BigDecimal rate = taxRate.percent();
+-        Invoice original = invoices.findWithLinesById(note.getCreditOf()).orElseThrow();
++        Invoice original = load(note.getCreditOf()).orElseThrow();
+         // Read again what it has been credited: another credit note may just have been issued against it.
+         entityManager.refresh(original);
++        withInterest(List.of(original));
+         BigDecimal total = note.total(rate);
+         BigDecimal[] taken = original.creditTaken(total, paid(List.of(original)).get(original.getId()), rate);
+         note.markIssued(today.date(), rate, taken[0], taken[1]);
+@@ -600,7 +630,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> voidInvoice(Long invoiceId) {
+-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isVoid()) {
+                 throw new InvoiceRejectedException("This invoice is already void.");
+@@ -672,7 +702,7 @@ public class InvoiceService {
+     @Transactional
+     public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+             String reference) {
+-        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isDraft()) {
+                 throw new InvoiceRejectedException("Send the invoice before recording a payment.");
+@@ -750,7 +780,7 @@ public class InvoiceService {
+     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+             List<String> references) {
+         BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId));
+-        List<Invoice> ofClient = invoices.findByClientIdOrderByIdAsc(clientId);
++        List<Invoice> ofClient = loadForClient(clientId);
+         List<Invoice> candidates = ofClient;
+         if (!references.isEmpty()) {
+             Set<Long> named = new HashSet<>();
+@@ -848,7 +878,7 @@ public class InvoiceService {
+             if (!seen.add(part.getInvoiceId())) {
+                 throw new InvoiceRejectedException("Each invoice can take only one part of the payment.");
+             }
+-            Invoice invoice = invoices.findWithLinesById(part.getInvoiceId())
++            Invoice invoice = load(part.getInvoiceId())
+                     .filter(i -> i.getClientId().equals(clientId))
+                     .orElseThrow(() -> new InvoiceRejectedException("A part of the payment goes to an invoice of another client."));
+             String number = InvoiceNumber.of(invoice.getId());
+@@ -940,6 +970,7 @@ public class InvoiceService {
+ 
+     /** Records in the audit what a payment just recorded left written off on the invoice, if anything. */
+     private void recordWriteOff(Invoice invoice) {
++        withInterest(List.of(invoice));
+         BigDecimal writtenOff = invoice.writtenOff(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
+         if (writtenOff.signum() > 0) {
+             audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + writtenOff.toPlainString());
+@@ -967,7 +998,7 @@ public class InvoiceService {
+             payment.reverse();
+             payments.saveAndFlush(payment);
+             // An invoice the payment settled early is no longer paid off, so its early discount lapses.
+-            payment.getAllocations().forEach(a -> invoices.findWithLinesById(a.getInvoiceId()).ifPresent(invoice -> {
++            payment.getAllocations().forEach(a -> load(a.getInvoiceId()).ifPresent(invoice -> {
+                 if (invoice.getEarlyDiscountTaken().signum() > 0) {
+                     invoice.takeEarlyDiscount(BigDecimal.ZERO);
+                     invoices.saveAndFlush(invoice);
