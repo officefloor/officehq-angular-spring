@@ -1,0 +1,52 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index b63cb64..e7b814a 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -211,7 +211,7 @@ function problemWith(line: NewLine): string {
+ // percentage or fixed discount, can have lines removed (refused when what is left would be less than a
+ // fixed discount), and can be sent; a change to a sent invoice with no payments puts it back to
+ // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
+-// until nothing is due, less than $2.00 (and no more than 1% of the grand total) left being written off; the panel lists them with what has
++// until nothing is due, less than $0.05 (and no more than 1% of the grand total) left being written off; the panel lists them with what has
+ // been paid, what is still due and what was written off. The
+ // server refuses a payment on a draft, or dated after today or before the issue date; what a payment
+ // pays beyond what is due is held on the client's account as credit.
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index ec32586..e9c72ee 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -106,7 +106,7 @@ export interface InvoicePaymentView {
+ // discount takes off, rounded down to the cent (a percentage) and shrunk so the total taken off stays within the cap; `taxRate` is the workspace's tax percentage (without
+ // trailing zeros, "0" when none is set); `discountReason` is why the discount was given (null when none) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
+ // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
+-// `amountDue` is the total less that and less `writtenOff`: when payments leave less than $2.00 due (and no more than 1% of the grand total),
++// `amountDue` is the total less that and less `writtenOff`: when payments leave less than $0.05 due (and no more than 1% of the grand total),
+ // the rest is written off ("0.00" when nothing is). `reference` is its ISO 11649 RF payment reference, made from
+ // the seven digits of its number, in groups of four (RF16 0000 075).
+ export interface InvoiceDetail {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 88f9824..74a5266 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -41,7 +41,7 @@ public class Invoice {
+      * Payments that leave less than this many US dollars' worth still due, and no more than
+      * {@link #WRITE_OFF_SHARE} of the grand total, have the rest written off.
+      */
+-    public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("2.00");
++    public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("0.05");
+ 
+     /** A plan's monthly instalment must be worth at least this many US dollars. */
+     public static final BigDecimal MIN_INSTALMENT_USD = new BigDecimal("25.00");
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 9a68fea..68298ae 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -111,7 +111,7 @@ public class InvoiceController {
+      * An opened invoice: its lines, subtotal, discount percentage (without trailing zeros, "12.5"),
+      * the amount it takes off, the tax rate (without trailing zeros) and the tax charged, the sum of the
+      * line taxes, and the grand total; the payments made to it, what they add up to, what is still due and what was written off because less than
+-     * $2.00, and no more than 1% of the grand total, was left (money as
++     * $0.05, and no more than 1% of the grand total, was left (money as
+      * decimal strings to the cent). Its status follows what has been paid. {@code reference} is its
+      * RF payment reference in groups of four. {@code paidDate} is the date of the payment that cleared
+      * it, payments taken in date order; null while it is not fully paid. {@code credited} is what
