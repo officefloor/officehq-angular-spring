@@ -1,0 +1,51 @@
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index 52c02a0..2ff86e8 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -62,7 +62,7 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
+ }
+ 
+ // Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`), or, when none
+-// is open, to the client's unpaid invoices earliest due date first; once any invoice in the list has a part, the
++// is open, to the client's invoice with the quoted reference, or without one to the client's unpaid invoices earliest due date first; once any invoice in the list has a part, the
+ // payment is spread over those invoices instead, and the parts must add up to it. The server refuses a payment on a draft, over what is due, or dated after today
+ // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's.
+ @Component({
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 31b4b80..f57389a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -325,7 +325,7 @@ public class InvoiceController {
+ 
+     /**
+      * Records one payment spread over several of the client's invoices, or, with no parts given,
+-     * applied to its oldest unpaid invoices first; answers the client's invoices
++     * applied wholly to the invoice with the quoted reference or, with none, to its oldest unpaid invoices first; answers the client's invoices
+      * with their new statuses.
+      */
+     @PostMapping("/api/clients/{clientId}/payments")
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 08ce8d2..3db533b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -309,9 +309,20 @@ public class InvoiceService {
+      * paying each off in full before the next.
+      * A payment more than everything the client owes is refused; otherwise it is checked and recorded
+      * as a split payment over the invoices it reaches.
++     * A reference (null when none, already checked) instead sends the whole payment to the client's
++     * invoice with that reference; one that is not the reference of any of the client's invoices is refused.
+      */
+     @Transactional
+     public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, String reference) {
++        if (reference != null) {
++            Invoice named = invoices.findByClientIdOrderByIdAsc(clientId).stream()
++                    .filter(i -> reference.equals(PaymentReference.of(i.getId())))
++                    .findFirst()
++                    .orElseThrow(() -> new InvoiceRejectedException(PaymentReference.grouped(reference)
++                            + " is not the reference of any of this client's invoices."));
++            return recordSplitPayment(clientId, amount, date, reference,
++                    List.of(new PaymentAllocation(named.getId(), amount)));
++        }
+         List<Invoice> sent = invoices.findByClientIdOrderByIdAsc(clientId).stream()
+                 .filter(i -> !i.isDraft() && !i.isVoid())
+                 .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
