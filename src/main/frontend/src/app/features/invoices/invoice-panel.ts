@@ -1,11 +1,15 @@
 import { Component, effect, inject, input, output, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { InvoiceDetail, InvoiceService, NewLine, NewPayment } from './invoice.service';
-import { money, statusLabel } from './invoice-format';
-
-// A positive decimal with at most two decimals, e.g. 1, 1.5 or 12.35. The server applies the same rules.
-const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+import {
+  InvoiceDetail,
+  InvoiceService,
+  InvoiceSummary,
+  NewAllocation,
+  NewLine,
+} from './invoice.service';
+import { TWO_DECIMALS, money, statusLabel } from './invoice-format';
+import { PaymentForm } from './payment-form';
 
 // A percentage from 0 to 100 with at most two decimals, e.g. 15 or 12.5; the server checks it again.
 function problemWithDiscount(pct: string): string {
@@ -22,41 +26,6 @@ function problemWithDiscount(pct: string): string {
     return 'The discount can have at most two decimals.';
   }
   return '';
-}
-
-// Whether a reference passes the ISO 11649 check: its first four characters moved to the end,
-// letters as numbers (A=10 up to Z=35), mod 97 is 1. Spaces and capitals are ignored by the caller.
-function referenceChecks(reference: string): boolean {
-  if (!/^RF\d{2}[A-Z0-9]{1,21}$/.test(reference)) {
-    return false;
-  }
-  const moved = reference.slice(4) + reference.slice(0, 4);
-  let rest = 0;
-  for (const c of moved) {
-    for (const d of String(parseInt(c, 36))) {
-      rest = (rest * 10 + Number(d)) % 97;
-    }
-  }
-  return rest === 1;
-}
-
-// What is wrong with a payment, or '' when it can be recorded.
-function problemWithPayment(payment: NewPayment): string {
-  const problems: string[] = [];
-  if (!payment.amount) {
-    problems.push('Enter an amount.');
-  } else if (!TWO_DECIMALS.test(payment.amount)) {
-    problems.push('The amount must be a number with at most two decimals.');
-  } else if (Number(payment.amount) <= 0) {
-    problems.push('The amount must be more than zero.');
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(payment.date)) {
-    problems.push('Enter the date it was paid.');
-  }
-  if (payment.reference && !referenceChecks(payment.reference)) {
-    problems.push('The payment reference is mistyped: check it against the invoice.');
-  }
-  return problems.join(' ');
 }
 
 // What is wrong with a line, or '' when it can be added.
@@ -98,10 +67,11 @@ function problemWith(line: NewLine): string {
 // until nothing is due; the panel lists them with what has been paid and what is still due. The
 // server refuses a payment on a draft, over what is due, or dated after today or before the issue date.
 // The panel shows the invoice's RF payment reference; a payment may quote one, which must pass the
-// ISO 11649 check and be this invoice's.
+// ISO 11649 check and be this invoice's. When parts of a payment are filled in on the list, the
+// payment is spread over those invoices instead; each payment shows how much of it went here.
 @Component({
   selector: 'app-invoice-panel',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, PaymentForm],
   template: `
     <section data-testid="invoice-panel" aria-labelledby="invoice-panel-heading">
       <h2 id="invoice-panel-heading">
@@ -167,6 +137,7 @@ function problemWith(line: NewLine): string {
               <tr>
                 <th scope="col">Paid on</th>
                 <th scope="col">Amount</th>
+                <th scope="col">To this invoice</th>
                 <th scope="col">Reference</th>
               </tr>
             </thead>
@@ -175,21 +146,22 @@ function problemWith(line: NewLine): string {
                 <tr [attr.data-testid]="'payment-row-' + p.id">
                   <td data-testid="payment-date">{{ p.date }}</td>
                   <td data-testid="payment-amount">{{ money(p.amount) }}</td>
+                  <td data-testid="payment-allocated">{{ money(p.allocated) }}</td>
                   <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="3" data-testid="payment-empty">No payments yet.</td>
+                  <td colspan="4" data-testid="payment-empty">No payments yet.</td>
                 </tr>
               }
             </tbody>
             <tfoot>
               <tr>
-                <th scope="row" colspan="2">Paid</th>
+                <th scope="row" colspan="3">Paid</th>
                 <td data-testid="invoice-paid">{{ money(inv.paid) }}</td>
               </tr>
               <tr>
-                <th scope="row" colspan="2">Amount due</th>
+                <th scope="row" colspan="3">Amount due</th>
                 <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
               </tr>
             </tfoot>
@@ -197,43 +169,13 @@ function problemWith(line: NewLine): string {
         }
 
         @if (inv.status !== 'PAID') {
-          <form
-            [formGroup]="paymentForm"
-            (ngSubmit)="recordPayment(inv.id)"
-            aria-label="Record a payment"
-            novalidate
-          >
-            <label for="payment-amount">Amount ($)</label>
-            <input
-              id="payment-amount"
-              data-testid="payment-form-amount"
-              inputmode="decimal"
-              formControlName="amount"
-              required
-            />
-            <label for="payment-date">Paid on</label>
-            <input
-              id="payment-date"
-              type="date"
-              data-testid="payment-form-date"
-              formControlName="date"
-              required
-            />
-            <label for="payment-reference">Reference quoted (optional)</label>
-            <input
-              id="payment-reference"
-              data-testid="payment-form-reference"
-              formControlName="reference"
-              autocapitalize="characters"
-              placeholder="RF16 0000 075"
-            />
-            <button type="submit" data-testid="payment-form-submit" [disabled]="savingPayment()">
-              Record payment
-            </button>
-            @if (paymentError()) {
-              <p role="alert" data-testid="payment-form-error">{{ paymentError() }}</p>
-            }
-          </form>
+          <app-payment-form
+            [clientId]="inv.clientId"
+            [invoiceId]="inv.id"
+            [allocations]="allocations()"
+            (paid)="paymentRecorded($event)"
+            (split)="splitRecorded(inv.id, $event)"
+          />
         }
 
         @if (inv.status === 'DRAFT') {
@@ -322,6 +264,10 @@ export class InvoicePanel {
   readonly invoiceId = input.required<number>();
   // The invoice after a change made here, so the list can show its new total.
   readonly changed = output<InvoiceDetail>();
+  // The parts of a payment filled in on the list; when any is, a payment is spread over them.
+  readonly allocations = input<NewAllocation[]>([]);
+  // The client's invoices after a payment spread over several of them.
+  readonly split = output<InvoiceSummary[]>();
 
   protected readonly invoice = signal<InvoiceDetail | null>(null);
   protected readonly saving = signal(false);
@@ -330,8 +276,6 @@ export class InvoicePanel {
   protected readonly discountError = signal('');
   protected readonly sending = signal(false);
   protected readonly sendError = signal('');
-  protected readonly savingPayment = signal(false);
-  protected readonly paymentError = signal('');
   protected readonly statusLabel = statusLabel;
   protected readonly money = money;
 
@@ -341,12 +285,6 @@ export class InvoicePanel {
     unitPrice: new FormControl('', { nonNullable: true }),
     taxExempt: new FormControl(false, { nonNullable: true }),
     discountPct: new FormControl('', { nonNullable: true }),
-  });
-
-  protected readonly paymentForm = new FormGroup({
-    amount: new FormControl('', { nonNullable: true }),
-    date: new FormControl('', { nonNullable: true }),
-    reference: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly discountForm = new FormGroup({
@@ -362,8 +300,6 @@ export class InvoicePanel {
       this.discountForm.reset();
       this.discountError.set('');
       this.sendError.set('');
-      this.paymentForm.reset();
-      this.paymentError.set('');
       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
       onCleanup(() => sub.unsubscribe());
     });
@@ -433,36 +369,15 @@ export class InvoicePanel {
     });
   }
 
-  protected recordPayment(invoiceId: number): void {
-    const raw = this.paymentForm.getRawValue();
-    const payment: NewPayment = {
-      amount: raw.amount.trim().replace(/^\$/, ''),
-      date: raw.date.trim(),
-      reference: raw.reference.replace(/\s/g, '').toUpperCase(),
-    };
-    const problem = problemWithPayment(payment);
-    if (problem) {
-      this.paymentForm.markAllAsTouched();
-      this.paymentError.set(problem);
-      return;
-    }
-    this.savingPayment.set(true);
-    this.paymentError.set('');
-    this.service.recordPayment(invoiceId, payment).subscribe({
-      next: (detail) => {
-        this.invoice.set(detail);
-        this.changed.emit(detail);
-        this.paymentForm.reset();
-        this.savingPayment.set(false);
-      },
-      error: (e: HttpErrorResponse) => {
-        const detail: unknown = e.error?.detail;
-        this.paymentError.set(
-          typeof detail === 'string' && detail ? detail : 'The payment could not be recorded.',
-        );
-        this.savingPayment.set(false);
-      },
-    });
+  protected paymentRecorded(detail: InvoiceDetail): void {
+    this.invoice.set(detail);
+    this.changed.emit(detail);
+  }
+
+  // A payment was spread over several invoices: show this one again with its share.
+  protected splitRecorded(invoiceId: number, list: InvoiceSummary[]): void {
+    this.split.emit(list);
+    this.service.open(invoiceId).subscribe((detail) => this.invoice.set(detail));
   }
 
   protected send(invoiceId: number): void {

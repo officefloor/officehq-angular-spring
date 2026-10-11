@@ -38,11 +38,13 @@ export interface InvoiceLineView {
   taxExempt: boolean;
 }
 
-// A payment made to an opened invoice: the amount that went to it, a decimal string to the cent,
-// the date it was paid (yyyy-mm-dd) and the RF reference it quoted in groups of four (null when none).
+// A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
+// this invoice, decimal strings to the cent; the date it was paid (yyyy-mm-dd) and the RF reference it
+// quoted in groups of four (null when none).
 export interface InvoicePaymentView {
   id: number;
   amount: string;
+  allocated: string;
   date: string;
   reference: string | null;
 }
@@ -80,6 +82,17 @@ export interface NewPayment {
   amount: string;
   date: string;
   reference: string;
+}
+
+// The part of a split payment that goes to one invoice: the amount as entered.
+export interface NewAllocation {
+  invoiceId: number;
+  amount: string;
+}
+
+// A payment spread over several of a client's invoices, with the part going to each.
+export interface NewSplitPayment extends NewPayment {
+  allocations: NewAllocation[];
 }
 
 // A line to add to a draft: quantity, unit price and the line's own discount percentage as entered
@@ -136,5 +149,12 @@ export class InvoiceService {
   // the issue date, or the reference is mistyped (400) or another invoice's (409). Answers the invoice with its payments and new status.
   recordPayment(invoiceId: number, payment: NewPayment): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments`, payment);
+  }
+
+  // Records one payment spread over several of the client's invoices; refused (409) unless the parts
+  // add up to the payment and each goes to a sent invoice of the client, no more than it has due.
+  // Answers the client's invoices with their new statuses.
+  recordSplitPayment(clientId: number, payment: NewSplitPayment): Observable<InvoiceSummary[]> {
+    return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment);
   }
 }

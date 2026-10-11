@@ -3,7 +3,10 @@ package net.officefloor.hq.app.invoices;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -197,5 +200,64 @@ public class InvoiceService {
                     + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
         });
         return found;
+    }
+
+    /**
+     * Records one payment of the amount on the date spread over several of the client's invoices, and
+     * records each part in the audit. The amounts have already been checked to be more than zero; they
+     * must add up exactly to the payment, and each must go to a different sent invoice of the client
+     * and be no more than what it still has due. The date must be no later than today nor before any
+     * of the invoices' issue dates. The reference (null when none) has already been checked; it must
+     * be the reference of one of the invoices.
+     */
+    @Transactional
+    public Payment recordSplitPayment(Long clientId, BigDecimal amount, LocalDate date, String reference,
+            List<PaymentAllocation> parts) {
+        if (parts.isEmpty()) {
+            throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
+        }
+        BigDecimal sum = parts.stream().map(PaymentAllocation::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (sum.compareTo(amount) != 0) {
+            throw new InvoiceRejectedException("The amounts for the invoices add up to $"
+                    + sum.setScale(2).toPlainString() + ", not the $" + amount.setScale(2).toPlainString() + " paid.");
+        }
+        LocalDate now = today.date();
+        if (date.isAfter(now)) {
+            throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+        }
+        Set<Long> seen = new HashSet<>();
+        List<Invoice> spreadOver = new ArrayList<>();
+        for (PaymentAllocation part : parts) {
+            if (!seen.add(part.getInvoiceId())) {
+                throw new InvoiceRejectedException("Each invoice can take only one part of the payment.");
+            }
+            Invoice invoice = invoices.findWithLinesById(part.getInvoiceId())
+                    .filter(i -> i.getClientId().equals(clientId))
+                    .orElseThrow(() -> new InvoiceRejectedException("A part of the payment goes to an invoice of another client."));
+            String number = InvoiceNumber.of(invoice.getId());
+            if (invoice.isDraft()) {
+                throw new InvoiceRejectedException("Send " + number + " before recording a payment against it.");
+            }
+            BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
+            if (part.getAmount().compareTo(due) > 0) {
+                throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
+                        + number + " is more than the $" + due.toPlainString() + " it has due.");
+            }
+            if (invoice.getIssueDate() != null && date.isBefore(invoice.getIssueDate())) {
+                throw new InvoiceRejectedException("The payment date cannot be before the issue date of " + number
+                        + " (" + invoice.getIssueDate() + ").");
+            }
+            spreadOver.add(invoice);
+        }
+        if (reference != null && spreadOver.stream().noneMatch(i -> reference.equals(PaymentReference.of(i.getId())))) {
+            throw new InvoiceRejectedException(PaymentReference.grouped(reference)
+                    + " is not the reference of any of the invoices being paid.");
+        }
+        Payment payment = payments.saveAndFlush(Payment.split(clientId, amount, date, reference, parts));
+        for (PaymentAllocation part : parts) {
+            audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + part.getInvoiceId() + " amount="
+                    + part.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        }
+        return payment;
     }
 }

@@ -40,12 +40,13 @@ public class InvoiceController {
     }
 
     /**
-     * A payment made to an opened invoice: the amount that went to it (to the cent), its date and the
-     * reference it quoted in groups of four (null when none).
+     * A payment made to an opened invoice: the whole amount paid and how much of it went to this
+     * invoice (to the cent), its date and the reference it quoted in groups of four (null when none).
      */
-    public record PaymentView(Long id, String amount, LocalDate date, String reference) {
+    public record PaymentView(Long id, String amount, String allocated, LocalDate date, String reference) {
         static PaymentView of(Payment p, Long invoiceId) {
-            return new PaymentView(p.getId(), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
+            return new PaymentView(p.getId(), p.getAmount().setScale(2).toPlainString(),
+                    p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
                     p.getReference() == null ? null : PaymentReference.grouped(p.getReference()));
         }
     }
@@ -146,6 +147,30 @@ public class InvoiceController {
             String reference) {
     }
 
+    /** The part of a split payment that goes to one invoice: more than zero, with at most two decimals. */
+    public record NewAllocation(
+            @NotNull(message = "Choose the invoice each part of the payment goes to.")
+            Long invoiceId,
+            @NotNull(message = "Enter how much of the payment goes to each invoice.")
+            @DecimalMin(value = "0", inclusive = false, message = "Each invoice's part must be more than zero.")
+            @Digits(integer = 17, fraction = 2, message = "Each invoice's part can have at most two decimals.")
+            BigDecimal amount) {
+    }
+
+    /** A payment to spread over several of a client's invoices: a payment and the part going to each. */
+    public record NewSplitPayment(
+            @NotNull(message = "Enter an amount.")
+            @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
+            @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
+            BigDecimal amount,
+            @NotNull(message = "Enter the date it was paid.")
+            LocalDate date,
+            @Size(max = 64, message = "The reference must be at most 64 characters.")
+            String reference,
+            @NotNull(message = "Enter how much of the payment goes to each invoice.")
+            List<@Valid NewAllocation> allocations) {
+    }
+
     private final InvoiceService invoices;
     private final TaxRate taxRate;
 
@@ -217,15 +242,31 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 
+    /**
+     * Records one payment spread over several of the client's invoices; answers the client's invoices
+     * with their new statuses.
+     */
+    @PostMapping("/api/clients/{clientId}/payments")
+    @ResponseStatus(HttpStatus.CREATED)
+    public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
+        invoices.recordSplitPayment(clientId, body.amount(), body.date(), reference(body.reference()),
+                body.allocations().stream().map(a -> new PaymentAllocation(a.invoiceId(), a.amount())).toList());
+        return forClient(clientId);
+    }
+
+    /** The quoted reference without spaces, or null when none was; a mistyped one is refused. */
+    private static String reference(String typed) {
+        if (typed == null || typed.isBlank()) {
+            return null;
+        }
+        return PaymentReference.parse(typed).orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.BAD_REQUEST, typed.trim() + " is mistyped: check the payment reference."));
+    }
+
     @PostMapping("/api/invoices/{id}/payments")
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
-        String reference = null;
-        if (body.reference() != null && !body.reference().isBlank()) {
-            reference = PaymentReference.parse(body.reference()).orElseThrow(() -> new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, body.reference().trim() + " is mistyped: check the payment reference."));
-        }
-        return invoices.recordPayment(id, body.amount(), body.date(), reference)
+        return invoices.recordPayment(id, body.amount(), body.date(), reference(body.reference()))
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

@@ -52,6 +52,21 @@ public class Payment {
         return payment;
     }
 
+    /**
+     * A payment from the client spread over several of its invoices, quoting the reference (null when
+     * none): each allocation is the part of the amount that goes to one invoice.
+     */
+    public static Payment split(Long clientId, BigDecimal amount, LocalDate date, String reference,
+            List<PaymentAllocation> allocations) {
+        Payment payment = new Payment();
+        payment.clientId = clientId;
+        payment.amount = amount;
+        payment.date = date;
+        payment.reference = reference;
+        payment.allocations.addAll(allocations);
+        return payment;
+    }
+
     public Long getId() {
         return id;
     }

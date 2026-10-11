@@ -1,14 +1,17 @@
-import { Component, effect, inject, input, signal, untracked } from '@angular/core';
-import { InvoiceDetail, InvoiceService, InvoiceSummary } from './invoice.service';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { InvoiceDetail, InvoiceService, InvoiceSummary, NewAllocation } from './invoice.service';
+import { PaymentForm } from './payment-form';
 import { InvoicePanel } from './invoice-panel';
 import { money, statusLabel } from './invoice-format';
 
 // One client's invoices, each with its status, total, issue and due dates. Clicking an invoice
 // opens it in the invoice panel beside the list; New invoice starts an empty draft and opens it.
 // An invoice looked up by its number is opened as soon as its client's invoices are shown.
+// Every sent invoice has a box for its part of a payment; once any is filled, the payment recorded
+// (in the panel, or below the list when no invoice is open) is spread over those invoices.
 @Component({
   selector: 'app-client-invoices',
-  imports: [InvoicePanel],
+  imports: [InvoicePanel, PaymentForm],
   styles: `
     :host {
       display: flex;
@@ -18,6 +21,9 @@ import { money, statusLabel } from './invoice-format';
     }
     tr[aria-selected='true'] {
       font-weight: bold;
+    }
+    .allocate {
+      width: 6rem;
     }
     .open {
       font: inherit;
@@ -43,6 +49,7 @@ import { money, statusLabel } from './invoice-format';
             <th scope="col">Total</th>
             <th scope="col">Issued</th>
             <th scope="col">Due</th>
+            <th scope="col">Part of payment ($)</th>
           </tr>
         </thead>
         <tbody>
@@ -65,10 +72,23 @@ import { money, statusLabel } from './invoice-format';
               <td data-testid="invoice-total">{{ money(i.total) }}</td>
               <td data-testid="invoice-issue">{{ i.issueDate }}</td>
               <td data-testid="invoice-due">{{ i.dueDate }}</td>
+              <td>
+                @if (i.status !== 'DRAFT') {
+                  <input
+                    class="allocate"
+                    data-testid="invoice-allocate"
+                    inputmode="decimal"
+                    [attr.aria-label]="'Part of payment for ' + i.number"
+                    [value]="allocated()[i.id] ?? ''"
+                    (click)="$event.stopPropagation()"
+                    (input)="allocate(i.id, $any($event.target).value)"
+                  />
+                }
+              </td>
             </tr>
           } @empty {
             <tr>
-              <td colspan="5" data-testid="invoice-empty">No invoices yet.</td>
+              <td colspan="6" data-testid="invoice-empty">No invoices yet.</td>
             </tr>
           }
         </tbody>
@@ -76,7 +96,18 @@ import { money, statusLabel } from './invoice-format';
     </section>
 
     @if (selectedId(); as id) {
-      <app-invoice-panel [invoiceId]="id" (changed)="totalChanged($event)" />
+      <app-invoice-panel
+        [invoiceId]="id"
+        [allocations]="allocations()"
+        (changed)="totalChanged($event)"
+        (split)="splitRecorded($event)"
+      />
+    } @else if (invoices().length > 0) {
+      <app-payment-form
+        [clientId]="clientId()"
+        [allocations]="allocations()"
+        (split)="splitRecorded($event)"
+      />
     }
   `,
 })
@@ -92,6 +123,14 @@ export class ClientInvoices {
   protected readonly invoices = signal<InvoiceSummary[]>([]);
   protected readonly selectedId = signal<number | null>(null);
   protected readonly creating = signal(false);
+  // The part of a payment typed for each invoice, by id, as entered.
+  protected readonly allocated = signal<Record<number, string>>({});
+  // The parts that have been filled in, for the payment form.
+  protected readonly allocations = computed<NewAllocation[]>(() =>
+    Object.entries(this.allocated())
+      .map(([id, amount]) => ({ invoiceId: Number(id), amount: amount.trim().replace(/^\$/, '') }))
+      .filter((a) => a.amount !== ''),
+  );
   protected readonly statusLabel = statusLabel;
   protected readonly money = money;
 
@@ -99,6 +138,7 @@ export class ClientInvoices {
     effect((onCleanup) => {
       const id = this.clientId();
       this.invoices.set([]);
+      this.allocated.set({});
       const open = untracked(this.openInvoice);
       this.selectedId.set(open?.clientId === id ? open.id : null);
       const sub = this.service.forClient(id).subscribe((list) => this.invoices.set(list));
@@ -122,6 +162,16 @@ export class ClientInvoices {
       },
       error: () => this.creating.set(false),
     });
+  }
+
+  protected allocate(invoiceId: number, amount: string): void {
+    this.allocated.update((parts) => ({ ...parts, [invoiceId]: amount }));
+  }
+
+  // A payment was spread over several invoices: show their new statuses and clear the parts.
+  protected splitRecorded(list: InvoiceSummary[]): void {
+    this.invoices.set(list);
+    this.allocated.set({});
   }
 
   // An invoice changed in the panel: show its new status, dates and total in the list.

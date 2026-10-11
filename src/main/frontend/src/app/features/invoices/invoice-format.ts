@@ -16,3 +16,11 @@ export function statusLabel(status: InvoiceStatus): string {
 export function money(amount: string): string {
   return MONEY.format(Number(amount));
 }
+
+// A positive decimal with at most two decimals, e.g. 1, 1.5 or 12.35. The server applies the same rules.
+export const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
+
+// A decimal string with at most two decimals in whole cents, so amounts add up exactly.
+export function cents(amount: string): number {
+  return Math.round(Number(amount) * 100);
+}
