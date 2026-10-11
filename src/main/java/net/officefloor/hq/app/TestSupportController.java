@@ -39,7 +39,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts");
     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
@@ -139,11 +139,6 @@ public class TestSupportController {
                 BigDecimal rate = percent(values.get("lateInterestRate"), "settings.lateInterestRate");
                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                         LateInterestRate.LATE_INTEREST_RATE, rate.toPlainString());
-            }
-            if (values.get("lateFee") != null) {
-                BigDecimal fee = money(values.get("lateFee"), "settings.lateFee");
-                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
-                        LateFee.LATE_FEE, fee.toPlainString());
             }
             if (values.get("minimumCharge") != null) {
                 BigDecimal minimum = money(values.get("minimumCharge"), "settings.minimumCharge");
@@ -481,11 +476,6 @@ public class TestSupportController {
                 String.class, LateInterestRate.LATE_INTEREST_RATE);
         if (!lateInterestRate.isEmpty()) {
             settings.put("lateInterestRate", new BigDecimal(lateInterestRate.get(0)));
-        }
-        List<String> lateFee = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
-                String.class, LateFee.LATE_FEE);
-        if (!lateFee.isEmpty()) {
-            settings.put("lateFee", new BigDecimal(lateFee.get(0)));
         }
         List<String> cardSurchargePct = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
                 String.class, CardSurcharge.CARD_SURCHARGE_PCT);

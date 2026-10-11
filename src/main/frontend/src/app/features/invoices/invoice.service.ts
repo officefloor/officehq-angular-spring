@@ -175,9 +175,7 @@ export interface InvoiceDetail {
   settleAmount: string | null;
   // The late interest charged on it so far ("0.00" when none): part of `amountDue`.
   lateInterest: string;
-  // The late fee charged on it ("0.00" when none), in its currency: part of `amountDue`.
-  lateFee: string;
-  // The late fee and interest written off by waiving them ("0.00" when none were).
+  // The late interest written off by waiving it ("0.00" when none was).
   lateWaived: string;
   // What would pay off its plan today (null without a plan or once it is paid off), and the interest
   // of instalments not yet due that paying it off early dropped ("0.00" when none was).
@@ -213,7 +211,7 @@ export interface InvoiceDetail {
 
 // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
 // interest, principal and the balance left after it, decimal strings to the cent; what has been paid
-// off it (payments pay the instalments in order, each itself first, then its late fee and late interest), the late interest it
+// off it (payments pay the instalments in order, each itself first, then its late interest), the late interest it
 // has been charged ("0.00" when none) and its status.
 export type InstalmentStatus = 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE';
 
@@ -225,7 +223,6 @@ export interface InstalmentView {
   principal: string;
   balance: string;
   paid: string;
-  lateFee: string;
   lateInterest: string;
   status: InstalmentStatus;
 }
@@ -364,7 +361,7 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/write-off`, null);
   }
 
-  // Waives the late fee and late interest still unpaid on an overdue invoice; interest starts again
+  // Waives the late interest still unpaid on an overdue invoice; interest starts again
   // from today on what is still owed. Refused (409) when there is nothing to waive.
   waiveInterest(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/waive-interest`, null);

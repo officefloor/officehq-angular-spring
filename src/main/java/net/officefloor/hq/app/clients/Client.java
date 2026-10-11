@@ -71,7 +71,7 @@ public class Client {
 
     /**
      * Days past its due date an invoice or instalment for this client is given before it is overdue,
-     * earns late interest and is charged the late fee: 0 to {@link #MAX_GRACE_DAYS}, a week as standard.
+     * and earns late interest: 0 to {@link #MAX_GRACE_DAYS}, a week as standard.
      */
     @Column(name = "grace_days")
     private int graceDays = Invoice.GRACE_DAYS;

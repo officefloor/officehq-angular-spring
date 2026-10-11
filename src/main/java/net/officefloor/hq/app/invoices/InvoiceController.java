@@ -128,9 +128,8 @@ public class InvoiceController {
      * currency its client is billed in, which every amount is in (whole yen for a yen client).
      * {@code earlyDiscount} is the early-payment discount it was settled with (0 when none), and
      * {@code settleAmount} what would settle it today while its early-payment window is open (null otherwise).
-     * {@code lateInterest} is the late interest charged on it so far, and {@code lateFee} the late fee
-     * charged on it (0 when none), both part of the amount due; {@code lateWaived} is the late fee and
-     * interest written off by waiving them (0 when none was). {@code payoff} is what would pay off its
+     * {@code lateInterest} is the late interest charged on it so far, part of the amount due;
+     * {@code lateWaived} is the late interest written off by waiving it (0 when none was). {@code payoff} is what would pay off its
      * plan today (null without a plan or once it is paid off), and {@code interestSaved} the interest
      * of instalments not yet due that paying it off early dropped (0 when none was). {@code fxDifference}
      * is, for a client billed in another currency, the exchange difference in US dollars of the payments
@@ -152,7 +151,7 @@ public class InvoiceController {
             String credited, Long creditOf, String listedTotal, String retentionPct, String retentionCap, String retention,
             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
-            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
+            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
             String withholdingPct) {
@@ -189,7 +188,7 @@ public class InvoiceController {
                     i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate),
                     i.currency(), i.getEarlyDiscountTaken().toPlainString(),
                     Optional.ofNullable(i.settleAmount(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
-                    i.getLateInterest().toPlainString(), i.getLateFee().toPlainString(),
+                    i.getLateInterest().toPlainString(),
                     i.getLateWaived().toPlainString(),
                     Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
                     i.getInterestSaved().toPlainString(),
@@ -382,16 +381,16 @@ public class InvoiceController {
 
     /**
      * One instalment of a plan: its number, the day it falls due, and its payment, interest, principal
-     * and the balance left after it, what has been paid off it and the late fee and late interest it
+     * and the balance left after it, what has been paid off it and the late interest it
      * has been charged, decimal strings to the cent; and its status.
      */
     public record InstalmentView(int number, LocalDate dueDate, String payment, String interest, String principal,
-            String balance, String paid, String lateFee, String lateInterest, Instalment.Status status) {
+            String balance, String paid, String lateInterest, Instalment.Status status) {
         static InstalmentView of(Instalment.Progress p) {
             Instalment i = p.instalment();
             return new InstalmentView(i.number(), i.dueDate(), i.payment().toPlainString(),
                     i.interest().toPlainString(), i.principal().toPlainString(), i.balance().toPlainString(),
-                    p.paid().toPlainString(), p.lateFee().toPlainString(), p.lateInterest().toPlainString(), p.status());
+                    p.paid().toPlainString(), p.lateInterest().toPlainString(), p.status());
         }
     }
 
@@ -585,7 +584,7 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 
-    /** Waives the late fee and late interest still unpaid on an overdue invoice. */
+    /** Waives the late interest still unpaid on an overdue invoice. */
     @PostMapping("/api/invoices/{id}/waive-interest")
     public InvoiceDetail waiveInterest(@PathVariable Long id) {
         return invoices.waiveInterest(id)

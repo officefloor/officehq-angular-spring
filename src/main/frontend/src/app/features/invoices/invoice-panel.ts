@@ -406,7 +406,6 @@ function problemWith(line: NewLine): string {
                 <th scope="col">Principal</th>
                 <th scope="col">Balance</th>
                 <th scope="col">Paid</th>
-                <th scope="col">Late fee</th>
                 <th scope="col">Late interest</th>
                 <th scope="col">Status</th>
                 <th scope="col">Actions</th>
@@ -422,7 +421,6 @@ function problemWith(line: NewLine): string {
                   <td data-testid="instalment-principal">{{ amount(s.principal) }}</td>
                   <td data-testid="instalment-balance">{{ amount(s.balance) }}</td>
                   <td data-testid="instalment-paid">{{ amount(s.paid) }}</td>
-                  <td data-testid="instalment-late-fee">{{ amount(s.lateFee) }}</td>
                   <td data-testid="instalment-late-interest">{{ amount(s.lateInterest) }}</td>
                   <td data-testid="instalment-status">{{ instalmentStatusLabel(s.status) }}</td>
                   <td>
@@ -506,12 +504,6 @@ function problemWith(line: NewLine): string {
               <tr>
                 <th scope="row" colspan="5">Early-payment discount</th>
                 <td data-testid="invoice-early-discount">{{ amount(inv.earlyDiscount) }}</td>
-              </tr>
-            }
-            @if (inv.creditOf === null) {
-              <tr>
-                <th scope="row" colspan="5">Late fee</th>
-                <td data-testid="invoice-late-fee">{{ amount(inv.lateFee) }}</td>
               </tr>
             }
             @if (inv.creditOf === null) {

@@ -30,7 +30,7 @@ export interface Client {
   // of the workspace's; null for the workspace's, 0 for never charged a minimum.
   minimumCharge: number | null;
   // Days (0 to 30, a week as standard) past its due date an invoice or instalment is given before it
-  // is overdue, earns late interest and is charged the late fee.
+  // is overdue and earns late interest.
   graceDays: number;
   // The client's own annual late-interest rate (0 to 30 percent) charged instead of the workspace's;
   // null for the workspace's, 0 for never charged late interest.

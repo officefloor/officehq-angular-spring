@@ -17,7 +17,6 @@ import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.CardSurcharge;
 import net.officefloor.hq.app.ExchangeRates;
-import net.officefloor.hq.app.LateFee;
 import net.officefloor.hq.app.LateInterestRate;
 import net.officefloor.hq.app.PriceList;
 import net.officefloor.hq.app.TaxRate;
@@ -47,16 +46,14 @@ public class InvoiceService {
     private final ExchangeRates exchangeRates;
     private final LateInterestRate lateInterestRate;
     private final PriceList priceList;
-    private final LateFee lateFee;
     private final CardSurcharge cardSurcharge;
 
     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
-            LateInterestRate lateInterestRate, LateFee lateFee, CardSurcharge cardSurcharge, PriceList priceList) {
+            LateInterestRate lateInterestRate, CardSurcharge cardSurcharge, PriceList priceList) {
         this.priceList = priceList;
         this.cardSurcharge = cardSurcharge;
         this.lateInterestRate = lateInterestRate;
-        this.lateFee = lateFee;
         this.exchangeRates = exchangeRates;
         this.entityManager = entityManager;
         this.invoices = invoices;
@@ -91,7 +88,7 @@ public class InvoiceService {
     }
 
     /**
-     * Works out the late fee and late interest each of the invoices has been charged by today (see
+     * Works out the late interest each of the invoices has been charged by today (see
      * {@link Invoice#accrueLateInterest}).
      */
     private List<Invoice> withInterest(List<Invoice> list) {
@@ -101,9 +98,8 @@ public class InvoiceService {
         List<Payment> found = payments.findForInvoices(list.stream().map(Invoice::getId).toList());
         BigDecimal rate = taxRate.percent();
         BigDecimal annual = lateInterestRate.percent();
-        BigDecimal feeUsd = lateFee.usd();
         LocalDate now = today.date();
-        list.forEach(i -> i.accrueLateInterest(found, rate, annual, feeUsd, now));
+        list.forEach(i -> i.accrueLateInterest(found, rate, annual, now));
         return list;
     }
 
@@ -481,9 +477,9 @@ public class InvoiceService {
     }
 
     /**
-     * Waives the late fee and late interest still unpaid on a sent invoice today, writing them off, and
+     * Waives the late interest still unpaid on a sent invoice today, writing it off, and
      * records what was waived in the audit; empty if no such invoice. Interest starts again from today on
-     * what is still owed, with no new fee. Refused when there is nothing to waive.
+     * what is still owed. Refused when there is nothing to waive.
      */
     @Transactional
     public Optional<Invoice> waiveInterest(Long invoiceId) {
@@ -497,7 +493,7 @@ public class InvoiceService {
             withInterest(List.of(invoice));
             BigDecimal waived = invoice.getLateWaived().subtract(before);
             if (invoice.hasPlan() || waived.signum() <= 0) {
-                throw new InvoiceRejectedException("There is no unpaid late interest or late fee to waive.");
+                throw new InvoiceRejectedException("There is no unpaid late interest to waive.");
             }
             invoices.saveAndFlush(invoice);
             audit.record("INTEREST_WAIVED id=" + invoice.getId() + " amount=" + waived.toPlainString());

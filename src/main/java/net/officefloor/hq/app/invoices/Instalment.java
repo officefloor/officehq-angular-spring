@@ -16,20 +16,20 @@ public record Instalment(int number, LocalDate dueDate, BigDecimal payment, BigD
     }
 
     /**
-     * What has been paid off an instalment, what is still unpaid on it, the late fee and late interest
-     * it has been charged and what of each is still unpaid, and its status on a day.
+     * What has been paid off an instalment, what is still unpaid on it, the late interest it has been
+     * charged and what of it is still unpaid, and its status on a day.
      */
-    public record Progress(Instalment instalment, BigDecimal paid, BigDecimal unpaid, BigDecimal lateFee,
-            BigDecimal feeUnpaid, BigDecimal lateInterest, BigDecimal interestUnpaid, Status status) {
+    public record Progress(Instalment instalment, BigDecimal paid, BigDecimal unpaid, BigDecimal lateInterest,
+            BigDecimal interestUnpaid, Status status) {
 
-        /** All still owed on the instalment: what is unpaid on it, its late fee and its late interest. */
+        /** All still owed on the instalment: what is unpaid on it and its late interest. */
         public BigDecimal owed() {
-            return unpaid.add(feeUnpaid).add(interestUnpaid);
+            return unpaid.add(interestUnpaid);
         }
 
-        /** What is still unpaid of the late fee and late interest the instalment has been charged. */
+        /** What is still unpaid of the late interest the instalment has been charged. */
         public BigDecimal chargesUnpaid() {
-            return feeUnpaid.add(interestUnpaid);
+            return interestUnpaid;
         }
     }
 }
