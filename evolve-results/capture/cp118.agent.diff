@@ -1,0 +1,331 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 27bd909..e3a68b6 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -71,7 +71,8 @@ export interface InvoiceLineView {
+   // then the first band's, and a change of quantity reprices it from the bands.
+   tiered: boolean;
+   // The quantity the line is billed and priced on, without trailing zeros: `qty` rounded up to the
+-  // next whole increment its unit type has on the client's rate card, or `qty` itself without one.
++  // next whole increment its unit type has on the client's rate card (`qty` itself without one), and
++  // then at least the minimum units it has there.
+   billedQty: string;
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index be1636e..b9c227d 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -269,7 +269,7 @@ public class TestSupportController {
+             Long clientId = id(row.get("id") == null
+                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
+             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
+-                only(rate, Set.of("unitType", "unitPrice", "tiers", "increment"), "clients[].rates[]");
++                only(rate, Set.of("unitType", "unitPrice", "tiers", "increment", "minUnits"), "clients[].rates[]");
+                 if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
+                     throw refuse("clients[].rates[].unitType is required");
+                 }
+@@ -282,10 +282,15 @@ public class TestSupportController {
+                 if (increment != null && increment.signum() <= 0) {
+                     throw refuse("clients[].rates[].increment must be more than zero, not " + rate.get("increment"));
+                 }
+-                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price, tiers, increment) VALUES (?, ?, ?, ?, ?)", clientId,
++                BigDecimal minUnits = rate.get("minUnits") == null ? null
++                        : cents(rate.get("minUnits"), "clients[].rates[].minUnits");
++                if (minUnits != null && minUnits.signum() <= 0) {
++                    throw refuse("clients[].rates[].minUnits must be more than zero, not " + rate.get("minUnits"));
++                }
++                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price, tiers, increment, min_units) VALUES (?, ?, ?, ?, ?, ?)", clientId,
+                         rate.get("unitType").toString(),
+                         tiers != null ? null : cents(rate.get("unitPrice"), "clients[].rates[].unitPrice"),
+-                        tiers == null ? null : tiers.format(), increment);
++                        tiers == null ? null : tiers.format(), increment, minUnits);
+             }
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+@@ -334,7 +339,7 @@ public class TestSupportController {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+                 insert("invoice_line", line.get("id"),
+-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment"},
++                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units"},
+                         invoiceId, text(line, "description"),
+                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
+                         price[0], price[1],
+@@ -343,7 +348,7 @@ public class TestSupportController {
+                         line.get("taxRate") == null ? null : percent(line.get("taxRate"), "invoices[].lineItems[].taxRate"),
+                         line.get("creditOfLine") == null ? null : id(line.get("creditOfLine")),
+                         line.get("unitType") == null ? null : line.get("unitType").toString(),
+-                        lineIncrement(invoiceId, line));
++                        lineRate(invoiceId, line, "increment"), lineRate(invoiceId, line, "min_units"));
+             }
+         }
+         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
+@@ -528,13 +533,16 @@ public class TestSupportController {
+                         row.put("taxNumber", r.get("TAX_NUMBER"));
+                     }
+                     List<Map<String, Object>> rateCard = jdbc.queryForList(
+-                            "SELECT unit_type, unit_price, tiers, increment FROM client_rate WHERE client_id = ? ORDER BY unit_type",
++                            "SELECT unit_type, unit_price, tiers, increment, min_units FROM client_rate WHERE client_id = ? ORDER BY unit_type",
+                             r.get("ID")).stream().map(c -> {
+                                 Map<String, Object> entry = rate((String) c.get("UNIT_TYPE"), (BigDecimal) c.get("UNIT_PRICE"),
+                                         RateTiers.parse((String) c.get("TIERS")));
+                                 if (c.get("INCREMENT") != null) {
+                                     entry.put("increment", c.get("INCREMENT"));
+                                 }
++                                if (c.get("MIN_UNITS") != null) {
++                                    entry.put("minUnits", c.get("MIN_UNITS"));
++                                }
+                                 return entry;
+                             }).toList();
+                     if (!rateCard.isEmpty()) {
+@@ -690,12 +698,12 @@ public class TestSupportController {
+         return new Object[] {rate.get(0).get("UNIT_PRICE"), null};
+     }
+ 
+-    /** A seeded line's billing increment: its invoice's client's increment for the line's unit type; null for none. */
+-    private BigDecimal lineIncrement(Long invoiceId, Map<String, Object> line) {
++    /** A seeded line's billing increment or minimum units: its invoice's client's given column for the line's unit type; null for none. */
++    private BigDecimal lineRate(Long invoiceId, Map<String, Object> line, String column) {
+         if (line.get("unitType") == null) {
+             return null;
+         }
+-        List<BigDecimal> found = jdbc.queryForList("SELECT r.increment FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
++        List<BigDecimal> found = jdbc.queryForList("SELECT r." + column + " FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
+                 + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", BigDecimal.class, invoiceId,
+                 line.get("unitType").toString().trim());
+         return found.isEmpty() ? null : found.get(0);
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 568872d..df3acde 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -43,10 +43,10 @@ public class ClientController {
+     }
+ 
+     /** A rate card entry: its single unit price, or else its tiers (null when it has a single price). */
+-    public record RateView(BigDecimal unitPrice, List<RateTiers.Band> tiers, BigDecimal increment) {
++    public record RateView(BigDecimal unitPrice, List<RateTiers.Band> tiers, BigDecimal increment, BigDecimal minUnits) {
+         static RateView of(ClientRate r) {
+             RateTiers tiers = r.tiers();
+-            return new RateView(r.getUnitPrice(), tiers == null ? null : tiers.bands(), r.getIncrement());
++            return new RateView(r.getUnitPrice(), tiers == null ? null : tiers.bands(), r.getIncrement(), r.getMinUnits());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientRate.java b/src/main/java/net/officefloor/hq/app/clients/ClientRate.java
+index 49c781b..faadcec 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientRate.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientRate.java
+@@ -20,6 +20,10 @@ public class ClientRate {
+     @Column(name = "increment")
+     private BigDecimal increment;
+ 
++    /** The minimum units the unit type is billed (a call-out is at least 2 hours); null for none. */
++    @Column(name = "min_units")
++    private BigDecimal minUnits;
++
+     protected ClientRate() {
+     }
+ 
+@@ -31,6 +35,10 @@ public class ClientRate {
+         return increment;
+     }
+ 
++    public BigDecimal getMinUnits() {
++        return minUnits;
++    }
++
+     /** The tiers; null for a single unit price. */
+     public RateTiers tiers() {
+         return RateTiers.parse(tiers);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 1b2f525..4114897 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1816,17 +1816,17 @@ public class Invoice {
+      * the subtotal would then be less than a fixed discount on the invoice.
+      */
+     public boolean updateLine(Long lineId, String description, BigDecimal qty, String unitType, BigDecimal unitPrice,
+-            String tiers, BigDecimal increment, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++            String tiers, BigDecimal increment, BigDecimal minUnits, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+         InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
+         if (line == null) {
+             return false;
+         }
+         InvoiceLine was = line.copy();
+-        line.update(description, qty, unitType, unitPrice, tiers, increment, taxExempt, discountPct, taxRate);
++        line.update(description, qty, unitType, unitPrice, tiers, increment, minUnits, taxExempt, discountPct, taxRate);
+         // Changing a tiered line reprices the others of its unit type, so the subtotal is worked out with it changed.
+         BigDecimal left = subtotal();
+         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
+-            line.update(was.getDescription(), was.getQty(), was.getUnitType(), was.getUnitPrice(), was.tiers(), was.getIncrement(),
++            line.update(was.getDescription(), was.getQty(), was.getUnitType(), was.getUnitPrice(), was.tiers(), was.getIncrement(), was.getMinUnits(),
+                     was.isTaxExempt(), was.getDiscountPct(), was.getTaxRate());
+             throw new InvoiceRejectedException("This line cannot be changed: the "
+                     + currency().format(left) + " subtotal would be less than the "
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 82fa2cf..db5ea42 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -86,7 +86,7 @@ public class InvoiceController {
+      * {@code amount} is after it. {@code creditOfLine} is the id of the line a credit note's line credits, null when none.
+      * {@code tiered} lines are priced in progressive tiers from the rate card; their {@code unitPrice} is the first band's.
+      * {@code billedQty} (without trailing zeros) is the quantity the line is priced on: its quantity rounded up to the next
+-     * whole increment of its unit type's rate card entry, or the quantity as entered without one.
++     * whole increment of its unit type's rate card entry (as entered without one), and then at least its minimum units.
+      */
+     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
+             String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index d3cf12a..53df39c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -65,6 +65,13 @@ public class InvoiceLine {
+     @Column(name = "billing_increment")
+     private BigDecimal increment;
+ 
++    /**
++     * The minimum units the line is billed, from its client's rate card for its unit type (a call-out is at
++     * least 2 hours): it is billed at least that many units, after rounding up to its increment; null for none.
++     */
++    @Column(name = "billing_min_units")
++    private BigDecimal minUnits;
++
+     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
+     @ManyToOne(fetch = FetchType.LAZY)
+     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
+@@ -90,15 +97,16 @@ public class InvoiceLine {
+     }
+ 
+     public InvoiceLine(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
+-            BigDecimal increment, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++            BigDecimal increment, BigDecimal minUnits, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+         this(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
+         this.tiers = tiers;
+         this.increment = increment;
++        this.minUnits = minUnits;
+     }
+ 
+     /** A new line with the same description, quantity, unit type, price, tiers, discount, tax rate and exemption. */
+     public InvoiceLine copy() {
+-        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, taxExempt, discountPct, taxRate);
++        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, minUnits, taxExempt, discountPct, taxRate);
+     }
+ 
+     /** A new credit note line crediting this line, with its description, quantity, price, discount, tax rate and exemption. */
+@@ -110,8 +118,9 @@ public class InvoiceLine {
+ 
+     /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
+     public void update(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
+-            BigDecimal increment, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++            BigDecimal increment, BigDecimal minUnits, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+         this.increment = increment;
++        this.minUnits = minUnits;
+         this.description = description;
+         this.unitType = unitType;
+         this.qty = qty;
+@@ -152,12 +161,19 @@ public class InvoiceLine {
+         return increment;
+     }
+ 
+-    /** The quantity the line is billed on: its quantity rounded up to the next whole increment, or as entered without one. */
++    /** The minimum units the line is billed; null for none. */
++    public BigDecimal getMinUnits() {
++        return minUnits;
++    }
++
++    /**
++     * The quantity the line is billed on: its quantity rounded up to the next whole increment (as entered without
++     * one), and then at least its minimum units.
++     */
+     public BigDecimal billedQty() {
+-        if (increment == null || increment.signum() <= 0) {
+-            return qty;
+-        }
+-        return qty.divide(increment, 0, RoundingMode.CEILING).multiply(increment);
++        BigDecimal billed = increment == null || increment.signum() <= 0 ? qty
++                : qty.divide(increment, 0, RoundingMode.CEILING).multiply(increment);
++        return minUnits != null && billed.compareTo(minUnits) < 0 ? minUnits : billed;
+     }
+ 
+     /** Whether the line is priced in progressive tiers rather than at its unit price. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 64a166a..62cfd93 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -229,7 +229,7 @@ public class InvoiceService {
+         found.ifPresent(invoice -> {
+             LinePrice price = linePrice(invoice, unitType, unitPrice);
+             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
+-            invoice.addLine(new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), taxExempt,
++            invoice.addLine(new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), taxExempt,
+                     discountPct, taxRate));
+             invoices.saveAndFlush(invoice);
+             if (reopened) {
+@@ -281,7 +281,7 @@ public class InvoiceService {
+         }
+         LinePrice price = linePrice(invoice, unitType, unitPrice);
+         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
+-        invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), taxExempt,
++        invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), taxExempt,
+                 discountPct, taxRate);
+         invoices.saveAndFlush(invoice);
+         if (reopened) {
+@@ -1439,7 +1439,7 @@ public class InvoiceService {
+      * (the cent is already checked for the rest).
+      */
+     /** A line's unit price, and the tiers it is priced in (null when it has a single price). */
+-    private record LinePrice(BigDecimal unitPrice, String tiers, BigDecimal increment) {
++    private record LinePrice(BigDecimal unitPrice, String tiers, BigDecimal increment, BigDecimal minUnits) {
+     }
+ 
+     /**
+@@ -1447,15 +1447,16 @@ public class InvoiceService {
+      * a single price, or tiers starting from the first band — or, when the card has none, the
+      * workspace price list's converted into the client's currency (see {@link PriceList}). Refused when neither is there, and a
+      * single price with more decimals than the currency has. Either way the line is billed in the
+-     * increment the client's rate card has for its unit type, if any.
++     * increment, and at least the minimum units, the client's rate card has for its unit type, if any.
+      */
+     private LinePrice linePrice(Invoice invoice, String unitType, BigDecimal unitPrice) {
+         Client client = unitType == null ? null : clients.findById(invoice.getClientId()).orElse(null);
+         ClientRate rate = client == null ? null : client.rateFor(unitType);
+         BigDecimal increment = rate == null ? null : rate.getIncrement();
++        BigDecimal minUnits = rate == null ? null : rate.getMinUnits();
+         if (unitPrice != null) {
+             requireWhole(invoice.currency(), unitPrice, "The unit price");
+-            return new LinePrice(unitPrice, null, increment);
++            return new LinePrice(unitPrice, null, increment, minUnits);
+         }
+         if (unitType == null) {
+             throw new InvoiceRejectedException("Enter a unit price or a unit type.");
+@@ -1467,14 +1468,14 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException("The client's rate card has no rate for " + unitType
+                         + "; enter a unit price.");
+             }
+-            return new LinePrice(listed.unitPrice(), listed.tiers(), null);
++            return new LinePrice(listed.unitPrice(), listed.tiers(), null, null);
+         }
+         RateTiers tiers = rate.tiers();
+         if (tiers != null) {
+-            return new LinePrice(tiers.firstPrice(), tiers.format(), increment);
++            return new LinePrice(tiers.firstPrice(), tiers.format(), increment, minUnits);
+         }
+         requireWhole(invoice.currency(), rate.getUnitPrice(), "The unit price");
+-        return new LinePrice(rate.getUnitPrice(), null, increment);
++        return new LinePrice(rate.getUnitPrice(), null, increment, minUnits);
+     }
+ 
+     private static void requireWhole(Currency currency, BigDecimal amount, String what) {
+diff --git a/src/main/resources/db/migration/V50__minimum_units.sql b/src/main/resources/db/migration/V50__minimum_units.sql
+new file mode 100644
+index 0000000..bf68ac5
+--- /dev/null
++++ b/src/main/resources/db/migration/V50__minimum_units.sql
+@@ -0,0 +1,6 @@
++-- The minimum units a rate card entry's unit type is billed (a call-out is at least 2 hours): a line of
++-- that unit type is billed at least that many units, after rounding up to its increment; NULL for none.
++ALTER TABLE client_rate ADD COLUMN min_units DECIMAL(19, 2);
++
++-- The minimum units the line is billed, from its client's rate card for its unit type; NULL for none.
++ALTER TABLE invoice_line ADD COLUMN billing_min_units DECIMAL(19, 2);
