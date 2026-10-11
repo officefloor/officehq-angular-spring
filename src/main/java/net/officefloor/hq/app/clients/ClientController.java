@@ -2,6 +2,8 @@ package net.officefloor.hq.app.clients;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -18,9 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/clients")
 public class ClientController {
 
-    public record ClientView(Long id, String name, String email) {
+    public record ClientView(Long id, String name, String email, Integer termsDays) {
         static ClientView of(Client c) {
-            return new ClientView(c.getId(), c.getName(), c.getEmail());
+            return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays());
         }
     }
 
@@ -32,7 +34,10 @@ public class ClientController {
             @Email(regexp = PROPER_EMAIL,
                     message = "Enter a proper email address, like name@company.com.")
             @Size(max = 255, message = "The email must be at most 255 characters.")
-            String email) {
+            String email,
+            @Min(value = 1, message = "Payment terms must be from 1 to 365 days.")
+            @Max(value = 365, message = "Payment terms must be from 1 to 365 days.")
+            Integer termsDays) {
     }
 
     /**
@@ -55,6 +60,6 @@ public class ClientController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ClientView add(@Valid @RequestBody NewClient body) {
-        return ClientView.of(clients.add(body.name(), body.email()));
+        return ClientView.of(clients.add(body.name(), body.email(), body.termsDays()));
     }
 }

@@ -6,6 +6,8 @@ export interface Client {
   id: number;
   name: string;
   email: string;
+  // Payment terms in days; null means due at the end of the month after issue.
+  termsDays: number | null;
 }
 
 export type NewClient = Omit<Client, 'id'>;

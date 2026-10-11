@@ -32,7 +32,7 @@ public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
@@ -92,14 +92,8 @@ public class TestSupportController {
         }
         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
             only(row, CLIENT_FIELDS, "clients[]");
-            Object id = row.get("id");
-            if (id == null) {
-                jdbc.update("INSERT INTO client (name, email) VALUES (?, ?)",
-                        text(row, "name"), text(row, "email"));
-            } else {
-                jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
-                        id(id), text(row, "name"), text(row, "email"));
-            }
+            insert("client", row.get("id"), new String[] {"name", "email", "terms_days"},
+                    text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"));
         }
         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
             only(row, INVOICE_FIELDS, "invoices[]");
@@ -177,12 +171,15 @@ public class TestSupportController {
         if (!taxRate.isEmpty()) {
             out.put("settings", Map.of("taxRate", new BigDecimal(taxRate.get(0))));
         }
-        out.put("clients", jdbc.queryForList("SELECT id, name, email FROM client ORDER BY id").stream()
+        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
                     row.put("name", r.get("NAME"));
                     row.put("email", r.get("EMAIL"));
+                    if (r.get("TERMS_DAYS") != null) {
+                        row.put("termsDays", r.get("TERMS_DAYS"));
+                    }
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
@@ -251,6 +248,22 @@ public class TestSupportController {
         }
         jdbc.update("INSERT INTO " + table + " (" + cols + ") VALUES (" + marks + ")", values);
         return jdbc.queryForObject("SELECT MAX(id) FROM " + table, Long.class);
+    }
+
+    /** A whole number of days, not negative; null when left out. */
+    private static Integer days(Object value, String field) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            int days = new BigDecimal(value.toString()).intValueExact();
+            if (days < 0) {
+                throw refuse(field + " cannot be negative, not " + value);
+            }
+            return days;
+        } catch (NumberFormatException | ArithmeticException e) {
+            throw refuse(field + " must be a whole number of days, not " + value);
+        }
     }
 
     /** A true/false flag; false when left out. */

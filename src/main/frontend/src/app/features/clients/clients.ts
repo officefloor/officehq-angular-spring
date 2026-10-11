@@ -94,6 +94,17 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
           formControlName="email"
           required
         />
+        <label for="client-terms">Payment terms in days (optional)</label>
+        <input
+          id="client-terms"
+          data-testid="client-form-terms"
+          type="number"
+          inputmode="numeric"
+          min="1"
+          max="365"
+          step="1"
+          formControlName="terms"
+        />
         <button type="submit" data-testid="client-form-submit" [disabled]="saving()">
           Add client
         </button>
@@ -141,6 +152,7 @@ export class Clients {
       nonNullable: true,
       validators: [Validators.required, Validators.pattern(PROPER_EMAIL)],
     }),
+    terms: new FormControl<number | null>(null),
   });
 
   constructor() {
@@ -162,8 +174,10 @@ export class Clients {
   protected add(): void {
     const name = this.form.controls.name.value.trim();
     const email = this.form.controls.email.value.trim();
-    this.form.setValue({ name, email });
-    const problem = this.problemWith(name, email);
+    const terms = this.form.controls.terms.value;
+    const termsDays = terms === null || (terms as unknown) === '' ? null : Number(terms);
+    this.form.setValue({ name, email, terms: termsDays });
+    const problem = this.problemWith(name, email, termsDays);
     if (problem) {
       this.form.markAllAsTouched();
       this.error.set(problem);
@@ -171,7 +185,7 @@ export class Clients {
     }
     this.saving.set(true);
     this.error.set('');
-    this.service.add({ name, email }).subscribe({
+    this.service.add({ name, email, termsDays }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created].sort(byName));
         this.form.reset();
@@ -220,7 +234,7 @@ export class Clients {
 
   // What is wrong with the client, or '' when it can be saved. A duplicate email is checked here
   // for a quick answer; the server is the authority.
-  private problemWith(name: string, email: string): string {
+  private problemWith(name: string, email: string, termsDays: number | null): string {
     const problems: string[] = [];
     if (!name) {
       problems.push("Enter the client's name.");
@@ -231,6 +245,9 @@ export class Clients {
       problems.push('Enter a proper email address, like name@company.com.');
     } else if (this.clients().some((c) => c.email.toLowerCase() === email.toLowerCase())) {
       problems.push(`Another client already has the email ${email}.`);
+    }
+    if (termsDays !== null && !(Number.isInteger(termsDays) && termsDays >= 1 && termsDays <= 365)) {
+      problems.push('Payment terms must be from 1 to 365 days.');
     }
     return problems.join(' ');
   }

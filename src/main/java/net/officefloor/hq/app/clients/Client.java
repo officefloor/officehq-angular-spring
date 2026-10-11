@@ -19,12 +19,16 @@ public class Client {
 
     private String email;
 
+    /** Payment terms in days; null means the usual end of the following month. */
+    private Integer termsDays;
+
     protected Client() {
     }
 
-    public Client(String name, String email) {
+    public Client(String name, String email, Integer termsDays) {
         this.name = name;
         this.email = email;
+        this.termsDays = termsDays;
     }
 
     public Long getId() {
@@ -37,5 +41,9 @@ public class Client {
 
     public String getEmail() {
         return email;
+    }
+
+    public Integer getTermsDays() {
+        return termsDays;
     }
 }

@@ -29,11 +29,11 @@ public class ClientService {
     }
 
     @Transactional
-    public Client add(String name, String email) {
+    public Client add(String name, String email, Integer termsDays) {
         String address = email.trim();
         if (clients.existsByEmailIgnoreCase(address)) {
             throw new ClientRejectedException("Another client already has the email " + address + ".");
         }
-        return clients.save(new Client(name.trim(), address));
+        return clients.save(new Client(name.trim(), address, termsDays));
     }
 }

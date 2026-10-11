@@ -14,6 +14,7 @@ import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
+import net.officefloor.hq.app.clients.Client;
 import net.officefloor.hq.app.clients.ClientRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,14 +59,14 @@ public class InvoiceService {
         return invoices.findWithLinesById(id);
     }
 
-    /** An empty draft for the client, issued today and due on the last day of the following month; empty if no such client. */
+    /** An empty draft for the client, issued today and due on the client's terms; empty if no such client. */
     @Transactional
     public Optional<Invoice> newDraft(Long clientId) {
         if (!clients.existsById(clientId)) {
             return Optional.empty();
         }
         LocalDate issued = today.date();
-        return Optional.of(invoices.save(Invoice.draft(clientId, issued, dueDateFor(issued))));
+        return Optional.of(invoices.save(Invoice.draft(clientId, issued, dueDateFor(clientId, issued))));
     }
 
     /**
@@ -77,11 +78,22 @@ public class InvoiceService {
     public Optional<Invoice> duplicate(Long invoiceId) {
         return invoices.findWithLinesById(invoiceId).map(original -> {
             LocalDate issued = today.date();
-            Invoice copy = invoices.saveAndFlush(original.duplicate(issued, dueDateFor(issued)));
+            Invoice copy = invoices.saveAndFlush(original.duplicate(issued, dueDateFor(original.getClientId(), issued)));
             audit.record("INVOICE_DUPLICATED from=" + InvoiceNumber.of(original.getId())
                     + " to=" + InvoiceNumber.of(copy.getId()));
             return copy;
         });
+    }
+
+    /**
+     * An invoice for a client with payment terms is due that many days after it is issued; otherwise
+     * as {@link #dueDateFor(LocalDate)}.
+     */
+    private LocalDate dueDateFor(Long clientId, LocalDate issued) {
+        return clients.findById(clientId)
+                .map(Client::getTermsDays)
+                .map(days -> issued.plusDays(days))
+                .orElseGet(() -> dueDateFor(issued));
     }
 
     /** A new invoice is due on the last day of the month after the month it is issued in. */
@@ -179,8 +191,7 @@ public class InvoiceService {
     }
 
     /**
-     * Sends a draft invoice, issuing it today and making it due on the last day of the following
-     * month, and records it in the audit; empty if
+     * Sends a draft invoice, issuing it today and making it due on the client's terms, and records it in the audit; empty if
      * no such invoice. An invoice already sent, or with no lines, is refused.
      */
     @Transactional
@@ -197,7 +208,7 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("Add at least one line before sending the invoice.");
             }
             LocalDate issued = today.date();
-            invoice.markSent(issued, dueDateFor(issued));
+            invoice.markSent(issued, dueDateFor(invoice.getClientId(), issued));
             invoices.saveAndFlush(invoice);
             audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
                     + " total=" + invoice.total(taxRate.percent()).toPlainString());
