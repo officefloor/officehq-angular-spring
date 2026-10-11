@@ -305,11 +305,12 @@ public class InvoiceService {
     }
 
     /**
-     * Sets the percentage of a draft's amount before tax held back as retention; empty if no such invoice.
+     * Sets the percentage of a draft's amount before tax held back as retention, and the most it holds
+     * back (null for no cap); empty if no such invoice.
      * The percentage has already been checked; any invoice that is not a draft, or a credit note, is refused.
      */
     @Transactional
-    public Optional<Invoice> setRetention(Long invoiceId, BigDecimal retentionPct) {
+    public Optional<Invoice> setRetention(Long invoiceId, BigDecimal retentionPct, BigDecimal retentionCap) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isCreditNote()) {
@@ -321,7 +322,11 @@ public class InvoiceService {
             if (invoice.hasPlan() && retentionPct.signum() > 0) {
                 throw new InvoiceRejectedException("An invoice spread over instalments cannot also hold back retention.");
             }
+            if (retentionCap != null) {
+                requireWhole(invoice.currency(), retentionCap, "The retention cap");
+            }
             invoice.setRetentionPct(retentionPct);
+            invoice.setRetentionCap(retentionCap);
             invoices.saveAndFlush(invoice);
         });
         return found;

@@ -118,8 +118,10 @@ export interface InvoiceDetail {
   // The total as listed: negative for a credit note.
   listedTotal: string;
   // The percentage of the amount before tax held back (without trailing zeros), and `retention`, that share
-  // rounded down to the cent; `retentionHeld` is what is still held back, not part of `amountDue`.
+  // rounded down to the cent and never more than `retentionCap` (null when uncapped); `retentionHeld` is
+  // what is still held back, not part of `amountDue`.
   retentionPct: string;
+  retentionCap: string | null;
   retention: string;
   retentionHeld: string;
   // The day (yyyy-mm-dd) the retention was released, and the day it then falls due; null while held.
@@ -268,10 +270,10 @@ export class InvoiceService {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/due-date`, { dueDate });
   }
 
-  // Sets the percentage of a draft's amount before tax held back as retention (0 to 20, up to two decimals);
-  // refused (400) outside that, or (409) when it is not a draft.
-  setRetention(invoiceId: number, retentionPct: string): Observable<InvoiceDetail> {
-    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct });
+  // Sets the percentage of a draft's amount before tax held back as retention (0 to 20, up to two decimals),
+  // with an optional cap on the amount held back; refused (400) outside that, or (409) when it is not a draft.
+  setRetention(invoiceId: number, retentionPct: string, retentionCap?: string): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct, retentionCap });
   }
 
   // Spreads a draft over monthly instalments (2 to 24) at an annual interest rate (0 to 30, up to two

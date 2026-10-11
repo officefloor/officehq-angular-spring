@@ -76,6 +76,20 @@ function problemWithDiscountAmount(amount: string): string {
   return '';
 }
 
+// A cap on the retention held back: money, not negative and to the cent, e.g. 500 or 250.50.
+function problemWithRetentionCap(cap: string): string {
+  if (!/^-?\d+(\.\d+)?$/.test(cap)) {
+    return 'The retention cap must be a number, like 500 or 250.50.';
+  }
+  if (Number(cap) < 0) {
+    return 'The retention cap cannot be negative.';
+  }
+  if (!TWO_DECIMALS.test(cap)) {
+    return 'The retention cap can have at most two decimals.';
+  }
+  return '';
+}
+
 // A cap on everything taken off, line discounts included: money, not negative and to the cent, e.g. 25 or 12.50.
 function problemWithDiscountCap(cap: string): string {
   if (!/^-?\d+(\.\d+)?$/.test(cap)) {
@@ -271,7 +285,8 @@ function problemWith(line: NewLine): string {
             </tr>
             <tr>
               <th scope="row" colspan="8">
-                Retention ({{ inv.retentionPct }}%@if (inv.retentionReleasedOn) {, released
+                Retention ({{ inv.retentionPct }}%@if (inv.retentionCap !== null) {, max
+                  {{ amount(inv.retentionCap) }}}@if (inv.retentionReleasedOn) {, released
                   {{ inv.retentionReleasedOn }}, due {{ inv.retentionDueDate }}} @else if (+inv.retention > 0) {, held back})
               </th>
               <td data-testid="invoice-retention">{{ amount(inv.retention) }}</td>
@@ -460,6 +475,8 @@ function problemWith(line: NewLine): string {
           <form [formGroup]="retentionForm" (ngSubmit)="setRetention(inv.id)" aria-label="Retention" novalidate>
             <label for="retention-pct">Retention (%, 0 to 20)</label>
             <input id="retention-pct" data-testid="retention-form-pct" inputmode="decimal" formControlName="pct" />
+            <label for="retention-cap">capped at ({{ symbol() }}, optional)</label>
+            <input id="retention-cap" data-testid="retention-form-cap" inputmode="decimal" formControlName="cap" />
             <button type="submit" data-testid="retention-form-submit" [disabled]="savingRetention()">
               Set retention
             </button>
@@ -730,6 +747,7 @@ export class InvoicePanel {
 
   protected readonly retentionForm = new FormGroup({
     pct: new FormControl('', { nonNullable: true }),
+    cap: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly planForm = new FormGroup({
@@ -934,8 +952,10 @@ export class InvoicePanel {
   }
 
   protected setRetention(invoiceId: number): void {
-    const pct = this.retentionForm.getRawValue().pct.trim().replace(/%$/, '').trim();
-    const problem = problemWithRetention(pct);
+    const raw = this.retentionForm.getRawValue();
+    const pct = raw.pct.trim().replace(/%$/, '').trim();
+    const cap = raw.cap.trim().replace(/^\$/, '').trim();
+    const problem = problemWithRetention(pct) || (cap ? problemWithRetentionCap(cap) : '');
     if (problem) {
       this.retentionForm.markAllAsTouched();
       this.retentionError.set(problem);
@@ -943,7 +963,7 @@ export class InvoicePanel {
     }
     this.savingRetention.set(true);
     this.retentionError.set('');
-    this.service.setRetention(invoiceId, pct).subscribe({
+    this.service.setRetention(invoiceId, pct, cap || undefined).subscribe({
       next: (detail) => {
         this.invoice.set(detail);
         this.changed.emit(detail);

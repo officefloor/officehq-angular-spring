@@ -86,6 +86,10 @@ public class Invoice {
     @Column(name = "retention_pct")
     private BigDecimal retentionPct = BigDecimal.ZERO;
 
+    /** The most retention held back, in the invoice's currency; null is no cap. */
+    @Column(name = "retention_cap")
+    private BigDecimal retentionCap;
+
     @Column(name = "retention_released_on")
     private LocalDate retentionReleasedOn;
 
@@ -249,6 +253,7 @@ public class Invoice {
         copy.discountCap = discountCap;
         copy.discountReason = discountReason;
         copy.retentionPct = retentionPct;
+        copy.retentionCap = retentionCap;
         copy.instalments = instalments;
         copy.instalmentRate = instalmentRate;
         lines.forEach(line -> copy.lines.add(line.copy()));
@@ -465,6 +470,16 @@ public class Invoice {
         this.retentionPct = retentionPct;
     }
 
+    /** The most retention held back; null is no cap. */
+    public BigDecimal getRetentionCap() {
+        return retentionCap;
+    }
+
+    /** Sets the most retention held back (null for no cap); it has already been checked. */
+    public void setRetentionCap(BigDecimal retentionCap) {
+        this.retentionCap = retentionCap;
+    }
+
     /** The day the retention was released; null while it is still held. */
     public LocalDate getRetentionReleasedOn() {
         return retentionReleasedOn;
@@ -492,13 +507,16 @@ public class Invoice {
 
     /**
      * The retention: the retention percentage of the amount before tax (the subtotal less the
-     * discount), rounded down to the cent. Tax is never held back, so the tax rate does not change it.
+     * discount), rounded down to the cent, and never more than the retention cap when there is one.
+     * Tax is never held back, so the tax rate does not change it.
      */
     public BigDecimal retention(BigDecimal taxRate) {
         if (isCreditNote()) {
             return zero();
         }
-        return subtotal().subtract(discount()).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+        BigDecimal retention = subtotal().subtract(discount()).multiply(retentionPct).divide(BigDecimal.valueOf(100))
+                .setScale(scale(), RoundingMode.DOWN);
+        return retentionCap == null ? retention : retention.min(retentionCap.setScale(scale(), RoundingMode.DOWN));
     }
 
     /**

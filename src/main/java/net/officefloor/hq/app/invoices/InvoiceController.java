@@ -105,7 +105,7 @@ public class InvoiceController {
      * issued credit notes take off it; {@code creditOf} the id of the invoice a credit note credits
      * (null for an ordinary invoice) and {@code listedTotal} the total as listed, negative for a credit note.
      * {@code retentionPct} (without trailing zeros) is the share of the amount before tax (subtotal less discount) held back as
-     * {@code retention}, rounded down to the cent; {@code retentionHeld} is what is still held back (not
+     * {@code retention}, rounded down to the cent and never more than {@code retentionCap} (null for no cap); {@code retentionHeld} is what is still held back (not
      * part of the amount due), {@code retentionReleasedOn} the day it was released (null while held) and
      * {@code retentionDueDate} the day released retention falls due. {@code instalments} is how many
      * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
@@ -126,7 +126,7 @@ public class InvoiceController {
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
-            String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
+            String credited, Long creditOf, String listedTotal, String retentionPct, String retentionCap, String retention,
             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
             String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
@@ -152,7 +152,9 @@ public class InvoiceController {
                     payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency())).toList(), paid.toPlainString(),
                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
                     i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
-                    i.getRetentionPct().stripTrailingZeros().toPlainString(), i.retention(taxRate).toPlainString(),
+                    i.getRetentionPct().stripTrailingZeros().toPlainString(),
+                    i.getRetentionCap() == null ? null : i.getRetentionCap().setScale(2).toPlainString(),
+                    i.retention(taxRate).toPlainString(),
                     i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate(),
                     i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
                     i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
@@ -272,13 +274,19 @@ public class InvoiceController {
             LocalDate date) {
     }
 
-    /** A retention to hold back on a draft: a percentage from 0 to 20 with at most two decimals. */
+    /**
+     * A retention to hold back on a draft: a percentage from 0 to 20 with at most two decimals, and
+     * optionally the most it holds back (null for no cap).
+     */
     public record NewRetention(
             @NotNull(message = "Enter a retention percentage.")
             @DecimalMin(value = "0", message = "The retention must be from 0 to 20 percent.")
             @DecimalMax(value = "20", message = "The retention must be from 0 to 20 percent.")
             @Digits(integer = 2, fraction = 2, message = "The retention can have at most two decimals.")
-            BigDecimal retentionPct) {
+            BigDecimal retentionPct,
+            @DecimalMin(value = "0", message = "The retention cap cannot be negative.")
+            @Digits(integer = 10, fraction = 2, message = "The retention cap can have at most two decimals.")
+            BigDecimal retentionCap) {
     }
 
     /**
@@ -456,7 +464,7 @@ public class InvoiceController {
 
     @PutMapping("/api/invoices/{id}/retention")
     public InvoiceDetail setRetention(@PathVariable Long id, @Valid @RequestBody NewRetention body) {
-        return invoices.setRetention(id, body.retentionPct())
+        return invoices.setRetention(id, body.retentionPct(), body.retentionCap())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
