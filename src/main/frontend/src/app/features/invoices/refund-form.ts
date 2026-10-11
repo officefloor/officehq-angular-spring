@@ -2,7 +2,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { InvoiceService, InvoiceSummary } from './invoice.service';
-import { TWO_DECIMALS } from './invoice-format';
+import { Currency, TWO_DECIMALS, symbolOf } from './invoice-format';
 
 // Refunds the client's unused credit: an amount more than zero with at most two decimals, and the
 // date it was refunded. It comes out of the oldest payment's credit first; the server refuses a
@@ -12,7 +12,7 @@ import { TWO_DECIMALS } from './invoice-format';
   imports: [ReactiveFormsModule],
   template: `
     <form [formGroup]="form" (ngSubmit)="refund()" aria-label="Refund unused credit" novalidate>
-      <label for="refund-amount">Refund ($)</label>
+      <label for="refund-amount">Refund ({{ symbolOf(currency()) }})</label>
       <input
         id="refund-amount"
         data-testid="refund-form-amount"
@@ -33,6 +33,9 @@ export class RefundForm {
   private readonly service = inject(InvoiceService);
 
   readonly clientId = input.required<number>();
+  // The currency the client is billed in, which the refund is in.
+  readonly currency = input<Currency>('USD');
+  protected readonly symbolOf = symbolOf;
   // The client's invoices after a refund.
   readonly refunded = output<InvoiceSummary[]>();
 

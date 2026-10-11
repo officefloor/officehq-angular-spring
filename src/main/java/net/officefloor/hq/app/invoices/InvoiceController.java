@@ -18,6 +18,7 @@ import java.util.TreeMap;
 import java.util.stream.IntStream;
 import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
+import net.officefloor.hq.app.clients.Currency;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -81,11 +82,11 @@ public class InvoiceController {
      */
     public record LineView(Long id, String description, String qty, String unitPrice, String discountPct,
             String discount, String amount, String discountShare, String tax, boolean taxExempt, String taxRate) {
-        static LineView of(InvoiceLine l, BigDecimal discountShare, BigDecimal tax) {
+        static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
                     l.getUnitPrice().setScale(2).toPlainString(),
-                    l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount().toPlainString(),
-                    l.amount().toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
+                    l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount(scale).toPlainString(),
+                    l.amount(scale).toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
                     l.isTaxExempt(),
                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString());
         }
@@ -108,14 +109,16 @@ public class InvoiceController {
      * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
      * (without trailing zeros); {@code schedule} lists them and {@code planTotal} is what they add up to
      * (null without a plan), from which what is paid comes off for the amount due. {@code listedDueDate}
-     * is the due date as listed: for a plan, its next unpaid instalment's.
+     * is the due date as listed: for a plan, its next unpaid instalment's. {@code currency} is the
+     * currency its client is billed in, which every amount is in (whole yen for a yen client).
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
             String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
-            String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate) {
+            String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+            Currency currency) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -123,7 +126,7 @@ public class InvoiceController {
             List<BigDecimal> shares = i.discountShares();
             List<BigDecimal> taxes = i.lineTaxes(taxRate);
             List<LineView> lines = IntStream.range(0, shares.size())
-                    .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n), taxes.get(n))).toList();
+                    .mapToObj(n -> LineView.of(i.getLines().get(n), i.scale(), shares.get(n), taxes.get(n))).toList();
             return new InvoiceDetail(i.getId(), i.number(),
                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
                     i.statusWhenPaid(paid, paidOn, taxRate, today), i.getIssueDate(), i.getDueDate(),
@@ -141,7 +144,8 @@ public class InvoiceController {
                     i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate(),
                     i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
                     i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
-                    i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate));
+                    i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate),
+                    i.currency());
         }
     }
 

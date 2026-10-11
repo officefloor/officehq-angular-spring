@@ -2,6 +2,8 @@ package net.officefloor.hq.app.clients;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -32,15 +34,21 @@ public class Client {
     @Column(name = "tax_exempt")
     private boolean taxExempt;
 
+    /** The currency the client is billed in: everything on its invoices is in it. */
+    @Enumerated(EnumType.STRING)
+    private Currency currency = Currency.USD;
+
     protected Client() {
     }
 
-    public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt) {
+    public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+            Currency currency) {
         this.name = name;
         this.email = email;
         this.termsDays = termsDays;
         this.discountPct = discountPct == null ? BigDecimal.ZERO : discountPct;
         this.taxExempt = taxExempt;
+        this.currency = currency == null ? Currency.USD : currency;
     }
 
     public Long getId() {
@@ -65,5 +73,9 @@ public class Client {
 
     public boolean isTaxExempt() {
         return taxExempt;
+    }
+
+    public Currency getCurrency() {
+        return currency;
     }
 }

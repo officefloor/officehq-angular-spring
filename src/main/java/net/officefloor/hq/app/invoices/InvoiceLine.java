@@ -102,19 +102,22 @@ public class InvoiceLine {
         return taxRate == null ? workspaceRate : taxRate;
     }
 
-    /** Quantity times unit price, rounded half up to the cent, before the line's discount. */
-    public BigDecimal grossAmount() {
-        return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+    /**
+     * Quantity times unit price, rounded half up to the given number of decimals (2, the cent; 0 for
+     * whole yen), before the line's discount.
+     */
+    public BigDecimal grossAmount(int scale) {
+        return qty.multiply(unitPrice).setScale(scale, RoundingMode.HALF_UP);
     }
 
-    /** The line's discount: its percentage of the gross amount, rounded down to the cent. */
-    public BigDecimal discount() {
-        return grossAmount().multiply(discountPct).divide(BigDecimal.valueOf(100))
-                .setScale(2, RoundingMode.DOWN);
+    /** The line's discount: its percentage of the gross amount, rounded down to the given number of decimals. */
+    public BigDecimal discount(int scale) {
+        return grossAmount(scale).multiply(discountPct).divide(BigDecimal.valueOf(100))
+                .setScale(scale, RoundingMode.DOWN);
     }
 
-    /** The line amount: the gross amount less the line's discount. */
-    public BigDecimal amount() {
-        return grossAmount().subtract(discount());
+    /** The line amount, to the given number of decimals: the gross amount less the line's discount. */
+    public BigDecimal amount(int scale) {
+        return grossAmount(scale).subtract(discount(scale));
     }
 }

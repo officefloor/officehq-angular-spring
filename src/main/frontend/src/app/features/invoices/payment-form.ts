@@ -8,7 +8,7 @@ import {
   NewAllocation,
   NewPayment,
 } from './invoice.service';
-import { TWO_DECIMALS, cents } from './invoice-format';
+import { Currency, TWO_DECIMALS, cents, symbolOf } from './invoice-format';
 
 // Whether a reference passes the ISO 11649 check: its first four characters moved to the end,
 // letters as numbers (A=10 up to Z=35), mod 97 is 1. Spaces and capitals are ignored by the caller.
@@ -112,7 +112,7 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
   imports: [ReactiveFormsModule],
   template: `
     <form [formGroup]="form" (ngSubmit)="record()" aria-label="Record a payment" novalidate>
-      <label for="payment-amount">Amount ($)</label>
+      <label for="payment-amount">Amount ({{ symbolOf(currency()) }})</label>
       <input
         id="payment-amount"
         data-testid="payment-form-amount"
@@ -162,6 +162,9 @@ export class PaymentForm {
   private readonly service = inject(InvoiceService);
 
   readonly clientId = input.required<number>();
+  // The currency the client is billed in, which the payment is in (whole yen for yen; the server checks).
+  readonly currency = input<Currency>('USD');
+  protected readonly symbolOf = symbolOf;
   // The open invoice, which takes the payment when no parts are filled in; null when none is open.
   readonly invoiceId = input<number | null>(null);
   readonly allocations = input<NewAllocation[]>([]);

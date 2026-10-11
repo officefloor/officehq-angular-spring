@@ -17,6 +17,7 @@ import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
 import net.officefloor.hq.app.clients.Client;
 import net.officefloor.hq.app.clients.ClientRepository;
+import net.officefloor.hq.app.clients.Currency;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,7 +71,7 @@ public class InvoiceService {
     public Optional<Invoice> newDraft(Long clientId) {
         return clients.findById(clientId).map(client -> {
             LocalDate issued = today.date();
-            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), issued, dueDateFor(clientId, issued));
+            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), client.getCurrency(), issued, dueDateFor(clientId, issued));
             draft.setDiscountPct(client.getDiscountPct());
             return invoices.save(draft);
         });
@@ -141,6 +142,7 @@ public class InvoiceService {
             boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
         found.ifPresent(invoice -> {
+            requireWhole(invoice.currency(), unitPrice, "The unit price");
             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
             invoice.addLine(new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate));
             invoices.saveAndFlush(invoice);
@@ -191,6 +193,7 @@ public class InvoiceService {
         if (!invoice.hasLine(lineId)) {
             return Optional.empty();
         }
+        requireWhole(invoice.currency(), unitPrice, "The unit price");
         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
         invoice.updateLine(lineId, description, qty, unitPrice, taxExempt, discountPct, taxRate);
         invoices.saveAndFlush(invoice);
@@ -214,6 +217,12 @@ public class InvoiceService {
         found.ifPresent(invoice -> {
             if (invoice.isCreditNote()) {
                 throw new InvoiceRejectedException("A credit note has no discount.");
+            }
+            if (discountAmount != null) {
+                requireWhole(invoice.currency(), discountAmount, "The discount amount");
+            }
+            if (discountCap != null) {
+                requireWhole(invoice.currency(), discountCap, "The discount cap");
             }
             boolean reopened = reopenForChange(invoice, "A paid invoice cannot be given a discount.");
             if (discountAmount != null) {
@@ -319,8 +328,8 @@ public class InvoiceService {
             }
             BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), rate);
             if (due.signum() > 0) {
-                throw new InvoiceRejectedException("The retention can only be released once nothing else is due; $"
-                        + due.setScale(2, RoundingMode.HALF_UP).toPlainString() + " is still due.");
+                throw new InvoiceRejectedException("The retention can only be released once nothing else is due; "
+                        + invoice.currency().format(due) + " is still due.");
             }
             invoice.releaseRetention(today.date());
             invoices.saveAndFlush(invoice);
@@ -483,7 +492,7 @@ public class InvoiceService {
             payment.apply(invoice.getId(), part, now);
             payments.saveAndFlush(payment);
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
-                    + part.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                    + part.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
             due = due.subtract(part);
             used = true;
         }
@@ -499,16 +508,19 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Payment> recordDeposit(Long clientId, BigDecimal amount, LocalDate date) {
-        if (clients.findById(clientId).isEmpty()) {
+        Optional<Client> client = clients.findById(clientId);
+        if (client.isEmpty()) {
             return Optional.empty();
         }
+        Currency currency = client.get().getCurrency();
+        requireWhole(currency, amount, "The amount");
         LocalDate now = today.date();
         if (date.isAfter(now)) {
             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
         }
         Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date));
         audit.record("DEPOSIT_RECORDED id=" + payment.getId() + " client=" + clientId + " amount="
-                + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                + amount.setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
         return Optional.of(payment);
     }
 
@@ -520,9 +532,12 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Long> refundCredit(Long clientId, BigDecimal amount, LocalDate date) {
-        if (clients.findById(clientId).isEmpty()) {
+        Optional<Client> client = clients.findById(clientId);
+        if (client.isEmpty()) {
             return Optional.empty();
         }
+        Currency currency = client.get().getCurrency();
+        requireWhole(currency, amount, "The refund");
         LocalDate now = today.date();
         if (date.isAfter(now)) {
             throw new InvoiceRejectedException("The refund date cannot be after today (" + now + ").");
@@ -550,15 +565,15 @@ public class InvoiceService {
             left = left.subtract(part);
         }
         if (left.signum() > 0) {
-            throw new InvoiceRejectedException("The refund cannot be more than the client's unused credit of $"
-                    + credit.setScale(2, RoundingMode.UNNECESSARY).toPlainString() + ".");
+            throw new InvoiceRejectedException("The refund cannot be more than the client's unused credit of "
+                    + currency.format(credit) + ".");
         }
         for (int i = 0; i < from.size(); i++) {
             Payment payment = from.get(i);
             payment.refund(parts.get(i));
             payments.saveAndFlush(payment);
             audit.record("CREDIT_REFUNDED payment=" + payment.getId() + " amount="
-                    + parts.get(i).setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                    + parts.get(i).setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
         }
         return Optional.of(clientId);
     }
@@ -664,6 +679,7 @@ public class InvoiceService {
             if (invoice.isCreditNote()) {
                 throw new InvoiceRejectedException("A credit note takes no payments.");
             }
+            requireWhole(invoice.currency(), amount, "The amount");
             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
             if (due.signum() <= 0) {
@@ -671,13 +687,13 @@ public class InvoiceService {
             }
             BigDecimal applied = amount.min(due);
             if (invoice.hasPlan() && invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
-                throw new InvoiceRejectedException("A payment must be at least the $"
-                        + invoice.earliestUnpaid(paidSoFar, taxRate.percent()).toPlainString()
+                throw new InvoiceRejectedException("A payment must be at least the "
+                        + invoice.currency().format(invoice.earliestUnpaid(paidSoFar, taxRate.percent()))
                         + " still unpaid on the earliest unpaid instalment, unless it settles the plan.");
             }
             if (invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
-                throw new InvoiceRejectedException("A part payment must be at least $"
-                        + invoice.minimumPart(taxRate.percent()).toPlainString()
+                throw new InvoiceRejectedException("A part payment must be at least "
+                        + invoice.currency().format(invoice.minimumPart(taxRate.percent()))
                         + " (10% of the total), unless it settles the invoice.");
             }
             LocalDate now = today.date();
@@ -695,7 +711,7 @@ public class InvoiceService {
             }
             Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, applied, date, reference));
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
-                    + applied.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                    + applied.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
             recordWriteOff(invoice);
             recordCreditHeld(payment);
         });
@@ -716,6 +732,7 @@ public class InvoiceService {
      */
     @Transactional
     public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, List<String> references) {
+        requireWhole(currencyOf(clientId), amount, "The amount");
         List<Invoice> ofClient = invoices.findByClientIdOrderByIdAsc(clientId);
         List<Invoice> candidates = ofClient;
         if (!references.isEmpty()) {
@@ -793,10 +810,15 @@ public class InvoiceService {
         if (parts.isEmpty()) {
             throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
         }
+        Currency currency = currencyOf(clientId);
+        requireWhole(currency, amount, "The amount");
+        for (PaymentAllocation part : parts) {
+            requireWhole(currency, part.getAmount(), "Each invoice's part");
+        }
         BigDecimal sum = parts.stream().map(PaymentAllocation::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (holdCredit ? sum.compareTo(amount) > 0 : sum.compareTo(amount) != 0) {
-            throw new InvoiceRejectedException("The amounts for the invoices add up to $"
-                    + sum.setScale(2).toPlainString() + ", not the $" + amount.setScale(2).toPlainString() + " paid.");
+            throw new InvoiceRejectedException("The amounts for the invoices add up to "
+                    + currency.format(sum) + ", not the " + currency.format(amount) + " paid.");
         }
         LocalDate now = today.date();
         if (date.isAfter(now)) {
@@ -824,17 +846,17 @@ public class InvoiceService {
             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
             if (part.getAmount().compareTo(due) > 0) {
-                throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
-                        + number + " is more than the $" + due.toPlainString() + " it has due.");
+                throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
+                        + number + " is more than the " + currency.format(due) + " it has due.");
             }
             if (invoice.hasPlan() && invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
-                throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
-                        + number + " is less than the $" + invoice.earliestUnpaid(paidSoFar, taxRate.percent()).toPlainString()
+                throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
+                        + number + " is less than the " + currency.format(invoice.earliestUnpaid(paidSoFar, taxRate.percent()))
                         + " still unpaid on its earliest unpaid instalment, unless it settles the plan.");
             }
             if (invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
-                throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
-                        + number + " is less than $" + invoice.minimumPart(taxRate.percent()).toPlainString()
+                throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
+                        + number + " is less than " + currency.format(invoice.minimumPart(taxRate.percent()))
                         + " (10% of its total), unless it settles the invoice.");
             }
             if (invoice.getIssueDate() != null && date.isBefore(invoice.getIssueDate())) {
@@ -850,11 +872,26 @@ public class InvoiceService {
         Payment payment = payments.saveAndFlush(Payment.split(clientId, amount, date, reference, parts));
         for (PaymentAllocation part : parts) {
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + part.getInvoiceId() + " amount="
-                    + part.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                    + part.getAmount().setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
         }
         spreadOver.forEach(this::recordWriteOff);
         recordCreditHeld(payment);
         return payment;
+    }
+
+    /** The currency the client is billed in; US dollars when there is no such client. */
+    private Currency currencyOf(Long clientId) {
+        return clients.findById(clientId).map(Client::getCurrency).orElse(Currency.USD);
+    }
+
+    /**
+     * Refuses an amount entered with more decimals than the currency has: whole yen for a yen client
+     * (the cent is already checked for the rest).
+     */
+    private static void requireWhole(Currency currency, BigDecimal amount, String what) {
+        if (amount != null && !currency.isWhole(amount)) {
+            throw new InvoiceRejectedException(what + " must be in whole yen, with no decimals.");
+        }
     }
 
     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
@@ -862,7 +899,7 @@ public class InvoiceService {
         BigDecimal credit = payment.credit();
         if (credit.signum() > 0) {
             audit.record("CREDIT_HELD payment=" + payment.getId() + " amount="
-                    + credit.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                    + credit.setScale(currencyOf(payment.getClientId()).scale(), RoundingMode.UNNECESSARY).toPlainString());
         }
     }
 
@@ -895,7 +932,8 @@ public class InvoiceService {
             payment.reverse();
             payments.saveAndFlush(payment);
             audit.record("PAYMENT_REVERSED id=" + payment.getId() + " amount="
-                    + payment.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                    + payment.getAmount().setScale(currencyOf(payment.getClientId()).scale(), RoundingMode.UNNECESSARY)
+                            .toPlainString());
         });
         return found;
     }

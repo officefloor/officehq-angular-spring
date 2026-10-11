@@ -18,7 +18,20 @@ const INSTALMENT_STATUS_LABEL: Record<InstalmentStatus, string> = {
   OVERDUE: 'Overdue',
   DUE: 'Due',
 };
-const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+// The currencies a client can be billed in.
+export type Currency = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CHF';
+export const CURRENCIES: readonly Currency[] = ['USD', 'EUR', 'GBP', 'JPY', 'CHF'];
+// The symbol each currency's amounts are shown with, and how many decimals they have (yen none).
+const SYMBOL: Record<Currency, string> = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', CHF: 'CHF ' };
+const NUMBER: Record<number, Intl.NumberFormat> = {
+  0: new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+  2: new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+};
+
+// How many decimals amounts in the currency have: 2, to the cent, or 0 for whole yen.
+export function decimalsOf(currency: Currency): number {
+  return currency === 'JPY' ? 0 : 2;
+}
 
 export function statusLabel(status: InvoiceStatus): string {
   return STATUS_LABEL[status];
@@ -28,9 +41,17 @@ export function instalmentStatusLabel(status: InstalmentStatus): string {
   return INSTALMENT_STATUS_LABEL[status];
 }
 
-// Money from the server is already to the cent, so the number shown is exact.
-export function money(amount: string): string {
-  return MONEY.format(Number(amount));
+// Money from the server is already to the cent (whole yen for yen), so the number shown is exact:
+// $1,234.50, €1,234.50, £1,234.50, ¥1,235, CHF 1,234.50.
+export function money(amount: string, currency: Currency = 'USD'): string {
+  const value = Number(amount);
+  const shown = NUMBER[decimalsOf(currency)].format(Math.abs(value));
+  return (value < 0 ? '-' : '') + SYMBOL[currency] + shown;
+}
+
+// The symbol amounts in the currency are entered in, for form labels.
+export function symbolOf(currency: Currency): string {
+  return SYMBOL[currency].trim();
 }
 
 // A positive decimal with at most two decimals, e.g. 1, 1.5 or 12.35. The server applies the same rules.

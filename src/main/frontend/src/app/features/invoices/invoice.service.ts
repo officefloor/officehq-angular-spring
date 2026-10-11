@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { Currency } from './invoice-format';
 
 // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
 // nothing is due, or PAID_LATE when the payment that cleared it (payments in date order) came after
@@ -130,6 +131,8 @@ export interface InvoiceDetail {
   planTotal: string | null;
   // The due date as listed (yyyy-mm-dd): for a plan, its next unpaid instalment's due date.
   listedDueDate: string | null;
+  // The currency the client is billed in: every amount is in it (whole yen for a yen client).
+  currency: Currency;
 }
 
 // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,

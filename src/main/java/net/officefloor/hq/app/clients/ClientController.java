@@ -25,10 +25,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClientController {
 
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
-            boolean taxExempt) {
+            boolean taxExempt, Currency currency) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
-                    c.isTaxExempt());
+                    c.isTaxExempt(), c.getCurrency());
         }
     }
 
@@ -49,7 +49,10 @@ public class ClientController {
             @Digits(integer = 3, fraction = 2, message = "The standard discount can have at most two decimals.")
             BigDecimal discountPct,
             /** Whether the client is tax exempt; taxed when left out. */
-            Boolean taxExempt) {
+            Boolean taxExempt,
+            /** The currency the client is billed in; US dollars when left out. */
+            @Pattern(regexp = "USD|EUR|GBP|JPY|CHF", message = "The currency must be USD, EUR, GBP, JPY or CHF.")
+            String currency) {
     }
 
     /**
@@ -73,6 +76,6 @@ public class ClientController {
     @ResponseStatus(HttpStatus.CREATED)
     public ClientView add(@Valid @RequestBody NewClient body) {
         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
-                Boolean.TRUE.equals(body.taxExempt())));
+                Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency())));
     }
 }

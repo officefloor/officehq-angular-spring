@@ -10,7 +10,7 @@ import {
   NewDiscount,
   NewLine,
 } from './invoice.service';
-import { TWO_DECIMALS, instalmentStatusLabel, money, statusLabel } from './invoice-format';
+import { TWO_DECIMALS, instalmentStatusLabel, money, statusLabel, symbolOf } from './invoice-format';
 import { PaymentForm } from './payment-form';
 
 // A percentage from 0 to 100 with at most two decimals, e.g. 15 or 12.5; the server checks it again.
@@ -205,13 +205,13 @@ function problemWith(line: NewLine): string {
               <tr [attr.data-testid]="'line-row-' + l.id">
                 <td data-testid="line-description">{{ l.description }}</td>
                 <td data-testid="line-qty">{{ l.qty }}</td>
-                <td data-testid="line-unit-price">{{ money(l.unitPrice) }}</td>
-                <td data-testid="line-discount">{{ money(l.discount) }}</td>
-                <td data-testid="line-amount">{{ money(l.amount) }}</td>
-                <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
+                <td data-testid="line-unit-price">{{ amount(l.unitPrice) }}</td>
+                <td data-testid="line-discount">{{ amount(l.discount) }}</td>
+                <td data-testid="line-amount">{{ amount(l.amount) }}</td>
+                <td data-testid="line-discount-share">{{ amount(l.discountShare) }}</td>
                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
                 <td data-testid="line-tax-rate">{{ (l.taxRate ?? inv.taxRate) + '%' }}</td>
-                <td data-testid="line-tax">{{ money(l.tax) }}</td>
+                <td data-testid="line-tax">{{ amount(l.tax) }}</td>
                 <td>
                   <button
                     type="button"
@@ -242,18 +242,18 @@ function problemWith(line: NewLine): string {
           <tfoot>
             <tr>
               <th scope="row" colspan="8">Subtotal</th>
-              <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
+              <td data-testid="invoice-subtotal">{{ amount(inv.subtotal) }}</td>
             </tr>
             <tr>
               <th scope="row" colspan="8">
                 @if (+inv.discountAmount > 0) {
-                  Discount (fixed@if (inv.discountCap !== null) {, max {{ money(inv.discountCap) }} in all})
+                  Discount (fixed@if (inv.discountCap !== null) {, max {{ amount(inv.discountCap) }} in all})
                 } @else {
                   Discount ({{ inv.discountPct }}%@if (inv.discountCap !== null) {, max
-                    {{ money(inv.discountCap) }} in all})
+                    {{ amount(inv.discountCap) }} in all})
                 }
               </th>
-              <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
+              <td data-testid="invoice-discount">{{ amount(inv.discount) }}</td>
             </tr>
             @if (inv.discountReason) {
               <tr>
@@ -263,18 +263,18 @@ function problemWith(line: NewLine): string {
             }
             <tr>
               <th scope="row" colspan="8">Tax (lines at their own rate, otherwise {{ inv.taxRate }}%)</th>
-              <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
+              <td data-testid="invoice-tax">{{ amount(inv.tax) }}</td>
             </tr>
             <tr>
               <th scope="row" colspan="8">Total</th>
-              <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
+              <td data-testid="invoice-grand-total">{{ amount(inv.total) }}</td>
             </tr>
             <tr>
               <th scope="row" colspan="8">
                 Retention ({{ inv.retentionPct }}%@if (inv.retentionReleasedOn) {, released
                   {{ inv.retentionReleasedOn }}, due {{ inv.retentionDueDate }}} @else if (+inv.retention > 0) {, held back})
               </th>
-              <td data-testid="invoice-retention">{{ money(inv.retention) }}</td>
+              <td data-testid="invoice-retention">{{ amount(inv.retention) }}</td>
             </tr>
           </tfoot>
         </table>
@@ -299,11 +299,11 @@ function problemWith(line: NewLine): string {
                 <tr [attr.data-testid]="'instalment-row-' + s.number">
                   <td>{{ s.number }}</td>
                   <td data-testid="instalment-due">{{ s.dueDate }}</td>
-                  <td data-testid="instalment-payment">{{ money(s.payment) }}</td>
-                  <td data-testid="instalment-interest">{{ money(s.interest) }}</td>
-                  <td data-testid="instalment-principal">{{ money(s.principal) }}</td>
-                  <td data-testid="instalment-balance">{{ money(s.balance) }}</td>
-                  <td data-testid="instalment-paid">{{ money(s.paid) }}</td>
+                  <td data-testid="instalment-payment">{{ amount(s.payment) }}</td>
+                  <td data-testid="instalment-interest">{{ amount(s.interest) }}</td>
+                  <td data-testid="instalment-principal">{{ amount(s.principal) }}</td>
+                  <td data-testid="instalment-balance">{{ amount(s.balance) }}</td>
+                  <td data-testid="instalment-paid">{{ amount(s.paid) }}</td>
                   <td data-testid="instalment-status">{{ instalmentStatusLabel(s.status) }}</td>
                 </tr>
               }
@@ -311,7 +311,7 @@ function problemWith(line: NewLine): string {
             <tfoot>
               <tr>
                 <th scope="row" colspan="5">Plan total</th>
-                <td data-testid="invoice-plan-total">{{ money(inv.planTotal ?? '0') }}</td>
+                <td data-testid="invoice-plan-total">{{ amount(inv.planTotal ?? '0') }}</td>
                 <td colspan="2"></td>
               </tr>
             </tfoot>
@@ -332,15 +332,15 @@ function problemWith(line: NewLine): string {
             @for (p of inv.payments; track p.id) {
               <tr [attr.data-testid]="'payment-row-' + p.id">
                 <td data-testid="payment-date">{{ p.date }}</td>
-                <td data-testid="payment-amount">{{ money(p.amount) }}</td>
-                <td data-testid="payment-allocated">{{ money(p.allocated) }}</td>
+                <td data-testid="payment-amount">{{ amount(p.amount) }}</td>
+                <td data-testid="payment-allocated">{{ amount(p.allocated) }}</td>
                 <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
                 <td>
                   <button
                     type="button"
                     data-testid="payment-reverse"
                     [disabled]="reversing()"
-                    [attr.aria-label]="'Reverse payment of ' + money(p.amount) + ' on ' + p.date"
+                    [attr.aria-label]="'Reverse payment of ' + amount(p.amount) + ' on ' + p.date"
                     (click)="reversePayment(inv.id, inv.clientId, p.id)"
                   >
                     Reverse
@@ -356,21 +356,21 @@ function problemWith(line: NewLine): string {
           <tfoot>
             <tr>
               <th scope="row" colspan="4">Paid</th>
-              <td data-testid="invoice-paid">{{ money(inv.paid) }}</td>
+              <td data-testid="invoice-paid">{{ amount(inv.paid) }}</td>
             </tr>
             @if (inv.creditOf === null) {
               <tr>
                 <th scope="row" colspan="4">Credited</th>
-                <td data-testid="invoice-credited">{{ money(inv.credited) }}</td>
+                <td data-testid="invoice-credited">{{ amount(inv.credited) }}</td>
               </tr>
             }
             <tr>
               <th scope="row" colspan="4">Amount due</th>
-              <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
+              <td data-testid="invoice-amount-due">{{ amount(inv.amountDue) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="4">Written off (under $1.00 left)</th>
-              <td data-testid="invoice-written-off">{{ money(inv.writtenOff) }}</td>
+              <th scope="row" colspan="4">Written off (worth under $1.00 left)</th>
+              <td data-testid="invoice-written-off">{{ amount(inv.writtenOff) }}</td>
             </tr>
           </tfoot>
         </table>
@@ -387,6 +387,7 @@ function problemWith(line: NewLine): string {
         ) {
           <app-payment-form
             [clientId]="inv.clientId"
+            [currency]="inv.currency"
             [invoiceId]="inv.id"
             [allocations]="allocations()"
             (paid)="paymentRecorded($event)"
@@ -506,7 +507,7 @@ function problemWith(line: NewLine): string {
             formControlName="qty"
             required
           />
-          <label for="line-unit-price">Unit price ($)</label>
+          <label for="line-unit-price">Unit price ({{ symbol() }})</label>
           <input
             id="line-unit-price"
             data-testid="line-form-unit-price"
@@ -560,14 +561,14 @@ function problemWith(line: NewLine): string {
               inputmode="decimal"
               formControlName="pct"
             />
-            <label for="discount-amount">or amount ($)</label>
+            <label for="discount-amount">or amount ({{ symbol() }})</label>
             <input
               id="discount-amount"
               data-testid="discount-form-amount"
               inputmode="decimal"
               formControlName="amount"
             />
-            <label for="discount-cap">capped at ($, optional)</label>
+            <label for="discount-cap">capped at ({{ symbol() }}, optional)</label>
             <input
               id="discount-cap"
               data-testid="discount-form-cap"
@@ -637,7 +638,14 @@ export class InvoicePanel {
   protected readonly reverseError = signal('');
   protected readonly statusLabel = statusLabel;
   protected readonly instalmentStatusLabel = instalmentStatusLabel;
-  protected readonly money = money;
+  // An amount shown in the currency of the open invoice's client.
+  protected amount(value: string): string {
+    return money(value, this.invoice()?.currency ?? 'USD');
+  }
+  // The symbol amounts on the open invoice are entered in.
+  protected symbol(): string {
+    return symbolOf(this.invoice()?.currency ?? 'USD');
+  }
 
   protected readonly form = new FormGroup({
     description: new FormControl('', { nonNullable: true }),

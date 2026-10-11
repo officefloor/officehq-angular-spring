@@ -2,7 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ClientInvoices } from '../invoices/client-invoices';
-import { money } from '../invoices/invoice-format';
+import { CURRENCIES, Currency, money } from '../invoices/invoice-format';
 import { ClientBalance, InvoiceService } from '../invoices/invoice.service';
 import { Client, ClientService, byName } from './client.service';
 
@@ -73,9 +73,9 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
               <span data-testid="client-name">{{ c.name }}</span>
               <span data-testid="client-email">{{ c.email }}</span>
               <span>
-                Owes <span data-testid="client-balance">{{ money(balanceOf(c.id).balance) }}</span>,
-                overdue <span data-testid="client-overdue">{{ money(balanceOf(c.id).overdue) }}</span>,
-                credit <span data-testid="client-credit">{{ money(balanceOf(c.id).credit) }}</span>
+                Owes <span data-testid="client-balance">{{ money(balanceOf(c.id).balance, c.currency) }}</span>,
+                overdue <span data-testid="client-overdue">{{ money(balanceOf(c.id).overdue, c.currency) }}</span>,
+                credit <span data-testid="client-credit">{{ money(balanceOf(c.id).credit, c.currency) }}</span>
               </span>
             </button>
           </li>
@@ -117,6 +117,12 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
           step="0.01"
           formControlName="discountPct"
         />
+        <label for="client-currency">Currency</label>
+        <select id="client-currency" data-testid="client-form-currency" formControlName="currency">
+          @for (code of currencies; track code) {
+            <option [value]="code">{{ code }}</option>
+          }
+        </select>
         <input
           id="client-tax-exempt"
           data-testid="client-form-tax-exempt"
@@ -137,6 +143,7 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
       <app-client-invoices
         [clientId]="client.id"
         [clientName]="client.name"
+        [currency]="client.currency"
         [openInvoice]="openInvoice()"
         (changed)="loadBalances()"
       />
@@ -151,6 +158,7 @@ export class Clients {
   // What each client owes, by client id; a client not listed owes nothing.
   protected readonly balances = signal<Map<number, ClientBalance>>(new Map());
   protected readonly money = money;
+  protected readonly currencies = CURRENCIES;
   protected readonly saving = signal(false);
   protected readonly error = signal('');
   protected readonly selectedId = signal<number | null>(null);
@@ -174,6 +182,7 @@ export class Clients {
     terms: new FormControl<number | null>(null),
     discountPct: new FormControl<number | null>(null),
     taxExempt: new FormControl(false, { nonNullable: true }),
+    currency: new FormControl<Currency>('USD', { nonNullable: true }),
   });
 
   constructor() {
@@ -200,7 +209,8 @@ export class Clients {
     const discount = this.form.controls.discountPct.value;
     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
     const taxExempt = this.form.controls.taxExempt.value;
-    this.form.setValue({ name, email, terms: termsDays, discountPct, taxExempt });
+    const currency = this.form.controls.currency.value;
+    this.form.setValue({ name, email, terms: termsDays, discountPct, taxExempt, currency });
     const problem = this.problemWith(name, email, termsDays, discountPct);
     if (problem) {
       this.form.markAllAsTouched();
@@ -209,7 +219,7 @@ export class Clients {
     }
     this.saving.set(true);
     this.error.set('');
-    this.service.add({ name, email, termsDays, discountPct: discountPct ?? 0, taxExempt }).subscribe({
+    this.service.add({ name, email, termsDays, discountPct: discountPct ?? 0, taxExempt, currency }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created].sort(byName));
         this.form.reset();

@@ -21,6 +21,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import net.officefloor.hq.app.clients.Currency;
 
 /** An invoice raised for a client, made of lines. */
 @Entity
@@ -30,7 +31,7 @@ public class Invoice {
     /** A due date set by hand can be at most this many days after the issue date. */
     public static final int MAX_DUE_DAYS = 120;
 
-    /** Payments that leave less than this still due have the rest written off. */
+    /** Payments that leave less than this many US dollars' worth still due have the rest written off. */
     public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("1.00");
 
     /** A part payment must be at least this share of the grand total, unless it settles the invoice. */
@@ -102,6 +103,17 @@ public class Invoice {
     @Column(name = "credit_of")
     private Long creditOf;
 
+    /** The code of the currency the invoice's client is billed in; read from the client. */
+    @Formula("(SELECT c.currency FROM client c WHERE c.id = client_id)")
+    private String clientCurrency;
+
+    /**
+     * The US dollars one unit of the client's currency is worth, from the workspace rates; read from
+     * them, null when no rate is set (taken at par).
+     */
+    @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'usd_per_' || c.currency)")
+    private String usdPer;
+
     /** An issued credit note's grand total, kept when it is issued; null until then. */
     @Column(name = "credit_total")
     private BigDecimal creditTotal;
@@ -138,10 +150,12 @@ public class Invoice {
     }
 
     /** A new, empty draft for a client, issued and due on the given dates. */
-    public static Invoice draft(Long clientId, boolean clientTaxExempt, LocalDate issueDate, LocalDate dueDate) {
+    public static Invoice draft(Long clientId, boolean clientTaxExempt, Currency currency, LocalDate issueDate,
+            LocalDate dueDate) {
         Invoice invoice = new Invoice();
         invoice.clientId = clientId;
         invoice.clientTaxExempt = clientTaxExempt;
+        invoice.clientCurrency = currency.name();
         invoice.status = InvoiceStatus.DRAFT;
         invoice.issueDate = issueDate;
         invoice.dueDate = dueDate;
@@ -153,7 +167,7 @@ public class Invoice {
      * discount, issued and due on the given dates. Payments stay with this invoice.
      */
     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
-        Invoice copy = draft(clientId, clientTaxExempt, issueDate, dueDate);
+        Invoice copy = draft(clientId, clientTaxExempt, currency(), issueDate, dueDate);
         copy.discountPct = discountPct;
         copy.discountAmount = discountAmount;
         copy.discountCap = discountCap;
@@ -170,9 +184,33 @@ public class Invoice {
      * discount, taxed as the original's lines are.
      */
     public Invoice creditNote(LocalDate issueDate) {
-        Invoice note = draft(clientId, clientTaxExempt, issueDate, null);
+        Invoice note = draft(clientId, clientTaxExempt, currency(), issueDate, null);
         note.creditOf = id;
         return note;
+    }
+
+    /** The currency the invoice is in: its client's. */
+    public Currency currency() {
+        return Currency.orUsd(clientCurrency);
+    }
+
+    /**
+     * How many decimals its amounts have: 2, to the cent, or 0 for whole yen. Wherever an amount is
+     * rounded to the cent it is rounded to this instead.
+     */
+    public int scale() {
+        return currency().scale();
+    }
+
+    /** Nothing, in the invoice's currency. */
+    private BigDecimal zero() {
+        return BigDecimal.ZERO.setScale(scale());
+    }
+
+    /** Whether what is left is worth less than {@link #WRITE_OFF_LIMIT} US dollars at the workspace rates. */
+    private boolean isSmallEnoughToWriteOff(BigDecimal left) {
+        BigDecimal rate = usdPer == null ? BigDecimal.ONE : new BigDecimal(usdPer.trim());
+        return left.multiply(rate).compareTo(WRITE_OFF_LIMIT) < 0;
     }
 
     /** Whether this is a credit note against another invoice. */
@@ -192,7 +230,7 @@ public class Invoice {
 
     /** What the credit notes issued against this invoice add up to, to the cent. */
     public BigDecimal getCredited() {
-        return (credited == null ? BigDecimal.ZERO : credited).setScale(2, RoundingMode.HALF_UP);
+        return (credited == null ? BigDecimal.ZERO : credited).setScale(scale(), RoundingMode.HALF_UP);
     }
 
     /** Whether a credit note has been issued against this invoice: it can then no longer change. */
@@ -285,7 +323,7 @@ public class Invoice {
     public void setDiscountAmount(BigDecimal discountAmount) {
         if (discountAmount.compareTo(subtotal()) > 0) {
             throw new InvoiceRejectedException("The discount cannot be more than the subtotal of "
-                    + subtotal().toPlainString() + ".");
+                    + currency().format(subtotal()) + ".");
         }
         this.discountAmount = discountAmount;
         this.discountPct = BigDecimal.ZERO;
@@ -319,9 +357,9 @@ public class Invoice {
     /** The retention at the tax rate: the retention percentage of the grand total, rounded down to the cent. */
     public BigDecimal retention(BigDecimal taxRate) {
         if (isCreditNote()) {
-            return BigDecimal.ZERO.setScale(2);
+            return zero();
         }
-        return total(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.DOWN);
+        return total(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
     }
 
     /**
@@ -330,10 +368,10 @@ public class Invoice {
      */
     public BigDecimal retentionHeld(BigDecimal taxRate) {
         if (retentionReleasedOn != null) {
-            return BigDecimal.ZERO.setScale(2);
+            return zero();
         }
         BigDecimal cleared = retentionCredited == null ? BigDecimal.ZERO : retentionCredited;
-        return retention(taxRate).subtract(cleared).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        return retention(taxRate).subtract(cleared).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
     }
 
     /**
@@ -349,7 +387,7 @@ public class Invoice {
 
     /** The retention released at the tax rate: nothing until it is released, then all of it. */
     public BigDecimal retentionReleased(BigDecimal taxRate) {
-        return retentionReleasedOn == null ? BigDecimal.ZERO.setScale(2) : retention(taxRate);
+        return retentionReleasedOn == null ? zero() : retention(taxRate);
     }
 
     /**
@@ -401,16 +439,16 @@ public class Invoice {
         int n = instalments;
         BigDecimal payment;
         if (i.signum() == 0) {
-            payment = principal.divide(BigDecimal.valueOf(n), 2, RoundingMode.HALF_UP);
+            payment = principal.divide(BigDecimal.valueOf(n), scale(), RoundingMode.HALF_UP);
         } else {
             BigDecimal growth = BigDecimal.ONE.add(i).pow(n, mc);
             payment = principal.multiply(i).multiply(growth)
-                    .divide(growth.subtract(BigDecimal.ONE), mc).setScale(2, RoundingMode.HALF_UP);
+                    .divide(growth.subtract(BigDecimal.ONE), mc).setScale(scale(), RoundingMode.HALF_UP);
         }
         List<Instalment> schedule = new ArrayList<>(n);
-        BigDecimal balance = principal.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal balance = principal.setScale(scale(), RoundingMode.HALF_UP);
         for (int k = 1; k <= n; k++) {
-            BigDecimal interest = balance.multiply(i).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal interest = balance.multiply(i).setScale(scale(), RoundingMode.HALF_UP);
             BigDecimal paid = k == n ? balance.add(interest) : payment;
             BigDecimal repaid = paid.subtract(interest);
             balance = balance.subtract(repaid);
@@ -425,7 +463,7 @@ public class Invoice {
         if (!hasPlan()) {
             return null;
         }
-        return schedule(taxRate).stream().map(Instalment::payment).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        return schedule(taxRate).stream().map(Instalment::payment).reduce(zero(), BigDecimal::add);
     }
 
     /**
@@ -438,7 +476,7 @@ public class Invoice {
         List<Instalment.Progress> progress = new ArrayList<>();
         BigDecimal left = paid.add(getCredited()).add(writtenOff(paid, taxRate));
         for (Instalment instalment : schedule(taxRate)) {
-            BigDecimal part = left.min(instalment.payment()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal part = left.min(instalment.payment()).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
             left = left.subtract(part);
             BigDecimal unpaid = instalment.payment().subtract(part);
             Instalment.Status status;
@@ -462,14 +500,14 @@ public class Invoice {
      */
     public BigDecimal overdueAmount(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
         if (statusWhenPaid(paid, taxRate, today) != InvoiceStatus.OVERDUE) {
-            return BigDecimal.ZERO.setScale(2);
+            return zero();
         }
         if (!hasPlan()) {
             return amountDue(paid, taxRate);
         }
         return instalmentProgress(paid, taxRate, today).stream()
                 .filter(p -> p.status() == Instalment.Status.OVERDUE).map(Instalment.Progress::unpaid)
-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+                .reduce(zero(), BigDecimal::add);
     }
 
     /**
@@ -492,7 +530,7 @@ public class Invoice {
     public BigDecimal earliestUnpaid(BigDecimal paid, BigDecimal taxRate) {
         return instalmentProgress(paid, taxRate, LocalDate.MIN).stream()
                 .map(Instalment.Progress::unpaid).filter(u -> u.signum() > 0)
-                .findFirst().orElse(BigDecimal.ZERO.setScale(2));
+                .findFirst().orElse(zero());
     }
 
     public List<InvoiceLine> getLines() {
@@ -628,7 +666,7 @@ public class Invoice {
         BigDecimal sum = BigDecimal.ZERO;
         for (Part p : inOrder) {
             sum = sum.add(p.amount());
-            if (sum.signum() > 0 && total.subtract(sum).compareTo(WRITE_OFF_LIMIT) < 0) {
+            if (sum.signum() > 0 && isSmallEnoughToWriteOff(total.subtract(sum))) {
                 return p.on();
             }
         }
@@ -642,7 +680,7 @@ public class Invoice {
      */
     public BigDecimal amountDue(BigDecimal paid, BigDecimal taxRate) {
         if (isCreditNote()) {
-            return BigDecimal.ZERO.setScale(2);
+            return zero();
         }
         return payable(taxRate).subtract(paid).subtract(writtenOff(paid, taxRate));
     }
@@ -653,14 +691,14 @@ public class Invoice {
      */
     public BigDecimal writtenOff(BigDecimal paid, BigDecimal taxRate) {
         BigDecimal left = payable(taxRate).subtract(paid);
-        return !isCreditNote() && paid.signum() > 0 && left.signum() > 0 && left.compareTo(WRITE_OFF_LIMIT) < 0
-                ? left.setScale(2, RoundingMode.HALF_UP)
-                : BigDecimal.ZERO.setScale(2);
+        return !isCreditNote() && paid.signum() > 0 && left.signum() > 0 && isSmallEnoughToWriteOff(left)
+                ? left.setScale(scale(), RoundingMode.HALF_UP)
+                : zero();
     }
 
     /** The least a part payment may be at the tax rate: {@link #MINIMUM_PART_SHARE} of the grand total. */
     public BigDecimal minimumPart(BigDecimal taxRate) {
-        return total(taxRate).multiply(MINIMUM_PART_SHARE).setScale(2, RoundingMode.HALF_UP);
+        return total(taxRate).multiply(MINIMUM_PART_SHARE).setScale(scale(), RoundingMode.HALF_UP);
     }
 
     /**
@@ -695,11 +733,11 @@ public class Invoice {
         if (line == null) {
             return false;
         }
-        BigDecimal left = subtotal().subtract(line.amount());
+        BigDecimal left = subtotal().subtract(line.amount(scale()));
         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
-            throw new InvoiceRejectedException("This line cannot be removed: the $"
-                    + left.setScale(2).toPlainString() + " left would be less than the $"
-                    + discountAmount.setScale(2).toPlainString() + " discount.");
+            throw new InvoiceRejectedException("This line cannot be removed: the "
+                    + currency().format(left) + " left would be less than the "
+                    + currency().format(discountAmount) + " discount.");
         }
         lines.remove(line);
         return true;
@@ -715,12 +753,12 @@ public class Invoice {
         if (line == null) {
             return false;
         }
-        BigDecimal changed = new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate).amount();
-        BigDecimal left = subtotal().subtract(line.amount()).add(changed);
+        BigDecimal changed = new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate).amount(scale());
+        BigDecimal left = subtotal().subtract(line.amount(scale())).add(changed);
         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
-            throw new InvoiceRejectedException("This line cannot be changed: the $"
-                    + left.setScale(2).toPlainString() + " subtotal would be less than the $"
-                    + discountAmount.setScale(2).toPlainString() + " discount.");
+            throw new InvoiceRejectedException("This line cannot be changed: the "
+                    + currency().format(left) + " subtotal would be less than the "
+                    + currency().format(discountAmount) + " discount.");
         }
         line.update(description, qty, unitPrice, taxExempt, discountPct, taxRate);
         return true;
@@ -731,8 +769,8 @@ public class Invoice {
      * matches what a client gets by adding up the lines shown.
      */
     public BigDecimal subtotal() {
-        return lines.stream().map(InvoiceLine::amount)
-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        return lines.stream().map(l -> l.amount(scale()))
+                .reduce(zero(), BigDecimal::add);
     }
 
     /**
@@ -743,14 +781,14 @@ public class Invoice {
      */
     public BigDecimal discount() {
         BigDecimal discount = discountAmount.signum() > 0
-                ? discountAmount.min(subtotal()).setScale(2, RoundingMode.HALF_UP)
-                : subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.DOWN);
+                ? discountAmount.min(subtotal()).setScale(scale(), RoundingMode.HALF_UP)
+                : subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
         if (discountCap == null) {
             return discount;
         }
-        BigDecimal lineDiscounts = lines.stream().map(InvoiceLine::discount)
-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        BigDecimal left = discountCap.setScale(2, RoundingMode.HALF_UP).subtract(lineDiscounts).max(BigDecimal.ZERO.setScale(2));
+        BigDecimal lineDiscounts = lines.stream().map(l -> l.discount(scale()))
+                .reduce(zero(), BigDecimal::add);
+        BigDecimal left = discountCap.setScale(scale(), RoundingMode.HALF_UP).subtract(lineDiscounts).max(zero());
         return discount.min(left);
     }
 
@@ -762,8 +800,8 @@ public class Invoice {
      * equal amounts too to the lower line id. The shares add up to the discount.
      */
     public List<BigDecimal> discountShares() {
-        BigInteger discountCents = discount().movePointRight(2).toBigIntegerExact();
-        BigInteger subtotalCents = subtotal().movePointRight(2).toBigIntegerExact();
+        BigInteger discountCents = discount().movePointRight(scale()).toBigIntegerExact();
+        BigInteger subtotalCents = subtotal().movePointRight(scale()).toBigIntegerExact();
         int n = lines.size();
         BigInteger[] shares = new BigInteger[n];
         BigInteger[] leftovers = new BigInteger[n];
@@ -775,7 +813,7 @@ public class Invoice {
             } else {
                 // The exact share is discount * amount / subtotal; all fractions share the subtotal
                 // as denominator, so the remainders compare as the fractions do.
-                BigInteger[] qr = discountCents.multiply(lines.get(i).amount().movePointRight(2).toBigIntegerExact())
+                BigInteger[] qr = discountCents.multiply(lines.get(i).amount(scale()).movePointRight(scale()).toBigIntegerExact())
                         .divideAndRemainder(subtotalCents);
                 shares[i] = qr[0];
                 leftovers[i] = qr[1];
@@ -787,7 +825,7 @@ public class Invoice {
             order.add(i);
         }
         order.sort(Comparator.<Integer, BigInteger>comparing(i -> leftovers[i]).reversed()
-                .thenComparing(Comparator.<Integer, BigDecimal>comparing(i -> lines.get(i).amount()).reversed())
+                .thenComparing(Comparator.<Integer, BigDecimal>comparing(i -> lines.get(i).amount(scale())).reversed())
                 .thenComparing(i -> lines.get(i).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
         int left = discountCents.subtract(given).intValueExact();
         for (int k = 0; k < left; k++) {
@@ -796,7 +834,7 @@ public class Invoice {
         }
         List<BigDecimal> result = new ArrayList<>(n);
         for (BigInteger share : shares) {
-            result.add(new BigDecimal(share, 2));
+            result.add(new BigDecimal(share, scale()));
         }
         return result;
     }
@@ -811,16 +849,16 @@ public class Invoice {
         List<BigDecimal> taxes = new ArrayList<>(lines.size());
         for (int i = 0; i < lines.size(); i++) {
             InvoiceLine line = lines.get(i);
-            taxes.add(clientTaxExempt || line.isTaxExempt() ? BigDecimal.ZERO.setScale(2)
-                    : line.amount().subtract(shares.get(i)).multiply(line.taxRate(taxRate)).divide(BigDecimal.valueOf(100))
-                            .setScale(2, RoundingMode.HALF_UP));
+            taxes.add(clientTaxExempt || line.isTaxExempt() ? zero()
+                    : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(taxRate)).divide(BigDecimal.valueOf(100))
+                            .setScale(scale(), RoundingMode.HALF_UP));
         }
         return taxes;
     }
 
     /** The tax charged at the given rate (a percentage): the sum of the line taxes. */
     public BigDecimal tax(BigDecimal taxRate) {
-        return lineTaxes(taxRate).stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        return lineTaxes(taxRate).stream().reduce(zero(), BigDecimal::add);
     }
 
     /** The grand total: the subtotal less the discount, plus tax at the given rate. */

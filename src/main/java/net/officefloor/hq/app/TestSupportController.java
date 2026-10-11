@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import jakarta.persistence.EntityManager;
+import net.officefloor.hq.app.clients.Currency;
 import net.officefloor.hq.app.invoices.Invoice;
 import net.officefloor.hq.app.invoices.InvoiceRepository;
 import net.officefloor.hq.app.invoices.PaymentRepository;
@@ -35,8 +36,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
@@ -50,9 +51,11 @@ public class TestSupportController {
     private final TaxRate taxRate;
     private final PaymentRepository payments;
     private final EntityManager entityManager;
+    private final ExchangeRates exchangeRates;
 
     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
-            PaymentRepository payments, EntityManager entityManager) {
+            PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates) {
+        this.exchangeRates = exchangeRates;
         this.payments = payments;
         this.entityManager = entityManager;
         this.audit = audit;
@@ -102,13 +105,39 @@ public class TestSupportController {
                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", TaxRate.TAX_RATE,
                         rate.toPlainString());
             }
+            if (values.get("usdPer") != null) {
+                if (!(values.get("usdPer") instanceof Map<?, ?> rates)) {
+                    throw refuse("settings.usdPer must be an object of rates by currency code");
+                }
+                for (Map.Entry<?, ?> e : rates.entrySet()) {
+                    String code = e.getKey().toString();
+                    if (Currency.of(code) == null) {
+                        throw refuse("unsupported currency in settings.usdPer: " + code);
+                    }
+                    BigDecimal usdPer;
+                    try {
+                        usdPer = new BigDecimal(String.valueOf(e.getValue()));
+                    } catch (NumberFormatException ex) {
+                        throw refuse("settings.usdPer." + code + " must be a number, not " + e.getValue());
+                    }
+                    if (usdPer.signum() <= 0) {
+                        throw refuse("settings.usdPer." + code + " must be more than zero, not " + e.getValue());
+                    }
+                    jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                            ExchangeRates.USD_PER + code, usdPer.toPlainString());
+                }
+            }
         }
         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
             only(row, CLIENT_FIELDS, "clients[]");
-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt"},
+            String currency = row.get("currency") == null ? Currency.USD.name() : row.get("currency").toString();
+            if (Currency.of(currency) == null) {
+                throw refuse("unsupported value of clients[].currency: " + currency);
+            }
+            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency"},
                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
                     percent(row.get("discountPct"), "clients[].discountPct"),
-                    flag(row.get("taxExempt"), "clients[].taxExempt"));
+                    flag(row.get("taxExempt"), "clients[].taxExempt"), currency);
         }
         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
             only(row, INVOICE_FIELDS, "invoices[]");
@@ -221,10 +250,18 @@ public class TestSupportController {
         }
         List<String> taxRate = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
                 String.class, TaxRate.TAX_RATE);
+        Map<String, Object> settings = new LinkedHashMap<>();
         if (!taxRate.isEmpty()) {
-            out.put("settings", Map.of("taxRate", new BigDecimal(taxRate.get(0))));
+            settings.put("taxRate", new BigDecimal(taxRate.get(0)));
         }
-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt FROM client ORDER BY id").stream()
+        Map<String, BigDecimal> rates = exchangeRates.all();
+        if (!rates.isEmpty()) {
+            settings.put("usdPer", rates);
+        }
+        if (!settings.isEmpty()) {
+            out.put("settings", settings);
+        }
+        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -235,6 +272,7 @@ public class TestSupportController {
                     }
                     row.put("discountPct", r.get("DISCOUNT_PCT"));
                     row.put("taxExempt", r.get("TAX_EXEMPT"));
+                    row.put("currency", r.get("CURRENCY"));
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(

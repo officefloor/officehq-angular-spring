@@ -3,7 +3,7 @@ import { InvoiceDetail, InvoiceService, InvoiceSummary, NewAllocation } from './
 import { PaymentForm } from './payment-form';
 import { RefundForm } from './refund-form';
 import { InvoicePanel } from './invoice-panel';
-import { money, statusLabel } from './invoice-format';
+import { Currency, money, statusLabel, symbolOf } from './invoice-format';
 
 // One client's invoices, each with its status, total, issue and due dates. Clicking an invoice
 // opens it in the invoice panel beside the list; New invoice starts an empty draft and opens it.
@@ -54,7 +54,7 @@ import { money, statusLabel } from './invoice-format';
             <th scope="col">Total</th>
             <th scope="col">Issued</th>
             <th scope="col">Due</th>
-            <th scope="col">Part of payment ($)</th>
+            <th scope="col">Part of payment ({{ symbolOf(currency()) }})</th>
           </tr>
         </thead>
         <tbody>
@@ -74,7 +74,7 @@ import { money, statusLabel } from './invoice-format';
                 </button>
               </td>
               <td data-testid="invoice-status">{{ statusLabel(i.status) }}</td>
-              <td data-testid="invoice-total">{{ money(i.total) }}</td>
+              <td data-testid="invoice-total">{{ money(i.total, currency()) }}</td>
               <td data-testid="invoice-issue">{{ i.issueDate }}</td>
               <td data-testid="invoice-due">{{ i.dueDate }}</td>
               <td>
@@ -98,7 +98,7 @@ import { money, statusLabel } from './invoice-format';
           }
         </tbody>
       </table>
-      <app-refund-form [clientId]="clientId()" (refunded)="splitRecorded($event)" />
+      <app-refund-form [clientId]="clientId()" [currency]="currency()" (refunded)="splitRecorded($event)" />
     </section>
 
     @if (selectedId(); as id) {
@@ -114,6 +114,7 @@ import { money, statusLabel } from './invoice-format';
     } @else if (invoices().length > 0) {
       <app-payment-form
         [clientId]="clientId()"
+        [currency]="currency()"
         [allocations]="allocations()"
         (split)="splitRecorded($event)"
         (deposited)="splitRecorded($event)"
@@ -126,6 +127,8 @@ export class ClientInvoices {
 
   readonly clientId = input.required<number>();
   readonly clientName = input('');
+  // The currency the client is billed in, which its invoices' amounts are in.
+  readonly currency = input<Currency>('USD');
   // An invoice to open, looked up by number; a new object for each lookup, so the same invoice
   // can be opened again.
   readonly openInvoice = input<{ id: number; clientId: number } | null>(null);
@@ -149,6 +152,7 @@ export class ClientInvoices {
   );
   protected readonly statusLabel = statusLabel;
   protected readonly money = money;
+  protected readonly symbolOf = symbolOf;
 
   constructor() {
     effect((onCleanup) => {

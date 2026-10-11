@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { Currency } from '../invoices/invoice-format';
 
 export interface Client {
   id: number;
@@ -12,6 +13,8 @@ export interface Client {
   discountPct: number;
   // Whether the client is tax exempt (a charity, say): its invoices charge no tax on any line.
   taxExempt: boolean;
+  // The currency the client is billed in: everything on its invoices is in it.
+  currency: Currency;
 }
 
 export type NewClient = Omit<Client, 'id'>;
