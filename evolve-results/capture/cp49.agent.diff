@@ -1,0 +1,273 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 7c03d33..72adae5 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -10,6 +10,8 @@ export interface Client {
+   termsDays: number | null;
+   // The standard percentage discount new invoices for the client start with; 0 is none.
+   discountPct: number;
++  // Whether the client is tax exempt (a charity, say): its invoices charge no tax on any line.
++  taxExempt: boolean;
+ }
+ 
+ export type NewClient = Omit<Client, 'id'>;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 0027ef8..f2c5e1b 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -116,6 +116,13 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+           step="0.01"
+           formControlName="discountPct"
+         />
++        <input
++          id="client-tax-exempt"
++          data-testid="client-form-tax-exempt"
++          type="checkbox"
++          formControlName="taxExempt"
++        />
++        <label for="client-tax-exempt">Tax exempt (no tax on any of their invoices)</label>
+         <button type="submit" data-testid="client-form-submit" [disabled]="saving()">
+           Add client
+         </button>
+@@ -165,6 +172,7 @@ export class Clients {
+     }),
+     terms: new FormControl<number | null>(null),
+     discountPct: new FormControl<number | null>(null),
++    taxExempt: new FormControl(false, { nonNullable: true }),
+   });
+ 
+   constructor() {
+@@ -190,7 +198,8 @@ export class Clients {
+     const termsDays = terms === null || (terms as unknown) === '' ? null : Number(terms);
+     const discount = this.form.controls.discountPct.value;
+     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
+-    this.form.setValue({ name, email, terms: termsDays, discountPct });
++    const taxExempt = this.form.controls.taxExempt.value;
++    this.form.setValue({ name, email, terms: termsDays, discountPct, taxExempt });
+     const problem = this.problemWith(name, email, termsDays, discountPct);
+     if (problem) {
+       this.form.markAllAsTouched();
+@@ -199,7 +208,7 @@ export class Clients {
+     }
+     this.saving.set(true);
+     this.error.set('');
+-    this.service.add({ name, email, termsDays, discountPct: discountPct ?? 0 }).subscribe({
++    this.service.add({ name, email, termsDays, discountPct: discountPct ?? 0, taxExempt }).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created].sort(byName));
+         this.form.reset();
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 0f9a443..8f0b90b 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -32,7 +32,7 @@ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+@@ -92,9 +92,10 @@ public class TestSupportController {
+         }
+         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
+             only(row, CLIENT_FIELDS, "clients[]");
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct"},
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+-                    percent(row.get("discountPct"), "clients[].discountPct"));
++                    percent(row.get("discountPct"), "clients[].discountPct"),
++                    flag(row.get("taxExempt"), "clients[].taxExempt"));
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+             only(row, INVOICE_FIELDS, "invoices[]");
+@@ -174,7 +175,7 @@ public class TestSupportController {
+         if (!taxRate.isEmpty()) {
+             out.put("settings", Map.of("taxRate", new BigDecimal(taxRate.get(0))));
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -184,6 +185,7 @@ public class TestSupportController {
+                         row.put("termsDays", r.get("TERMS_DAYS"));
+                     }
+                     row.put("discountPct", r.get("DISCOUNT_PCT"));
++                    row.put("taxExempt", r.get("TAX_EXEMPT"));
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 7bd1c43..53e076c 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -28,14 +28,19 @@ public class Client {
+     @Column(name = "discount_pct")
+     private BigDecimal discountPct = BigDecimal.ZERO;
+ 
++    /** Whether the client is tax exempt (a charity, say): its invoices charge no tax on any line. */
++    @Column(name = "tax_exempt")
++    private boolean taxExempt;
++
+     protected Client() {
+     }
+ 
+-    public Client(String name, String email, Integer termsDays, BigDecimal discountPct) {
++    public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt) {
+         this.name = name;
+         this.email = email;
+         this.termsDays = termsDays;
+         this.discountPct = discountPct == null ? BigDecimal.ZERO : discountPct;
++        this.taxExempt = taxExempt;
+     }
+ 
+     public Long getId() {
+@@ -57,4 +62,8 @@ public class Client {
+     public BigDecimal getDiscountPct() {
+         return discountPct;
+     }
++
++    public boolean isTaxExempt() {
++        return taxExempt;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index d24738a..fd59607 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -24,9 +24,11 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/clients")
+ public class ClientController {
+ 
+-    public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct) {
++    public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
++            boolean taxExempt) {
+         static ClientView of(Client c) {
+-            return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct());
++            return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
++                    c.isTaxExempt());
+         }
+     }
+ 
+@@ -45,7 +47,9 @@ public class ClientController {
+             @DecimalMin(value = "0", message = "The standard discount must be from 0 to 100 percent.")
+             @DecimalMax(value = "100", message = "The standard discount must be from 0 to 100 percent.")
+             @Digits(integer = 3, fraction = 2, message = "The standard discount can have at most two decimals.")
+-            BigDecimal discountPct) {
++            BigDecimal discountPct,
++            /** Whether the client is tax exempt; taxed when left out. */
++            Boolean taxExempt) {
+     }
+ 
+     /**
+@@ -68,6 +72,7 @@ public class ClientController {
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClientView add(@Valid @RequestBody NewClient body) {
+-        return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct()));
++        return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
++                Boolean.TRUE.equals(body.taxExempt())));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 6e0faab..9b4dd9e 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -30,11 +30,11 @@ public class ClientService {
+     }
+ 
+     @Transactional
+-    public Client add(String name, String email, Integer termsDays, BigDecimal discountPct) {
++    public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+-        return clients.save(new Client(name.trim(), address, termsDays, discountPct));
++        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 445319d..9ac7c32 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.OneToMany;
+ import jakarta.persistence.OrderBy;
+ import jakarta.persistence.Table;
++import org.hibernate.annotations.Formula;
+ import java.math.BigDecimal;
+ import java.math.BigInteger;
+ import java.math.RoundingMode;
+@@ -65,6 +66,10 @@ public class Invoice {
+     @Column(name = "discount_reason")
+     private String discountReason;
+ 
++    /** Whether the invoice's client is tax exempt, so no line is taxed; read from the client. */
++    @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
++    private boolean clientTaxExempt;
++
+     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+     @JoinColumn(name = "invoice_id", nullable = false)
+     @OrderBy("id")
+@@ -74,9 +79,10 @@ public class Invoice {
+     }
+ 
+     /** A new, empty draft for a client, issued and due on the given dates. */
+-    public static Invoice draft(Long clientId, LocalDate issueDate, LocalDate dueDate) {
++    public static Invoice draft(Long clientId, boolean clientTaxExempt, LocalDate issueDate, LocalDate dueDate) {
+         Invoice invoice = new Invoice();
+         invoice.clientId = clientId;
++        invoice.clientTaxExempt = clientTaxExempt;
+         invoice.status = InvoiceStatus.DRAFT;
+         invoice.issueDate = issueDate;
+         invoice.dueDate = dueDate;
+@@ -88,7 +94,7 @@ public class Invoice {
+      * discount, issued and due on the given dates. Payments stay with this invoice.
+      */
+     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
+-        Invoice copy = draft(clientId, issueDate, dueDate);
++        Invoice copy = draft(clientId, clientTaxExempt, issueDate, dueDate);
+         copy.discountPct = discountPct;
+         copy.discountAmount = discountAmount;
+         copy.discountCap = discountCap;
+@@ -454,14 +460,14 @@ public class Invoice {
+     /**
+      * Each line's tax, in the order of the lines: the line's own rate (a percentage), or the given
+      * workspace rate when it has none, on the line's amount less its share of the discount, rounded
+-     * half up to the cent. Tax-exempt lines have no tax.
++     * half up to the cent. Tax-exempt lines, and every line of a tax-exempt client, have no tax.
+      */
+     public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
+         List<BigDecimal> shares = discountShares();
+         List<BigDecimal> taxes = new ArrayList<>(lines.size());
+         for (int i = 0; i < lines.size(); i++) {
+             InvoiceLine line = lines.get(i);
+-            taxes.add(line.isTaxExempt() ? BigDecimal.ZERO.setScale(2)
++            taxes.add(clientTaxExempt || line.isTaxExempt() ? BigDecimal.ZERO.setScale(2)
+                     : line.amount().subtract(shares.get(i)).multiply(line.taxRate(taxRate)).divide(BigDecimal.valueOf(100))
+                             .setScale(2, RoundingMode.HALF_UP));
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 10253e0..0919244 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -67,7 +67,7 @@ public class InvoiceService {
+     public Optional<Invoice> newDraft(Long clientId) {
+         return clients.findById(clientId).map(client -> {
+             LocalDate issued = today.date();
+-            Invoice draft = Invoice.draft(clientId, issued, dueDateFor(clientId, issued));
++            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), issued, dueDateFor(clientId, issued));
+             draft.setDiscountPct(client.getDiscountPct());
+             return invoices.save(draft);
+         });
+diff --git a/src/main/resources/db/migration/V16__client_tax_exempt.sql b/src/main/resources/db/migration/V16__client_tax_exempt.sql
+new file mode 100644
+index 0000000..1751b9c
+--- /dev/null
++++ b/src/main/resources/db/migration/V16__client_tax_exempt.sql
+@@ -0,0 +1,2 @@
++-- A tax-exempt client (a charity, say) is charged no tax on any invoice line; clients are taxed by default.
++ALTER TABLE client ADD COLUMN tax_exempt BOOLEAN DEFAULT FALSE NOT NULL;
