@@ -1,6 +1,8 @@
 package net.officefloor.hq.app;
 
 import java.math.BigDecimal;
+import java.sql.Date;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -10,7 +12,10 @@ import org.springframework.stereotype.Service;
 /**
  * The workspace's tax rate: the stored {@code tax_rate} setting, a percentage such as 10. With no
  * rate set there is no tax, so the rate is 0. A region can have its own rate, the
- * {@code region_tax_rate_<region>} setting, charged to the region's clients instead.
+ * {@code region_tax_rate_<region>} setting, charged to the region's clients instead. A region's rate
+ * can change on a date (the {@code tax_rate_change} table): an invoice is taxed at the latest change on
+ * or before its issue date, or the region's own rate before any. Invoices read the changes themselves
+ * (see Invoice).
  */
 @Service
 public class TaxRate {
@@ -57,5 +62,34 @@ public class TaxRate {
     public String homeRegion() {
         return jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class, HOME_REGION)
                 .stream().findFirst().orElse(null);
+    }
+
+    /** A dated change of a region's rate: from the date on, the region is taxed at the rate. */
+    public record Change(String region, LocalDate from, BigDecimal rate) {
+    }
+
+    /** Every dated change, by region then date. */
+    public List<Change> changes() {
+        return jdbc.query("SELECT region, from_date, rate FROM tax_rate_change ORDER BY region, from_date, id",
+                (rs, n) -> new Change(rs.getString(1), rs.getDate(2).toLocalDate(), rs.getBigDecimal(3)));
+    }
+
+    /** Records that the region's rate changes to the given rate from the date on. */
+    public void addChange(String region, LocalDate from, BigDecimal rate) {
+        jdbc.update("INSERT INTO tax_rate_change (region, from_date, rate) VALUES (?, ?, ?)", region,
+                Date.valueOf(from), rate);
+    }
+
+    /**
+     * The region's dated changes as "from date=rate" joined by commas in date order, the form invoices
+     * read them in; null when the client has no region or the region has no changes.
+     */
+    public String changesFor(String region) {
+        if (region == null) {
+            return null;
+        }
+        List<String> changes = jdbc.query("SELECT from_date, rate FROM tax_rate_change WHERE region = ? ORDER BY from_date, id",
+                (rs, n) -> rs.getDate(1).toLocalDate() + "=" + rs.getBigDecimal(2).toPlainString(), region);
+        return changes.isEmpty() ? null : String.join(",", changes);
     }
 }

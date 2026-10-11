@@ -39,7 +39,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges");
+    private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
     private static final String MINIMUM_CHARGE = "minimum_charge";
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
@@ -87,6 +88,7 @@ public class TestSupportController {
         audit.clear();
         jdbc.execute("DELETE FROM app_setting");
         jdbc.execute("DELETE FROM fx_rate");
+        jdbc.execute("DELETE FROM tax_rate_change");
         jdbc.execute("DELETE FROM payment_allocation");
         jdbc.execute("DELETE FROM client_rate");
         jdbc.execute("DELETE FROM price_list_rate");
@@ -206,6 +208,23 @@ public class TestSupportController {
                 }
                 priceList.add(rate.get("unitType").toString(),
                         tiers != null ? null : cents(rate.get("unitPrice"), "settings.rates[].unitPrice"), tiers);
+            }
+            for (Map<String, Object> change : rows(values.get("taxRateChanges"), "settings.taxRateChanges")) {
+                only(change, TAX_RATE_CHANGE_FIELDS, "settings.taxRateChanges[]");
+                if (change.get("region") == null || change.get("region").toString().isBlank()
+                        || change.get("from") == null || change.get("rate") == null) {
+                    throw refuse("settings.taxRateChanges[] needs region, from and rate");
+                }
+                BigDecimal rate;
+                try {
+                    rate = new BigDecimal(String.valueOf(change.get("rate")));
+                } catch (NumberFormatException ex) {
+                    throw refuse("settings.taxRateChanges[].rate must be a number, not " + change.get("rate"));
+                }
+                if (rate.signum() < 0 || rate.compareTo(BigDecimal.valueOf(100)) > 0) {
+                    throw refuse("settings.taxRateChanges[].rate must be from 0 to 100, not " + change.get("rate"));
+                }
+                taxRate.addChange(change.get("region").toString(), date(change.get("from"), "settings.taxRateChanges[].from"), rate);
             }
             for (Map<String, Object> rate : rows(values.get("fxRates"), "settings.fxRates")) {
                 only(rate, FX_RATE_FIELDS, "settings.fxRates[]");
@@ -441,6 +460,16 @@ public class TestSupportController {
         Map<String, BigDecimal> regionTaxRates = this.taxRate.regions();
         if (!regionTaxRates.isEmpty()) {
             settings.put("regionTaxRates", regionTaxRates);
+        }
+        List<Map<String, Object>> taxRateChanges = this.taxRate.changes().stream().map(c -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("region", c.region());
+            row.put("from", c.from().toString());
+            row.put("rate", c.rate());
+            return row;
+        }).toList();
+        if (!taxRateChanges.isEmpty()) {
+            settings.put("taxRateChanges", taxRateChanges);
         }
         String homeRegion = this.taxRate.homeRegion();
         if (homeRegion != null) {

@@ -168,6 +168,17 @@ public class Invoice {
     private String regionTaxRate;
 
     /**
+     * The dated changes of the client's region's rate, as "from date=rate" joined by commas in date
+     * order; null when there are none. Read from the workspace's tax rate changes.
+     */
+    @Formula("(SELECT LISTAGG(CAST(t.from_date AS VARCHAR) || '=' || CAST(t.rate AS VARCHAR), ',') WITHIN GROUP (ORDER BY t.from_date, t.id) FROM tax_rate_change t, client c WHERE c.id = client_id AND t.region = c.region)")
+    private String regionRateChanges;
+
+    /** The issue date of the invoice this credit note credits; null for an ordinary invoice. */
+    @Formula("(SELECT o.issue_date FROM invoice o WHERE o.id = credit_of)")
+    private LocalDate creditedIssueDate;
+
+    /**
      * The tax number of the invoice's client when the client is in a region other than the workspace's
      * home region; read from them, null when it has no number, no region, is in the home region or
      * there is no home region. With a valid number the invoice is reverse charged (see {@link #isReverseCharge}).
@@ -336,12 +347,13 @@ public class Invoice {
 
     /** A new, empty draft for a client, issued and due on the given dates. */
     public static Invoice draft(Long clientId, boolean clientTaxExempt, boolean clientPricesIncludeTax, String regionTaxRate,
-            String outOfRegionTaxNumber, Currency currency, LocalDate issueDate, LocalDate dueDate) {
+            String regionRateChanges, String outOfRegionTaxNumber, Currency currency, LocalDate issueDate, LocalDate dueDate) {
         Invoice invoice = new Invoice();
         invoice.clientId = clientId;
         invoice.clientTaxExempt = clientTaxExempt;
         invoice.clientPricesIncludeTax = clientPricesIncludeTax;
         invoice.regionTaxRate = regionTaxRate;
+        invoice.regionRateChanges = regionRateChanges;
         invoice.outOfRegionTaxNumber = outOfRegionTaxNumber;
         invoice.clientCurrency = currency.name();
         invoice.status = InvoiceStatus.DRAFT;
@@ -355,7 +367,7 @@ public class Invoice {
      * discount, issued and due on the given dates. Payments stay with this invoice.
      */
     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
-        Invoice copy = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+        Invoice copy = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, dueDate);
         copy.discountPct = discountPct;
         copy.discountAmount = discountAmount;
         copy.discountCap = discountCap;
@@ -375,8 +387,9 @@ public class Invoice {
      * discount, taxed as the original's lines are.
      */
     public Invoice creditNote(LocalDate issueDate) {
-        Invoice note = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, null);
+        Invoice note = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, null);
         note.creditOf = id;
+        note.creditedIssueDate = this.issueDate;
         return note;
     }
 
@@ -1882,9 +1895,24 @@ public class Invoice {
         return TaxNumber.isValid(outOfRegionTaxNumber);
     }
 
-    /** The rate lines without their own are taxed at: the client's regional rate, or the given workspace rate when it has none. */
+    /**
+     * The rate lines without their own are taxed at: the client's regional rate in force on the issue
+     * date (a credit note's original's), that is the latest change on or before it, otherwise the
+     * region's own rate; or the given workspace rate when the region has neither.
+     */
     public BigDecimal clientTaxRate(BigDecimal workspaceRate) {
-        return regionTaxRate == null ? workspaceRate : new BigDecimal(regionTaxRate.trim());
+        BigDecimal rate = regionTaxRate == null ? null : new BigDecimal(regionTaxRate.trim());
+        LocalDate on = creditOf != null ? creditedIssueDate : issueDate;
+        if (regionRateChanges != null && on != null) {
+            for (String entry : regionRateChanges.split(",")) {
+                String[] parts = entry.split("=");
+                if (LocalDate.parse(parts[0].trim()).isAfter(on)) {
+                    break;
+                }
+                rate = new BigDecimal(parts[1].trim());
+            }
+        }
+        return rate == null ? workspaceRate : rate;
     }
 
     /**
