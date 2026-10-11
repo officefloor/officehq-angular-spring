@@ -931,7 +931,8 @@ public class Invoice {
      * so far. A credit note issued after the grace period ends a period too:
      * what it took off what the invoice owed counts only from its issue date, so the periods before it
      * earn interest on what was owed before the credit. An invoice spread over instalments instead earns interest
-     * instalment by instalment (see {@link #accrueInstalmentInterest}). On the day the
+     * instalment by instalment (see {@link #accrueInstalmentInterest}), none of it charged until the
+     * instalments' interest together reaches {@link #interestThreshold()}. On the day the
      * interest was waived (after the day's payments), the interest still unpaid is written off
      * (kept as what was waived) and that day ends a period: interest starts again from it on what is
      * still owed. A written-off invoice is charged only up to the day it was
@@ -947,6 +948,10 @@ public class Invoice {
         this.instalmentInterest = List.of();
         if (status == InvoiceStatus.SENT && !isCreditNote() && hasPlan()) {
             accrueInstalmentInterest(payments, taxRate, annualRate, today);
+            if (getLateInterest().compareTo(interestThreshold()) < 0) {
+                this.lateInterest = BigDecimal.ZERO;
+                this.instalmentInterest = List.of();
+            }
             return;
         }
         accrueInvoiceInterest(payments, taxRate, annualRate, today);
@@ -959,7 +964,7 @@ public class Invoice {
     }
 
     /**
-     * The late interest an invoice without a plan must add up to before any of it is charged: the
+     * The late interest an invoice (all of a plan's instalments together) must add up to before any of it is charged: the
      * workspace's threshold in US dollars converted at the issue date's rate, rounded down to the step;
      * 0 when none is set.
      */
