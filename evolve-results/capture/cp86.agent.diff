@@ -1,0 +1,511 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-format.ts b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+index cf27521..f8b9ce1 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-format.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+@@ -11,6 +11,7 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
+   CREDIT_NOTE: 'Credit note',
+   CREDITED: 'Credited',
+   RETENTION_HELD: 'Retention held',
++  WRITTEN_OFF: 'Written off',
+ };
+ const INSTALMENT_STATUS_LABEL: Record<InstalmentStatus, string> = {
+   PAID: 'Paid',
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 3595b10..43c4985 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -448,7 +448,9 @@ function problemWith(line: NewLine): string {
+               </tr>
+             }
+             <tr>
+-              <th scope="row" colspan="4">Written off (worth under $1.00 left)</th>
++              <th scope="row" colspan="4">
++                {{ inv.writtenOffOn === null ? 'Written off (worth under $1.00 left)' : 'Written off as a bad debt' }}
++              </th>
+               <td data-testid="invoice-written-off">{{ amount(inv.writtenOff) }}</td>
+             </tr>
+           </tfoot>
+@@ -534,7 +536,7 @@ function problemWith(line: NewLine): string {
+           <p role="alert" data-testid="invoice-release-error">{{ releaseError() }}</p>
+         }
+ 
+-        @if (inv.creditOf === null && inv.status !== 'DRAFT' && inv.status !== 'VOID') {
++        @if (inv.creditOf === null && inv.status !== 'DRAFT' && inv.status !== 'VOID' && inv.status !== 'WRITTEN_OFF') {
+           <button
+             type="button"
+             data-testid="invoice-waive"
+@@ -548,6 +550,15 @@ function problemWith(line: NewLine): string {
+           <p role="alert" data-testid="invoice-waive-error">{{ waiveError() }}</p>
+         }
+ 
++        @if (inv.creditOf === null && inv.status !== 'WRITTEN_OFF') {
++          <button type="button" data-testid="invoice-write-off" [disabled]="writingOff()" (click)="writeOff(inv.id)">
++            Write off
++          </button>
++        }
++        @if (writeOffError()) {
++          <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
++        }
++
+         @if (inv.status === 'DRAFT') {
+           <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv)">
+             {{ inv.creditOf === null ? 'Send invoice' : 'Issue credit note' }}
+@@ -722,6 +733,8 @@ export class InvoicePanel {
+   protected readonly releaseError = signal('');
+   protected readonly waiving = signal(false);
+   protected readonly waiveError = signal('');
++  protected readonly writingOff = signal(false);
++  protected readonly writeOffError = signal('');
+   protected readonly sending = signal(false);
+   protected readonly sendError = signal('');
+   protected readonly duplicating = signal(false);
+@@ -794,6 +807,7 @@ export class InvoicePanel {
+       this.planError.set('');
+       this.releaseError.set('');
+       this.waiveError.set('');
++      this.writeOffError.set('');
+       this.sendError.set('');
+       this.voidError.set('');
+       this.duplicateError.set('');
+@@ -1065,6 +1079,25 @@ export class InvoicePanel {
+     });
+   }
+ 
++  protected writeOff(invoiceId: number): void {
++    this.writingOff.set(true);
++    this.writeOffError.set('');
++    this.service.writeOff(invoiceId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.writingOff.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.writeOffError.set(
++          typeof detail === 'string' && detail ? detail : 'The invoice could not be written off.',
++        );
++        this.writingOff.set(false);
++      },
++    });
++  }
++
+   // Sends a draft; an issued credit note also changes what its original owes, so the client's
+   // invoices are shown again.
+   protected send(inv: InvoiceDetail): void {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index b152595..a8c3328 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -11,7 +11,8 @@ import { Currency } from './invoice-format';
+ // and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
+ // A credit note is a DRAFT until it is issued, then CREDIT_NOTE for good; a sent invoice whose issued
+ // credit notes leave nothing due, with nothing paid, is CREDITED. A sent invoice with nothing due
+-// but retention still held back is RETENTION_HELD instead of PAID.
++// but retention still held back is RETENTION_HELD instead of PAID. A sent invoice written off as a bad
++// debt is WRITTEN_OFF for good: it owes nothing, earns no more interest and takes no payments.
+ export type InvoiceStatus =
+   | 'DRAFT'
+   | 'SENT'
+@@ -22,7 +23,8 @@ export type InvoiceStatus =
+   | 'VOID'
+   | 'CREDIT_NOTE'
+   | 'CREDITED'
+-  | 'RETENTION_HELD';
++  | 'RETENTION_HELD'
++  | 'WRITTEN_OFF';
+ 
+ // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
+ // server: the grand total — the lines' subtotal less any discount plus tax.
+@@ -158,6 +160,9 @@ export interface InvoiceDetail {
+   // For a client billed in another currency, the exchange difference in US dollars of the payments
+   // applied to it (negative for a loss); null for a dollar invoice.
+   fxDifference: string | null;
++  // The day (yyyy-mm-dd) it was written off as a bad debt, null when it was not; everything it still
++  // owed then, late charges and retention included, is in `writtenOff`.
++  writtenOffOn: string | null;
+ }
+ 
+ // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
+@@ -292,6 +297,12 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, null);
+   }
+ 
++  // Writes off everything still owed on a sent invoice as a bad debt. Refused (409) on a draft, a void
++  // invoice or one with nothing owed.
++  writeOff(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/write-off`, null);
++  }
++
+   // Waives the late fee and late interest still unpaid on an overdue invoice; interest starts again
+   // from today on what is still owed. Refused (409) when there is nothing to waive.
+   waiveInterest(invoiceId: number): Observable<InvoiceDetail> {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 71e398a..cec864c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -41,7 +41,7 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -193,7 +193,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -211,7 +211,9 @@ public class TestSupportController {
+                     instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"),
+                     planDownPct(row.get("planDownPct"), "invoices[].planDownPct"),
+                     row.get("interestWaivedOn") == null ? null
+-                            : date(row.get("interestWaivedOn"), "invoices[].interestWaivedOn"));
++                            : date(row.get("interestWaivedOn"), "invoices[].interestWaivedOn"),
++                    row.get("writtenOffOn") == null ? null
++                            : date(row.get("writtenOffOn"), "invoices[].writtenOffOn"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 insert("invoice_line", line.get("id"),
+@@ -356,7 +358,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, instalments, instalment_rate, plan_down_pct, interest_waived_on FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -381,6 +383,9 @@ public class TestSupportController {
+                     if (r.get("INTEREST_WAIVED_ON") != null) {
+                         row.put("interestWaivedOn", r.get("INTEREST_WAIVED_ON").toString());
+                     }
++                    if (r.get("WRITTEN_OFF_ON") != null) {
++                        row.put("writtenOffOn", r.get("WRITTEN_OFF_ON").toString());
++                    }
+                     if (r.get("INSTALMENTS") != null) {
+                         row.put("instalments", r.get("INSTALMENTS"));
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 3c482d3..3f331de 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -100,6 +100,10 @@ public class Invoice {
+     @Column(name = "interest_waived_on")
+     private LocalDate interestWaivedOn;
+ 
++    /** The day the invoice was written off as a bad debt; null when it was not. */
++    @Column(name = "written_off_on")
++    private LocalDate writtenOffOn;
++
+     /** How many monthly instalments the invoice is spread over; null when it has no plan. */
+     @Column(name = "instalments")
+     private Integer instalments;
+@@ -508,6 +512,24 @@ public class Invoice {
+         this.interestWaivedOn = on;
+     }
+ 
++    /** The day the invoice was written off as a bad debt; null when it was not. */
++    public LocalDate getWrittenOffOn() {
++        return writtenOffOn;
++    }
++
++    /** Whether the invoice was written off as a bad debt: it then owes nothing and takes no payments. */
++    public boolean isWrittenOff() {
++        return writtenOffOn != null;
++    }
++
++    /**
++     * Writes the invoice off as a bad debt on the given day: everything still owed on it then, late
++     * charges and retention included, is written off, and it stops earning interest.
++     */
++    public void writeOff(LocalDate on) {
++        this.writtenOffOn = on;
++    }
++
+     /** Releases the retention on the given day, so it is added to the amount due. */
+     public void releaseRetention(LocalDate on) {
+         this.retentionReleasedOn = on;
+@@ -529,9 +551,14 @@ public class Invoice {
+ 
+     /**
+      * The retention still held back at the tax rate: all of it until it is released, less what credit
+-     * notes have cleared of it; then nothing.
++     * notes have cleared of it; then nothing. Nothing once the invoice is written off.
+      */
+     public BigDecimal retentionHeld(BigDecimal taxRate) {
++        return isWrittenOff() ? zero() : retentionKept(taxRate);
++    }
++
++    /** As {@link #retentionHeld}, but still what was held back when the invoice was written off. */
++    private BigDecimal retentionKept(BigDecimal taxRate) {
+         if (retentionReleasedOn != null) {
+             return zero();
+         }
+@@ -550,7 +577,7 @@ public class Invoice {
+             return new BigDecimal[] { amount, BigDecimal.ZERO };
+         }
+         BigDecimal toDue = amount.min(amountDue(paid, taxRate).max(BigDecimal.ZERO));
+-        BigDecimal toRetention = amount.subtract(toDue).min(retentionHeld(taxRate));
++        BigDecimal toRetention = amount.subtract(toDue).min(retentionKept(taxRate));
+         return new BigDecimal[] { toDue.add(toRetention), toRetention };
+     }
+ 
+@@ -573,7 +600,7 @@ public class Invoice {
+      */
+     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
+         BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate).subtract(getCredited());
+-        return owed.subtract(retentionHeld(taxRate)).subtract(getEarlyDiscountTaken())
++        return owed.subtract(retentionKept(taxRate)).subtract(getEarlyDiscountTaken())
+                 .subtract(getInterestSaved());
+     }
+ 
+@@ -620,10 +647,12 @@ public class Invoice {
+      * instalment by instalment (see {@link #accrueInstalmentInterest}), and no late fee. On the day the
+      * charges were waived (after the day's payments), the fee and interest still unpaid are written off
+      * (kept as what was waived) and that day ends a period: interest starts again from it on what is
+-     * still owed, and no new fee is charged.
++     * still owed, and no new fee is charged. A written-off invoice is charged only up to the day it was
++     * written off.
+      */
+     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+-            BigDecimal lateFeeUsd, LocalDate today) {
++            BigDecimal lateFeeUsd, LocalDate asOf) {
++        LocalDate today = writtenOffOn != null && writtenOffOn.isBefore(asOf) ? writtenOffOn : asOf;
+         this.lateInterest = BigDecimal.ZERO;
+         this.lateFee = BigDecimal.ZERO;
+         this.lateWaived = BigDecimal.ZERO;
+@@ -1188,6 +1217,9 @@ public class Invoice {
+         if (status != InvoiceStatus.SENT) {
+             return status;
+         }
++        if (isWrittenOff()) {
++            return InvoiceStatus.WRITTEN_OFF;
++        }
+         BigDecimal amountDue = amountDue(paid, taxRate);
+         boolean due = amountDue.signum() > 0;
+         BigDecimal retentionDue = amountDue.min(retentionReleased(taxRate)).max(BigDecimal.ZERO);
+@@ -1225,7 +1257,7 @@ public class Invoice {
+      */
+     public LocalDate paidOn(List<Payment> payments, BigDecimal taxRate) {
+         BigDecimal total = payable(taxRate);
+-        if (status != InvoiceStatus.SENT || total.signum() <= 0 || retentionHeld(taxRate).signum() > 0) {
++        if (status != InvoiceStatus.SENT || isWrittenOff() || total.signum() <= 0 || retentionHeld(taxRate).signum() > 0) {
+             return null;
+         }
+         record Part(LocalDate on, Long paymentId, BigDecimal amount) {
+@@ -1247,10 +1279,11 @@ public class Invoice {
+     /**
+      * What is still due once the given amount has been paid: the grand total less it, less what credit
+      * notes have credited, less the retention still held, less anything written off — so nothing once
+-     * payments leave less than {@link #WRITE_OFF_LIMIT}. A credit note itself has nothing due.
++     * payments leave less than {@link #WRITE_OFF_LIMIT}. A credit note itself, and a written-off
++     * invoice, have nothing due.
+      */
+     public BigDecimal amountDue(BigDecimal paid, BigDecimal taxRate) {
+-        if (isCreditNote()) {
++        if (isCreditNote() || isWrittenOff()) {
+             return zero();
+         }
+         return payable(taxRate).subtract(paid).subtract(writtenOff(paid, taxRate));
+@@ -1258,9 +1291,14 @@ public class Invoice {
+ 
+     /**
+      * What is written off once the given amount has been paid: when payments leave less than
+-     * {@link #WRITE_OFF_LIMIT} still due, all of what is left; otherwise nothing.
++     * {@link #WRITE_OFF_LIMIT} still due, all of what is left; otherwise nothing. Once the invoice is
++     * written off as a bad debt, everything it still owed then, late charges and retention included.
+      */
+     public BigDecimal writtenOff(BigDecimal paid, BigDecimal taxRate) {
++        if (isWrittenOff() && !isCreditNote()) {
++            return payable(taxRate).add(retentionKept(taxRate)).subtract(paid).max(BigDecimal.ZERO)
++                    .setScale(scale(), RoundingMode.HALF_UP);
++        }
+         BigDecimal left = payable(taxRate).subtract(paid);
+         return !isCreditNote() && paid.signum() > 0 && left.signum() > 0 && isSmallEnoughToWriteOff(left)
+                 ? left.setScale(scale(), RoundingMode.HALF_UP)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 1da616e..21ea870 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -123,6 +123,8 @@ public class InvoiceController {
+      * of instalments not yet due that paying it off early dropped (0 when none was). {@code fxDifference}
+      * is, for a client billed in another currency, the exchange difference in US dollars of the payments
+      * applied to it (see {@link Invoice#fxDifference(List)}); null for a dollar invoice.
++     * {@code writtenOffOn} is the day it was written off as a bad debt (null when it was not); everything
++     * it still owed then is in {@code writtenOff}, and nothing is due.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -131,7 +133,7 @@ public class InvoiceController {
+             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
+-            String payoff, String interestSaved, String fxDifference) {
++            String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -167,7 +169,8 @@ public class InvoiceController {
+                     i.getLateWaived().toPlainString(),
+                     Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
+                     i.getInterestSaved().toPlainString(),
+-                    i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString());
++                    i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
++                    i.getWrittenOffOn());
+         }
+     }
+ 
+@@ -492,6 +495,14 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /** Writes off everything still owed on a sent invoice as a bad debt. */
++    @PostMapping("/api/invoices/{id}/write-off")
++    public InvoiceDetail writeOff(@PathVariable Long id) {
++        return invoices.writeOff(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /** Waives the late fee and late interest still unpaid on an overdue invoice. */
+     @PostMapping("/api/invoices/{id}/waive-interest")
+     public InvoiceDetail waiveInterest(@PathVariable Long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index f5211ce..5282559 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -154,6 +154,9 @@ public class InvoiceService {
+             if (original.isVoid()) {
+                 throw new InvoiceRejectedException("A void invoice cannot be credited.");
+             }
++            if (original.isWrittenOff()) {
++                throw new InvoiceRejectedException("A written-off invoice cannot be credited.");
++            }
+             return invoices.saveAndFlush(original.creditNote(today.date()));
+         });
+     }
+@@ -370,6 +373,9 @@ public class InvoiceService {
+             if (invoice.isDraft() || invoice.isVoid() || invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException("Retention can only be released on a sent invoice.");
+             }
++            if (invoice.isWrittenOff()) {
++                throw new InvoiceRejectedException("The retention was written off with the invoice.");
++            }
+             BigDecimal rate = taxRate.percent();
+             BigDecimal held = invoice.retentionHeld(rate);
+             if (held.signum() <= 0) {
+@@ -396,6 +402,9 @@ public class InvoiceService {
+     public Optional<Invoice> waiveInterest(Long invoiceId) {
+         Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
++            if (invoice.isWrittenOff()) {
++                throw new InvoiceRejectedException("The late charges were written off with the invoice.");
++            }
+             BigDecimal before = invoice.getLateWaived();
+             invoice.waiveInterest(today.date());
+             withInterest(List.of(invoice));
+@@ -409,6 +418,42 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Writes off a sent invoice that still has something owed as a bad debt today: everything still
++     * owed on it, late charges and retention included, and records what was written off in the audit;
++     * empty if no such invoice. It then owes nothing, earns no more interest and takes no payments. A
++     * draft, a void invoice, a credit note, one already written off or one with nothing owed is refused.
++     */
++    @Transactional
++    public Optional<Invoice> writeOff(Long invoiceId) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isDraft()) {
++                throw new InvoiceRejectedException("A draft cannot be written off; only a sent invoice can.");
++            }
++            if (invoice.isVoid()) {
++                throw new InvoiceRejectedException("A void invoice cannot be written off.");
++            }
++            if (invoice.isCreditNote()) {
++                throw new InvoiceRejectedException("A credit note cannot be written off.");
++            }
++            if (invoice.isWrittenOff()) {
++                throw new InvoiceRejectedException("This invoice has already been written off.");
++            }
++            BigDecimal rate = taxRate.percent();
++            BigDecimal paid = paid(List.of(invoice)).get(invoice.getId());
++            if (invoice.amountDue(paid, rate).add(invoice.retentionHeld(rate)).signum() <= 0) {
++                throw new InvoiceRejectedException("There is nothing owed on this invoice to write off.");
++            }
++            invoice.writeOff(today.date());
++            withInterest(List.of(invoice));
++            BigDecimal amount = invoice.writtenOff(paid, rate);
++            invoices.saveAndFlush(invoice);
++            audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + amount.toPlainString());
++        });
++        return found;
++    }
++
+     /**
+      * Readies the invoice for a change: a draft stays as it is; a sent invoice with no payments goes
+      * back to draft, to be sent again; an invoice with any payment is refused with the message.
+@@ -424,6 +469,9 @@ public class InvoiceService {
+         if (invoice.isCreditNote()) {
+             throw new InvoiceRejectedException("An issued credit note cannot be changed.");
+         }
++        if (invoice.isWrittenOff()) {
++            throw new InvoiceRejectedException("A written-off invoice cannot be changed.");
++        }
+         if (invoice.hasCreditNotesIssued()) {
+             throw new InvoiceRejectedException("An invoice with an issued credit note cannot be changed.");
+         }
+@@ -731,6 +779,9 @@ public class InvoiceService {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException("An issued credit note cannot be voided.");
+             }
++            if (invoice.isWrittenOff()) {
++                throw new InvoiceRejectedException("A written-off invoice cannot be voided.");
++            }
+             if (invoice.hasCreditNotesIssued()) {
+                 throw new InvoiceRejectedException("An invoice with an issued credit note cannot be voided.");
+             }
+@@ -810,6 +861,9 @@ public class InvoiceService {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException("A credit note takes no payments.");
+             }
++            if (invoice.isWrittenOff()) {
++                throw new InvoiceRejectedException("A written-off invoice takes no more payments.");
++            }
+             BigDecimal amount = converted(paidAmount, paidIn, invoice.currency(), date);
+             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index edb4aee..216f552 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -15,7 +15,9 @@ package net.officefloor.hq.app.invoices;
+  * credit notes and is never stored.
+  * A sent invoice with retention still held back and nothing else due shows retention held instead of
+  * paid; that follows from its retention and payments and is never stored.
++ * A sent invoice written off as a bad debt is written off for good: it owes nothing, earns no more
++ * interest and takes no payments; that follows from the day it was written off.
+  */
+ public enum InvoiceStatus {
+-    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, RETENTION_HELD
++    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, RETENTION_HELD, WRITTEN_OFF
+ }
+diff --git a/src/main/resources/db/migration/V33__invoice_written_off.sql b/src/main/resources/db/migration/V33__invoice_written_off.sql
+new file mode 100644
+index 0000000..59fd388
+--- /dev/null
++++ b/src/main/resources/db/migration/V33__invoice_written_off.sql
+@@ -0,0 +1,4 @@
++-- The day a sent invoice was written off as a bad debt (null when it was not): everything still owed
++-- on it that day, late charges and retention included, is written off; it stops earning interest,
++-- owes nothing and takes no more payments.
++ALTER TABLE invoice ADD COLUMN written_off_on DATE;
