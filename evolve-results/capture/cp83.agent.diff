@@ -1,0 +1,329 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index e82c875..4e8a031 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -76,6 +76,20 @@ function problemWithDiscountAmount(amount: string): string {
+   return '';
+ }
+ 
++// A cap on the retention held back: money, not negative and to the cent, e.g. 500 or 250.50.
++function problemWithRetentionCap(cap: string): string {
++  if (!/^-?\d+(\.\d+)?$/.test(cap)) {
++    return 'The retention cap must be a number, like 500 or 250.50.';
++  }
++  if (Number(cap) < 0) {
++    return 'The retention cap cannot be negative.';
++  }
++  if (!TWO_DECIMALS.test(cap)) {
++    return 'The retention cap can have at most two decimals.';
++  }
++  return '';
++}
++
+ // A cap on everything taken off, line discounts included: money, not negative and to the cent, e.g. 25 or 12.50.
+ function problemWithDiscountCap(cap: string): string {
+   if (!/^-?\d+(\.\d+)?$/.test(cap)) {
+@@ -271,7 +285,8 @@ function problemWith(line: NewLine): string {
+             </tr>
+             <tr>
+               <th scope="row" colspan="8">
+-                Retention ({{ inv.retentionPct }}%@if (inv.retentionReleasedOn) {, released
++                Retention ({{ inv.retentionPct }}%@if (inv.retentionCap !== null) {, max
++                  {{ amount(inv.retentionCap) }}}@if (inv.retentionReleasedOn) {, released
+                   {{ inv.retentionReleasedOn }}, due {{ inv.retentionDueDate }}} @else if (+inv.retention > 0) {, held back})
+               </th>
+               <td data-testid="invoice-retention">{{ amount(inv.retention) }}</td>
+@@ -460,6 +475,8 @@ function problemWith(line: NewLine): string {
+           <form [formGroup]="retentionForm" (ngSubmit)="setRetention(inv.id)" aria-label="Retention" novalidate>
+             <label for="retention-pct">Retention (%, 0 to 20)</label>
+             <input id="retention-pct" data-testid="retention-form-pct" inputmode="decimal" formControlName="pct" />
++            <label for="retention-cap">capped at ({{ symbol() }}, optional)</label>
++            <input id="retention-cap" data-testid="retention-form-cap" inputmode="decimal" formControlName="cap" />
+             <button type="submit" data-testid="retention-form-submit" [disabled]="savingRetention()">
+               Set retention
+             </button>
+@@ -730,6 +747,7 @@ export class InvoicePanel {
+ 
+   protected readonly retentionForm = new FormGroup({
+     pct: new FormControl('', { nonNullable: true }),
++    cap: new FormControl('', { nonNullable: true }),
+   });
+ 
+   protected readonly planForm = new FormGroup({
+@@ -934,8 +952,10 @@ export class InvoicePanel {
+   }
+ 
+   protected setRetention(invoiceId: number): void {
+-    const pct = this.retentionForm.getRawValue().pct.trim().replace(/%$/, '').trim();
+-    const problem = problemWithRetention(pct);
++    const raw = this.retentionForm.getRawValue();
++    const pct = raw.pct.trim().replace(/%$/, '').trim();
++    const cap = raw.cap.trim().replace(/^\$/, '').trim();
++    const problem = problemWithRetention(pct) || (cap ? problemWithRetentionCap(cap) : '');
+     if (problem) {
+       this.retentionForm.markAllAsTouched();
+       this.retentionError.set(problem);
+@@ -943,7 +963,7 @@ export class InvoicePanel {
+     }
+     this.savingRetention.set(true);
+     this.retentionError.set('');
+-    this.service.setRetention(invoiceId, pct).subscribe({
++    this.service.setRetention(invoiceId, pct, cap || undefined).subscribe({
+       next: (detail) => {
+         this.invoice.set(detail);
+         this.changed.emit(detail);
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index c8198a8..6711cf2 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -118,8 +118,10 @@ export interface InvoiceDetail {
+   // The total as listed: negative for a credit note.
+   listedTotal: string;
+   // The percentage of the amount before tax held back (without trailing zeros), and `retention`, that share
+-  // rounded down to the cent; `retentionHeld` is what is still held back, not part of `amountDue`.
++  // rounded down to the cent and never more than `retentionCap` (null when uncapped); `retentionHeld` is
++  // what is still held back, not part of `amountDue`.
+   retentionPct: string;
++  retentionCap: string | null;
+   retention: string;
+   retentionHeld: string;
+   // The day (yyyy-mm-dd) the retention was released, and the day it then falls due; null while held.
+@@ -268,10 +270,10 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/due-date`, { dueDate });
+   }
+ 
+-  // Sets the percentage of a draft's amount before tax held back as retention (0 to 20, up to two decimals);
+-  // refused (400) outside that, or (409) when it is not a draft.
+-  setRetention(invoiceId: number, retentionPct: string): Observable<InvoiceDetail> {
+-    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct });
++  // Sets the percentage of a draft's amount before tax held back as retention (0 to 20, up to two decimals),
++  // with an optional cap on the amount held back; refused (400) outside that, or (409) when it is not a draft.
++  setRetention(invoiceId: number, retentionPct: string, retentionCap?: string): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct, retentionCap });
+   }
+ 
+   // Spreads a draft over monthly instalments (2 to 24) at an annual interest rate (0 to 30, up to two
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 3b66038..60ec94b 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -41,7 +41,7 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "interestWaivedOn", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "instalments", "instalmentRate", "interestWaivedOn", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -193,7 +193,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_released_on", "instalments", "instalment_rate", "interest_waived_on"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "instalments", "instalment_rate", "interest_waived_on"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -204,6 +204,7 @@ public class TestSupportController {
+                     flag(row.get("manualDueDate"), "invoices[].manualDueDate"),
+                     row.get("creditOf") == null ? null : id(row.get("creditOf")),
+                     percent(row.get("retentionPct"), "invoices[].retentionPct"),
++                    row.get("retentionCap") == null ? null : money(row.get("retentionCap"), "invoices[].retentionCap"),
+                     row.get("retentionReleasedOn") == null ? null
+                             : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"),
+                     instalments(row.get("instalments"), "invoices[].instalments"),
+@@ -354,7 +355,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_released_on, instalments, instalment_rate, interest_waived_on FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, instalments, instalment_rate, interest_waived_on FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -370,6 +371,9 @@ public class TestSupportController {
+                         row.put("discountCap", r.get("DISCOUNT_CAP"));
+                     }
+                     row.put("retentionPct", r.get("RETENTION_PCT"));
++                    if (r.get("RETENTION_CAP") != null) {
++                        row.put("retentionCap", r.get("RETENTION_CAP"));
++                    }
+                     if (r.get("RETENTION_RELEASED_ON") != null) {
+                         row.put("retentionReleasedOn", r.get("RETENTION_RELEASED_ON").toString());
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 906ab5d..3448c36 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -86,6 +86,10 @@ public class Invoice {
+     @Column(name = "retention_pct")
+     private BigDecimal retentionPct = BigDecimal.ZERO;
+ 
++    /** The most retention held back, in the invoice's currency; null is no cap. */
++    @Column(name = "retention_cap")
++    private BigDecimal retentionCap;
++
+     @Column(name = "retention_released_on")
+     private LocalDate retentionReleasedOn;
+ 
+@@ -249,6 +253,7 @@ public class Invoice {
+         copy.discountCap = discountCap;
+         copy.discountReason = discountReason;
+         copy.retentionPct = retentionPct;
++        copy.retentionCap = retentionCap;
+         copy.instalments = instalments;
+         copy.instalmentRate = instalmentRate;
+         lines.forEach(line -> copy.lines.add(line.copy()));
+@@ -465,6 +470,16 @@ public class Invoice {
+         this.retentionPct = retentionPct;
+     }
+ 
++    /** The most retention held back; null is no cap. */
++    public BigDecimal getRetentionCap() {
++        return retentionCap;
++    }
++
++    /** Sets the most retention held back (null for no cap); it has already been checked. */
++    public void setRetentionCap(BigDecimal retentionCap) {
++        this.retentionCap = retentionCap;
++    }
++
+     /** The day the retention was released; null while it is still held. */
+     public LocalDate getRetentionReleasedOn() {
+         return retentionReleasedOn;
+@@ -492,13 +507,16 @@ public class Invoice {
+ 
+     /**
+      * The retention: the retention percentage of the amount before tax (the subtotal less the
+-     * discount), rounded down to the cent. Tax is never held back, so the tax rate does not change it.
++     * discount), rounded down to the cent, and never more than the retention cap when there is one.
++     * Tax is never held back, so the tax rate does not change it.
+      */
+     public BigDecimal retention(BigDecimal taxRate) {
+         if (isCreditNote()) {
+             return zero();
+         }
+-        return subtotal().subtract(discount()).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
++        BigDecimal retention = subtotal().subtract(discount()).multiply(retentionPct).divide(BigDecimal.valueOf(100))
++                .setScale(scale(), RoundingMode.DOWN);
++        return retentionCap == null ? retention : retention.min(retentionCap.setScale(scale(), RoundingMode.DOWN));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index a0acab5..571ef11 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -105,7 +105,7 @@ public class InvoiceController {
+      * issued credit notes take off it; {@code creditOf} the id of the invoice a credit note credits
+      * (null for an ordinary invoice) and {@code listedTotal} the total as listed, negative for a credit note.
+      * {@code retentionPct} (without trailing zeros) is the share of the amount before tax (subtotal less discount) held back as
+-     * {@code retention}, rounded down to the cent; {@code retentionHeld} is what is still held back (not
++     * {@code retention}, rounded down to the cent and never more than {@code retentionCap} (null for no cap); {@code retentionHeld} is what is still held back (not
+      * part of the amount due), {@code retentionReleasedOn} the day it was released (null while held) and
+      * {@code retentionDueDate} the day released retention falls due. {@code instalments} is how many
+      * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
+@@ -126,7 +126,7 @@ public class InvoiceController {
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
+-            String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
++            String credited, Long creditOf, String listedTotal, String retentionPct, String retentionCap, String retention,
+             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+             String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
+@@ -152,7 +152,9 @@ public class InvoiceController {
+                     payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency())).toList(), paid.toPlainString(),
+                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
+                     i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
+-                    i.getRetentionPct().stripTrailingZeros().toPlainString(), i.retention(taxRate).toPlainString(),
++                    i.getRetentionPct().stripTrailingZeros().toPlainString(),
++                    i.getRetentionCap() == null ? null : i.getRetentionCap().setScale(2).toPlainString(),
++                    i.retention(taxRate).toPlainString(),
+                     i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate(),
+                     i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
+                     i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
+@@ -272,13 +274,19 @@ public class InvoiceController {
+             LocalDate date) {
+     }
+ 
+-    /** A retention to hold back on a draft: a percentage from 0 to 20 with at most two decimals. */
++    /**
++     * A retention to hold back on a draft: a percentage from 0 to 20 with at most two decimals, and
++     * optionally the most it holds back (null for no cap).
++     */
+     public record NewRetention(
+             @NotNull(message = "Enter a retention percentage.")
+             @DecimalMin(value = "0", message = "The retention must be from 0 to 20 percent.")
+             @DecimalMax(value = "20", message = "The retention must be from 0 to 20 percent.")
+             @Digits(integer = 2, fraction = 2, message = "The retention can have at most two decimals.")
+-            BigDecimal retentionPct) {
++            BigDecimal retentionPct,
++            @DecimalMin(value = "0", message = "The retention cap cannot be negative.")
++            @Digits(integer = 10, fraction = 2, message = "The retention cap can have at most two decimals.")
++            BigDecimal retentionCap) {
+     }
+ 
+     /**
+@@ -456,7 +464,7 @@ public class InvoiceController {
+ 
+     @PutMapping("/api/invoices/{id}/retention")
+     public InvoiceDetail setRetention(@PathVariable Long id, @Valid @RequestBody NewRetention body) {
+-        return invoices.setRetention(id, body.retentionPct())
++        return invoices.setRetention(id, body.retentionPct(), body.retentionCap())
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+index a859e73..8f0e1ec 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RestControllerAdvice(assignableTypes = InvoiceController.class)
+ public class InvoiceErrors {
+ 
+-    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "discountAmount", "discountCap", "discountReason", "discountGiven", "amount", "date", "reference", "dueDate", "retentionPct", "instalments", "instalmentRate");
++    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "discountAmount", "discountCap", "discountReason", "discountGiven", "amount", "date", "reference", "dueDate", "retentionPct", "retentionCap", "instalments", "instalmentRate");
+ 
+     @ExceptionHandler(MethodArgumentNotValidException.class)
+     public ProblemDetail invalid(MethodArgumentNotValidException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 770cd63..8488e8b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -305,11 +305,12 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Sets the percentage of a draft's amount before tax held back as retention; empty if no such invoice.
++     * Sets the percentage of a draft's amount before tax held back as retention, and the most it holds
++     * back (null for no cap); empty if no such invoice.
+      * The percentage has already been checked; any invoice that is not a draft, or a credit note, is refused.
+      */
+     @Transactional
+-    public Optional<Invoice> setRetention(Long invoiceId, BigDecimal retentionPct) {
++    public Optional<Invoice> setRetention(Long invoiceId, BigDecimal retentionPct, BigDecimal retentionCap) {
+         Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isCreditNote()) {
+@@ -321,7 +322,11 @@ public class InvoiceService {
+             if (invoice.hasPlan() && retentionPct.signum() > 0) {
+                 throw new InvoiceRejectedException("An invoice spread over instalments cannot also hold back retention.");
+             }
++            if (retentionCap != null) {
++                requireWhole(invoice.currency(), retentionCap, "The retention cap");
++            }
+             invoice.setRetentionPct(retentionPct);
++            invoice.setRetentionCap(retentionCap);
+             invoices.saveAndFlush(invoice);
+         });
+         return found;
+diff --git a/src/main/resources/db/migration/V31__retention_cap.sql b/src/main/resources/db/migration/V31__retention_cap.sql
+new file mode 100644
+index 0000000..0a25436
+--- /dev/null
++++ b/src/main/resources/db/migration/V31__retention_cap.sql
+@@ -0,0 +1,2 @@
++-- The most retention an invoice holds back, in its currency; null is no cap.
++ALTER TABLE invoice ADD COLUMN retention_cap DECIMAL(19, 2);
