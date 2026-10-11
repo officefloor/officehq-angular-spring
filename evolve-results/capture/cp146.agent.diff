@@ -1,0 +1,221 @@
+diff --git a/src/main/java/net/officefloor/hq/app/TaxRate.java b/src/main/java/net/officefloor/hq/app/TaxRate.java
+index 2145df3..f477938 100644
+--- a/src/main/java/net/officefloor/hq/app/TaxRate.java
++++ b/src/main/java/net/officefloor/hq/app/TaxRate.java
+@@ -15,7 +15,8 @@ import org.springframework.stereotype.Service;
+  * {@code region_tax_rate_<region>} setting, charged to the region's clients instead. A region's rate
+  * can change on a date (the {@code tax_rate_change} table): an invoice is taxed at the latest change on
+  * or before its issue date, or the region's own rate before any. Invoices read the changes themselves
+- * (see Invoice).
++ * (see Invoice). A region can require its tax to be rounded down to the cent instead of half up, the
++ * {@code region_round_down_<region>} setting; invoices read it themselves too.
+  */
+ @Service
+ public class TaxRate {
+@@ -25,6 +26,9 @@ public class TaxRate {
+     /** The prefix of the setting holding a region's rate, followed by the region (region_tax_rate_NY). */
+     public static final String REGION_TAX_RATE = "region_tax_rate_";
+ 
++    /** The prefix of the setting marking a region whose tax is rounded down, followed by the region (region_round_down_CA). */
++    public static final String REGION_ROUND_DOWN = "region_round_down_";
++
+     /** The setting holding the workspace's home region: registered clients outside it are reverse charged. */
+     public static final String HOME_REGION = "home_region";
+ 
+@@ -58,6 +62,23 @@ public class TaxRate {
+         return rates;
+     }
+ 
++    /** Whether the region requires its tax to be rounded down; false when the client has no region. */
++    public boolean roundsDown(String region) {
++        return region != null && !jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class,
++                REGION_ROUND_DOWN + region).isEmpty();
++    }
++
++    /** Every region that requires its tax to be rounded down, in order. */
++    public List<String> roundDownRegions() {
++        return jdbc.queryForList("SELECT name FROM app_setting WHERE name LIKE ? ORDER BY name", String.class, REGION_ROUND_DOWN + "%")
++                .stream().map(name -> name.substring(REGION_ROUND_DOWN.length())).toList();
++    }
++
++    /** Records that the region requires its tax to be rounded down. */
++    public void setRoundsDown(String region) {
++        jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", REGION_ROUND_DOWN + region, "true");
++    }
++
+     /** The workspace's home region; null when none is set. */
+     public String homeRegion() {
+         return jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class, HOME_REGION)
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index ac92a6f..7a5fe55 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -40,7 +40,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown");
+     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
+     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+@@ -229,6 +229,17 @@ public class TestSupportController {
+                             TaxRate.REGION_TAX_RATE + region, rate.toPlainString());
+                 }
+             }
++            if (values.get("regionRoundDown") != null) {
++                if (!(values.get("regionRoundDown") instanceof List<?> regions)) {
++                    throw refuse("settings.regionRoundDown must be a list of regions");
++                }
++                for (Object region : regions) {
++                    if (region == null || region.toString().isBlank()) {
++                        throw refuse("settings.regionRoundDown needs regions, not " + region);
++                    }
++                    taxRate.setRoundsDown(region.toString());
++                }
++            }
+             if (values.get("regionMaxInterest") != null) {
+                 if (!(values.get("regionMaxInterest") instanceof Map<?, ?> caps)) {
+                     throw refuse("settings.regionMaxInterest must be an object of percentages by region");
+@@ -591,6 +602,10 @@ public class TestSupportController {
+         if (!regionTaxRates.isEmpty()) {
+             settings.put("regionTaxRates", regionTaxRates);
+         }
++        List<String> regionRoundDown = this.taxRate.roundDownRegions();
++        if (!regionRoundDown.isEmpty()) {
++            settings.put("regionRoundDown", regionRoundDown);
++        }
+         List<Map<String, Object>> taxRateChanges = this.taxRate.changes().stream().map(c -> {
+             Map<String, Object> row = new LinkedHashMap<>();
+             row.put("region", c.region());
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 73ee289..c6d80eb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -194,6 +194,13 @@ public class Invoice {
+     @Formula("(SELECT LISTAGG(CAST(t.from_date AS VARCHAR) || '=' || CAST(t.rate AS VARCHAR), ',') WITHIN GROUP (ORDER BY t.from_date, t.id) FROM tax_rate_change t, client c WHERE c.id = client_id AND t.region = COALESCE(supply_region, c.region))")
+     private String regionRateChanges;
+ 
++    /**
++     * Whether the region the invoice is taxed in (the place of supply, else the client's) requires its tax
++     * to be rounded down to the cent instead of half up; read from the workspace's round-down regions.
++     */
++    @Formula("(SELECT COUNT(*) > 0 FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_round_down_' || COALESCE(supply_region, c.region))")
++    private boolean regionRoundsDown;
++
+     /**
+      * The tax rates of the client's rate card entries, as "unit type", the date the entry takes effect from
+      * (empty for always) and rate (empty for none) separated by CHAR(31), entries separated by CHAR(30); null
+@@ -440,7 +447,7 @@ public class Invoice {
+ 
+     /** A new, empty draft for a client, issued and due on the given dates. */
+     public static Invoice draft(Long clientId, boolean clientTaxExempt, LocalDate clientTaxExemptUntil, boolean clientPricesIncludeTax, String regionTaxRate,
+-            String regionRateChanges, String outOfRegionTaxNumber, Currency currency, LocalDate issueDate, LocalDate dueDate) {
++            String regionRateChanges, boolean regionRoundsDown, String outOfRegionTaxNumber, Currency currency, LocalDate issueDate, LocalDate dueDate) {
+         Invoice invoice = new Invoice();
+         invoice.clientId = clientId;
+         invoice.clientTaxExempt = clientTaxExempt;
+@@ -448,6 +455,7 @@ public class Invoice {
+         invoice.clientPricesIncludeTax = clientPricesIncludeTax;
+         invoice.regionTaxRate = regionTaxRate;
+         invoice.regionRateChanges = regionRateChanges;
++        invoice.regionRoundsDown = regionRoundsDown;
+         invoice.outOfRegionTaxNumber = outOfRegionTaxNumber;
+         invoice.clientCurrency = currency.name();
+         invoice.status = InvoiceStatus.DRAFT;
+@@ -461,7 +469,7 @@ public class Invoice {
+      * discount, issued and due on the given dates. Payments stay with this invoice.
+      */
+     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
+-        Invoice copy = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, dueDate);
++        Invoice copy = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+         copy.supplyRegion = supplyRegion;
+         copy.discountPct = discountPct;
+         copy.discountAmount = discountAmount;
+@@ -483,7 +491,7 @@ public class Invoice {
+      * discount, taxed as the original's lines are.
+      */
+     public Invoice creditNote(LocalDate issueDate) {
+-        Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, null);
++        Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, null);
+         note.creditOf = id;
+         note.supplyRegion = supplyRegion;
+         note.creditedIssueDate = this.issueDate;
+@@ -2281,14 +2289,23 @@ public class Invoice {
+         }
+     }
+ 
+-    /** The sum of the exact line taxes, rounded once, half up to the cent. */
++    /**
++     * The sum of the exact line taxes, rounded once to the cent: half up, or down when the region the
++     * invoice is taxed in requires it.
++     */
+     private BigDecimal roundTax(List<BigDecimal> exact) {
+-        return exact.stream().reduce(BigDecimal.ZERO, BigDecimal::add).setScale(scale(), RoundingMode.HALF_UP);
++        return exact.stream().reduce(BigDecimal.ZERO, BigDecimal::add).setScale(scale(), taxRounding());
++    }
++
++    /** How a rate's tax is rounded to the cent: down in a region that requires it, otherwise half up. */
++    private RoundingMode taxRounding() {
++        return regionRoundsDown ? RoundingMode.DOWN : RoundingMode.HALF_UP;
+     }
+ 
+     /**
+      * The tax charged at the given rate (a percentage): for each rate, the exact taxes of the lines
+-     * (and the surcharge and minimum charge) at it added up and rounded half up to the cent; the
++     * (and the surcharge and minimum charge) at it added up and rounded half up to the cent (down in a
++     * region that requires it); the
+      * invoice tax is the total over the rates. It is what the line taxes add up to.
+      */
+     public BigDecimal tax(BigDecimal taxRate) {
+@@ -2335,19 +2352,26 @@ public class Invoice {
+         return amount.subtract(amount.divide(BigDecimal.ONE.add(rate.movePointLeft(2)), scale(), RoundingMode.HALF_UP));
+     }
+ 
+-    /** The tax inside the total of one rate's tax-inclusive amounts (by index). */
++    /**
++     * The tax inside the total of one rate's tax-inclusive amounts (by index); in a region that requires
++     * it, the exact tax inside rounded down to the cent instead.
++     */
+     private BigDecimal inclusiveRateTax(List<BigDecimal> amounts, BigDecimal rate, List<Integer> group) {
+         BigDecimal taxed = zero();
+         for (int i : group) {
+             taxed = taxed.add(amounts.get(i));
+         }
++        if (regionRoundsDown) {
++            return taxed.multiply(rate).divide(BigDecimal.valueOf(100).add(rate), scale(), RoundingMode.DOWN);
++        }
+         return taxInside(taxed, rate);
+     }
+ 
+     /**
+      * The tax inside tax-inclusive prices: for each rate (a line's own, otherwise the client's), the tax
+      * inside the total of the lines' amounts after their discount shares at that rate (with the
+-     * surcharge and the minimum charge at the client's rate), rounded half up to the cent; the invoice
++     * surcharge and the minimum charge at the client's rate), rounded half up to the cent (down in a
++     * region that requires it); the invoice
+      * tax is the total over the rates.
+      */
+     private BigDecimal inclusiveTax(BigDecimal taxRate) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index d7516c2..5cf7dfd 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -134,7 +134,7 @@ public class InvoiceService {
+         return clients.findById(clientId).map(client -> {
+             LocalDate issued = today.date();
+             Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), client.getTaxExemptUntil(), client.isPricesIncludeTax(), taxRate.forRegion(client.getRegion()),
+-                    taxRate.changesFor(client.getRegion()),
++                    taxRate.changesFor(client.getRegion()), taxRate.roundsDown(client.getRegion()),
+                     outOfHomeRegion(client) ? client.getTaxNumber() : null, client.getCurrency(), issued, dueDateFor(clientId, issued));
+             draft.setDiscountPct(client.getDiscountPct());
+             draft.setRetentionPct(client.getRetentionPct());
+@@ -382,7 +382,7 @@ public class InvoiceService {
+             }
+             invoice.setSupplyRegion(supplyRegion);
+             invoices.saveAndFlush(invoice);
+-            // Read again the rate and tax number of the region of supply.
++            // Read again the rate, rounding and tax number of the region of supply.
+             entityManager.refresh(invoice);
+         });
+         return found;
