@@ -1,0 +1,588 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index cb3a53f..0247709 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -13,6 +13,8 @@ export interface Client {
+   discountPct: number;
+   // Whether the client is tax exempt (a charity, say): its invoices charge no tax on any line.
+   taxExempt: boolean;
++  // Whether the client is quoted prices that include tax: the tax is taken out of its invoice amounts.
++  pricesIncludeTax: boolean;
+   // The currency the client is billed in: everything on its invoices is in it.
+   currency: Currency;
+   // An early-payment discount: the percentage of the amount before tax (0 is none) taken off an invoice
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 48c66f5..5a3dcd4 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -213,6 +213,13 @@ function validTaxNumber(taxNumber: string): boolean {
+           formControlName="taxExempt"
+         />
+         <label for="client-tax-exempt">Tax exempt (no tax on any of their invoices)</label>
++        <input
++          id="client-prices-include-tax"
++          data-testid="client-form-prices-include-tax"
++          type="checkbox"
++          formControlName="pricesIncludeTax"
++        />
++        <label for="client-prices-include-tax">Prices include tax</label>
+         <button type="submit" data-testid="client-form-submit" [disabled]="saving()">
+           Add client
+         </button>
+@@ -275,6 +282,7 @@ export class Clients {
+     earlyPct: new FormControl<number | null>(null),
+     earlyDays: new FormControl<number | null>(null),
+     taxExempt: new FormControl(false, { nonNullable: true }),
++    pricesIncludeTax: new FormControl(false, { nonNullable: true }),
+     currency: new FormControl<Currency>('USD', { nonNullable: true }),
+   });
+ 
+@@ -310,6 +318,7 @@ export class Clients {
+     const region = this.form.controls.region.value.trim();
+     const taxNumber = this.form.controls.taxNumber.value.replace(/ /g, '');
+     const taxExempt = this.form.controls.taxExempt.value;
++    const pricesIncludeTax = this.form.controls.pricesIncludeTax.value;
+     const currency = this.form.controls.currency.value;
+     const early = this.form.controls.earlyPct.value;
+     const earlyPayPct = early === null || (early as unknown) === '' ? null : Number(early);
+@@ -328,6 +337,7 @@ export class Clients {
+       earlyPct: earlyPayPct,
+       earlyDays: earlyPayDays,
+       taxExempt,
++      pricesIncludeTax,
+       currency,
+     });
+     const problem = this.problemWith(
+@@ -355,6 +365,7 @@ export class Clients {
+       termsDays,
+       discountPct: discountPct ?? 0,
+       taxExempt,
++      pricesIncludeTax,
+       currency,
+       earlyPayPct: earlyPayPct ?? 0,
+       earlyPayDays,
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 1125a25..6b1b9df 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -244,6 +244,7 @@ function problemWith(line: NewLine): string {
+               <th scope="col">Tax status</th>
+               <th scope="col">Tax rate</th>
+               <th scope="col">Tax</th>
++              <th scope="col">Net</th>
+               <th scope="col">Actions</th>
+             </tr>
+           </thead>
+@@ -258,8 +259,9 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="line-amount">{{ amount(l.amount) }}</td>
+                 <td data-testid="line-discount-share">{{ amount(l.discountShare) }}</td>
+                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
+-                <td data-testid="line-tax-rate">{{ (l.taxRate ?? inv.taxRate) + '%' }}</td>
++                <td data-testid="line-tax-rate">{{ (inv.pricesIncludeTax ? inv.taxRate : (l.taxRate ?? inv.taxRate)) + '%' }}</td>
+                 <td data-testid="line-tax">{{ amount(l.tax) }}</td>
++                <td data-testid="line-net">{{ amount(l.net) }}</td>
+                 <td>
+                   <button
+                     type="button"
+@@ -294,17 +296,17 @@ function problemWith(line: NewLine): string {
+               </tr>
+             } @empty {
+               <tr>
+-                <td colspan="10" data-testid="line-empty">No lines yet.</td>
++                <td colspan="12" data-testid="line-empty">No lines yet.</td>
+               </tr>
+             }
+           </tbody>
+           <tfoot>
+             <tr>
+-              <th scope="row" colspan="8">Subtotal</th>
++              <th scope="row" colspan="9">Subtotal</th>
+               <td data-testid="invoice-subtotal">{{ amount(inv.subtotal) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="8">
++              <th scope="row" colspan="9">
+                 @if (+inv.discountAmount > 0) {
+                   Discount (fixed@if (inv.discountCap !== null) {, max {{ amount(inv.discountCap) }} in all})
+                 } @else {
+@@ -316,25 +318,35 @@ function problemWith(line: NewLine): string {
+             </tr>
+             @if (inv.discountReason) {
+               <tr>
+-                <th scope="row" colspan="8">Discount reason</th>
++                <th scope="row" colspan="9">Discount reason</th>
+                 <td data-testid="invoice-discount-reason">{{ inv.discountReason }}</td>
+               </tr>
+             }
+             @if (inv.reverseCharge) {
+               <tr>
+-                <td colspan="9" data-testid="invoice-reverse-charge">Reverse charge</td>
++                <td colspan="10" data-testid="invoice-reverse-charge">Reverse charge</td>
+               </tr>
+             }
+             <tr>
+-              <th scope="row" colspan="8">Tax (lines at their own rate, otherwise {{ inv.taxRate }}%)</th>
++              <th scope="row" colspan="9">Amount before tax</th>
++              <td data-testid="invoice-net">{{ amount(inv.net) }}</td>
++            </tr>
++            <tr>
++              <th scope="row" colspan="9">
++                @if (inv.pricesIncludeTax) {
++                  Tax included (taxable lines at {{ inv.taxRate }}%)
++                } @else {
++                  Tax (lines at their own rate, otherwise {{ inv.taxRate }}%)
++                }
++              </th>
+               <td data-testid="invoice-tax">{{ amount(inv.tax) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="8">Total</th>
++              <th scope="row" colspan="9">Total</th>
+               <td data-testid="invoice-grand-total">{{ amount(inv.total) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="8">
++              <th scope="row" colspan="9">
+                 Retention ({{ inv.retentionPct }}%@if (inv.retentionCap !== null) {, max
+                   {{ amount(inv.retentionCap) }}}@if (inv.retentionReleasedOn) {, released
+                   {{ inv.retentionReleasedOn }}, due {{ inv.retentionDueDate }}}@if (+inv.retentionHeld > 0) {, held back})
+@@ -343,7 +355,7 @@ function problemWith(line: NewLine): string {
+             </tr>
+             @if (+inv.retention > 0) {
+               <tr>
+-                <th scope="row" colspan="8">Retention still held</th>
++                <th scope="row" colspan="9">Retention still held</th>
+                 <td data-testid="invoice-retention-held">{{ amount(inv.retentionHeld) }}</td>
+               </tr>
+             }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index fc46079..a013a81 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -60,6 +60,9 @@ export interface InvoiceLineView {
+   amount: string;
+   discountShare: string;
+   tax: string;
++  // The line's amount before tax: its amount less its discount share, less the tax inside it when the
++  // client's prices include tax.
++  net: string;
+   taxExempt: boolean;
+   taxRate: string | null;
+   // The id of the invoice line a credit note's line credits; null when none.
+@@ -111,6 +114,11 @@ export interface InvoiceDetail {
+   taxRate: string;
+   tax: string;
+   total: string;
++  // The amount before tax: the subtotal less the discount, less the tax inside it when the client's
++  // prices include tax (then `total` is the subtotal less the discount, and `tax` is inside it).
++  net: string;
++  // Whether the client is quoted prices that include tax: every taxable line is taxed at `taxRate`.
++  pricesIncludeTax: boolean;
+   payments: InvoicePaymentView[];
+   paid: string;
+   amountDue: string;
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 84becc3..0bc33df 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -40,7 +40,7 @@ public class TestSupportController {
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion");
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType");
+@@ -198,10 +198,11 @@ public class TestSupportController {
+             if (Currency.of(currency) == null) {
+                 throw refuse("unsupported value of clients[].currency: " + currency);
+             }
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number"},
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+                     percent(row.get("discountPct"), "clients[].discountPct"),
+-                    flag(row.get("taxExempt"), "clients[].taxExempt"), currency,
++                    flag(row.get("taxExempt"), "clients[].taxExempt"),
++                    flag(row.get("pricesIncludeTax"), "clients[].pricesIncludeTax"), currency,
+                     percent(row.get("earlyPayPct"), "clients[].earlyPayPct"),
+                     days(row.get("earlyPayDays"), "clients[].earlyPayDays"),
+                     percent(row.get("retentionPct"), "clients[].retentionPct"),
+@@ -401,7 +402,7 @@ public class TestSupportController {
+         if (!settings.isEmpty()) {
+             out.put("settings", settings);
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -412,6 +413,7 @@ public class TestSupportController {
+                     }
+                     row.put("discountPct", r.get("DISCOUNT_PCT"));
+                     row.put("taxExempt", r.get("TAX_EXEMPT"));
++                    row.put("pricesIncludeTax", r.get("PRICES_INCLUDE_TAX"));
+                     row.put("currency", r.get("CURRENCY"));
+                     row.put("earlyPayPct", r.get("EARLY_PAY_PCT"));
+                     if (r.get("EARLY_PAY_DAYS") != null) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 4d8037a..027125f 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -42,6 +42,10 @@ public class Client {
+     @Column(name = "tax_exempt")
+     private boolean taxExempt;
+ 
++    /** Whether the client is quoted prices that include tax: the tax is taken out of its invoice amounts. */
++    @Column(name = "prices_include_tax")
++    private boolean pricesIncludeTax;
++
+     /** The currency the client is billed in: everything on its invoices is in it. */
+     @Enumerated(EnumType.STRING)
+     private Currency currency = Currency.USD;
+@@ -101,13 +105,14 @@ public class Client {
+     }
+ 
+     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+-            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
++            boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
+             Integer graceDays, BigDecimal interestRate, String region, String taxNumber) {
+         this.name = name;
+         this.email = email;
+         this.termsDays = termsDays;
+         this.discountPct = discountPct == null ? BigDecimal.ZERO : discountPct;
+         this.taxExempt = taxExempt;
++        this.pricesIncludeTax = pricesIncludeTax;
+         this.currency = currency == null ? Currency.USD : currency;
+         this.earlyPayPct = earlyPayPct == null ? BigDecimal.ZERO : earlyPayPct;
+         this.earlyPayDays = earlyPayDays;
+@@ -142,6 +147,10 @@ public class Client {
+         return taxExempt;
+     }
+ 
++    public boolean isPricesIncludeTax() {
++        return pricesIncludeTax;
++    }
++
+     public Currency getCurrency() {
+         return currency;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 922e11c..3a4b742 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -30,12 +30,12 @@ import org.springframework.web.bind.annotation.RestController;
+ public class ClientController {
+ 
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+-            boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
++            boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+             BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
+             Map<String, RateView> rates) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+-                    c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
++                    c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
+                     new TreeMap<>(c.getRates().entrySet().stream().collect(Collectors.toMap(
+                             Map.Entry::getKey, e -> RateView.of(e.getValue())))));
+@@ -68,6 +68,8 @@ public class ClientController {
+             BigDecimal discountPct,
+             /** Whether the client is tax exempt; taxed when left out. */
+             Boolean taxExempt,
++            /** Whether the client is quoted prices that include tax; prices exclude it when left out. */
++            Boolean pricesIncludeTax,
+             /** The currency the client is billed in; US dollars when left out. */
+             @Pattern(regexp = "USD|EUR|GBP|JPY|CHF", message = "The currency must be USD, EUR, GBP, JPY or CHF.")
+             String currency,
+@@ -129,7 +131,7 @@ public class ClientController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClientView add(@Valid @RequestBody NewClient body) {
+         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+-                Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
++                Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
+                 body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index d78cd13..7aaaf84 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -31,13 +31,13 @@ public class ClientService {
+ 
+     @Transactional
+     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+-            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays,
++            boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays,
+             BigDecimal interestRate, String region, String taxNumber) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+-        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays, interestRate,
++        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, pricesIncludeTax, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays, interestRate,
+                 region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber)));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index d63f732..5f2eb63 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -145,6 +145,13 @@ public class Invoice {
+     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
+     private boolean clientTaxExempt;
+ 
++    /**
++     * Whether the invoice's client is quoted prices that include tax, so the line amounts, discount and
++     * grand total include it and the tax is taken out of them; read from the client.
++     */
++    @Formula("(SELECT c.prices_include_tax FROM client c WHERE c.id = client_id)")
++    private boolean clientPricesIncludeTax;
++
+     /**
+      * The tax percentage of the client's region, from the workspace's regional rates, charged instead
+      * of the workspace rate; read from them, null when the client has no region or it has no rate.
+@@ -306,11 +313,12 @@ public class Invoice {
+     }
+ 
+     /** A new, empty draft for a client, issued and due on the given dates. */
+-    public static Invoice draft(Long clientId, boolean clientTaxExempt, String regionTaxRate, String outOfRegionTaxNumber,
+-            Currency currency, LocalDate issueDate, LocalDate dueDate) {
++    public static Invoice draft(Long clientId, boolean clientTaxExempt, boolean clientPricesIncludeTax, String regionTaxRate,
++            String outOfRegionTaxNumber, Currency currency, LocalDate issueDate, LocalDate dueDate) {
+         Invoice invoice = new Invoice();
+         invoice.clientId = clientId;
+         invoice.clientTaxExempt = clientTaxExempt;
++        invoice.clientPricesIncludeTax = clientPricesIncludeTax;
+         invoice.regionTaxRate = regionTaxRate;
+         invoice.outOfRegionTaxNumber = outOfRegionTaxNumber;
+         invoice.clientCurrency = currency.name();
+@@ -325,7 +333,7 @@ public class Invoice {
+      * discount, issued and due on the given dates. Payments stay with this invoice.
+      */
+     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
+-        Invoice copy = draft(clientId, clientTaxExempt, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, dueDate);
++        Invoice copy = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+         copy.discountPct = discountPct;
+         copy.discountAmount = discountAmount;
+         copy.discountCap = discountCap;
+@@ -344,7 +352,7 @@ public class Invoice {
+      * discount, taxed as the original's lines are.
+      */
+     public Invoice creditNote(LocalDate issueDate) {
+-        Invoice note = draft(clientId, clientTaxExempt, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, null);
++        Invoice note = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, null);
+         note.creditOf = id;
+         return note;
+     }
+@@ -620,7 +628,7 @@ public class Invoice {
+         if (isCreditNote()) {
+             return zero();
+         }
+-        BigDecimal retention = subtotal().subtract(discount()).multiply(retentionPct).divide(BigDecimal.valueOf(100))
++        BigDecimal retention = beforeTax(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100))
+                 .setScale(scale(), RoundingMode.DOWN);
+         return retentionCap == null ? retention : retention.min(retentionCap.setScale(scale(), RoundingMode.DOWN));
+     }
+@@ -1116,7 +1124,7 @@ public class Invoice {
+                 || earlyPayPct == null || earlyPayPct.signum() <= 0) {
+             return zero();
+         }
+-        return subtotal().subtract(discount()).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
++        return beforeTax(taxRate).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+     }
+ 
+     /**
+@@ -1820,6 +1828,9 @@ public class Invoice {
+      * to the invoice tax.
+      */
+     public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
++        if (clientPricesIncludeTax) {
++            return inclusiveLineTaxes(taxRate);
++        }
+         List<BigDecimal> exact = exactLineTaxes(taxRate);
+         int n = lines.size();
+         BigInteger taxCents = roundTax(exact).movePointRight(scale()).toBigIntegerExact();
+@@ -1888,11 +1899,93 @@ public class Invoice {
+      * once, half up to the cent. It is what the line taxes add up to.
+      */
+     public BigDecimal tax(BigDecimal taxRate) {
+-        return roundTax(exactLineTaxes(taxRate));
++        return clientPricesIncludeTax ? inclusiveTax(taxRate) : roundTax(exactLineTaxes(taxRate));
++    }
++
++    /** Whether the invoice's client is quoted prices that include tax. */
++    public boolean isPricesIncludeTax() {
++        return clientPricesIncludeTax;
++    }
++
++    /**
++     * Whether the line at the given index carries tax: not when it is tax exempt, nor on any line of a
++     * tax-exempt client or a reverse-charged invoice.
++     */
++    private boolean isTaxed(int i) {
++        return !clientTaxExempt && !isReverseCharge() && !lines.get(i).isTaxExempt();
++    }
++
++    /** The divisor that takes tax at the client's rate out of a tax-inclusive amount: 1 plus the rate. */
++    private BigDecimal inclusiveDivisor(BigDecimal taxRate) {
++        return BigDecimal.ONE.add(clientTaxRate(taxRate).movePointLeft(2));
++    }
++
++    /**
++     * The tax inside tax-inclusive prices: the total of the taxed lines' amounts after their discount
++     * shares, less that total divided by 1 plus the client's rate, rounded once, half up to the cent.
++     */
++    private BigDecimal inclusiveTax(BigDecimal taxRate) {
++        List<BigDecimal> shares = discountShares();
++        BigDecimal taxed = zero();
++        for (int i = 0; i < lines.size(); i++) {
++            if (isTaxed(i)) {
++                taxed = taxed.add(lines.get(i).amount(scale()).subtract(shares.get(i)));
++            }
++        }
++        return taxed.subtract(taxed.divide(inclusiveDivisor(taxRate), scale(), RoundingMode.HALF_UP));
+     }
+ 
+-    /** The grand total: the subtotal less the discount, plus tax at the given rate. */
++    /**
++     * Each line's tax inside tax-inclusive prices, in the order of the lines: the line's amount after
++     * its discount share, less that divided by 1 plus the client's rate rounded half up to the cent;
++     * exempt lines have none. The cents by which they miss the invoice tax go (or come off) one at a
++     * time to the taxed lines with the largest amounts, the earlier line on a tie.
++     */
++    private List<BigDecimal> inclusiveLineTaxes(BigDecimal taxRate) {
++        List<BigDecimal> shares = discountShares();
++        BigDecimal divisor = inclusiveDivisor(taxRate);
++        int n = lines.size();
++        List<BigDecimal> taxes = new ArrayList<>(n);
++        List<BigDecimal> amounts = new ArrayList<>(n);
++        List<Integer> order = new ArrayList<>();
++        BigDecimal given = zero();
++        for (int i = 0; i < n; i++) {
++            BigDecimal amount = lines.get(i).amount(scale()).subtract(shares.get(i));
++            amounts.add(amount);
++            BigDecimal tax = zero();
++            if (isTaxed(i)) {
++                tax = amount.subtract(amount.divide(divisor, scale(), RoundingMode.HALF_UP));
++                order.add(i);
++            }
++            taxes.add(tax);
++            given = given.add(tax);
++        }
++        order.sort(Comparator.<Integer, BigDecimal>comparing(amounts::get).reversed().thenComparing(i -> i));
++        BigDecimal cent = BigDecimal.ONE.movePointLeft(scale());
++        int missing = inclusiveTax(taxRate).subtract(given).movePointRight(scale()).intValueExact();
++        BigDecimal step = missing < 0 ? cent.negate() : cent;
++        for (int k = 0; k < Math.abs(missing) && !order.isEmpty(); k++) {
++            int i = order.get(k % order.size());
++            taxes.set(i, taxes.get(i).add(step));
++        }
++        return taxes;
++    }
++
++    /**
++     * The amount before tax: the subtotal less the discount, less the tax inside it when the client's
++     * prices include tax.
++     */
++    public BigDecimal beforeTax(BigDecimal taxRate) {
++        BigDecimal amount = subtotal().subtract(discount());
++        return clientPricesIncludeTax ? amount.subtract(tax(taxRate)) : amount;
++    }
++
++    /**
++     * The grand total: the subtotal less the discount, plus tax at the given rate — or, when the
++     * client's prices include tax, the subtotal less the discount, which already holds it.
++     */
+     public BigDecimal total(BigDecimal taxRate) {
+-        return subtotal().subtract(discount()).add(tax(taxRate));
++        BigDecimal amount = subtotal().subtract(discount());
++        return clientPricesIncludeTax ? amount : amount.add(tax(taxRate));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 285ee43..afd92fa 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -77,20 +77,22 @@ public class InvoiceController {
+      * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
+      * money is a decimal string to the cent. {@code unitType} is null when the line has none. {@code discountShare} is the line's share of the
+      * invoice discount; {@code tax} is the line's tax, the rate on its amount less that share, and
+-     * {@code taxExempt} lines have none. {@code taxRate} (without trailing zeros) is the line's own
++     * {@code taxExempt} lines have none. {@code net} is the line before tax: its amount less that share, less
++     * the tax inside it when the client's prices include tax. {@code taxRate} (without trailing zeros) is the line's own
+      * tax rate, null when it uses the workspace rate. {@code discountPct}
+      * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
+      * {@code amount} is after it. {@code creditOfLine} is the id of the line a credit note's line credits, null when none.
+      * {@code tiered} lines are priced in progressive tiers from the rate card; their {@code unitPrice} is the first band's.
+      */
+     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
+-            String discount, String amount, String discountShare, String tax, boolean taxExempt, String taxRate,
++            String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,
+             Long creditOfLine, boolean tiered) {
+-        static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax) {
++        static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax) {
+             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
+                     l.getUnitType(), l.getUnitPrice().setScale(2).toPlainString(),
+                     l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount(scale).toPlainString(),
+                     l.amount(scale).toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
++                    l.amount(scale).subtract(discountShare).subtract(includedTax).toPlainString(),
+                     l.isTaxExempt(),
+                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
+                     l.getCreditOfLine(), l.isTiered());
+@@ -127,11 +129,12 @@ public class InvoiceController {
+      * is, for a client billed in another currency, the exchange difference in US dollars of the payments
+      * applied to it (see {@link Invoice#fxDifference(List)}); null for a dollar invoice.
+      * {@code writtenOffOn} is the day it was written off as a bad debt (null when it was not); everything
+-     * it still owed then is in {@code writtenOff}, and nothing is due.
++     * it still owed then is in {@code writtenOff}, and nothing is due. {@code net} is the amount before tax; when
++     * {@code pricesIncludeTax} the tax is inside the subtotal less the discount, which is then the grand total.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+-            String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
++            String discountCap, String discount, String discountReason, String taxRate, String tax, String total, String net, boolean pricesIncludeTax, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
+             String credited, Long creditOf, String listedTotal, String retentionPct, String retentionCap, String retention,
+             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+@@ -144,7 +147,8 @@ public class InvoiceController {
+             List<BigDecimal> shares = i.discountShares();
+             List<BigDecimal> taxes = i.lineTaxes(taxRate);
+             List<LineView> lines = IntStream.range(0, shares.size())
+-                    .mapToObj(n -> LineView.of(i.getLines().get(n), i.scale(), shares.get(n), taxes.get(n))).toList();
++                    .mapToObj(n -> LineView.of(i.getLines().get(n), i.scale(), shares.get(n), taxes.get(n),
++                            i.isPricesIncludeTax() ? taxes.get(n) : BigDecimal.ZERO)).toList();
+             return new InvoiceDetail(i.getId(), i.number(),
+                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
+                     i.statusWhenPaid(paid, paidOn, taxRate, today), i.getIssueDate(), i.getDueDate(),
+@@ -154,7 +158,7 @@ public class InvoiceController {
+                     i.getDiscountCap() == null ? null : i.getDiscountCap().setScale(2).toPlainString(),
+                     i.discount().toPlainString(), i.getDiscountReason(),
+                     i.clientTaxRate(taxRate).stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
+-                    i.total(taxRate).toPlainString(),
++                    i.total(taxRate).toPlainString(), i.beforeTax(taxRate).toPlainString(), i.isPricesIncludeTax(),
+                     payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency())).toList(), paid.toPlainString(),
+                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
+                     i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 62baa26..70dd237 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -114,7 +114,7 @@ public class InvoiceService {
+     public Optional<Invoice> newDraft(Long clientId) {
+         return clients.findById(clientId).map(client -> {
+             LocalDate issued = today.date();
+-            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), taxRate.forRegion(client.getRegion()),
++            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), client.isPricesIncludeTax(), taxRate.forRegion(client.getRegion()),
+                     outOfHomeRegion(client) ? client.getTaxNumber() : null, client.getCurrency(), issued, dueDateFor(clientId, issued));
+             draft.setDiscountPct(client.getDiscountPct());
+             draft.setRetentionPct(client.getRetentionPct());
+diff --git a/src/main/resources/db/migration/V42__client_prices_include_tax.sql b/src/main/resources/db/migration/V42__client_prices_include_tax.sql
+new file mode 100644
+index 0000000..8c8626c
+--- /dev/null
++++ b/src/main/resources/db/migration/V42__client_prices_include_tax.sql
+@@ -0,0 +1,3 @@
++-- A client quoted prices that already include tax: the tax is taken out of its invoice amounts
++-- rather than added on top; prices exclude tax by default.
++ALTER TABLE client ADD COLUMN prices_include_tax BOOLEAN DEFAULT FALSE NOT NULL;
