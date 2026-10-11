@@ -1,0 +1,509 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index e8a58eb..e0a31c0 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -15,6 +15,10 @@ export interface Client {
+   taxExempt: boolean;
+   // The currency the client is billed in: everything on its invoices is in it.
+   currency: Currency;
++  // An early-payment discount: the percentage of the grand total (0 is none) taken off an invoice
++  // paid off within earlyPayDays of its issue date (null when there is none).
++  earlyPayPct: number;
++  earlyPayDays: number | null;
+ }
+ 
+ export type NewClient = Omit<Client, 'id'>;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index b96aa8c..a459fe9 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -117,6 +117,28 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+           step="0.01"
+           formControlName="discountPct"
+         />
++        <label for="client-early-pct">Early-payment discount % (optional)</label>
++        <input
++          id="client-early-pct"
++          data-testid="client-form-early-pct"
++          type="number"
++          inputmode="decimal"
++          min="0"
++          max="100"
++          step="0.01"
++          formControlName="earlyPct"
++        />
++        <label for="client-early-days">Paid within days of issue for the early discount</label>
++        <input
++          id="client-early-days"
++          data-testid="client-form-early-days"
++          type="number"
++          inputmode="numeric"
++          min="1"
++          max="365"
++          step="1"
++          formControlName="earlyDays"
++        />
+         <label for="client-currency">Currency</label>
+         <select id="client-currency" data-testid="client-form-currency" formControlName="currency">
+           @for (code of currencies; track code) {
+@@ -181,6 +203,8 @@ export class Clients {
+     }),
+     terms: new FormControl<number | null>(null),
+     discountPct: new FormControl<number | null>(null),
++    earlyPct: new FormControl<number | null>(null),
++    earlyDays: new FormControl<number | null>(null),
+     taxExempt: new FormControl(false, { nonNullable: true }),
+     currency: new FormControl<Currency>('USD', { nonNullable: true }),
+   });
+@@ -210,8 +234,21 @@ export class Clients {
+     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
+     const taxExempt = this.form.controls.taxExempt.value;
+     const currency = this.form.controls.currency.value;
+-    this.form.setValue({ name, email, terms: termsDays, discountPct, taxExempt, currency });
+-    const problem = this.problemWith(name, email, termsDays, discountPct);
++    const early = this.form.controls.earlyPct.value;
++    const earlyPayPct = early === null || (early as unknown) === '' ? null : Number(early);
++    const earlyDays = this.form.controls.earlyDays.value;
++    const earlyPayDays = earlyDays === null || (earlyDays as unknown) === '' ? null : Number(earlyDays);
++    this.form.setValue({
++      name,
++      email,
++      terms: termsDays,
++      discountPct,
++      earlyPct: earlyPayPct,
++      earlyDays: earlyPayDays,
++      taxExempt,
++      currency,
++    });
++    const problem = this.problemWith(name, email, termsDays, discountPct, earlyPayPct, earlyPayDays);
+     if (problem) {
+       this.form.markAllAsTouched();
+       this.error.set(problem);
+@@ -219,7 +256,17 @@ export class Clients {
+     }
+     this.saving.set(true);
+     this.error.set('');
+-    this.service.add({ name, email, termsDays, discountPct: discountPct ?? 0, taxExempt, currency }).subscribe({
++    const client = {
++      name,
++      email,
++      termsDays,
++      discountPct: discountPct ?? 0,
++      taxExempt,
++      currency,
++      earlyPayPct: earlyPayPct ?? 0,
++      earlyPayDays,
++    };
++    this.service.add(client).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created].sort(byName));
+         this.form.reset();
+@@ -273,6 +320,8 @@ export class Clients {
+     email: string,
+     termsDays: number | null,
+     discountPct: number | null,
++    earlyPayPct: number | null,
++    earlyPayDays: number | null,
+   ): string {
+     const problems: string[] = [];
+     if (!name) {
+@@ -295,6 +344,19 @@ export class Clients {
+         problems.push('The standard discount can have at most two decimals.');
+       }
+     }
++    if (earlyPayPct !== null) {
++      if (!(Number.isFinite(earlyPayPct) && earlyPayPct >= 0 && earlyPayPct <= 100)) {
++        problems.push('The early-payment discount must be from 0 to 100 percent.');
++      } else if (Math.abs(Math.round(earlyPayPct * 100) - earlyPayPct * 100) > 1e-6) {
++        problems.push('The early-payment discount can have at most two decimals.');
++      }
++    }
++    if (earlyPayDays !== null && !(Number.isInteger(earlyPayDays) && earlyPayDays >= 1 && earlyPayDays <= 365)) {
++      problems.push('The early-payment window must be from 1 to 365 days.');
++    }
++    if ((earlyPayPct === null || earlyPayPct === 0) !== (earlyPayDays === null)) {
++      problems.push('Enter both the early-payment discount and its number of days, or neither.');
++    }
+     return problems.join(' ');
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 02319ce..d313b19 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -364,10 +364,22 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="invoice-credited">{{ amount(inv.credited) }}</td>
+               </tr>
+             }
++            @if (inv.creditOf === null) {
++              <tr>
++                <th scope="row" colspan="4">Early-payment discount</th>
++                <td data-testid="invoice-early-discount">{{ amount(inv.earlyDiscount) }}</td>
++              </tr>
++            }
+             <tr>
+               <th scope="row" colspan="4">Amount due</th>
+               <td data-testid="invoice-amount-due">{{ amount(inv.amountDue) }}</td>
+             </tr>
++            @if (inv.settleAmount !== null) {
++              <tr>
++                <th scope="row" colspan="4">Settles it if paid now (early-payment discount)</th>
++                <td data-testid="invoice-settle-amount">{{ amount(inv.settleAmount) }}</td>
++              </tr>
++            }
+             <tr>
+               <th scope="row" colspan="4">Written off (worth under $1.00 left)</th>
+               <td data-testid="invoice-written-off">{{ amount(inv.writtenOff) }}</td>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 2f77b62..21e7206 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -136,6 +136,10 @@ export interface InvoiceDetail {
+   listedDueDate: string | null;
+   // The currency the client is billed in: every amount is in it (whole yen for a yen client).
+   currency: Currency;
++  // The early-payment discount it was settled with ("0.00" when none was taken), and what would
++  // settle it today while its early-payment window is open (null otherwise).
++  earlyDiscount: string;
++  settleAmount: string | null;
+ }
+ 
+ // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index dc101cb..347006e 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -37,7 +37,7 @@ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+@@ -134,10 +134,12 @@ public class TestSupportController {
+             if (Currency.of(currency) == null) {
+                 throw refuse("unsupported value of clients[].currency: " + currency);
+             }
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency"},
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+                     percent(row.get("discountPct"), "clients[].discountPct"),
+-                    flag(row.get("taxExempt"), "clients[].taxExempt"), currency);
++                    flag(row.get("taxExempt"), "clients[].taxExempt"), currency,
++                    percent(row.get("earlyPayPct"), "clients[].earlyPayPct"),
++                    days(row.get("earlyPayDays"), "clients[].earlyPayDays"));
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+             only(row, INVOICE_FIELDS, "invoices[]");
+@@ -274,7 +276,7 @@ public class TestSupportController {
+         if (!settings.isEmpty()) {
+             out.put("settings", settings);
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -286,6 +288,10 @@ public class TestSupportController {
+                     row.put("discountPct", r.get("DISCOUNT_PCT"));
+                     row.put("taxExempt", r.get("TAX_EXEMPT"));
+                     row.put("currency", r.get("CURRENCY"));
++                    row.put("earlyPayPct", r.get("EARLY_PAY_PCT"));
++                    if (r.get("EARLY_PAY_DAYS") != null) {
++                        row.put("earlyPayDays", r.get("EARLY_PAY_DAYS"));
++                    }
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 519654b..d120057 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -38,17 +38,27 @@ public class Client {
+     @Enumerated(EnumType.STRING)
+     private Currency currency = Currency.USD;
+ 
++    /** The percentage of the grand total taken off an invoice paid off early; 0 is none. */
++    @Column(name = "early_pay_pct")
++    private BigDecimal earlyPayPct = BigDecimal.ZERO;
++
++    /** How many days after its issue date an invoice counts as paid off early; null when never. */
++    @Column(name = "early_pay_days")
++    private Integer earlyPayDays;
++
+     protected Client() {
+     }
+ 
+     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+-            Currency currency) {
++            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays) {
+         this.name = name;
+         this.email = email;
+         this.termsDays = termsDays;
+         this.discountPct = discountPct == null ? BigDecimal.ZERO : discountPct;
+         this.taxExempt = taxExempt;
+         this.currency = currency == null ? Currency.USD : currency;
++        this.earlyPayPct = earlyPayPct == null ? BigDecimal.ZERO : earlyPayPct;
++        this.earlyPayDays = earlyPayDays;
+     }
+ 
+     public Long getId() {
+@@ -78,4 +88,12 @@ public class Client {
+     public Currency getCurrency() {
+         return currency;
+     }
++
++    public BigDecimal getEarlyPayPct() {
++        return earlyPayPct;
++    }
++
++    public Integer getEarlyPayDays() {
++        return earlyPayDays;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index ecffaa9..5a775b2 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.clients;
+ 
+ import jakarta.validation.Valid;
++import jakarta.validation.constraints.AssertTrue;
+ import jakarta.validation.constraints.DecimalMax;
+ import jakarta.validation.constraints.DecimalMin;
+ import jakarta.validation.constraints.Digits;
+@@ -25,10 +26,10 @@ import org.springframework.web.bind.annotation.RestController;
+ public class ClientController {
+ 
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+-            boolean taxExempt, Currency currency) {
++            boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+-                    c.isTaxExempt(), c.getCurrency());
++                    c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays());
+         }
+     }
+ 
+@@ -52,7 +53,19 @@ public class ClientController {
+             Boolean taxExempt,
+             /** The currency the client is billed in; US dollars when left out. */
+             @Pattern(regexp = "USD|EUR|GBP|JPY|CHF", message = "The currency must be USD, EUR, GBP, JPY or CHF.")
+-            String currency) {
++            String currency,
++            @DecimalMin(value = "0", message = "The early-payment discount must be from 0 to 100 percent.")
++            @DecimalMax(value = "100", message = "The early-payment discount must be from 0 to 100 percent.")
++            @Digits(integer = 3, fraction = 2, message = "The early-payment discount can have at most two decimals.")
++            BigDecimal earlyPayPct,
++            @Min(value = 1, message = "The early-payment window must be from 1 to 365 days.")
++            @Max(value = 365, message = "The early-payment window must be from 1 to 365 days.")
++            Integer earlyPayDays) {
++
++        @AssertTrue(message = "Enter both the early-payment discount and its number of days, or neither.")
++        public boolean isEarlyPayComplete() {
++            return (earlyPayPct == null || earlyPayPct.signum() == 0) == (earlyPayDays == null);
++        }
+     }
+ 
+     /**
+@@ -76,6 +89,6 @@ public class ClientController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClientView add(@Valid @RequestBody NewClient body) {
+         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+-                Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency())));
++                Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 27592df..bc8faff 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -31,11 +31,11 @@ public class ClientService {
+ 
+     @Transactional
+     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+-            Currency currency) {
++            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+-        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency));
++        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 059542a..61d3d2e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -114,6 +114,18 @@ public class Invoice {
+     @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'usd_per_' || c.currency)")
+     private String usdPer;
+ 
++    /** The client's early-payment discount, a percentage of the grand total; read from the client. */
++    @Formula("(SELECT c.early_pay_pct FROM client c WHERE c.id = client_id)")
++    private BigDecimal earlyPayPct;
++
++    /** How many days after the issue date the invoice counts as paid off early; read from the client. */
++    @Formula("(SELECT c.early_pay_days FROM client c WHERE c.id = client_id)")
++    private Integer earlyPayDays;
++
++    /** The early discount the invoice was settled with; 0 when none was taken. */
++    @Column(name = "early_discount")
++    private BigDecimal earlyDiscount = BigDecimal.ZERO;
++
+     /** An issued credit note's grand total, kept when it is issued; null until then. */
+     @Column(name = "credit_total")
+     private BigDecimal creditTotal;
+@@ -399,7 +411,51 @@ public class Invoice {
+      */
+     private BigDecimal payable(BigDecimal taxRate) {
+         BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate);
+-        return owed.subtract(getCredited()).subtract(retentionHeld(taxRate));
++        return owed.subtract(getCredited()).subtract(retentionHeld(taxRate)).subtract(getEarlyDiscountTaken());
++    }
++
++    /**
++     * The early-payment discount on offer at the tax rate: the client's early-payment percentage of the
++     * grand total, rounded down to the cent; nothing for a credit note, or an invoice holding back
++     * retention or spread over instalments.
++     */
++    public BigDecimal earlyDiscount(BigDecimal taxRate) {
++        if (isCreditNote() || hasPlan() || retentionPct.signum() > 0 || earlyPayDays == null
++                || earlyPayPct == null || earlyPayPct.signum() <= 0) {
++            return zero();
++        }
++        return total(taxRate).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
++    }
++
++    /**
++     * Whether a sent invoice not yet settled early can still be paid off early on the given day: within
++     * the client's early-payment days of its issue date, with an early discount on offer.
++     */
++    public boolean isEarlyWindowOpen(LocalDate on, BigDecimal taxRate) {
++        return status == InvoiceStatus.SENT && issueDate != null && getEarlyDiscountTaken().signum() == 0
++                && earlyDiscount(taxRate).signum() > 0 && !on.isAfter(issueDate.plusDays(earlyPayDays));
++    }
++
++    /**
++     * What would settle the invoice on the given day once the given amount has been paid: what is due
++     * less the early discount while the early window is open; null when it is not.
++     */
++    public BigDecimal settleAmount(BigDecimal paid, BigDecimal taxRate, LocalDate on) {
++        BigDecimal due = amountDue(paid, taxRate);
++        if (!isEarlyWindowOpen(on, taxRate) || due.signum() <= 0) {
++            return null;
++        }
++        return due.subtract(earlyDiscount(taxRate)).max(zero());
++    }
++
++    /** The early discount the invoice was settled with, to the cent; 0 when none was taken. */
++    public BigDecimal getEarlyDiscountTaken() {
++        return (earlyDiscount == null ? BigDecimal.ZERO : earlyDiscount).setScale(scale(), RoundingMode.HALF_UP);
++    }
++
++    /** Settles the invoice with the early discount (0 to clear it again). */
++    public void takeEarlyDiscount(BigDecimal amount) {
++        this.earlyDiscount = amount;
+     }
+ 
+     /** Whether the invoice is spread over monthly instalments. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 7d1ff64..65878e6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -113,6 +113,8 @@ public class InvoiceController {
+      * (null without a plan), from which what is paid comes off for the amount due. {@code listedDueDate}
+      * is the due date as listed: for a plan, its next unpaid instalment's. {@code currency} is the
+      * currency its client is billed in, which every amount is in (whole yen for a yen client).
++     * {@code earlyDiscount} is the early-payment discount it was settled with (0 when none), and
++     * {@code settleAmount} what would settle it today while its early-payment window is open (null otherwise).
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -120,7 +122,7 @@ public class InvoiceController {
+             String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
+             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+             String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+-            Currency currency) {
++            Currency currency, String earlyDiscount, String settleAmount) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -147,7 +149,8 @@ public class InvoiceController {
+                     i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
+                     i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
+                     i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate),
+-                    i.currency());
++                    i.currency(), i.getEarlyDiscountTaken().toPlainString(),
++                    Optional.ofNullable(i.settleAmount(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null));
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index d7bb5f8..5194145 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -689,6 +689,14 @@ public class InvoiceService {
+             if (due.signum() <= 0) {
+                 throw new InvoiceRejectedException("This invoice has already been paid.");
+             }
++            LocalDate now = today.date();
++            BigDecimal early = BigDecimal.ZERO;
++            BigDecimal settle = date.isAfter(now) ? null : invoice.settleAmount(paidSoFar, taxRate.percent(), date);
++            if (settle != null && amount.compareTo(settle) >= 0) {
++                early = invoice.earlyDiscount(taxRate.percent());
++                invoice.takeEarlyDiscount(early);
++                due = settle;
++            }
+             BigDecimal applied = amount.min(due);
+             if (invoice.hasPlan() && invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
+                 throw new InvoiceRejectedException("A payment must be at least the "
+@@ -700,7 +708,6 @@ public class InvoiceService {
+                         + invoice.currency().format(invoice.minimumPart(taxRate.percent()))
+                         + " (10% of the total), unless it settles the invoice.");
+             }
+-            LocalDate now = today.date();
+             if (date.isAfter(now)) {
+                 throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+             }
+@@ -717,6 +724,10 @@ public class InvoiceService {
+                     .paidIn(paidIn, paidAmount, invoice.currency()));
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
+                     + applied.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
++            if (early.signum() > 0) {
++                invoices.saveAndFlush(invoice);
++                audit.record("EARLY_DISCOUNT id=" + invoice.getId() + " amount=" + early.toPlainString());
++            }
+             recordWriteOff(invoice);
+             recordCreditHeld(payment);
+         });
+@@ -955,6 +966,13 @@ public class InvoiceService {
+             }
+             payment.reverse();
+             payments.saveAndFlush(payment);
++            // An invoice the payment settled early is no longer paid off, so its early discount lapses.
++            payment.getAllocations().forEach(a -> invoices.findWithLinesById(a.getInvoiceId()).ifPresent(invoice -> {
++                if (invoice.getEarlyDiscountTaken().signum() > 0) {
++                    invoice.takeEarlyDiscount(BigDecimal.ZERO);
++                    invoices.saveAndFlush(invoice);
++                }
++            }));
+             audit.record("PAYMENT_REVERSED id=" + payment.getId() + " amount="
+                     + payment.getAmount().setScale(currencyOf(payment.getClientId()).scale(), RoundingMode.UNNECESSARY)
+                             .toPlainString());
+diff --git a/src/main/resources/db/migration/V25__client_early_pay.sql b/src/main/resources/db/migration/V25__client_early_pay.sql
+new file mode 100644
+index 0000000..11a36e1
+--- /dev/null
++++ b/src/main/resources/db/migration/V25__client_early_pay.sql
+@@ -0,0 +1,6 @@
++-- An early-payment discount: a percentage (0 is none) of the grand total the client may take off when
++-- an invoice is paid off within early_pay_days of its issue date (null when there is no window).
++ALTER TABLE client ADD COLUMN early_pay_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
++ALTER TABLE client ADD COLUMN early_pay_days INT;
++-- The early discount an invoice was settled with; 0 when none was taken.
++ALTER TABLE invoice ADD COLUMN early_discount DECIMAL(19, 2) DEFAULT 0 NOT NULL;
