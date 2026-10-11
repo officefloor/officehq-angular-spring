@@ -26,7 +26,9 @@ export interface InvoiceLineView {
   amount: string;
 }
 
-// An opened invoice with its lines and totals, all worked out by the server.
+// An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
+// percentage taken off the subtotal, without trailing zeros ("12.5"); `discount` is the amount it
+// takes off, rounded half up to the cent; `total` is the subtotal less the discount.
 export interface InvoiceDetail {
   id: number;
   number: string;
@@ -36,6 +38,8 @@ export interface InvoiceDetail {
   dueDate: string | null;
   lines: InvoiceLineView[];
   subtotal: string;
+  discountPct: string;
+  discount: string;
   total: string;
 }
 
@@ -72,5 +76,11 @@ export class InvoiceService {
   // Adds a line to a draft invoice; answers the invoice with its new lines and totals.
   addLine(invoiceId: number, line: NewLine): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines`, line);
+  }
+
+  // Gives a draft invoice a percentage discount (0 to 100, up to two decimals); answers the
+  // invoice with its new totals.
+  setDiscount(invoiceId: number, discountPct: string): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/discount`, { discountPct });
   }
 }

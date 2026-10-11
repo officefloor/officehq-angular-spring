@@ -7,6 +7,23 @@ import { money, statusLabel } from './invoice-format';
 // A positive decimal with at most two decimals, e.g. 1, 1.5 or 12.35. The server applies the same rules.
 const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
 
+// A percentage from 0 to 100 with at most two decimals, e.g. 15 or 12.5; the server checks it again.
+function problemWithDiscount(pct: string): string {
+  if (!pct) {
+    return 'Enter a discount percentage.';
+  }
+  if (!/^-?\d+(\.\d+)?$/.test(pct)) {
+    return 'The discount must be a number, like 15 or 12.5.';
+  }
+  if (Number(pct) < 0 || Number(pct) > 100) {
+    return 'The discount must be from 0 to 100 percent.';
+  }
+  if (!TWO_DECIMALS.test(pct)) {
+    return 'The discount can have at most two decimals.';
+  }
+  return '';
+}
+
 // What is wrong with a line, or '' when it can be added.
 function problemWith(line: NewLine): string {
   const problems: string[] = [];
@@ -30,7 +47,8 @@ function problemWith(line: NewLine): string {
   return problems.join(' ');
 }
 
-// One opened invoice: its status, its lines and its totals. A draft takes new lines.
+// One opened invoice: its status, its lines and its totals. A draft takes new lines and a
+// percentage discount.
 @Component({
   selector: 'app-invoice-panel',
   imports: [ReactiveFormsModule],
@@ -68,6 +86,10 @@ function problemWith(line: NewLine): string {
             <tr>
               <th scope="row" colspan="3">Subtotal</th>
               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
+            </tr>
+            <tr>
+              <th scope="row" colspan="3">Discount ({{ inv.discountPct }}%)</th>
+              <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
             </tr>
             <tr>
               <th scope="row" colspan="3">Total</th>
@@ -108,6 +130,28 @@ function problemWith(line: NewLine): string {
               <p role="alert" data-testid="line-form-error">{{ error() }}</p>
             }
           </form>
+
+          <form
+            [formGroup]="discountForm"
+            (ngSubmit)="setDiscount(inv.id)"
+            aria-label="Discount"
+            novalidate
+          >
+            <label for="discount-pct">Discount (%)</label>
+            <input
+              id="discount-pct"
+              data-testid="discount-form-pct"
+              inputmode="decimal"
+              formControlName="pct"
+              required
+            />
+            <button type="submit" data-testid="discount-form-submit" [disabled]="savingDiscount()">
+              Apply discount
+            </button>
+            @if (discountError()) {
+              <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
+            }
+          </form>
         }
       }
     </section>
@@ -123,6 +167,8 @@ export class InvoicePanel {
   protected readonly invoice = signal<InvoiceDetail | null>(null);
   protected readonly saving = signal(false);
   protected readonly error = signal('');
+  protected readonly savingDiscount = signal(false);
+  protected readonly discountError = signal('');
   protected readonly statusLabel = statusLabel;
   protected readonly money = money;
 
@@ -132,12 +178,18 @@ export class InvoicePanel {
     unitPrice: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly discountForm = new FormGroup({
+    pct: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     effect((onCleanup) => {
       const id = this.invoiceId();
       this.invoice.set(null);
       this.form.reset();
       this.error.set('');
+      this.discountForm.reset();
+      this.discountError.set('');
       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
       onCleanup(() => sub.unsubscribe());
     });
@@ -171,6 +223,33 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The line could not be added.',
         );
         this.saving.set(false);
+      },
+    });
+  }
+
+  protected setDiscount(invoiceId: number): void {
+    const pct = this.discountForm.getRawValue().pct.trim().replace(/%$/, '').trim();
+    const problem = problemWithDiscount(pct);
+    if (problem) {
+      this.discountForm.markAllAsTouched();
+      this.discountError.set(problem);
+      return;
+    }
+    this.savingDiscount.set(true);
+    this.discountError.set('');
+    this.service.setDiscount(invoiceId, pct).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.discountForm.reset();
+        this.savingDiscount.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.discountError.set(
+          typeof detail === 'string' && detail ? detail : 'The discount could not be applied.',
+        );
+        this.savingDiscount.set(false);
       },
     });
   }

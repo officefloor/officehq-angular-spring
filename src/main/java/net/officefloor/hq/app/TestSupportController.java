@@ -33,7 +33,7 @@ public class TestSupportController {
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "clients", "invoices");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "lineItems");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
 
@@ -94,10 +94,11 @@ public class TestSupportController {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
-                    row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"));
+                    row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+                    percent(row.get("discountPct"), "invoices[].discountPct"));
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 insert("invoice_line", line.get("id"),
@@ -135,7 +136,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -143,6 +144,7 @@ public class TestSupportController {
                     row.put("status", r.get("STATUS"));
                     row.put("issueDate", r.get("ISSUE_DATE") == null ? null : r.get("ISSUE_DATE").toString());
                     row.put("dueDate", r.get("DUE_DATE") == null ? null : r.get("DUE_DATE").toString());
+                    row.put("discountPct", r.get("DISCOUNT_PCT"));
                     row.put("lineItems", jdbc.queryForList(
                             "SELECT id, description, qty, unit_price FROM invoice_line WHERE invoice_id = ? ORDER BY id",
                             r.get("ID")).stream().map(l -> {
@@ -213,6 +215,18 @@ public class TestSupportController {
         }
         if (number.stripTrailingZeros().scale() > 2) {
             throw refuse(field + " can have at most two decimals, not " + value);
+        }
+        return number;
+    }
+
+    /** A percentage from 0 to 100 with at most two decimals; none given is no discount. */
+    private static BigDecimal percent(Object value, String field) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal number = cents(value, field);
+        if (number.signum() < 0 || number.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw refuse(field + " must be from 0 to 100, not " + value);
         }
         return number;
     }

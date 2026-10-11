@@ -13,6 +13,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +38,9 @@ public class Invoice {
 
     @Column(name = "due_date")
     private LocalDate dueDate;
+
+    @Column(name = "discount_pct")
+    private BigDecimal discountPct = BigDecimal.ZERO;
 
     @OneToMany(cascade = CascadeType.ALL)
     @JoinColumn(name = "invoice_id", nullable = false)
@@ -76,6 +80,16 @@ public class Invoice {
         return dueDate;
     }
 
+    /** The percentage taken off the subtotal, 0 to 100 with up to two decimals. */
+    public BigDecimal getDiscountPct() {
+        return discountPct;
+    }
+
+    /** Sets the percentage taken off the subtotal; it has already been checked. */
+    public void setDiscountPct(BigDecimal discountPct) {
+        this.discountPct = discountPct;
+    }
+
     public List<InvoiceLine> getLines() {
         return lines;
     }
@@ -91,11 +105,22 @@ public class Invoice {
     }
 
     /**
-     * The sum of the line amounts, each already rounded half up to the cent — so the total matches
-     * what a client gets by adding up the lines shown.
+     * The sum of the line amounts, each already rounded half up to the cent — so the subtotal
+     * matches what a client gets by adding up the lines shown.
      */
-    public BigDecimal total() {
+    public BigDecimal subtotal() {
         return lines.stream().map(InvoiceLine::amount)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    }
+
+    /** The amount taken off: the discount percentage of the subtotal, rounded half up to the cent. */
+    public BigDecimal discount() {
+        return subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100))
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** The subtotal less the discount. */
+    public BigDecimal total() {
+        return subtotal().subtract(discount());
     }
 }

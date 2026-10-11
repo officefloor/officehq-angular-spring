@@ -9,7 +9,7 @@ import net.officefloor.hq.app.clients.ClientRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Lists a client's invoices, opens one, starts new drafts and adds lines to them. */
+/** Lists a client's invoices, opens one, starts new drafts, adds lines to them and gives them a discount. */
 @Service
 public class InvoiceService {
 
@@ -61,6 +61,23 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("Only a draft invoice can take new lines.");
             }
             invoice.addLine(new InvoiceLine(description, qty, unitPrice));
+            invoices.saveAndFlush(invoice);
+        });
+        return found;
+    }
+
+    /**
+     * Gives a draft invoice a percentage discount; empty if no such invoice. The percentage has
+     * already been checked; a sent invoice refuses it.
+     */
+    @Transactional
+    public Optional<Invoice> setDiscount(Long invoiceId, BigDecimal discountPct) {
+        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        found.ifPresent(invoice -> {
+            if (!invoice.isDraft()) {
+                throw new InvoiceRejectedException("Only a draft invoice can be given a discount.");
+            }
+            invoice.setDiscountPct(discountPct);
             invoices.saveAndFlush(invoice);
         });
         return found;

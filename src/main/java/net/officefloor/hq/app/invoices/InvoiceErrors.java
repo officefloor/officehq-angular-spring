@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestControllerAdvice(assignableTypes = InvoiceController.class)
 public class InvoiceErrors {
 
-    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice");
+    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct");
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ProblemDetail invalid(MethodArgumentNotValidException e) {
@@ -23,14 +23,14 @@ public class InvoiceErrors {
                 .map(f -> f.getDefaultMessage())
                 .distinct()
                 .reduce((a, b) -> a + " " + b)
-                .orElse("The line is not valid.");
+                .orElse("The change is not valid.");
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ProblemDetail unreadable(HttpMessageNotReadableException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
-                "Enter the quantity and unit price as numbers, like 1.5 and 12.35.");
+                "Enter the numbers as numbers, like 1.5 and 12.35.");
     }
 
     @ExceptionHandler(ResponseStatusException.class)

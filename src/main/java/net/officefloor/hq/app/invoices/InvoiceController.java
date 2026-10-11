@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.invoices;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -13,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -42,14 +44,28 @@ public class InvoiceController {
         }
     }
 
-    /** An opened invoice: its lines, subtotal and grand total (money as decimal strings to the cent). */
+    /**
+     * An opened invoice: its lines, subtotal, discount percentage (without trailing zeros, "12.5"),
+     * the amount it takes off and the grand total (money as decimal strings to the cent).
+     */
     public record InvoiceDetail(Long id, String number, Long clientId, InvoiceStatus status, LocalDate issueDate,
-            LocalDate dueDate, List<LineView> lines, String subtotal, String total) {
+            LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discount,
+            String total) {
         static InvoiceDetail of(Invoice i) {
-            String total = i.total().toPlainString();
             return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()), i.getClientId(), i.getStatus(), i.getIssueDate(), i.getDueDate(),
-                    i.getLines().stream().map(LineView::of).toList(), total, total);
+                    i.getLines().stream().map(LineView::of).toList(), i.subtotal().toPlainString(),
+                    i.getDiscountPct().stripTrailingZeros().toPlainString(), i.discount().toPlainString(),
+                    i.total().toPlainString());
         }
+    }
+
+    /** A discount to give: a percentage from 0 to 100 with at most two decimals. */
+    public record NewDiscount(
+            @NotNull(message = "Enter a discount percentage.")
+            @DecimalMin(value = "0", message = "The discount must be from 0 to 100 percent.")
+            @DecimalMax(value = "100", message = "The discount must be from 0 to 100 percent.")
+            @Digits(integer = 3, fraction = 2, message = "The discount can have at most two decimals.")
+            BigDecimal discountPct) {
     }
 
     /** A line to add: a description, a quantity above zero and a unit price of at least $0.01. */
@@ -105,6 +121,13 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
         return invoices.addLine(id, body.description().trim(), body.qty(), body.unitPrice())
+                .map(InvoiceDetail::of)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    @PutMapping("/api/invoices/{id}/discount")
+    public InvoiceDetail setDiscount(@PathVariable Long id, @Valid @RequestBody NewDiscount body) {
+        return invoices.setDiscount(id, body.discountPct())
                 .map(InvoiceDetail::of)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
