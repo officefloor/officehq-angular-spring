@@ -1,0 +1,118 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index def7821..9ddaafe 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -41,7 +41,7 @@ function problemWithDiscountAmount(amount: string): string {
+   return '';
+ }
+ 
+-// A cap on a percentage discount: money, not negative and to the cent, e.g. 25 or 12.50.
++// A cap on everything taken off, line discounts included: money, not negative and to the cent, e.g. 25 or 12.50.
+ function problemWithDiscountCap(cap: string): string {
+   if (!/^-?\d+(\.\d+)?$/.test(cap)) {
+     return 'The discount cap must be a number, like 25 or 12.50.';
+@@ -176,10 +176,10 @@ function problemWith(line: NewLine): string {
+             <tr>
+               <th scope="row" colspan="7">
+                 @if (+inv.discountAmount > 0) {
+-                  Discount (fixed)
++                  Discount (fixed@if (inv.discountCap !== null) {, max {{ money(inv.discountCap) }} in all})
+                 } @else {
+                   Discount ({{ inv.discountPct }}%@if (inv.discountCap !== null) {, max
+-                    {{ money(inv.discountCap) }}})
++                    {{ money(inv.discountCap) }} in all})
+                 }
+               </th>
+               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index b36e064..44856a2 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -53,9 +53,9 @@ export interface InvoicePaymentView {
+ 
+ // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
+ // percentage taken off the subtotal, without trailing zeros ("12.5"), and `discountAmount` the fixed
+-// amount taken off instead ("0.00" when the discount is a percentage); `discountCap` is the most a
+-// percentage takes off (null when uncapped); `discount` is the amount it takes off, rounded half up
+-// to the cent and capped; `taxRate` is the workspace's tax percentage (without
++// amount taken off instead ("0.00" when the discount is a percentage); `discountCap` is the most taken
++// off in all, line discounts included (null when uncapped); `discount` is the amount the invoice
++// discount takes off, rounded half up to the cent and shrunk so the total taken off stays within the cap; `taxRate` is the workspace's tax percentage (without
+ // trailing zeros, "0" when none is set) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
+ // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
+ // `amountDue` is the total less that. `reference` is its ISO 11649 RF payment reference, made from
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 6a74f80..7eb0282 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -98,7 +98,7 @@ public class Invoice {
+         return discountAmount;
+     }
+ 
+-    /** The most a percentage discount takes off, to the cent; null when there is no cap. */
++    /** The most taken off the invoice in all, line discounts included, to the cent; null when there is no cap. */
+     public BigDecimal getDiscountCap() {
+         return discountCap;
+     }
+@@ -109,7 +109,7 @@ public class Invoice {
+         this.discountAmount = BigDecimal.ZERO;
+     }
+ 
+-    /** Sets the most a percentage discount takes off, or null for no cap; it has already been checked as money. */
++    /** Sets the most taken off the invoice in all, or null for no cap; it has already been checked as money. */
+     public void setDiscountCap(BigDecimal discountCap) {
+         this.discountCap = discountCap;
+     }
+@@ -222,15 +222,20 @@ public class Invoice {
+     /**
+      * The amount taken off: the fixed amount when there is one (never more than the subtotal, should
+      * lines have been changed since), otherwise the discount percentage of the subtotal, rounded half
+-     * up to the cent and never more than the cap when there is one.
++     * up to the cent. When there is a cap, it limits everything taken off — the line discounts plus
++     * this — so this shrinks to what the line discounts leave under the cap, never below zero.
+      */
+     public BigDecimal discount() {
+-        if (discountAmount.signum() > 0) {
+-            return discountAmount.min(subtotal()).setScale(2, RoundingMode.HALF_UP);
++        BigDecimal discount = discountAmount.signum() > 0
++                ? discountAmount.min(subtotal()).setScale(2, RoundingMode.HALF_UP)
++                : subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP);
++        if (discountCap == null) {
++            return discount;
+         }
+-        BigDecimal pct = subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100))
+-                .setScale(2, RoundingMode.HALF_UP);
+-        return discountCap == null ? pct : pct.min(discountCap.setScale(2, RoundingMode.HALF_UP));
++        BigDecimal lineDiscounts = lines.stream().map(InvoiceLine::discount)
++                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++        BigDecimal left = discountCap.setScale(2, RoundingMode.HALF_UP).subtract(lineDiscounts).max(BigDecimal.ZERO.setScale(2));
++        return discount.min(left);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index dc6a2ae..7b1fc10 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -116,7 +116,7 @@ public class InvoiceController {
+     /**
+      * A discount to give: a percentage from 0 to 100 with at most two decimals, or a fixed amount
+      * of money, not negative and to the cent. Exactly one of them. Optionally a cap, money not
+-     * negative and to the cent, that a percentage never takes off more than.
++     * negative and to the cent, that everything taken off, line discounts included, never comes to more than.
+      */
+     public record NewDiscount(
+             @DecimalMin(value = "0", message = "The discount must be from 0 to 100 percent.")
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index b98d6e8..bf94fe3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -119,7 +119,7 @@ public class InvoiceService {
+ 
+     /**
+      * Gives an invoice a percentage discount, or a fixed amount off when one is given; the one given
+-     * clears the other, and the cap (null for none) limits a percentage. Empty if no such invoice. The values have already been checked; a fixed amount
++     * clears the other, and the cap (null for none) limits everything taken off, line discounts included. Empty if no such invoice. The values have already been checked; a fixed amount
+      * over the subtotal is refused. A sent invoice with no payments goes back to draft; one with a
+      * payment refuses it.
+      */
