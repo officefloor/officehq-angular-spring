@@ -388,33 +388,36 @@ public class InvoiceService {
 
     /**
      * Why the draft credit note cannot be issued, or null when it can: its original must be a sent
-     * invoice (not void) that still owes at least the credit note's grand total.
+     * invoice (not void).
      */
     private String creditNoteRefusal(Invoice note) {
         Invoice original = invoices.findWithLinesById(note.getCreditOf()).orElse(null);
         if (original == null || original.isDraft() || original.isVoid()) {
             return "The invoice this credits is not a sent invoice, so the credit note cannot be issued.";
         }
-        // Read again what it has been credited: another credit note may just have been issued against it.
-        entityManager.refresh(original);
-        BigDecimal rate = taxRate.percent();
-        BigDecimal due = original.amountDue(paid(List.of(original)).get(original.getId()), rate);
-        BigDecimal total = note.total(rate);
-        if (total.compareTo(due) > 0) {
-            return "The credit note's total of $" + total.toPlainString() + " is more than the $"
-                    + due.setScale(2, RoundingMode.HALF_UP).toPlainString() + " " + original.number()
-                    + " still owes.";
-        }
         return null;
     }
 
-    /** Issues the draft credit note today, its grand total coming off its original, and records it in the audit. */
+    /**
+     * Issues the draft credit note today and records it in the audit: its grand total comes off what
+     * its original still owes, then the retention it holds back; any rest is held on the client's
+     * account as a credit payment dated today, also recorded in the audit.
+     */
     private void issue(Invoice note) {
         BigDecimal rate = taxRate.percent();
-        note.markIssued(today.date(), rate);
+        Invoice original = invoices.findWithLinesById(note.getCreditOf()).orElseThrow();
+        // Read again what it has been credited: another credit note may just have been issued against it.
+        entityManager.refresh(original);
+        BigDecimal total = note.total(rate);
+        BigDecimal[] taken = original.creditTaken(total, paid(List.of(original)).get(original.getId()), rate);
+        note.markIssued(today.date(), rate, taken[0], taken[1]);
         invoices.saveAndFlush(note);
         audit.record("CREDIT_NOTE_ISSUED id=" + note.getId() + " number=" + note.number() + " invoice="
-                + note.getCreditOf() + " total=" + note.total(rate).toPlainString());
+                + note.getCreditOf() + " total=" + total.toPlainString());
+        BigDecimal rest = total.subtract(taken[0]);
+        if (rest.signum() > 0) {
+            recordCreditHeld(payments.saveAndFlush(Payment.fromCreditNote(note, rest)));
+        }
     }
 
     /**
@@ -834,7 +837,7 @@ public class InvoiceService {
     /**
      * Reverses the payment (a bounced cheque), undoing it on every invoice it was applied to, and
      * records it in the audit; empty if no such payment. A payment already reversed, or one that has
-     * had any of its credit refunded, is refused.
+     * had any of its credit refunded, or credit from a credit note, is refused.
      */
     @Transactional
     public Optional<Payment> reversePayment(Long paymentId) {
@@ -842,6 +845,9 @@ public class InvoiceService {
         found.ifPresent(payment -> {
             if (payment.isReversed()) {
                 throw new InvoiceRejectedException("This payment has already been reversed.");
+            }
+            if (payment.getCreditNote() != null) {
+                throw new InvoiceRejectedException("This is credit from a credit note, so it cannot be reversed.");
             }
             if (payment.getRefunded().signum() > 0) {
                 throw new InvoiceRejectedException("This payment has had credit refunded, so it cannot be reversed.");

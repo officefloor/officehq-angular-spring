@@ -37,6 +37,10 @@ public class Payment {
     /** Whether the payment has been reversed (a bounced cheque): it then no longer counts. */
     private boolean reversed;
 
+    /** The credit note whose rest this payment holds as credit; null for a payment from the client. */
+    @Column(name = "credit_note")
+    private Long creditNote;
+
     /** How much of the payment's unused credit has been refunded to the client; it is no longer credit. */
     private BigDecimal refunded = BigDecimal.ZERO;
 
@@ -85,6 +89,21 @@ public class Payment {
         payment.amount = amount;
         payment.date = date;
         return payment;
+    }
+
+    /**
+     * What is left of an issued credit note once its original has taken what it can: held on the
+     * client's account as credit, dated the day the credit note was issued.
+     */
+    public static Payment fromCreditNote(Invoice note, BigDecimal amount) {
+        Payment payment = deposit(note.getClientId(), amount, note.getIssueDate());
+        payment.creditNote = note.getId();
+        return payment;
+    }
+
+    /** The credit note whose rest this payment holds as credit; null for a payment from the client. */
+    public Long getCreditNote() {
+        return creditNote;
     }
 
     public Long getId() {

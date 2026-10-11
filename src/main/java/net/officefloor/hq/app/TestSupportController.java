@@ -9,7 +9,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import jakarta.persistence.EntityManager;
+import net.officefloor.hq.app.invoices.Invoice;
 import net.officefloor.hq.app.invoices.InvoiceRepository;
+import net.officefloor.hq.app.invoices.PaymentRepository;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -37,7 +40,7 @@ public class TestSupportController {
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "allocations");
+    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
 
@@ -45,8 +48,13 @@ public class TestSupportController {
     private final JdbcTemplate jdbc;
     private final InvoiceRepository invoices;
     private final TaxRate taxRate;
+    private final PaymentRepository payments;
+    private final EntityManager entityManager;
 
-    public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate) {
+    public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
+            PaymentRepository payments, EntityManager entityManager) {
+        this.payments = payments;
+        this.entityManager = entityManager;
         this.audit = audit;
         this.jdbc = jdbc;
         this.invoices = invoices;
@@ -108,6 +116,13 @@ public class TestSupportController {
             if (!STATUSES.contains(status)) {
                 throw refuse("unsupported value of invoices[].status: " + status);
             }
+            if ("CREDIT_NOTE".equals(status) && row.get("creditOf") == null) {
+                throw refuse("an invoices[] row with status CREDIT_NOTE needs creditOf");
+            }
+            // A credit note that has been sent is an issued credit note.
+            if ("SENT".equals(status) && row.get("creditOf") != null) {
+                status = "CREDIT_NOTE";
+            }
             if (row.get("clientId") == null) {
                 throw refuse("invoices[].clientId is required");
             }
@@ -125,9 +140,6 @@ public class TestSupportController {
                     percent(row.get("retentionPct"), "invoices[].retentionPct"),
                     row.get("retentionReleasedOn") == null ? null
                             : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"));
-            if ("CREDIT_NOTE".equals(status) && row.get("creditOf") == null) {
-                throw refuse("an invoices[] row with status CREDIT_NOTE needs creditOf");
-            }
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 insert("invoice_line", line.get("id"),
@@ -148,12 +160,13 @@ public class TestSupportController {
             if (row.get("date") == null) {
                 throw refuse("payments[].date is required");
             }
-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded"},
+            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note"},
                     id(row.get("clientId")), cents(row.get("amount"), "payments[].amount"),
                     date(row.get("date"), "payments[].date"),
                     row.get("reference") == null ? null : row.get("reference").toString(),
                     flag(row.get("reversed"), "payments[].reversed"),
-                    money(row.get("refunded"), "payments[].refunded"));
+                    money(row.get("refunded"), "payments[].refunded"),
+                    row.get("creditNote") == null ? null : id(row.get("creditNote")));
             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
                 if (allocation.get("invoiceId") == null) {
@@ -165,10 +178,25 @@ public class TestSupportController {
                         allocation.get("date") == null ? null : date(allocation.get("date"), "payments[].allocations[].date"));
             }
         }
-        // An issued credit note keeps its grand total, which comes off its original.
-        for (Long noteId : jdbc.queryForList("SELECT id FROM invoice WHERE status = 'CREDIT_NOTE'", Long.class)) {
-            BigDecimal total = invoices.findWithLinesById(noteId).orElseThrow().total(taxRate.percent());
-            jdbc.update("UPDATE invoice SET credit_total = ? WHERE id = ?", total, noteId);
+        // An issued credit note keeps its grand total, which comes off what its original owes, then the
+        // retention it holds back, in the order they were issued; any rest is the client's credit.
+        BigDecimal rate = taxRate.percent();
+        for (Long noteId : jdbc.queryForList("SELECT id FROM invoice WHERE status = 'CREDIT_NOTE' ORDER BY id", Long.class)) {
+            Invoice note = invoices.findWithLinesById(noteId).orElseThrow();
+            BigDecimal total = note.total(rate);
+            BigDecimal applied = BigDecimal.ZERO;
+            BigDecimal toRetention = BigDecimal.ZERO;
+            Invoice original = invoices.findWithLinesById(note.getCreditOf()).orElse(null);
+            if (original != null) {
+                entityManager.refresh(original);
+                BigDecimal paid = payments.paidTo(List.of(original.getId())).stream()
+                        .map(r -> (BigDecimal) r[1]).findFirst().orElse(BigDecimal.ZERO);
+                BigDecimal[] taken = original.creditTaken(total, paid, rate);
+                applied = taken[0];
+                toRetention = taken[1];
+            }
+            jdbc.update("UPDATE invoice SET credit_total = ?, credit_applied = ?, credit_retention = ? WHERE id = ?",
+                    total, applied, toRetention, noteId);
         }
         // Keep generated ids clear of the seeded ones.
         for (String table : List.of("client", "invoice", "invoice_line", "payment")) {
@@ -213,7 +241,8 @@ public class TestSupportController {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
                     row.put("clientId", r.get("CLIENT_ID"));
-                    row.put("status", r.get("STATUS"));
+                    // An issued credit note is seeded as a sent one.
+                    row.put("status", "CREDIT_NOTE".equals(r.get("STATUS")) ? "SENT" : r.get("STATUS"));
                     row.put("issueDate", r.get("ISSUE_DATE") == null ? null : r.get("ISSUE_DATE").toString());
                     row.put("dueDate", r.get("DUE_DATE") == null ? null : r.get("DUE_DATE").toString());
                     row.put("discountPct", r.get("DISCOUNT_PCT"));
@@ -249,7 +278,7 @@ public class TestSupportController {
                             }).toList());
                     return row;
                 }).toList());
-        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference, reversed, refunded FROM payment ORDER BY id")
+        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference, reversed, refunded, credit_note FROM payment ORDER BY id")
                 .stream().map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -259,6 +288,9 @@ public class TestSupportController {
                     row.put("reference", r.get("REFERENCE"));
                     row.put("reversed", r.get("REVERSED"));
                     row.put("refunded", r.get("REFUNDED"));
+                    if (r.get("CREDIT_NOTE") != null) {
+                        row.put("creditNote", r.get("CREDIT_NOTE"));
+                    }
                     row.put("allocations", jdbc.queryForList(
                             "SELECT invoice_id, amount, applied_date FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
                             r.get("ID")).stream().map(a -> {

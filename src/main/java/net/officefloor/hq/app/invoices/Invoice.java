@@ -90,9 +90,24 @@ public class Invoice {
     @Column(name = "credit_total")
     private BigDecimal creditTotal;
 
-    /** What the credit notes issued against this invoice add up to; read from them. */
-    @Formula("(SELECT COALESCE(SUM(cn.credit_total), 0) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
+    /**
+     * What this credit note took off its original when issued (what it owed, then retention it held);
+     * null until then. Any rest of its grand total was held on the client's account as credit.
+     */
+    @Column(name = "credit_applied")
+    private BigDecimal creditApplied;
+
+    /** The part of {@link #creditApplied} that cleared retention its original held back. */
+    @Column(name = "credit_retention")
+    private BigDecimal creditRetention = BigDecimal.ZERO;
+
+    /** What the credit notes issued against this invoice took off it; read from them. */
+    @Formula("(SELECT COALESCE(SUM(cn.credit_applied), 0) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
     private BigDecimal credited = BigDecimal.ZERO;
+
+    /** The part of what is credited that cleared retention held back; read from the credit notes. */
+    @Formula("(SELECT COALESCE(SUM(cn.credit_retention), 0) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
+    private BigDecimal retentionCredited = BigDecimal.ZERO;
 
     /** How many credit notes have been issued against this invoice; read from them. */
     @Formula("(SELECT COUNT(*) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
@@ -167,9 +182,14 @@ public class Invoice {
         return creditNotesIssued > 0;
     }
 
-    /** Issues a draft credit note on the given date, keeping its grand total at the tax rate. */
-    public void markIssued(LocalDate issueDate, BigDecimal taxRate) {
+    /**
+     * Issues a draft credit note on the given date, keeping its grand total at the tax rate and what
+     * its original took of it (the part of that clearing held retention).
+     */
+    public void markIssued(LocalDate issueDate, BigDecimal taxRate, BigDecimal applied, BigDecimal toRetention) {
         this.creditTotal = total(taxRate);
+        this.creditApplied = applied;
+        this.creditRetention = toRetention;
         this.status = InvoiceStatus.CREDIT_NOTE;
         this.issueDate = issueDate;
     }
@@ -286,9 +306,27 @@ public class Invoice {
         return total(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.DOWN);
     }
 
-    /** The retention still held back at the tax rate: all of it until it is released, then nothing. */
+    /**
+     * The retention still held back at the tax rate: all of it until it is released, less what credit
+     * notes have cleared of it; then nothing.
+     */
     public BigDecimal retentionHeld(BigDecimal taxRate) {
-        return retentionReleasedOn == null ? retention(taxRate) : BigDecimal.ZERO.setScale(2);
+        if (retentionReleasedOn != null) {
+            return BigDecimal.ZERO.setScale(2);
+        }
+        BigDecimal cleared = retentionCredited == null ? BigDecimal.ZERO : retentionCredited;
+        return retention(taxRate).subtract(cleared).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * How a credit note of the amount comes off this invoice once the given amount has been paid, at
+     * the tax rate: first what it still owes, then the retention it holds back. The part taken off in
+     * all, and of that the part clearing retention; the rest is left over as credit.
+     */
+    public BigDecimal[] creditTaken(BigDecimal amount, BigDecimal paid, BigDecimal taxRate) {
+        BigDecimal toDue = amount.min(amountDue(paid, taxRate).max(BigDecimal.ZERO));
+        BigDecimal toRetention = amount.subtract(toDue).min(retentionHeld(taxRate));
+        return new BigDecimal[] { toDue.add(toRetention), toRetention };
     }
 
     /** The retention released at the tax rate: nothing until it is released, then all of it. */
