@@ -1158,8 +1158,8 @@ public class InvoiceService {
             }
             if (invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
                 throw new InvoiceRejectedException("A part payment must be at least "
-                        + invoice.currency().format(invoice.minimumPart(taxRate.percent()))
-                        + " (10% of the total), unless it settles the invoice.");
+                        + invoice.currency().format(invoice.minimumPart(paidSoFar, taxRate.percent()))
+                        + " (10% of what it still has due), unless it settles the invoice.");
             }
             if (date.isAfter(now)) {
                 throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
@@ -1443,8 +1443,8 @@ public class InvoiceService {
             }
             if (invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
                 throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
-                        + number + " is less than " + currency.format(invoice.minimumPart(taxRate.percent()))
-                        + " (10% of its total), unless it settles the invoice.");
+                        + number + " is less than " + currency.format(invoice.minimumPart(paidSoFar, taxRate.percent()))
+                        + " (10% of what it still has due), unless it settles the invoice.");
             }
             if (invoice.getIssueDate() != null && date.isBefore(invoice.getIssueDate())) {
                 throw new InvoiceRejectedException("The payment date cannot be before the issue date of " + number

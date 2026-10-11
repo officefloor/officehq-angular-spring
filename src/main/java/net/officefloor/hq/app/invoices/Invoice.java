@@ -1709,9 +1709,13 @@ public class Invoice {
                 : zero();
     }
 
-    /** The least a part payment may be at the tax rate: {@link #MINIMUM_PART_SHARE} of the grand total. */
-    public BigDecimal minimumPart(BigDecimal taxRate) {
-        return owedTotal(taxRate).multiply(MINIMUM_PART_SHARE).setScale(scale(), RoundingMode.HALF_UP);
+    /**
+     * The least a part payment may be at the tax rate once the amount was already paid:
+     * {@link #MINIMUM_PART_SHARE} of what the invoice still has due.
+     */
+    public BigDecimal minimumPart(BigDecimal paid, BigDecimal taxRate) {
+        return amountDue(paid, taxRate).max(BigDecimal.ZERO).multiply(MINIMUM_PART_SHARE)
+                .setScale(scale(), RoundingMode.HALF_UP);
     }
 
     /**
@@ -1724,7 +1728,7 @@ public class Invoice {
             return amount.compareTo(earliestUnpaid(paid, taxRate)) < 0
                     && amountDue(paid.add(amount), taxRate).signum() > 0;
         }
-        return amount.compareTo(minimumPart(taxRate)) < 0 && amountDue(paid.add(amount), taxRate).signum() > 0;
+        return amount.compareTo(minimumPart(paid, taxRate)) < 0 && amountDue(paid.add(amount), taxRate).signum() > 0;
     }
 
     /** Adds a line to the end of the invoice. */
