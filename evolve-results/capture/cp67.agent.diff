@@ -1,0 +1,284 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 2fe0dd5..c1171e9 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -334,9 +334,13 @@ export class InvoiceService {
+   }
+ 
+   // Records a deposit: the whole amount held on the client's account as credit, applied to no invoice
+-  // until one of the client's invoices is sent; refused (409) when dated after today. Answers the
++  // until one of the client's invoices is sent; refused (409) when dated after today. With a reference
++  // it is held for that one of the client's drafts, refused (409) when it is not one. Answers the
+   // client's invoices.
+-  recordDeposit(clientId: number, deposit: { amount: string; currency: Currency; date: string }): Observable<InvoiceSummary[]> {
++  recordDeposit(
++    clientId: number,
++    deposit: { amount: string; currency: Currency; date: string; reference?: string },
++  ): Observable<InvoiceSummary[]> {
+     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/deposits`, deposit);
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index 2449884..fe0183d 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -108,7 +108,8 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
+ // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
+ // invoice number may be quoted instead: it must pass its Luhn check and stands for that invoice's reference.
+ // Ticking Deposit instead holds the whole amount on the client's account as credit, applied to no
+-// invoice even when one is open; the client's credit is used when one of its invoices is sent.
++// invoice even when one is open; the client's credit is used when one of its invoices is sent. A
++// deposit quoting one of the client's drafts is held for that draft until it is sent.
+ @Component({
+   selector: 'app-payment-form',
+   imports: [ReactiveFormsModule],
+@@ -156,7 +157,9 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
+         data-testid="payment-form-deposit"
+         formControlName="deposit"
+       />
+-      <label for="payment-deposit">Deposit (hold as credit on the client's account)</label>
++      <label for="payment-deposit"
++        >Deposit (hold as credit on the client's account; quote a draft's reference to hold it for that invoice)</label
++      >
+       <button type="submit" data-testid="payment-form-submit" [disabled]="saving()">
+         Record payment
+       </button>
+@@ -268,9 +271,11 @@ export class PaymentForm {
+     }
+   }
+ 
+-  // Records the whole payment as a deposit, credit on the client's account; any reference is not kept.
++  // Records the whole payment as a deposit, credit on the client's account. With a reference (an RF
++  // reference or invoice number of one of the client's drafts; the server refuses any other) it is held
++  // for that invoice: used first when it is sent, and by nothing else until then.
+   private recordDeposit(payment: NewPayment): void {
+-    const problem = problemWithPayment({ ...payment, reference: '' }, false);
++    const problem = problemWithPayment(payment, false);
+     if (problem) {
+       this.form.markAllAsTouched();
+       this.error.set(problem);
+@@ -278,19 +283,26 @@ export class PaymentForm {
+     }
+     this.saving.set(true);
+     this.error.set('');
+-    this.service.recordDeposit(this.clientId(), { amount: payment.amount, currency: payment.currency, date: payment.date }).subscribe({
+-      next: (list) => {
+-        this.form.reset({ currency: this.currency() });
+-        this.saving.set(false);
+-        this.deposited.emit(list);
+-      },
+-      error: (e: HttpErrorResponse) => {
+-        const detail: unknown = e.error?.detail;
+-        this.error.set(
+-          typeof detail === 'string' && detail ? detail : 'The deposit could not be recorded.',
+-        );
+-        this.saving.set(false);
+-      },
+-    });
++    this.service
++      .recordDeposit(this.clientId(), {
++        amount: payment.amount,
++        currency: payment.currency,
++        date: payment.date,
++        reference: payment.reference || undefined,
++      })
++      .subscribe({
++        next: (list) => {
++          this.form.reset({ currency: this.currency() });
++          this.saving.set(false);
++          this.deposited.emit(list);
++        },
++        error: (e: HttpErrorResponse) => {
++          const detail: unknown = e.error?.detail;
++          this.error.set(
++            typeof detail === 'string' && detail ? detail : 'The deposit could not be recorded.',
++          );
++          this.saving.set(false);
++        },
++      });
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index d8b81e4..f665df0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -229,7 +229,10 @@ public class InvoiceController {
+             String reference) {
+     }
+ 
+-    /** A deposit to hold as credit: an amount more than zero with at most two decimals, and the date it was paid. */
++    /**
++     * A deposit to hold as credit: an amount more than zero with at most two decimals, the date it was
++     * paid, and optionally the reference of the client's draft it is held for.
++     */
+     public record NewDeposit(
+             @NotNull(message = "Enter an amount.")
+             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
+@@ -238,7 +241,10 @@ public class InvoiceController {
+             // The currency it was paid in; the client's own when left out.
+             Currency currency,
+             @NotNull(message = "Enter the date it was paid.")
+-            LocalDate date) {
++            LocalDate date,
++            // The reference or invoice number of the client's draft to hold it for; none when left out.
++            @Size(max = 64, message = "The reference must be at most 64 characters.")
++            String reference) {
+     }
+ 
+     /** A refund of unused credit: an amount more than zero with at most two decimals, and the date it was refunded. */
+@@ -557,7 +563,7 @@ public class InvoiceController {
+     @PostMapping("/api/clients/{clientId}/deposits")
+     @ResponseStatus(HttpStatus.CREATED)
+     public List<InvoiceSummary> recordDeposit(@PathVariable Long clientId, @Valid @RequestBody NewDeposit body) {
+-        invoices.recordDeposit(clientId, body.amount(), body.currency(), body.date())
++        invoices.recordDeposit(clientId, body.amount(), body.currency(), body.date(), reference(body.reference()))
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+         return forClient(clientId);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 9cd579a..a97d2f5 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -513,14 +513,27 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Uses the client's credit on the invoice just sent, up to what it has due: the oldest payment's
+-     * credit first (lower id first on the same date), each part applied today and recorded in the audit.
++     * Uses the client's credit on the invoice just sent, up to what it has due: deposits held for it
++     * first, then the oldest payment's credit (lower id first on the same date), never a deposit held
++     * for another of the client's drafts; each part applied today and recorded in the audit.
+      */
+     private void applyCredit(Invoice invoice) {
+         BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
+         LocalDate now = today.date();
+         boolean used = false;
++        Map<String, Long> drafts = draftsByReference(invoice.getClientId());
++        List<Payment> usable = new ArrayList<>();
++        List<Payment> others = new ArrayList<>();
+         for (Payment payment : payments.findForClient(invoice.getClientId())) {
++            Long heldFor = heldFor(payment, drafts);
++            if (invoice.getId().equals(heldFor)) {
++                usable.add(payment);
++            } else if (heldFor == null) {
++                others.add(payment);
++            }
++        }
++        usable.addAll(others);
++        for (Payment payment : usable) {
+             if (due.signum() <= 0) {
+                 break;
+             }
+@@ -544,28 +557,37 @@ public class InvoiceService {
+     /**
+      * Records a deposit of the amount on the date from the client: the whole amount is held on the
+      * client's account as credit, applied to no invoice, and recorded in the audit; empty if no such
+-     * client. The amount has already been checked; a date after today is refused.
++     * client. With a reference (null when none, already checked) it is held for that one of the
++     * client's drafts (see {@link #heldFor}); a reference that is not one of its drafts' is refused.
++     * The amount has already been checked; a date after today is refused.
+      */
+     @Transactional
+-    public Optional<Payment> recordDeposit(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date) {
++    public Optional<Payment> recordDeposit(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
++            String reference) {
+         Optional<Client> client = clients.findById(clientId);
+         if (client.isEmpty()) {
+             return Optional.empty();
+         }
++        if (reference != null && !draftsByReference(clientId).containsKey(reference)) {
++            throw new InvoiceRejectedException(PaymentReference.grouped(reference)
++                    + " is not the reference of any of this client's drafts, so the deposit cannot be held for it.");
++        }
+         Currency currency = client.get().getCurrency();
+         BigDecimal amount = converted(paidAmount, paidIn, currency);
+         LocalDate now = today.date();
+         if (date.isAfter(now)) {
+             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+         }
+-        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date).paidIn(paidIn, paidAmount, currency));
++        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date, reference)
++                .paidIn(paidIn, paidAmount, currency));
+         audit.record("DEPOSIT_RECORDED id=" + payment.getId() + " client=" + clientId + " amount="
+                 + amount.setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+         return Optional.of(payment);
+     }
+ 
+     /**
+-     * Refunds the amount of the client's unused credit on the date: the oldest payment's credit first
++     * Refunds the amount of the client's unused credit on the date, never a deposit held for one of its
++     * drafts: the oldest payment's credit first
+      * (lower id first on the same date), then the next, each part recorded in the audit; empty if no
+      * such client. The amount has already been checked; a date after today or before a payment it
+      * would come from, or an amount more than the client's credit, is refused.
+@@ -586,7 +608,11 @@ public class InvoiceService {
+         List<BigDecimal> parts = new ArrayList<>();
+         BigDecimal left = amount;
+         BigDecimal credit = BigDecimal.ZERO;
++        Map<String, Long> drafts = draftsByReference(clientId);
+         for (Payment payment : payments.findForClient(clientId)) {
++            if (heldFor(payment, drafts) != null) {
++                continue;
++            }
+             BigDecimal unused = payment.credit();
+             if (unused.signum() <= 0) {
+                 continue;
+@@ -983,6 +1009,34 @@ public class InvoiceService {
+         }
+     }
+ 
++    /** The RF reference of each of the client's drafts, to its invoice id. */
++    private Map<String, Long> draftsByReference(Long clientId) {
++        Map<String, Long> drafts = new HashMap<>();
++        for (Invoice invoice : invoices.findByClientIdOrderByIdAsc(clientId)) {
++            if (invoice.isDraft() && !invoice.isCreditNote()) {
++                drafts.put(PaymentReference.of(invoice.getId()), invoice.getId());
++            }
++        }
++        return drafts;
++    }
++
++    /**
++     * The draft the payment is held for, or null when it is ordinary credit: a payment whose reference
++     * (an RF reference or invoice number, as stored) is that of one of the client's drafts is a deposit
++     * held for it. Once that invoice has been sent the deposit's rest is ordinary credit.
++     */
++    private static Long heldFor(Payment payment, Map<String, Long> drafts) {
++        String reference = payment.getReference();
++        if (reference == null || reference.isBlank()) {
++            return null;
++        }
++        String compact = reference.replaceAll("\\s", "").toUpperCase();
++        if (compact.startsWith("INV")) {
++            compact = InvoiceNumber.idOf(compact).map(PaymentReference::of).orElse(compact);
++        }
++        return drafts.get(compact);
++    }
++
+     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
+     private void recordCreditHeld(Payment payment) {
+         BigDecimal credit = payment.credit();
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index 50280fa..6aad55c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -93,10 +93,19 @@ public class Payment {
+ 
+     /** A deposit: the whole amount held on the client's account as credit, applied to no invoice. */
+     public static Payment deposit(Long clientId, BigDecimal amount, LocalDate date) {
++        return deposit(clientId, amount, date, null);
++    }
++
++    /**
++     * A deposit quoting the reference of one of the client's drafts (null when none): held for that
++     * invoice while it is a draft.
++     */
++    public static Payment deposit(Long clientId, BigDecimal amount, LocalDate date, String reference) {
+         Payment payment = new Payment();
+         payment.clientId = clientId;
+         payment.amount = amount;
+         payment.date = date;
++        payment.reference = reference;
+         return payment;
+     }
+ 
