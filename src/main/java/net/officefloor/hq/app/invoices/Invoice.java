@@ -133,9 +133,11 @@ public class Invoice {
         this.status = InvoiceStatus.VOID;
     }
 
-    /** Marks the invoice sent; its issue and due dates stay as they are. */
-    public void markSent() {
+    /** Marks the invoice sent, issued on the given date and due on the given date. */
+    public void markSent(LocalDate issueDate, LocalDate dueDate) {
         this.status = InvoiceStatus.SENT;
+        this.issueDate = issueDate;
+        this.dueDate = dueDate;
     }
 
     /** Puts a sent invoice back to draft, so it has to be sent again. */

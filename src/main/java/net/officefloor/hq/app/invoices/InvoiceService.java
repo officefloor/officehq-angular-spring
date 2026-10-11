@@ -137,7 +137,8 @@ public class InvoiceService {
     }
 
     /**
-     * Sends a draft invoice, keeping its issue and due dates, and records it in the audit; empty if
+     * Sends a draft invoice, issuing it today and making it due on the last day of the following
+     * month, and records it in the audit; empty if
      * no such invoice. An invoice already sent, or with no lines, is refused.
      */
     @Transactional
@@ -153,7 +154,8 @@ public class InvoiceService {
             if (invoice.getLines().isEmpty()) {
                 throw new InvoiceRejectedException("Add at least one line before sending the invoice.");
             }
-            invoice.markSent();
+            LocalDate issued = today.date();
+            invoice.markSent(issued, dueDateFor(issued));
             invoices.saveAndFlush(invoice);
             audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
                     + " total=" + invoice.total(taxRate.percent()).toPlainString());
