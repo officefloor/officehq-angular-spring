@@ -61,9 +61,9 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
   return '';
 }
 
-// Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`); once any
-// invoice in the list has a part, the payment is spread over those invoices instead, and the parts
-// must add up to it. The server refuses a payment on a draft, over what is due, or dated after today
+// Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`), or, when none
+// is open, to the client's unpaid invoices oldest first; once any invoice in the list has a part, the
+// payment is spread over those invoices instead, and the parts must add up to it. The server refuses a payment on a draft, over what is due, or dated after today
 // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's.
 @Component({
   selector: 'app-payment-form',
@@ -136,8 +136,6 @@ export class PaymentForm {
     let problem = problemWithPayment(payment);
     if (allocations.length > 0) {
       problem = [problem, problemWithAllocations(payment, allocations)].filter((p) => p).join(' ');
-    } else if (invoiceId === null) {
-      problem = [problem, 'Enter how much of the payment goes to each invoice.'].filter((p) => p).join(' ');
     }
     if (problem) {
       this.form.markAllAsTouched();
@@ -157,7 +155,7 @@ export class PaymentForm {
       );
       this.saving.set(false);
     };
-    if (allocations.length > 0) {
+    if (allocations.length > 0 || invoiceId === null) {
       this.service
         .recordSplitPayment(this.clientId(), { ...payment, allocations })
         .subscribe({

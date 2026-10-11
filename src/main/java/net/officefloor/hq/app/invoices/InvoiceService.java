@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
@@ -200,6 +201,45 @@ public class InvoiceService {
                     + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
         });
         return found;
+    }
+
+    /**
+     * Records one payment of the amount on the date against the client's unpaid sent invoices, oldest
+     * issue date first (lower id first on the same date), paying each off in full before the next.
+     * A payment more than everything the client owes is refused; otherwise it is checked and recorded
+     * as a split payment over the invoices it reaches.
+     */
+    @Transactional
+    public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, String reference) {
+        List<Invoice> sent = invoices.findByClientIdOrderByIdAsc(clientId).stream()
+                .filter(i -> !i.isDraft())
+                .sorted(Comparator.comparing(Invoice::getIssueDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(Invoice::getId))
+                .toList();
+        Map<Long, BigDecimal> paid = paid(sent);
+        BigDecimal owed = BigDecimal.ZERO;
+        BigDecimal left = amount;
+        List<PaymentAllocation> parts = new ArrayList<>();
+        for (Invoice invoice : sent) {
+            BigDecimal due = invoice.amountDue(paid.get(invoice.getId()), taxRate.percent());
+            if (due.signum() <= 0) {
+                continue;
+            }
+            owed = owed.add(due);
+            if (left.signum() > 0) {
+                BigDecimal part = left.min(due);
+                parts.add(new PaymentAllocation(invoice.getId(), part));
+                left = left.subtract(part);
+            }
+        }
+        if (owed.signum() <= 0) {
+            throw new InvoiceRejectedException("The client has no unpaid invoices to pay.");
+        }
+        if (left.signum() > 0) {
+            throw new InvoiceRejectedException("The payment is more than the $" + owed.setScale(2).toPlainString()
+                    + " the client owes.");
+        }
+        return recordSplitPayment(clientId, amount, date, reference, parts);
     }
 
     /**

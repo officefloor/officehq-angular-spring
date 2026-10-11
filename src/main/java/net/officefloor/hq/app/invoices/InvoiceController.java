@@ -243,14 +243,19 @@ public class InvoiceController {
     }
 
     /**
-     * Records one payment spread over several of the client's invoices; answers the client's invoices
+     * Records one payment spread over several of the client's invoices, or, with no parts given,
+     * applied to its oldest unpaid invoices first; answers the client's invoices
      * with their new statuses.
      */
     @PostMapping("/api/clients/{clientId}/payments")
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
-        invoices.recordSplitPayment(clientId, body.amount(), body.date(), reference(body.reference()),
-                body.allocations().stream().map(a -> new PaymentAllocation(a.invoiceId(), a.amount())).toList());
+        if (body.allocations().isEmpty()) {
+            invoices.recordAutoPayment(clientId, body.amount(), body.date(), reference(body.reference()));
+        } else {
+            invoices.recordSplitPayment(clientId, body.amount(), body.date(), reference(body.reference()),
+                    body.allocations().stream().map(a -> new PaymentAllocation(a.invoiceId(), a.amount())).toList());
+        }
         return forClient(clientId);
     }
 
