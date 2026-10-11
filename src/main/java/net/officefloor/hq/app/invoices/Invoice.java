@@ -147,6 +147,14 @@ public class Invoice {
     @Column(name = "instalment_rate")
     private BigDecimal instalmentRate = BigDecimal.ZERO;
 
+    /**
+     * The annual rate the plan is worked out at: its own rate, but no more than the legal maximum of
+     * the client's region.
+     */
+    public BigDecimal planRate() {
+        return regionMaxInterest == null ? instalmentRate : instalmentRate.min(new BigDecimal(regionMaxInterest.trim()));
+    }
+
     /** The plan's down payment, a percentage of the grand total from 0 to {@link #MAX_PLAN_DOWN_PCT}. */
     @Column(name = "plan_down_pct")
     private BigDecimal planDownPct = BigDecimal.ZERO;
@@ -1502,7 +1510,7 @@ public class Invoice {
         }
         BigDecimal balance = index == 0 ? principal.setScale(scale(), RoundingMode.HALF_UP)
                 : schedule.get(index - 1).balance();
-        BigDecimal interest = balance.multiply(instalmentRate.divide(BigDecimal.valueOf(1200), MathContext.DECIMAL128))
+        BigDecimal interest = balance.multiply(planRate().divide(BigDecimal.valueOf(1200), MathContext.DECIMAL128))
                 .setScale(scale(), RoundingMode.HALF_UP);
         List<Instalment> skipped = new ArrayList<>(schedule.subList(0, index));
         skipped.add(new Instalment(skippedInstalment, dues.get(index), interest, interest, zero(), balance));
@@ -1511,12 +1519,12 @@ public class Invoice {
     }
 
     /**
-     * An ordinary loan of the principal at the plan's rate over one instalment per due date, numbered
+     * An ordinary loan of the principal at the plan's rate (see {@link #planRate}) over one instalment per due date, numbered
      * from the given number (see {@link #schedule}).
      */
     private List<Instalment> amortise(BigDecimal principal, List<LocalDate> dues, int firstNumber) {
         MathContext mc = MathContext.DECIMAL128;
-        BigDecimal i = instalmentRate.divide(BigDecimal.valueOf(1200), mc);
+        BigDecimal i = planRate().divide(BigDecimal.valueOf(1200), mc);
         int n = dues.size();
         BigDecimal payment;
         if (i.signum() == 0) {
