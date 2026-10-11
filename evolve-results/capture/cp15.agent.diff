@@ -1,0 +1,790 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-format.ts b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+index 89c8785..2bf4962 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-format.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+@@ -1,6 +1,11 @@
+ import { InvoiceStatus } from './invoice.service';
+ 
+-const STATUS_LABEL: Record<InvoiceStatus, string> = { DRAFT: 'Draft', SENT: 'Sent' };
++const STATUS_LABEL: Record<InvoiceStatus, string> = {
++  DRAFT: 'Draft',
++  SENT: 'Sent',
++  PART_PAID: 'Part paid',
++  PAID: 'Paid',
++};
+ const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+ 
+ export function statusLabel(status: InvoiceStatus): string {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 208d196..12e6c5f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -1,7 +1,7 @@
+ import { Component, effect, inject, input, output, signal } from '@angular/core';
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { InvoiceDetail, InvoiceService, NewLine } from './invoice.service';
++import { InvoiceDetail, InvoiceService, NewLine, NewPayment } from './invoice.service';
+ import { money, statusLabel } from './invoice-format';
+ 
+ // A positive decimal with at most two decimals, e.g. 1, 1.5 or 12.35. The server applies the same rules.
+@@ -24,6 +24,22 @@ function problemWithDiscount(pct: string): string {
+   return '';
+ }
+ 
++// What is wrong with a payment, or '' when it can be recorded.
++function problemWithPayment(payment: NewPayment): string {
++  const problems: string[] = [];
++  if (!payment.amount) {
++    problems.push('Enter an amount.');
++  } else if (!TWO_DECIMALS.test(payment.amount)) {
++    problems.push('The amount must be a number with at most two decimals.');
++  } else if (Number(payment.amount) < 0.01) {
++    problems.push('The amount must be at least $0.01.');
++  }
++  if (!/^\d{4}-\d{2}-\d{2}$/.test(payment.date)) {
++    problems.push('Enter the date it was paid.');
++  }
++  return problems.join(' ');
++}
++
+ // What is wrong with a line, or '' when it can be added.
+ function problemWith(line: NewLine): string {
+   const problems: string[] = [];
+@@ -48,7 +64,9 @@ function problemWith(line: NewLine): string {
+ }
+ 
+ // One opened invoice: its status, its lines and its totals. A draft takes new lines and a
+-// percentage discount, and can be sent; once sent, the server refuses further changes.
++// percentage discount, and can be sent; once sent, the server refuses further changes. A sent
++// invoice takes payments until nothing is due; the panel lists them with what has been paid and
++// what is still due.
+ @Component({
+   selector: 'app-invoice-panel',
+   imports: [ReactiveFormsModule],
+@@ -106,6 +124,71 @@ function problemWith(line: NewLine): string {
+           </tfoot>
+         </table>
+ 
++        @if (inv.status !== 'DRAFT') {
++          <table aria-label="Payments">
++            <thead>
++              <tr>
++                <th scope="col">Paid on</th>
++                <th scope="col">Amount</th>
++              </tr>
++            </thead>
++            <tbody>
++              @for (p of inv.payments; track p.id) {
++                <tr [attr.data-testid]="'payment-row-' + p.id">
++                  <td data-testid="payment-date">{{ p.date }}</td>
++                  <td data-testid="payment-amount">{{ money(p.amount) }}</td>
++                </tr>
++              } @empty {
++                <tr>
++                  <td colspan="2" data-testid="payment-empty">No payments yet.</td>
++                </tr>
++              }
++            </tbody>
++            <tfoot>
++              <tr>
++                <th scope="row">Paid</th>
++                <td data-testid="invoice-paid">{{ money(inv.paid) }}</td>
++              </tr>
++              <tr>
++                <th scope="row">Amount due</th>
++                <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
++              </tr>
++            </tfoot>
++          </table>
++        }
++
++        @if (inv.status === 'SENT' || inv.status === 'PART_PAID') {
++          <form
++            [formGroup]="paymentForm"
++            (ngSubmit)="recordPayment(inv.id)"
++            aria-label="Record a payment"
++            novalidate
++          >
++            <label for="payment-amount">Amount ($)</label>
++            <input
++              id="payment-amount"
++              data-testid="payment-form-amount"
++              inputmode="decimal"
++              formControlName="amount"
++              required
++            />
++            <label for="payment-date">Paid on</label>
++            <input
++              id="payment-date"
++              type="date"
++              data-testid="payment-form-date"
++              formControlName="date"
++              required
++            />
++            <button type="submit" data-testid="payment-form-submit" [disabled]="savingPayment()">
++              Record payment
++            </button>
++            @if (paymentError()) {
++              <p role="alert" data-testid="payment-form-error">{{ paymentError() }}</p>
++            }
++          </form>
++        }
++
+         @if (inv.status === 'DRAFT') {
+           <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv.id)">
+             Send invoice
+@@ -193,6 +276,8 @@ export class InvoicePanel {
+   protected readonly discountError = signal('');
+   protected readonly sending = signal(false);
+   protected readonly sendError = signal('');
++  protected readonly savingPayment = signal(false);
++  protected readonly paymentError = signal('');
+   protected readonly statusLabel = statusLabel;
+   protected readonly money = money;
+ 
+@@ -203,6 +288,11 @@ export class InvoicePanel {
+     taxExempt: new FormControl(false, { nonNullable: true }),
+   });
+ 
++  protected readonly paymentForm = new FormGroup({
++    amount: new FormControl('', { nonNullable: true }),
++    date: new FormControl('', { nonNullable: true }),
++  });
++
+   protected readonly discountForm = new FormGroup({
+     pct: new FormControl('', { nonNullable: true }),
+   });
+@@ -216,6 +306,8 @@ export class InvoicePanel {
+       this.discountForm.reset();
+       this.discountError.set('');
+       this.sendError.set('');
++      this.paymentForm.reset();
++      this.paymentError.set('');
+       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
+       onCleanup(() => sub.unsubscribe());
+     });
+@@ -281,6 +373,37 @@ export class InvoicePanel {
+     });
+   }
+ 
++  protected recordPayment(invoiceId: number): void {
++    const raw = this.paymentForm.getRawValue();
++    const payment: NewPayment = {
++      amount: raw.amount.trim().replace(/^\$/, ''),
++      date: raw.date.trim(),
++    };
++    const problem = problemWithPayment(payment);
++    if (problem) {
++      this.paymentForm.markAllAsTouched();
++      this.paymentError.set(problem);
++      return;
++    }
++    this.savingPayment.set(true);
++    this.paymentError.set('');
++    this.service.recordPayment(invoiceId, payment).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.paymentForm.reset();
++        this.savingPayment.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.paymentError.set(
++          typeof detail === 'string' && detail ? detail : 'The payment could not be recorded.',
++        );
++        this.savingPayment.set(false);
++      },
++    });
++  }
++
+   protected send(invoiceId: number): void {
+     this.sending.set(true);
+     this.sendError.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index d138ac3..3ec8680 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -2,7 +2,9 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ 
+-export type InvoiceStatus = 'DRAFT' | 'SENT';
++// A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
++// nothing is due; the server works this out from its payments.
++export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID';
+ 
+ // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
+ // server: the grand total — the lines' subtotal less any discount plus tax.
+@@ -30,11 +32,21 @@ export interface InvoiceLineView {
+   taxExempt: boolean;
+ }
+ 
++// A payment made to an opened invoice: the amount that went to it, a decimal string to the cent,
++// and the date it was paid (yyyy-mm-dd).
++export interface InvoicePaymentView {
++  id: number;
++  amount: string;
++  date: string;
++}
++
+ // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
+ // percentage taken off the subtotal, without trailing zeros ("12.5"); `discount` is the amount it
+ // takes off, rounded half up to the cent; `taxRate` is the workspace's tax percentage (without
+ // trailing zeros, "0" when none is set) and `tax` is that rate on the taxable lines' amounts less
+ // their discount shares, rounded half up to the cent; `total` is the subtotal less the discount plus the tax.
++// `payments` are the payments made to it, oldest first; `paid` is what they add up to and
++// `amountDue` is the total less that.
+ export interface InvoiceDetail {
+   id: number;
+   number: string;
+@@ -49,6 +61,16 @@ export interface InvoiceDetail {
+   taxRate: string;
+   tax: string;
+   total: string;
++  payments: InvoicePaymentView[];
++  paid: string;
++  amountDue: string;
++}
++
++// A payment to record against a sent invoice: the amount as entered and the date (yyyy-mm-dd),
++// checked again by the server.
++export interface NewPayment {
++  amount: string;
++  date: string;
+ }
+ 
+ // A line to add to a draft: quantity and unit price as entered, checked again by the server.
+@@ -97,4 +119,11 @@ export class InvoiceService {
+   send(invoiceId: number): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/send`, null);
+   }
++
++  // Records a payment against a sent invoice that still has something due; refused (409) when it
++  // is a draft, already paid, or the amount is more than is due. Answers the invoice with its
++  // payments and new status.
++  recordPayment(invoiceId: number, payment: NewPayment): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments`, payment);
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 45b6d7d..b1ddec1 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -30,12 +30,14 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
+-    private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices");
++    private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt");
++    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "allocations");
++    private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
+ 
+     private final Audit audit;
+@@ -52,7 +54,8 @@ public class TestSupportController {
+     public void reset() {
+         audit.clear();
+         jdbc.execute("DELETE FROM app_setting");
+-        for (String table : List.of("invoice_line", "invoice", "client")) {
++        jdbc.execute("DELETE FROM payment_allocation");
++        for (String table : List.of("payment", "invoice_line", "invoice", "client")) {
+             jdbc.execute("DELETE FROM " + table);
+             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH 1");
+         }
+@@ -123,8 +126,29 @@ public class TestSupportController {
+                         flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"));
+             }
+         }
++        for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
++            only(row, PAYMENT_FIELDS, "payments[]");
++            if (row.get("clientId") == null) {
++                throw refuse("payments[].clientId is required");
++            }
++            if (row.get("date") == null) {
++                throw refuse("payments[].date is required");
++            }
++            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date"},
++                    id(row.get("clientId")), cents(row.get("amount"), "payments[].amount"),
++                    date(row.get("date"), "payments[].date"));
++            for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
++                only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
++                if (allocation.get("invoiceId") == null) {
++                    throw refuse("payments[].allocations[].invoiceId is required");
++                }
++                jdbc.update("INSERT INTO payment_allocation (payment_id, invoice_id, amount) VALUES (?, ?, ?)",
++                        paymentId, id(allocation.get("invoiceId")),
++                        cents(allocation.get("amount"), "payments[].allocations[].amount"));
++            }
++        }
+         // Keep generated ids clear of the seeded ones.
+-        for (String table : List.of("client", "invoice", "invoice_line")) {
++        for (String table : List.of("client", "invoice", "invoice_line", "payment")) {
+             Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM " + table, Long.class);
+             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH " + next);
+         }
+@@ -178,6 +202,23 @@ public class TestSupportController {
+                             }).toList());
+                     return row;
+                 }).toList());
++        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date FROM payment ORDER BY id")
++                .stream().map(r -> {
++                    Map<String, Object> row = new LinkedHashMap<>();
++                    row.put("id", r.get("ID"));
++                    row.put("clientId", r.get("CLIENT_ID"));
++                    row.put("amount", r.get("AMOUNT"));
++                    row.put("date", r.get("PAYMENT_DATE").toString());
++                    row.put("allocations", jdbc.queryForList(
++                            "SELECT invoice_id, amount FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
++                            r.get("ID")).stream().map(a -> {
++                                Map<String, Object> allocation = new LinkedHashMap<>();
++                                allocation.put("invoiceId", a.get("INVOICE_ID"));
++                                allocation.put("amount", a.get("AMOUNT"));
++                                return allocation;
++                            }).toList());
++                    return row;
++                }).toList());
+         return out;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 6e4861e..a04a2a6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -106,6 +106,19 @@ public class Invoice {
+         this.status = InvoiceStatus.SENT;
+     }
+ 
++    /** The status once the given amount has been paid against the grand total at the tax rate. */
++    public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate) {
++        if (status != InvoiceStatus.SENT || paid.signum() <= 0) {
++            return status;
++        }
++        return amountDue(paid, taxRate).signum() > 0 ? InvoiceStatus.PART_PAID : InvoiceStatus.PAID;
++    }
++
++    /** What is still due once the given amount has been paid: the grand total less it. */
++    public BigDecimal amountDue(BigDecimal paid, BigDecimal taxRate) {
++        return total(taxRate).subtract(paid);
++    }
++
+     /** Adds a line to the end of the invoice. */
+     public void addLine(InvoiceLine line) {
+         lines.add(line);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 10a84d3..309356a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Map;
+ import java.util.stream.IntStream;
+ import net.officefloor.hq.app.TaxRate;
+ import org.springframework.http.HttpStatus;
+@@ -25,13 +26,23 @@ import org.springframework.web.server.ResponseStatusException;
+ @RestController
+ public class InvoiceController {
+ 
+-    /** An invoice as listed: its total is a decimal string to the cent, e.g. "25.25". */
++    /**
++     * An invoice as listed: its total is a decimal string to the cent, e.g. "25.25"; its status
++     * follows what has been paid.
++     */
+     public record InvoiceSummary(Long id, String number, InvoiceStatus status, String total,
+             LocalDate issueDate, LocalDate dueDate) {
+-        static InvoiceSummary of(Invoice i, BigDecimal taxRate) {
++        static InvoiceSummary of(Invoice i, BigDecimal taxRate, BigDecimal paid) {
+             BigDecimal total = i.total(taxRate);
+-            return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.getStatus(), total.toPlainString(), i.getIssueDate(),
+-                    i.getDueDate());
++            return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.statusWhenPaid(paid, taxRate),
++                    total.toPlainString(), i.getIssueDate(), i.getDueDate());
++        }
++    }
++
++    /** A payment made to an opened invoice: the amount that went to it (to the cent) and its date. */
++    public record PaymentView(Long id, String amount, LocalDate date) {
++        static PaymentView of(Payment p, Long invoiceId) {
++            return new PaymentView(p.getId(), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate());
+         }
+     }
+ 
+@@ -53,20 +64,26 @@ public class InvoiceController {
+      * An opened invoice: its lines, subtotal, discount percentage (without trailing zeros, "12.5"),
+      * the amount it takes off, the tax rate (without trailing zeros) and the tax charged on the taxable
+      * lines less their discount shares, and the
+-     * grand total (money as decimal strings to the cent).
++     * grand total; the payments made to it, what they add up to and what is still due (money as
++     * decimal strings to the cent). Its status follows what has been paid.
+      */
+     public record InvoiceDetail(Long id, String number, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discount,
+-            String taxRate, String tax, String total) {
+-        static InvoiceDetail of(Invoice i, BigDecimal taxRate) {
++            String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue) {
++        static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments) {
++            BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
++                    .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+             List<BigDecimal> shares = i.discountShares();
+             List<LineView> lines = IntStream.range(0, shares.size())
+                     .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n))).toList();
+-            return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()), i.getClientId(), i.getStatus(), i.getIssueDate(), i.getDueDate(),
++            return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()), i.getClientId(),
++                    i.statusWhenPaid(paid, taxRate), i.getIssueDate(), i.getDueDate(),
+                     lines, i.subtotal().toPlainString(),
+                     i.getDiscountPct().stripTrailingZeros().toPlainString(), i.discount().toPlainString(),
+                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
+-                    i.total(taxRate).toPlainString());
++                    i.total(taxRate).toPlainString(),
++                    payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
++                    i.amountDue(paid, taxRate).toPlainString());
+         }
+     }
+ 
+@@ -98,6 +115,16 @@ public class InvoiceController {
+             Boolean taxExempt) {
+     }
+ 
++    /** A payment to record: an amount of at least $0.01 and the date it was paid. */
++    public record NewPayment(
++            @NotNull(message = "Enter an amount.")
++            @DecimalMin(value = "0.01", message = "The amount must be at least $0.01.")
++            @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
++            BigDecimal amount,
++            @NotNull(message = "Enter the date it was paid.")
++            LocalDate date) {
++    }
++
+     private final InvoiceService invoices;
+     private final TaxRate taxRate;
+ 
+@@ -107,17 +134,19 @@ public class InvoiceController {
+     }
+ 
+     private InvoiceSummary summary(Invoice i) {
+-        return InvoiceSummary.of(i, taxRate.percent());
++        return InvoiceSummary.of(i, taxRate.percent(), invoices.paid(List.of(i)).get(i.getId()));
+     }
+ 
+     private InvoiceDetail detail(Invoice i) {
+-        return InvoiceDetail.of(i, taxRate.percent());
++        return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()));
+     }
+ 
+     @GetMapping("/api/clients/{clientId}/invoices")
+     public List<InvoiceSummary> forClient(@PathVariable Long clientId) {
+         BigDecimal rate = taxRate.percent();
+-        return invoices.forClient(clientId).stream().map(i -> InvoiceSummary.of(i, rate)).toList();
++        List<Invoice> list = invoices.forClient(clientId);
++        Map<Long, BigDecimal> paid = invoices.paid(list);
++        return list.stream().map(i -> InvoiceSummary.of(i, rate, paid.get(i.getId()))).toList();
+     }
+ 
+     @PostMapping("/api/clients/{clientId}/invoices")
+@@ -165,4 +194,12 @@ public class InvoiceController {
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
++
++    @PostMapping("/api/invoices/{id}/payments")
++    @ResponseStatus(HttpStatus.CREATED)
++    public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
++        return invoices.recordPayment(id, body.amount(), body.date())
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+index 985618e..97b4c64 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RestControllerAdvice(assignableTypes = InvoiceController.class)
+ public class InvoiceErrors {
+ 
+-    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct");
++    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "amount", "date");
+ 
+     @ExceptionHandler(MethodArgumentNotValidException.class)
+     public ProblemDetail invalid(MethodArgumentNotValidException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index ae0382b..67186a3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -2,7 +2,10 @@ package net.officefloor.hq.app.invoices;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.math.RoundingMode;
++import java.util.HashMap;
+ import java.util.List;
++import java.util.Map;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.TaxRate;
+@@ -11,19 +14,24 @@ import net.officefloor.hq.app.clients.ClientRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** Lists a client's invoices, opens one, starts new drafts, adds lines to them, gives them a discount and sends them. */
++/**
++ * Lists a client's invoices, opens one, starts new drafts, adds lines to them, gives them a discount,
++ * sends them and records payments against them.
++ */
+ @Service
+ public class InvoiceService {
+ 
+     private final InvoiceRepository invoices;
++    private final PaymentRepository payments;
+     private final ClientRepository clients;
+     private final Today today;
+     private final TaxRate taxRate;
+     private final Audit audit;
+ 
+-    public InvoiceService(InvoiceRepository invoices, ClientRepository clients, Today today, TaxRate taxRate,
+-            Audit audit) {
++    public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
++            Today today, TaxRate taxRate, Audit audit) {
+         this.invoices = invoices;
++        this.payments = payments;
+         this.clients = clients;
+         this.today = today;
+         this.taxRate = taxRate;
+@@ -112,4 +120,49 @@ public class InvoiceService {
+         });
+         return found;
+     }
++
++    /** The payments made to the invoice, oldest first, with their allocations. */
++    @Transactional(readOnly = true)
++    public List<Payment> payments(Long invoiceId) {
++        return payments.findForInvoice(invoiceId);
++    }
++
++    /** What has been paid to each of the invoices; an invoice paid nothing is paid zero. */
++    @Transactional(readOnly = true)
++    public Map<Long, BigDecimal> paid(List<Invoice> list) {
++        Map<Long, BigDecimal> paid = new HashMap<>();
++        list.forEach(i -> paid.put(i.getId(), BigDecimal.ZERO.setScale(2)));
++        if (!list.isEmpty()) {
++            for (Object[] row : payments.paidTo(list.stream().map(Invoice::getId).toList())) {
++                paid.put((Long) row[0], ((BigDecimal) row[1]).setScale(2));
++            }
++        }
++        return paid;
++    }
++
++    /**
++     * Records a payment of the amount on the date against a sent invoice that still has something
++     * due, and records it in the audit; empty if no such invoice. The amount has already been
++     * checked; a draft, an invoice already paid, or an amount over what is due is refused.
++     */
++    @Transactional
++    public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal amount, LocalDate date) {
++        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isDraft()) {
++                throw new InvoiceRejectedException("Send the invoice before recording a payment.");
++            }
++            BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
++            if (due.signum() <= 0) {
++                throw new InvoiceRejectedException("This invoice has already been paid.");
++            }
++            if (amount.compareTo(due) > 0) {
++                throw new InvoiceRejectedException("The payment is more than the $" + due.toPlainString() + " due.");
++            }
++            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, date));
++            audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
++                    + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++        });
++        return found;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index 8f4b024..e9eaf8c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -1,6 +1,10 @@
+ package net.officefloor.hq.app.invoices;
+ 
+-/** Where an invoice is in its life: still being written, or sent to the client. */
++/**
++ * Where an invoice is in its life: still being written, or sent to the client. A sent invoice is
++ * part paid while some of it has been paid and some is still due, and paid once nothing is due;
++ * those two follow from its payments and are never stored.
++ */
+ public enum InvoiceStatus {
+-    DRAFT, SENT
++    DRAFT, SENT, PART_PAID, PAID
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+new file mode 100644
+index 0000000..a4050fc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -0,0 +1,76 @@
++package net.officefloor.hq.app.invoices;
++
++import jakarta.persistence.CollectionTable;
++import jakarta.persistence.Column;
++import jakarta.persistence.ElementCollection;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
++
++/** A payment received from a client on a date, allocated to its invoices. */
++@Entity
++@Table(name = "payment")
++public class Payment {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "client_id")
++    private Long clientId;
++
++    private BigDecimal amount;
++
++    @Column(name = "payment_date")
++    private LocalDate date;
++
++    @ElementCollection
++    @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
++    private List<PaymentAllocation> allocations = new ArrayList<>();
++
++    protected Payment() {
++    }
++
++    /** A payment made wholly against one invoice. */
++    public static Payment against(Invoice invoice, BigDecimal amount, LocalDate date) {
++        Payment payment = new Payment();
++        payment.clientId = invoice.getClientId();
++        payment.amount = amount;
++        payment.date = date;
++        payment.allocations.add(new PaymentAllocation(invoice.getId(), amount));
++        return payment;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public LocalDate getDate() {
++        return date;
++    }
++
++    public List<PaymentAllocation> getAllocations() {
++        return allocations;
++    }
++
++    /** How much of this payment goes to the invoice. */
++    public BigDecimal amountTo(Long invoiceId) {
++        return allocations.stream().filter(a -> a.getInvoiceId().equals(invoiceId))
++                .map(PaymentAllocation::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/PaymentAllocation.java b/src/main/java/net/officefloor/hq/app/invoices/PaymentAllocation.java
+new file mode 100644
+index 0000000..82bb31a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/PaymentAllocation.java
+@@ -0,0 +1,31 @@
++package net.officefloor.hq.app.invoices;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.math.BigDecimal;
++
++/** The part of a payment that goes to one invoice. */
++@Embeddable
++public class PaymentAllocation {
++
++    @Column(name = "invoice_id")
++    private Long invoiceId;
++
++    private BigDecimal amount;
++
++    protected PaymentAllocation() {
++    }
++
++    public PaymentAllocation(Long invoiceId, BigDecimal amount) {
++        this.invoiceId = invoiceId;
++        this.amount = amount;
++    }
++
++    public Long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java
+new file mode 100644
+index 0000000..2025f93
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java
+@@ -0,0 +1,18 @@
++package net.officefloor.hq.app.invoices;
++
++import java.util.Collection;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
++
++public interface PaymentRepository extends JpaRepository<Payment, Long> {
++
++    /** The payments with a part allocated to the invoice, oldest first. */
++    @Query("SELECT DISTINCT p FROM Payment p LEFT JOIN FETCH p.allocations WHERE p.id IN (SELECT q.id FROM Payment q JOIN q.allocations a WHERE a.invoiceId = :invoiceId) ORDER BY p.date, p.id")
++    List<Payment> findForInvoice(@Param("invoiceId") Long invoiceId);
++
++    /** For each of the invoices that has been paid something, its id and the amount paid to it. */
++    @Query("SELECT a.invoiceId, SUM(a.amount) FROM Payment p JOIN p.allocations a WHERE a.invoiceId IN :invoiceIds GROUP BY a.invoiceId")
++    List<Object[]> paidTo(@Param("invoiceIds") Collection<Long> invoiceIds);
++}
+diff --git a/src/main/resources/db/migration/V5__payments.sql b/src/main/resources/db/migration/V5__payments.sql
+new file mode 100644
+index 0000000..4a296c1
+--- /dev/null
++++ b/src/main/resources/db/migration/V5__payments.sql
+@@ -0,0 +1,14 @@
++-- A payment received from a client on a date, allocated to one or more of its invoices.
++CREATE TABLE payment (
++    id           BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    client_id    BIGINT         NOT NULL REFERENCES client (id),
++    amount       DECIMAL(19, 2) NOT NULL,
++    payment_date DATE           NOT NULL
++);
++
++-- How much of a payment goes to which invoice.
++CREATE TABLE payment_allocation (
++    payment_id BIGINT         NOT NULL REFERENCES payment (id) ON DELETE CASCADE,
++    invoice_id BIGINT         NOT NULL REFERENCES invoice (id) ON DELETE CASCADE,
++    amount     DECIMAL(19, 2) NOT NULL
++);
