@@ -309,9 +309,20 @@ public class InvoiceService {
      * paying each off in full before the next.
      * A payment more than everything the client owes is refused; otherwise it is checked and recorded
      * as a split payment over the invoices it reaches.
+     * A reference (null when none, already checked) instead sends the whole payment to the client's
+     * invoice with that reference; one that is not the reference of any of the client's invoices is refused.
      */
     @Transactional
     public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, String reference) {
+        if (reference != null) {
+            Invoice named = invoices.findByClientIdOrderByIdAsc(clientId).stream()
+                    .filter(i -> reference.equals(PaymentReference.of(i.getId())))
+                    .findFirst()
+                    .orElseThrow(() -> new InvoiceRejectedException(PaymentReference.grouped(reference)
+                            + " is not the reference of any of this client's invoices."));
+            return recordSplitPayment(clientId, amount, date, reference,
+                    List.of(new PaymentAllocation(named.getId(), amount)));
+        }
         List<Invoice> sent = invoices.findByClientIdOrderByIdAsc(clientId).stream()
                 .filter(i -> !i.isDraft() && !i.isVoid())
                 .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))

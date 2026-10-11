@@ -325,7 +325,7 @@ public class InvoiceController {
 
     /**
      * Records one payment spread over several of the client's invoices, or, with no parts given,
-     * applied to its oldest unpaid invoices first; answers the client's invoices
+     * applied wholly to the invoice with the quoted reference or, with none, to its oldest unpaid invoices first; answers the client's invoices
      * with their new statuses.
      */
     @PostMapping("/api/clients/{clientId}/payments")

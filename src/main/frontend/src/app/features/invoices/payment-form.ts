@@ -62,7 +62,7 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
 }
 
 // Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`), or, when none
-// is open, to the client's unpaid invoices earliest due date first; once any invoice in the list has a part, the
+// is open, to the client's invoice with the quoted reference, or without one to the client's unpaid invoices earliest due date first; once any invoice in the list has a part, the
 // payment is spread over those invoices instead, and the parts must add up to it. The server refuses a payment on a draft, over what is due, or dated after today
 // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's.
 @Component({
