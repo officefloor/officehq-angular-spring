@@ -1812,19 +1812,20 @@ public class Invoice {
     /**
      * Each line's exact tax, in the order of the lines: the line's own rate (a percentage), or when it
      * has none the client's regional rate, or the given workspace rate when that has none either, on the line's amount less its share of the discount,
-     * unrounded. Tax-exempt lines, and every line of a tax-exempt client or a reverse-charged invoice, have no tax.
+     * unrounded. Tax-exempt lines, and every line of a reverse-charged invoice, have no tax. A tax-exempt
+     * client is exempt from the general rate only (regional or workspace): its lines with their own rate are still taxed at it.
      * The minimum charge's exact tax at the client's rate follows, as one more line.
      */
     private List<BigDecimal> exactLineTaxes(BigDecimal taxRate) {
         List<BigDecimal> shares = discountShares();
-        BigDecimal clientRate = clientTaxRate(taxRate);
+        BigDecimal clientRate = clientTaxExempt ? BigDecimal.ZERO : clientTaxRate(taxRate);
         List<BigDecimal> taxes = new ArrayList<>(lines.size());
         for (int i = 0; i < lines.size(); i++) {
             InvoiceLine line = lines.get(i);
-            taxes.add(clientTaxExempt || isReverseCharge() || line.isTaxExempt() ? BigDecimal.ZERO
+            taxes.add(isReverseCharge() || line.isTaxExempt() ? BigDecimal.ZERO
                     : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(clientRate)).movePointLeft(2));
         }
-        taxes.add(clientTaxExempt || isReverseCharge() ? BigDecimal.ZERO : minimumCharge().multiply(clientRate).movePointLeft(2));
+        taxes.add(isReverseCharge() ? BigDecimal.ZERO : minimumCharge().multiply(clientRate).movePointLeft(2));
         return taxes;
     }
 
