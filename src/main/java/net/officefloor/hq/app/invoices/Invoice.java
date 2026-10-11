@@ -176,6 +176,13 @@ public class Invoice {
     @Formula("(SELECT LISTAGG(CAST(t.from_date AS VARCHAR) || '=' || CAST(t.rate AS VARCHAR), ',') WITHIN GROUP (ORDER BY t.from_date, t.id) FROM tax_rate_change t, client c WHERE c.id = client_id AND t.region = c.region)")
     private String regionRateChanges;
 
+    /**
+     * The tax rates of the client's rate card entries that have one, as "unit type" and rate separated by
+     * CHAR(31), entries separated by CHAR(30); null when none has. Read from the client's rate card.
+     */
+    @Formula("(SELECT LISTAGG(r.unit_type || CHAR(31) || CAST(r.tax_rate AS VARCHAR), CHAR(30)) WITHIN GROUP (ORDER BY r.unit_type) FROM client_rate r WHERE r.client_id = client_id AND r.tax_rate IS NOT NULL)")
+    private String cardTaxRates;
+
     /** The issue date of the invoice this credit note credits; null for an ordinary invoice. */
     @Formula("(SELECT o.issue_date FROM invoice o WHERE o.id = credit_of)")
     private LocalDate creditedIssueDate;
@@ -2003,7 +2010,7 @@ public class Invoice {
 
     /**
      * Each line's exact tax, in the order of the lines: the line's own rate (a percentage), or when it
-     * has none the client's regional rate, or the given workspace rate when that has none either, on the line's amount less its share of the discount,
+     * has none its unit type's rate on the client's rate card, or else the client's regional rate, or the given workspace rate when that has none either, on the line's amount less its share of the discount,
      * unrounded. Tax-exempt lines, and every line of a reverse-charged invoice, have no tax. A tax-exempt
      * client is exempt from the general rate only (regional or workspace): its lines with their own rate are still taxed at it.
      * The exact tax of the surcharge and minimum charge at the client's rate follows, as one more line.
@@ -2021,8 +2028,8 @@ public class Invoice {
 
     /**
      * The rate (a percentage) each line is taxed at, in the order of the lines, then the rate of the
-     * surcharge and minimum charge: the line's own rate, otherwise the client's (zero for a tax-exempt
-     * client); zero for a tax-exempt line, and on every line of a reverse-charged invoice when the rates
+     * surcharge and minimum charge: the line's own rate, otherwise its unit type's rate on the client's rate
+     * card, otherwise the client's (zero for a tax-exempt client, whose card rates are not charged either); zero for a tax-exempt line, and on every line of a reverse-charged invoice when the rates
      * are those charged rather than those the tax is taken out of tax-inclusive prices at.
      */
     private List<BigDecimal> lineRates(BigDecimal taxRate, boolean charged) {
@@ -2030,10 +2037,29 @@ public class Invoice {
         BigDecimal clientRate = clientTaxExempt ? BigDecimal.ZERO : clientTaxRate(taxRate);
         List<BigDecimal> rates = new ArrayList<>(lines.size() + 1);
         for (InvoiceLine line : lines) {
-            rates.add(reverseCharged || line.isTaxExempt() ? BigDecimal.ZERO : line.taxRate(clientRate));
+            BigDecimal cardRate = clientTaxExempt ? null : cardTaxRate(line.getUnitType());
+            rates.add(reverseCharged || line.isTaxExempt() ? BigDecimal.ZERO
+                    : line.taxRate(cardRate == null ? clientRate : cardRate));
         }
         rates.add(reverseCharged ? BigDecimal.ZERO : clientRate);
         return rates;
+    }
+
+    /**
+     * The tax rate of the client's rate card entry for the unit type (matched ignoring case and surrounding
+     * spaces); null when the unit type is not on the card or its entry has no tax rate.
+     */
+    private BigDecimal cardTaxRate(String unitType) {
+        if (unitType == null || cardTaxRates == null) {
+            return null;
+        }
+        for (String entry : cardTaxRates.split("\u001e")) {
+            int at = entry.lastIndexOf('\u001f');
+            if (at >= 0 && entry.substring(0, at).equalsIgnoreCase(unitType.trim())) {
+                return new BigDecimal(entry.substring(at + 1).trim());
+            }
+        }
+        return null;
     }
 
     /**

@@ -585,7 +585,7 @@ public class InvoiceService {
 
     /**
      * Puts a single price for the unit type on the client's rate card, adding it or replacing its price
-     * (its increment and minimum units are kept); empty if no such client. The price has already been
+     * (its increment, minimum units and tax rate are kept); empty if no such client. The price has already been
      * checked. The lines of the client's drafts priced from the card in that unit type are repriced
      * straight away; sent invoices keep the prices they were sent with.
      */
@@ -598,7 +598,7 @@ public class InvoiceService {
             ClientRate old = client.getRates().get(key);
             requireWhole(client.getCurrency(), unitPrice, "The price");
             client.getRates().put(key, new ClientRate(unitPrice, old == null ? null : old.getIncrement(),
-                    old == null ? null : old.getMinUnits()));
+                    old == null ? null : old.getMinUnits(), old == null ? null : old.getTaxRate()));
             clients.saveAndFlush(client);
             for (Invoice invoice : invoices.findByClientIdOrderByIdAsc(clientId)) {
                 if (!invoice.isDraft()) {

@@ -24,6 +24,13 @@ public class ClientRate {
     @Column(name = "min_units")
     private BigDecimal minUnits;
 
+    /**
+     * The unit type's own tax percentage, charged on its lines instead of the client's regional or workspace
+     * rate unless a line has a rate of its own; null for none.
+     */
+    @Column(name = "tax_rate")
+    private BigDecimal taxRate;
+
     protected ClientRate() {
     }
 
@@ -32,6 +39,12 @@ public class ClientRate {
         this.unitPrice = unitPrice;
         this.increment = increment;
         this.minUnits = minUnits;
+    }
+
+    /** A single unit price, billed in the given increment and minimum units and taxed at the given rate (null for none). */
+    public ClientRate(BigDecimal unitPrice, BigDecimal increment, BigDecimal minUnits, BigDecimal taxRate) {
+        this(unitPrice, increment, minUnits);
+        this.taxRate = taxRate;
     }
 
     public BigDecimal getUnitPrice() {
@@ -44,6 +57,11 @@ public class ClientRate {
 
     public BigDecimal getMinUnits() {
         return minUnits;
+    }
+
+    /** The unit type's own tax percentage; null for none. */
+    public BigDecimal getTaxRate() {
+        return taxRate;
     }
 
     /** The tiers; null for a single unit price. */

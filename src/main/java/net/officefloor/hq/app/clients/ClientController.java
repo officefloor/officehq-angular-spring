@@ -43,10 +43,11 @@ public class ClientController {
     }
 
     /** A rate card entry: its single unit price, or else its tiers (null when it has a single price). */
-    public record RateView(BigDecimal unitPrice, List<RateTiers.Band> tiers, BigDecimal increment, BigDecimal minUnits) {
+    public record RateView(BigDecimal unitPrice, List<RateTiers.Band> tiers, BigDecimal increment, BigDecimal minUnits,
+            BigDecimal taxRate) {
         static RateView of(ClientRate r) {
             RateTiers tiers = r.tiers();
-            return new RateView(r.getUnitPrice(), tiers == null ? null : tiers.bands(), r.getIncrement(), r.getMinUnits());
+            return new RateView(r.getUnitPrice(), tiers == null ? null : tiers.bands(), r.getIncrement(), r.getMinUnits(), r.getTaxRate());
         }
     }
 

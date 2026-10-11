@@ -300,7 +300,7 @@ public class TestSupportController {
             Long clientId = id(row.get("id") == null
                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
-                only(rate, Set.of("unitType", "unitPrice", "tiers", "increment", "minUnits"), "clients[].rates[]");
+                only(rate, Set.of("unitType", "unitPrice", "tiers", "increment", "minUnits", "taxRate"), "clients[].rates[]");
                 if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
                     throw refuse("clients[].rates[].unitType is required");
                 }
@@ -318,10 +318,11 @@ public class TestSupportController {
                 if (minUnits != null && minUnits.signum() <= 0) {
                     throw refuse("clients[].rates[].minUnits must be more than zero, not " + rate.get("minUnits"));
                 }
-                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price, tiers, increment, min_units) VALUES (?, ?, ?, ?, ?, ?)", clientId,
+                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price, tiers, increment, min_units, tax_rate) VALUES (?, ?, ?, ?, ?, ?, ?)", clientId,
                         rate.get("unitType").toString(),
                         tiers != null ? null : cents(rate.get("unitPrice"), "clients[].rates[].unitPrice"),
-                        tiers == null ? null : tiers.format(), increment, minUnits);
+                        tiers == null ? null : tiers.format(), increment, minUnits,
+                        rate.get("taxRate") == null ? null : percent(rate.get("taxRate"), "clients[].rates[].taxRate"));
             }
         }
         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
@@ -582,7 +583,7 @@ public class TestSupportController {
                         row.put("taxNumber", r.get("TAX_NUMBER"));
                     }
                     List<Map<String, Object>> rateCard = jdbc.queryForList(
-                            "SELECT unit_type, unit_price, tiers, increment, min_units FROM client_rate WHERE client_id = ? ORDER BY unit_type",
+                            "SELECT unit_type, unit_price, tiers, increment, min_units, tax_rate FROM client_rate WHERE client_id = ? ORDER BY unit_type",
                             r.get("ID")).stream().map(c -> {
                                 Map<String, Object> entry = rate((String) c.get("UNIT_TYPE"), (BigDecimal) c.get("UNIT_PRICE"),
                                         RateTiers.parse((String) c.get("TIERS")));
@@ -591,6 +592,9 @@ public class TestSupportController {
                                 }
                                 if (c.get("MIN_UNITS") != null) {
                                     entry.put("minUnits", c.get("MIN_UNITS"));
+                                }
+                                if (c.get("TAX_RATE") != null) {
+                                    entry.put("taxRate", c.get("TAX_RATE"));
                                 }
                                 return entry;
                             }).toList();
