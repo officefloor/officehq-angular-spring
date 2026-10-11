@@ -5,7 +5,7 @@ import { Observable } from 'rxjs';
 export type InvoiceStatus = 'DRAFT' | 'SENT';
 
 // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
-// server: every line's quantity times unit price added up exactly, then rounded once, half up.
+// server: each line's quantity times unit price rounded half up to the cent, then added up.
 export interface InvoiceSummary {
   id: number;
   status: InvoiceStatus;

@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 /** One line of an invoice: a quantity (up to two decimals) times a unit price. */
 @Entity
@@ -43,8 +44,8 @@ public class InvoiceLine {
         return unitPrice;
     }
 
-    /** Quantity times unit price, exactly — not rounded. */
+    /** Quantity times unit price, rounded half up to the cent. */
     public BigDecimal amount() {
-        return qty.multiply(unitPrice);
+        return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
     }
 }

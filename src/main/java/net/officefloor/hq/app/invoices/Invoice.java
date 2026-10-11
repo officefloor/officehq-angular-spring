@@ -12,7 +12,6 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -71,12 +70,11 @@ public class Invoice {
     }
 
     /**
-     * Every line's quantity times unit price added up exactly, then rounded once, half up, to the
-     * cent — so rounding never builds up line by line.
+     * The sum of the line amounts, each already rounded half up to the cent — so the total matches
+     * what a client gets by adding up the lines shown.
      */
     public BigDecimal total() {
         return lines.stream().map(InvoiceLine::amount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 }
