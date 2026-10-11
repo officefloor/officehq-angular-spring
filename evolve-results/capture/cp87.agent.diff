@@ -1,0 +1,318 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index bb2b815..9408f59 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -24,6 +24,9 @@ export interface Client {
+   // Days (0 to 30, a week as standard) past its due date an invoice or instalment is given before it
+   // is overdue, earns late interest and is charged the late fee.
+   graceDays: number;
++  // The client's own annual late-interest rate (0 to 30 percent) charged instead of the workspace's;
++  // null for the workspace's, 0 for never charged late interest.
++  interestRate: number | null;
+ }
+ 
+ export type NewClient = Omit<Client, 'id'>;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 2577d5c..126b0c9 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -141,6 +141,17 @@ const STANDARD_GRACE_DAYS = 7;
+           step="1"
+           formControlName="graceDays"
+         />
++        <label for="client-interest-rate">Late-interest rate %, 0 to 30 (optional, the workspace's if left out)</label>
++        <input
++          id="client-interest-rate"
++          data-testid="client-form-interest-rate"
++          type="number"
++          inputmode="decimal"
++          min="0"
++          max="30"
++          step="0.01"
++          formControlName="interestRate"
++        />
+         <label for="client-early-pct">Early-payment discount % (optional)</label>
+         <input
+           id="client-early-pct"
+@@ -232,6 +243,7 @@ export class Clients {
+     discountPct: new FormControl<number | null>(null),
+     retentionPct: new FormControl<number | null>(null),
+     graceDays: new FormControl<number | null>(null),
++    interestRate: new FormControl<number | null>(null),
+     earlyPct: new FormControl<number | null>(null),
+     earlyDays: new FormControl<number | null>(null),
+     taxExempt: new FormControl(false, { nonNullable: true }),
+@@ -265,6 +277,8 @@ export class Clients {
+     const retentionPct = retention === null || (retention as unknown) === '' ? null : Number(retention);
+     const grace = this.form.controls.graceDays.value;
+     const graceDays = grace === null || (grace as unknown) === '' ? null : Number(grace);
++    const interest = this.form.controls.interestRate.value;
++    const interestRate = interest === null || (interest as unknown) === '' ? null : Number(interest);
+     const taxExempt = this.form.controls.taxExempt.value;
+     const currency = this.form.controls.currency.value;
+     const early = this.form.controls.earlyPct.value;
+@@ -278,6 +292,7 @@ export class Clients {
+       discountPct,
+       retentionPct,
+       graceDays,
++      interestRate,
+       earlyPct: earlyPayPct,
+       earlyDays: earlyPayDays,
+       taxExempt,
+@@ -290,6 +305,7 @@ export class Clients {
+       discountPct,
+       retentionPct,
+       graceDays,
++      interestRate,
+       earlyPayPct,
+       earlyPayDays,
+     );
+@@ -311,6 +327,7 @@ export class Clients {
+       earlyPayDays,
+       retentionPct: retentionPct ?? 0,
+       graceDays: graceDays ?? STANDARD_GRACE_DAYS,
++      interestRate,
+     };
+     this.service.add(client).subscribe({
+       next: (created) => {
+@@ -369,6 +386,7 @@ export class Clients {
+     discountPct: number | null,
+     retentionPct: number | null,
+     graceDays: number | null,
++    interestRate: number | null,
+     earlyPayPct: number | null,
+     earlyPayDays: number | null,
+   ): string {
+@@ -403,6 +421,13 @@ export class Clients {
+     if (graceDays !== null && !(Number.isInteger(graceDays) && graceDays >= 0 && graceDays <= 30)) {
+       problems.push('The grace period must be from 0 to 30 days.');
+     }
++    if (interestRate !== null) {
++      if (!(Number.isFinite(interestRate) && interestRate >= 0 && interestRate <= 30)) {
++        problems.push('The interest rate must be from 0 to 30 percent.');
++      } else if (Math.abs(Math.round(interestRate * 100) - interestRate * 100) > 1e-6) {
++        problems.push('The interest rate can have at most two decimals.');
++      }
++    }
+     if (earlyPayPct !== null) {
+       if (!(Number.isFinite(earlyPayPct) && earlyPayPct >= 0 && earlyPayPct <= 100)) {
+         problems.push('The early-payment discount must be from 0 to 100 percent.');
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index cec864c..c46e1c7 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -39,7 +39,7 @@ public class TestSupportController {
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee");
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+@@ -167,14 +167,15 @@ public class TestSupportController {
+             if (Currency.of(currency) == null) {
+                 throw refuse("unsupported value of clients[].currency: " + currency);
+             }
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days"},
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+                     percent(row.get("discountPct"), "clients[].discountPct"),
+                     flag(row.get("taxExempt"), "clients[].taxExempt"), currency,
+                     percent(row.get("earlyPayPct"), "clients[].earlyPayPct"),
+                     days(row.get("earlyPayDays"), "clients[].earlyPayDays"),
+                     percent(row.get("retentionPct"), "clients[].retentionPct"),
+-                    graceDays(row.get("graceDays"), "clients[].graceDays"));
++                    graceDays(row.get("graceDays"), "clients[].graceDays"),
++                    interestRate(row.get("interestRate"), "clients[].interestRate"));
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+             only(row, INVOICE_FIELDS, "invoices[]");
+@@ -337,7 +338,7 @@ public class TestSupportController {
+         if (!settings.isEmpty()) {
+             out.put("settings", settings);
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -355,6 +356,9 @@ public class TestSupportController {
+                     }
+                     row.put("retentionPct", r.get("RETENTION_PCT"));
+                     row.put("graceDays", r.get("GRACE_DAYS"));
++                    if (r.get("INTEREST_RATE") != null) {
++                        row.put("interestRate", r.get("INTEREST_RATE"));
++                    }
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+@@ -488,6 +492,18 @@ public class TestSupportController {
+         return days;
+     }
+ 
++    /** A client's own late-interest rate, 0 to 30 percent to the hundredth; null (the workspace's) when left out. */
++    private static BigDecimal interestRate(Object value, String field) {
++        if (value == null) {
++            return null;
++        }
++        BigDecimal rate = cents(value, field);
++        if (rate.signum() < 0 || rate.compareTo(BigDecimal.valueOf(Client.MAX_INTEREST_RATE)) > 0) {
++            throw refuse(field + " must be from 0 to " + Client.MAX_INTEREST_RATE + ", not " + value);
++        }
++        return rate;
++    }
++
+     /** A whole number of instalments from 2 to 24; null (no plan) when left out. */
+     private static Integer instalments(Object value, String field) {
+         if (value == null) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 56794ef..ac7d603 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -58,6 +58,16 @@ public class Client {
+     @Column(name = "grace_days")
+     private int graceDays = Invoice.GRACE_DAYS;
+ 
++    /**
++     * The client's own annual late-interest rate (0 to {@link #MAX_INTEREST_RATE} percent) charged
++     * instead of the workspace's; null for the workspace's, 0 for never charged late interest.
++     */
++    @Column(name = "interest_rate")
++    private BigDecimal interestRate;
++
++    /** The highest late-interest rate a client can be given, as a percentage. */
++    public static final int MAX_INTEREST_RATE = 30;
++
+     /** The longest grace period a client can be given, in days. */
+     public static final int MAX_GRACE_DAYS = 30;
+ 
+@@ -66,7 +76,7 @@ public class Client {
+ 
+     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
+-            Integer graceDays) {
++            Integer graceDays, BigDecimal interestRate) {
+         this.name = name;
+         this.email = email;
+         this.termsDays = termsDays;
+@@ -77,6 +87,7 @@ public class Client {
+         this.earlyPayDays = earlyPayDays;
+         this.retentionPct = retentionPct == null ? BigDecimal.ZERO : retentionPct;
+         this.graceDays = graceDays == null ? Invoice.GRACE_DAYS : graceDays;
++        this.interestRate = interestRate;
+     }
+ 
+     public Long getId() {
+@@ -122,4 +133,8 @@ public class Client {
+     public int getGraceDays() {
+         return graceDays;
+     }
++
++    public BigDecimal getInterestRate() {
++        return interestRate;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index afe2d9e..3954ee0 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -27,11 +27,11 @@ public class ClientController {
+ 
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+             boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+-            BigDecimal retentionPct, int graceDays) {
++            BigDecimal retentionPct, int graceDays, BigDecimal interestRate) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+                     c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+-                    c.getRetentionPct(), c.getGraceDays());
++                    c.getRetentionPct(), c.getGraceDays(), c.getInterestRate());
+         }
+     }
+ 
+@@ -70,7 +70,12 @@ public class ClientController {
+             /** The client's grace period in days; the standard week when left out. */
+             @Min(value = 0, message = "The grace period must be from 0 to 30 days.")
+             @Max(value = Client.MAX_GRACE_DAYS, message = "The grace period must be from 0 to 30 days.")
+-            Integer graceDays) {
++            Integer graceDays,
++            /** The client's own late-interest rate; the workspace's when left out. */
++            @DecimalMin(value = "0", message = "The interest rate must be from 0 to 30 percent.")
++            @DecimalMax(value = "30", message = "The interest rate must be from 0 to 30 percent.")
++            @Digits(integer = 2, fraction = 2, message = "The interest rate can have at most two decimals.")
++            BigDecimal interestRate) {
+ 
+         @AssertTrue(message = "Enter both the early-payment discount and its number of days, or neither.")
+         public boolean isEarlyPayComplete() {
+@@ -100,6 +105,6 @@ public class ClientController {
+     public ClientView add(@Valid @RequestBody NewClient body) {
+         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+                 Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
+-                body.retentionPct(), body.graceDays()));
++                body.retentionPct(), body.graceDays(), body.interestRate()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index a984125..b592407 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -31,11 +31,12 @@ public class ClientService {
+ 
+     @Transactional
+     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+-            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays) {
++            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays,
++            BigDecimal interestRate) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+-        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays));
++        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays, interestRate));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 3f331de..433a2a8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -158,6 +158,10 @@ public class Invoice {
+     @Formula("(SELECT c.grace_days FROM client c WHERE c.id = client_id)")
+     private Integer clientGraceDays;
+ 
++    /** The client's own annual late-interest rate, a percentage; null for the workspace's. Read from the client. */
++    @Formula("(SELECT c.interest_rate FROM client c WHERE c.id = client_id)")
++    private BigDecimal clientInterestRate;
++
+     /** The early discount the invoice was settled with; 0 when none was taken. */
+     @Column(name = "early_discount")
+     private BigDecimal earlyDiscount = BigDecimal.ZERO;
+@@ -652,6 +656,7 @@ public class Invoice {
+      */
+     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+             BigDecimal lateFeeUsd, LocalDate asOf) {
++        annualRate = lateInterestRate(annualRate);
+         LocalDate today = writtenOffOn != null && writtenOffOn.isBefore(asOf) ? writtenOffOn : asOf;
+         this.lateInterest = BigDecimal.ZERO;
+         this.lateFee = BigDecimal.ZERO;
+@@ -1192,6 +1197,11 @@ public class Invoice {
+     /** The standard days past its due date an invoice is given before it becomes overdue: a week's grace. */
+     public static final int GRACE_DAYS = 7;
+ 
++    /** The annual late-interest rate this invoice is charged: its client's own, else the workspace's. */
++    public BigDecimal lateInterestRate(BigDecimal workspaceRate) {
++        return clientInterestRate == null ? workspaceRate : clientInterestRate;
++    }
++
+     /** Days past its due date this invoice is given before it becomes overdue: its client's grace period. */
+     public int graceDays() {
+         return clientGraceDays == null ? GRACE_DAYS : clientGraceDays;
+diff --git a/src/main/resources/db/migration/V34__client_interest_rate.sql b/src/main/resources/db/migration/V34__client_interest_rate.sql
+new file mode 100644
+index 0000000..c29fee7
+--- /dev/null
++++ b/src/main/resources/db/migration/V34__client_interest_rate.sql
+@@ -0,0 +1,3 @@
++-- The client's own annual late-interest rate (0 to 30, a percentage) charged instead of the
++-- workspace's; null means the workspace's rate, 0 that the client is never charged late interest.
++ALTER TABLE client ADD COLUMN interest_rate DECIMAL(5, 2);
