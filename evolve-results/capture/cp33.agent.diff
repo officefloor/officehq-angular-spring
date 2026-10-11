@@ -1,0 +1,347 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 9ddaafe..946f18e 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -98,6 +98,15 @@ function problemWith(line: NewLine): string {
+       problems.push('The line discount can have at most two decimals.');
+     }
+   }
++  if (line.taxRate !== undefined) {
++    if (!/^-?\d+(\.\d+)?$/.test(line.taxRate)) {
++      problems.push('The line tax rate must be a number, like 5 or 12.5.');
++    } else if (Number(line.taxRate) < 0 || Number(line.taxRate) > 100) {
++      problems.push('The line tax rate must be from 0 to 100 percent.');
++    } else if (!TWO_DECIMALS.test(line.taxRate)) {
++      problems.push('The line tax rate can have at most two decimals.');
++    }
++  }
+   return problems.join(' ');
+ }
+ 
+@@ -135,6 +144,7 @@ function problemWith(line: NewLine): string {
+               <th scope="col">Amount</th>
+               <th scope="col">Discount share</th>
+               <th scope="col">Tax status</th>
++              <th scope="col">Tax rate</th>
+               <th scope="col">Tax</th>
+               <th scope="col">Actions</th>
+             </tr>
+@@ -149,6 +159,7 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="line-amount">{{ money(l.amount) }}</td>
+                 <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
+                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
++                <td data-testid="line-tax-rate">{{ (l.taxRate ?? inv.taxRate) + '%' }}</td>
+                 <td data-testid="line-tax">{{ money(l.tax) }}</td>
+                 <td>
+                   <button
+@@ -164,17 +175,17 @@ function problemWith(line: NewLine): string {
+               </tr>
+             } @empty {
+               <tr>
+-                <td colspan="9" data-testid="line-empty">No lines yet.</td>
++                <td colspan="10" data-testid="line-empty">No lines yet.</td>
+               </tr>
+             }
+           </tbody>
+           <tfoot>
+             <tr>
+-              <th scope="row" colspan="7">Subtotal</th>
++              <th scope="row" colspan="8">Subtotal</th>
+               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="7">
++              <th scope="row" colspan="8">
+                 @if (+inv.discountAmount > 0) {
+                   Discount (fixed@if (inv.discountCap !== null) {, max {{ money(inv.discountCap) }} in all})
+                 } @else {
+@@ -185,11 +196,11 @@ function problemWith(line: NewLine): string {
+               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="7">Tax ({{ inv.taxRate }}%)</th>
++              <th scope="row" colspan="8">Tax (lines at their own rate, otherwise {{ inv.taxRate }}%)</th>
+               <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="7">Total</th>
++              <th scope="row" colspan="8">Total</th>
+               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
+             </tr>
+           </tfoot>
+@@ -306,6 +317,13 @@ function problemWith(line: NewLine): string {
+             inputmode="decimal"
+             formControlName="discountPct"
+           />
++          <label for="line-tax-rate">Tax rate (%, optional)</label>
++          <input
++            id="line-tax-rate"
++            data-testid="line-form-tax-rate"
++            inputmode="decimal"
++            formControlName="taxRate"
++          />
+           <input
+             id="line-exempt"
+             type="checkbox"
+@@ -390,6 +408,7 @@ export class InvoicePanel {
+     unitPrice: new FormControl('', { nonNullable: true }),
+     taxExempt: new FormControl(false, { nonNullable: true }),
+     discountPct: new FormControl('', { nonNullable: true }),
++    taxRate: new FormControl('', { nonNullable: true }),
+   });
+ 
+   protected readonly discountForm = new FormGroup({
+@@ -426,6 +445,10 @@ export class InvoicePanel {
+     if (discountPct) {
+       line.discountPct = discountPct;
+     }
++    const taxRate = raw.taxRate.trim().replace(/%$/, '').trim();
++    if (taxRate) {
++      line.taxRate = taxRate;
++    }
+     const problem = problemWith(line);
+     if (problem) {
+       this.form.markAllAsTouched();
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 44856a2..c3daf47 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -24,7 +24,8 @@ export interface InvoiceSummary {
+ // decimal string to the cent. `discountShare` is the line's share of the invoice discount, split in
+ // cents in proportion to the line amounts by the server; the shares add up to the discount. `tax` is
+ // the tax rate on the amount less that share, rounded half up to the cent; a `taxExempt` line
+-// (postage, say) has none. `discountPct` is the line's own
++// (postage, say) has none. `taxRate` is the line's own tax rate (without trailing zeros), null when
++// it uses the workspace rate. `discountPct` is the line's own
+ // discount (without trailing zeros), `discount` what it takes off quantity x unit price, and
+ // `amount` is after it.
+ export interface InvoiceLineView {
+@@ -38,6 +39,7 @@ export interface InvoiceLineView {
+   discountShare: string;
+   tax: string;
+   taxExempt: boolean;
++  taxRate: string | null;
+ }
+ 
+ // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
+@@ -101,14 +103,15 @@ export interface NewSplitPayment extends NewPayment {
+   allocations: NewAllocation[];
+ }
+ 
+-// A line to add to a draft: quantity, unit price and the line's own discount percentage as entered
+-// (left out when none), checked again by the server.
++// A line to add to a draft: quantity, unit price, the line's own discount percentage and its own tax
++// rate as entered (each left out when none), checked again by the server.
+ export interface NewLine {
+   description: string;
+   qty: string;
+   unitPrice: string;
+   taxExempt: boolean;
+   discountPct?: string;
++  taxRate?: string;
+ }
+ 
+ // A discount to give: either a percentage or a fixed amount, as entered, with an optional cap on
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 2e6dfa8..3c50bf5 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -35,7 +35,7 @@ public class TestSupportController {
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "lineItems");
+-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct");
++    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "allocations");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID");
+@@ -121,12 +121,13 @@ public class TestSupportController {
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 insert("invoice_line", line.get("id"),
+-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt", "discount_pct"},
++                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt", "discount_pct", "tax_rate"},
+                         invoiceId, text(line, "description"),
+                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
+                         cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"),
+                         flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"),
+-                        percent(line.get("discountPct"), "invoices[].lineItems[].discountPct"));
++                        percent(line.get("discountPct"), "invoices[].lineItems[].discountPct"),
++                        line.get("taxRate") == null ? null : percent(line.get("taxRate"), "invoices[].lineItems[].taxRate"));
+             }
+         }
+         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
+@@ -199,7 +200,7 @@ public class TestSupportController {
+                         row.put("discountCap", r.get("DISCOUNT_CAP"));
+                     }
+                     row.put("lineItems", jdbc.queryForList(
+-                            "SELECT id, description, qty, unit_price, tax_exempt, discount_pct FROM invoice_line WHERE invoice_id = ? ORDER BY id",
++                            "SELECT id, description, qty, unit_price, tax_exempt, discount_pct, tax_rate FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+                                 Map<String, Object> line = new LinkedHashMap<>();
+                                 line.put("id", l.get("ID"));
+@@ -208,6 +209,9 @@ public class TestSupportController {
+                                 line.put("unitPrice", l.get("UNIT_PRICE"));
+                                 line.put("taxExempt", l.get("TAX_EXEMPT"));
+                                 line.put("discountPct", l.get("DISCOUNT_PCT"));
++                                if (l.get("TAX_RATE") != null) {
++                                    line.put("taxRate", l.get("TAX_RATE"));
++                                }
+                                 return line;
+                             }).toList());
+                     return row;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 7eb0282..2132779 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -284,9 +284,9 @@ public class Invoice {
+     }
+ 
+     /**
+-     * Each line's tax at the given rate (a percentage), in the order of the lines: the rate on the
+-     * line's amount less its share of the discount, rounded half up to the cent. Tax-exempt lines
+-     * have no tax.
++     * Each line's tax, in the order of the lines: the line's own rate (a percentage), or the given
++     * workspace rate when it has none, on the line's amount less its share of the discount, rounded
++     * half up to the cent. Tax-exempt lines have no tax.
+      */
+     public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
+         List<BigDecimal> shares = discountShares();
+@@ -294,7 +294,7 @@ public class Invoice {
+         for (int i = 0; i < lines.size(); i++) {
+             InvoiceLine line = lines.get(i);
+             taxes.add(line.isTaxExempt() ? BigDecimal.ZERO.setScale(2)
+-                    : line.amount().subtract(shares.get(i)).multiply(taxRate).divide(BigDecimal.valueOf(100))
++                    : line.amount().subtract(shares.get(i)).multiply(line.taxRate(taxRate)).divide(BigDecimal.valueOf(100))
+                             .setScale(2, RoundingMode.HALF_UP));
+         }
+         return taxes;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 7b1fc10..66aa06a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -66,18 +66,20 @@ public class InvoiceController {
+      * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
+      * money is a decimal string to the cent. {@code discountShare} is the line's share of the
+      * invoice discount; {@code tax} is the line's tax, the rate on its amount less that share, and
+-     * {@code taxExempt} lines have none. {@code discountPct}
++     * {@code taxExempt} lines have none. {@code taxRate} (without trailing zeros) is the line's own
++     * tax rate, null when it uses the workspace rate. {@code discountPct}
+      * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
+      * {@code amount} is after it.
+      */
+     public record LineView(Long id, String description, String qty, String unitPrice, String discountPct,
+-            String discount, String amount, String discountShare, String tax, boolean taxExempt) {
++            String discount, String amount, String discountShare, String tax, boolean taxExempt, String taxRate) {
+         static LineView of(InvoiceLine l, BigDecimal discountShare, BigDecimal tax) {
+             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
+                     l.getUnitPrice().setScale(2).toPlainString(),
+                     l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount().toPlainString(),
+                     l.amount().toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
+-                    l.isTaxExempt());
++                    l.isTaxExempt(),
++                    l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString());
+         }
+     }
+ 
+@@ -139,7 +141,8 @@ public class InvoiceController {
+     /**
+      * A line to add: a description, a quantity above zero and a unit price of at least $0.01, and
+      * whether it is tax exempt (taxable when left out), and its own discount percentage from 0 to 100
+-     * with at most two decimals (none when left out).
++     * with at most two decimals (none when left out), and its own tax rate from 0 to 100 with at most
++     * two decimals (the workspace rate when left out).
+      */
+     public record NewLine(
+             @NotBlank(message = "Enter a description.")
+@@ -157,7 +160,11 @@ public class InvoiceController {
+             @DecimalMin(value = "0", message = "The line discount must be from 0 to 100 percent.")
+             @DecimalMax(value = "100", message = "The line discount must be from 0 to 100 percent.")
+             @Digits(integer = 3, fraction = 2, message = "The line discount can have at most two decimals.")
+-            BigDecimal discountPct) {
++            BigDecimal discountPct,
++            @DecimalMin(value = "0", message = "The line tax rate must be from 0 to 100 percent.")
++            @DecimalMax(value = "100", message = "The line tax rate must be from 0 to 100 percent.")
++            @Digits(integer = 3, fraction = 2, message = "The line tax rate can have at most two decimals.")
++            BigDecimal taxRate) {
+     }
+ 
+     /**
+@@ -275,7 +282,7 @@ public class InvoiceController {
+     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
+         return invoices.addLine(id, body.description().trim(), body.qty(), body.unitPrice(),
+                 Boolean.TRUE.equals(body.taxExempt()),
+-                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct())
++                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 31116c3..9d26e77 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -36,16 +36,21 @@ public class InvoiceLine {
+     @Column(name = "discount_pct")
+     private BigDecimal discountPct = BigDecimal.ZERO;
+ 
++    /** The line's own tax percentage, 0 to 100 with up to two decimals; null uses the workspace rate. */
++    @Column(name = "tax_rate")
++    private BigDecimal taxRate;
++
+     protected InvoiceLine() {
+     }
+ 
+     public InvoiceLine(String description, BigDecimal qty, BigDecimal unitPrice, boolean taxExempt,
+-            BigDecimal discountPct) {
++            BigDecimal discountPct, BigDecimal taxRate) {
+         this.description = description;
+         this.qty = qty;
+         this.unitPrice = unitPrice;
+         this.taxExempt = taxExempt;
+         this.discountPct = discountPct;
++        this.taxRate = taxRate;
+     }
+ 
+     public Long getId() {
+@@ -72,6 +77,15 @@ public class InvoiceLine {
+         return discountPct;
+     }
+ 
++    public BigDecimal getTaxRate() {
++        return taxRate;
++    }
++
++    /** The rate the line is taxed at: its own rate, or the given workspace rate when it has none. */
++    public BigDecimal taxRate(BigDecimal workspaceRate) {
++        return taxRate == null ? workspaceRate : taxRate;
++    }
++
+     /** Quantity times unit price, rounded half up to the cent, before the line's discount. */
+     public BigDecimal grossAmount() {
+         return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index bf94fe3..0822512 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -80,11 +80,11 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice,
+-            boolean taxExempt, BigDecimal discountPct) {
++            boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+         found.ifPresent(invoice -> {
+             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
+-            invoice.addLine(new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct));
++            invoice.addLine(new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate));
+             invoices.saveAndFlush(invoice);
+             if (reopened) {
+                 audit.record("INVOICE_REOPENED id=" + invoice.getId());
+diff --git a/src/main/resources/db/migration/V11__line_tax_rate.sql b/src/main/resources/db/migration/V11__line_tax_rate.sql
+new file mode 100644
+index 0000000..c122625
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__line_tax_rate.sql
+@@ -0,0 +1,2 @@
++-- A line's own tax percentage, 0 to 100 with up to two decimals; NULL means the line uses the workspace rate.
++ALTER TABLE invoice_line ADD COLUMN tax_rate DECIMAL(5, 2);
