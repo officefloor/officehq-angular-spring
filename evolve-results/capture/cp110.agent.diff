@@ -1,0 +1,481 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 1463198..840956c 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -40,6 +40,20 @@ function problemWithRetention(pct: string): string {
+   return '';
+ }
+ 
++// A surcharge percentage from 0 to 25 with at most two decimals, e.g. 10 or 7.5; the server checks it again.
++function problemWithSurcharge(pct: string): string {
++  if (!/^-?\d+(\.\d+)?$/.test(pct)) {
++    return 'The surcharge must be a number, like 10 or 7.5.';
++  }
++  if (Number(pct) < 0 || Number(pct) > 25) {
++    return 'The surcharge must be from 0 to 25 percent.';
++  }
++  if (!TWO_DECIMALS.test(pct)) {
++    return 'The surcharge can have at most two decimals.';
++  }
++  return '';
++}
++
+ // A plan of 2 to 24 monthly instalments at an annual rate from 0 to 30 with at most two decimals,
+ // after an optional down payment from 0 to 50 percent with at most two decimals; the server checks
+ // them again.
+@@ -322,6 +336,10 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="invoice-discount-reason">{{ inv.discountReason }}</td>
+               </tr>
+             }
++            <tr>
++              <th scope="row" colspan="9">Surcharge ({{ inv.surchargePct }}%)</th>
++              <td data-testid="invoice-surcharge">{{ amount(inv.surcharge) }}</td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="9">Minimum charge</th>
+               <td data-testid="invoice-minimum-charge">{{ amount(inv.minimumCharge) }}</td>
+@@ -576,6 +594,19 @@ function problemWith(line: NewLine): string {
+           </form>
+         }
+ 
++        @if (inv.creditOf === null) {
++          <form [formGroup]="surchargeForm" (ngSubmit)="setSurcharge(inv.id)" aria-label="Surcharge" novalidate>
++            <label for="surcharge-pct">Rush surcharge (%, 0 to 25, drafts only)</label>
++            <input id="surcharge-pct" data-testid="surcharge-form-pct" inputmode="decimal" formControlName="pct" />
++            <button type="submit" data-testid="surcharge-form-submit" [disabled]="savingSurcharge()">
++              Set surcharge
++            </button>
++            @if (surchargeError()) {
++              <p role="alert" data-testid="surcharge-form-error">{{ surchargeError() }}</p>
++            }
++          </form>
++        }
++
+         @if (inv.status === 'DRAFT' && inv.creditOf === null) {
+           <form [formGroup]="retentionForm" (ngSubmit)="setRetention(inv.id)" aria-label="Retention" novalidate>
+             <label for="retention-pct">Retention (%, 0 to 20)</label>
+@@ -825,6 +856,8 @@ export class InvoicePanel {
+   protected readonly dueError = signal('');
+   protected readonly savingRetention = signal(false);
+   protected readonly retentionError = signal('');
++  protected readonly savingSurcharge = signal(false);
++  protected readonly surchargeError = signal('');
+   protected readonly savingPlan = signal(false);
+   protected readonly planError = signal('');
+   protected readonly releasing = signal(false);
+@@ -880,6 +913,10 @@ export class InvoicePanel {
+     cap: new FormControl('', { nonNullable: true }),
+   });
+ 
++  protected readonly surchargeForm = new FormGroup({
++    pct: new FormControl('', { nonNullable: true }),
++  });
++
+   protected readonly releaseForm = new FormGroup({
+     amount: new FormControl('', { nonNullable: true }),
+   });
+@@ -908,6 +945,8 @@ export class InvoicePanel {
+       this.dueError.set('');
+       this.retentionForm.reset();
+       this.retentionError.set('');
++      this.surchargeForm.reset();
++      this.surchargeError.set('');
+       this.planForm.reset();
+       this.planError.set('');
+       this.releaseForm.reset();
+@@ -1127,6 +1166,33 @@ export class InvoicePanel {
+     });
+   }
+ 
++  protected setSurcharge(invoiceId: number): void {
++    const pct = this.surchargeForm.getRawValue().pct.trim().replace(/%$/, '').trim();
++    const problem = problemWithSurcharge(pct);
++    if (problem) {
++      this.surchargeForm.markAllAsTouched();
++      this.surchargeError.set(problem);
++      return;
++    }
++    this.savingSurcharge.set(true);
++    this.surchargeError.set('');
++    this.service.setSurcharge(invoiceId, pct).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.surchargeForm.reset();
++        this.savingSurcharge.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.surchargeError.set(
++          typeof detail === 'string' && detail ? detail : 'The surcharge could not be set.',
++        );
++        this.savingSurcharge.set(false);
++      },
++    });
++  }
++
+   protected setPlan(invoiceId: number): void {
+     const raw = this.planForm.getRawValue();
+     const count = raw.count.trim();
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 4e76044..4ecc1d9 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -181,9 +181,13 @@ export interface InvoiceDetail {
+   // Whether it is reverse charged: its client is registered (a valid tax number) outside the
+   // workspace's home region and accounts for the tax itself, so no line is taxed.
+   reverseCharge: boolean;
+-  // What the amount after its discounts falls short of the workspace's minimum charge, added to the
+-  // invoice and taxed at the client's rate; "0.00" when there is none.
++  // What the amount after its discounts plus the surcharge falls short of the workspace's minimum
++  // charge, added to the invoice and taxed at the client's rate; "0.00" when there is none.
+   minimumCharge: string;
++  // The rush surcharge percentage (without trailing zeros), and `surcharge`, that share of the amount
++  // after its discounts rounded down to the cent; not discounted, taxed at the client's rate.
++  surchargePct: string;
++  surcharge: string;
+   // The amount due rounded half up to the nearest cash coin (0.05, or whole yen), and the difference
+   // that makes (signed); once settled in cash, the cash rounding it was settled with.
+   cashDue: string;
+@@ -316,6 +320,12 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct, retentionCap });
+   }
+ 
++  // Sets the rush surcharge of a draft, a percentage of its amount after its discounts (0 to 25, up to
++  // two decimals); refused (400) outside that, or (409) when it is not a draft.
++  setSurcharge(invoiceId: number, surchargePct: string): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/surcharge`, { surchargePct });
++  }
++
+   // Spreads a draft over monthly instalments (2 to 24) at an annual interest rate (0 to 30, up to two
+   // decimals), after a down payment of a percentage of the grand total (0 to 50, up to two decimals);
+   // refused (400) outside that, or (409) when it is not a draft or holds back retention.
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index e3b66c8..e1e5897 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -45,7 +45,7 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -252,7 +252,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -275,7 +275,8 @@ public class TestSupportController {
+                             : date(row.get("interestWaivedOn"), "invoices[].interestWaivedOn"),
+                     row.get("writtenOffOn") == null ? null
+                             : date(row.get("writtenOffOn"), "invoices[].writtenOffOn"),
+-                    skippedInstalment(row.get("skippedInstalment"), "invoices[].skippedInstalment"));
++                    skippedInstalment(row.get("skippedInstalment"), "invoices[].skippedInstalment"),
++                    surchargePct(row.get("surchargePct"), "invoices[].surchargePct"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -473,7 +474,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -509,6 +510,7 @@ public class TestSupportController {
+                     }
+                     row.put("instalmentRate", r.get("INSTALMENT_RATE"));
+                     row.put("planDownPct", r.get("PLAN_DOWN_PCT"));
++                    row.put("surchargePct", r.get("SURCHARGE_PCT"));
+                     if (r.get("SKIPPED_INSTALMENT") != null) {
+                         row.put("skippedInstalment", r.get("SKIPPED_INSTALMENT"));
+                     }
+@@ -804,6 +806,15 @@ public class TestSupportController {
+         return number;
+     }
+ 
++    /** An optional surcharge percentage, 0 to {@link Invoice#MAX_SURCHARGE_PCT}; 0 when left out. */
++    private static BigDecimal surchargePct(Object value, String field) {
++        BigDecimal number = percent(value, field);
++        if (number.compareTo(Invoice.MAX_SURCHARGE_PCT) > 0) {
++            throw refuse(field + " must be from 0 to " + Invoice.MAX_SURCHARGE_PCT + ", not " + value);
++        }
++        return number;
++    }
++
+     /** An optional amount of money, not negative and to the cent; 0 when left out. */
+     private static BigDecimal money(Object value, String field) {
+         if (value == null) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 5078bc1..4913439 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -62,6 +62,9 @@ public class Invoice {
+     /** The highest annual interest rate a plan can charge, as a percentage. */
+     public static final BigDecimal MAX_INSTALMENT_RATE = new BigDecimal("30");
+ 
++    /** The most a draft's surcharge can be, a percentage of its amount after its discounts. */
++    public static final BigDecimal MAX_SURCHARGE_PCT = new BigDecimal("25");
++
+     /** The most a plan's down payment can be, a percentage of the grand total. */
+     public static final BigDecimal MAX_PLAN_DOWN_PCT = new BigDecimal("50");
+ 
+@@ -99,6 +102,10 @@ public class Invoice {
+     @Column(name = "retention_pct")
+     private BigDecimal retentionPct = BigDecimal.ZERO;
+ 
++    /** The rush surcharge, a percentage of the amount after the discounts, 0 to {@link #MAX_SURCHARGE_PCT}. */
++    @Column(name = "surcharge_pct")
++    private BigDecimal surchargePct = BigDecimal.ZERO;
++
+     /** The most retention held back, in the invoice's currency; null is no cap. */
+     @Column(name = "retention_cap")
+     private BigDecimal retentionCap;
+@@ -353,6 +360,7 @@ public class Invoice {
+         copy.discountCap = discountCap;
+         copy.discountReason = discountReason;
+         copy.retentionPct = retentionPct;
++        copy.surchargePct = surchargePct;
+         copy.retentionCap = retentionCap;
+         copy.instalments = instalments;
+         copy.instalmentRate = instalmentRate;
+@@ -565,6 +573,16 @@ public class Invoice {
+         this.discountPct = BigDecimal.ZERO;
+     }
+ 
++    /** The rush surcharge, a percentage of the amount after the discounts, 0 to {@link #MAX_SURCHARGE_PCT}. */
++    public BigDecimal getSurchargePct() {
++        return surchargePct;
++    }
++
++    /** Sets the rush surcharge percentage; it has already been checked. */
++    public void setSurchargePct(BigDecimal surchargePct) {
++        this.surchargePct = surchargePct;
++    }
++
+     /** The percentage of the amount before tax held back as retention, 0 to {@link #MAX_RETENTION_PCT}. */
+     public BigDecimal getRetentionPct() {
+         return retentionPct;
+@@ -1847,7 +1865,7 @@ public class Invoice {
+      * has none the client's regional rate, or the given workspace rate when that has none either, on the line's amount less its share of the discount,
+      * unrounded. Tax-exempt lines, and every line of a reverse-charged invoice, have no tax. A tax-exempt
+      * client is exempt from the general rate only (regional or workspace): its lines with their own rate are still taxed at it.
+-     * The minimum charge's exact tax at the client's rate follows, as one more line.
++     * The exact tax of the surcharge and minimum charge at the client's rate follows, as one more line.
+      */
+     private List<BigDecimal> exactLineTaxes(BigDecimal taxRate) {
+         List<BigDecimal> shares = discountShares();
+@@ -1858,7 +1876,7 @@ public class Invoice {
+             taxes.add(isReverseCharge() || line.isTaxExempt() ? BigDecimal.ZERO
+                     : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(clientRate)).movePointLeft(2));
+         }
+-        taxes.add(isReverseCharge() ? BigDecimal.ZERO : minimumCharge().multiply(clientRate).movePointLeft(2));
++        taxes.add(isReverseCharge() ? BigDecimal.ZERO : surcharge().add(minimumCharge()).multiply(clientRate).movePointLeft(2));
+         return taxes;
+     }
+ 
+@@ -1868,7 +1886,7 @@ public class Invoice {
+      * cents of its exact share (rounded down), then the cents left over go one each to the lines with
+      * the largest leftover fractions; between equal fractions the cent goes to the line with the
+      * larger exact tax, and between equal exact taxes too to the lower line id. The line taxes add up
+-     * to the invoice tax, less the minimum charge's share, which is split as one more line after them.
++     * to the invoice tax, less the share of the surcharge and minimum charge, which is split as one more line after them.
+      */
+     public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
+         if (clientPricesIncludeTax) {
+@@ -1965,7 +1983,7 @@ public class Invoice {
+ 
+     /**
+      * The tax inside tax-inclusive prices: the total of the taxed lines' amounts after their discount
+-     * shares and the minimum charge, less that total divided by 1 plus the client's rate, rounded once,
++     * shares, the surcharge and the minimum charge, less that total divided by 1 plus the client's rate, rounded once,
+      * half up to the cent.
+      */
+     private BigDecimal inclusiveTax(BigDecimal taxRate) {
+@@ -1977,7 +1995,7 @@ public class Invoice {
+             }
+         }
+         if (!clientTaxExempt && !isReverseCharge()) {
+-            taxed = taxed.add(minimumCharge());
++            taxed = taxed.add(surcharge()).add(minimumCharge());
+         }
+         return taxed.subtract(taxed.divide(inclusiveDivisor(taxRate), scale(), RoundingMode.HALF_UP));
+     }
+@@ -2008,8 +2026,8 @@ public class Invoice {
+             given = given.add(tax);
+         }
+         if (!clientTaxExempt && !isReverseCharge()) {
+-            // The minimum charge keeps its own tax, which is not a line's.
+-            BigDecimal minimum = minimumCharge();
++            // The surcharge and minimum charge keep their own tax, which is not a line's.
++            BigDecimal minimum = surcharge().add(minimumCharge());
+             given = given.add(minimum.subtract(minimum.divide(divisor, scale(), RoundingMode.HALF_UP)));
+         }
+         order.sort(Comparator.<Integer, BigDecimal>comparing(amounts::get).reversed().thenComparing(i -> i));
+@@ -2023,8 +2041,24 @@ public class Invoice {
+         return taxes;
+     }
+ 
++    /** The amount after the discounts: the subtotal less the discount. */
++    public BigDecimal discounted() {
++        return subtotal().subtract(discount());
++    }
++
++    /**
++     * The rush surcharge: the surcharge percentage of the amount after the discounts, rounded down to
++     * the cent. It is not discounted and is taxed at the client's rate. Nothing for a credit note.
++     */
++    public BigDecimal surcharge() {
++        if (isCreditNote()) {
++            return zero();
++        }
++        return discounted().multiply(surchargePct).movePointLeft(2).setScale(scale(), RoundingMode.DOWN);
++    }
++
+     /**
+-     * The minimum charge: what the subtotal less the discount falls short of the workspace's minimum
++     * The minimum charge: what the subtotal less the discount plus the surcharge falls short of the workspace's minimum
+      * charge, converted from US dollars at the issue date's rate and rounded down to the step. Nothing
+      * when no minimum is set, for a credit note, or for an invoice with no lines.
+      */
+@@ -2033,24 +2067,24 @@ public class Invoice {
+             return zero();
+         }
+         BigDecimal minimum = currency().divideDownToStep(new BigDecimal(minimumChargeUsd.trim()), usdPerOn(issueDate));
+-        return minimum.subtract(subtotal().subtract(discount())).max(zero());
++        return minimum.subtract(discounted().add(surcharge())).max(zero());
+     }
+ 
+     /**
+-     * The amount before tax: the subtotal less the discount plus the minimum charge, less the tax inside
++     * The amount before tax: the subtotal less the discount plus the surcharge and the minimum charge, less the tax inside
+      * it when the client's prices include tax.
+      */
+     public BigDecimal beforeTax(BigDecimal taxRate) {
+-        BigDecimal amount = subtotal().subtract(discount()).add(minimumCharge());
++        BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
+         return clientPricesIncludeTax ? amount.subtract(tax(taxRate)) : amount;
+     }
+ 
+     /**
+-     * The grand total: the subtotal less the discount plus the minimum charge, plus tax at the given
++     * The grand total: the subtotal less the discount plus the surcharge and the minimum charge, plus tax at the given
+      * rate — or, when the client's prices include tax, that amount, which already holds it.
+      */
+     public BigDecimal total(BigDecimal taxRate) {
+-        BigDecimal amount = subtotal().subtract(discount()).add(minimumCharge());
++        BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
+         return clientPricesIncludeTax ? amount : amount.add(tax(taxRate));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index dd1ac8c..c2774c3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -133,6 +133,8 @@ public class InvoiceController {
+      * {@code pricesIncludeTax} the tax is inside the subtotal less the discount, which is then the grand total.
+      * {@code cashDue} is the amount due rounded half up to the nearest cash coin (0.05, or whole yen) and
+      * {@code cashRounding} the difference (signed): once settled in cash, the cash rounding it was settled with.
++     * {@code surchargePct} (without trailing zeros) is the rush surcharge percentage and {@code surcharge} that share of
++     * the subtotal less the discount, rounded down to the cent; it counts towards the {@code minimumCharge}.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -142,7 +144,7 @@ public class InvoiceController {
+             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+-            String minimumCharge, String cashDue, String cashRounding) {
++            String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -181,7 +183,8 @@ public class InvoiceController {
+                     i.getInterestSaved().toPlainString(),
+                     i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
+                     i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),
+-                    i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString());
++                    i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
++                    i.getSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString());
+         }
+     }
+ 
+@@ -311,6 +314,15 @@ public class InvoiceController {
+             BigDecimal retentionCap) {
+     }
+ 
++    /** A rush surcharge on a draft: a percentage from 0 to 25 with at most two decimals. */
++    public record NewSurcharge(
++            @NotNull(message = "Enter a surcharge percentage.")
++            @DecimalMin(value = "0", message = "The surcharge must be from 0 to 25 percent.")
++            @DecimalMax(value = "25", message = "The surcharge must be from 0 to 25 percent.")
++            @Digits(integer = 2, fraction = 2, message = "The surcharge can have at most two decimals.")
++            BigDecimal surchargePct) {
++    }
++
+     /**
+      * How much of the retention held to release: more than zero with at most two decimals; null
+      * releases all that is still held.
+@@ -513,6 +525,13 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    @PutMapping("/api/invoices/{id}/surcharge")
++    public InvoiceDetail setSurcharge(@PathVariable Long id, @Valid @RequestBody NewSurcharge body) {
++        return invoices.setSurcharge(id, body.surchargePct())
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     @PutMapping("/api/invoices/{id}/plan")
+     public InvoiceDetail setPlan(@PathVariable Long id, @Valid @RequestBody NewPlan body) {
+         return invoices.setPlan(id, body.instalments().intValueExact(), body.instalmentRate(),
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 5ea60aa..a8bd0ae 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -342,6 +342,27 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Sets the rush surcharge of a draft, a percentage of its amount after its discounts; empty if no
++     * such invoice. The percentage has already been checked; any invoice that is not a draft, or a
++     * credit note, is refused.
++     */
++    @Transactional
++    public Optional<Invoice> setSurcharge(Long invoiceId, BigDecimal surchargePct) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isCreditNote()) {
++                throw new InvoiceRejectedException("A credit note carries no surcharge.");
++            }
++            if (!invoice.isDraft()) {
++                throw new InvoiceRejectedException("A surcharge can only be set on a draft.");
++            }
++            invoice.setSurchargePct(surchargePct);
++            invoices.saveAndFlush(invoice);
++        });
++        return found;
++    }
++
+     /**
+      * Sets the percentage of a draft's amount before tax held back as retention, and the most it holds
+      * back (null for no cap); empty if no such invoice.
+diff --git a/src/main/resources/db/migration/V44__invoice_surcharge.sql b/src/main/resources/db/migration/V44__invoice_surcharge.sql
+new file mode 100644
+index 0000000..ee0e872
+--- /dev/null
++++ b/src/main/resources/db/migration/V44__invoice_surcharge.sql
+@@ -0,0 +1,2 @@
++-- The rush surcharge of a draft, a percentage (0 to 25) of its amount after its discounts.
++ALTER TABLE invoice ADD COLUMN surcharge_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
