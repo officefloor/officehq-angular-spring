@@ -225,6 +225,14 @@ public class Invoice {
     private String creditsIssued;
 
     /**
+     * The credit notes issued against this invoice, as "issue date=amount taken off what it owed"
+     * (retention cleared left out) joined by commas; null when there are none. Read from them, so that
+     * each counts against late interest only from its issue date.
+     */
+    @Formula("(SELECT LISTAGG(CAST(cn.issue_date AS VARCHAR) || '=' || CAST(COALESCE(cn.credit_applied, 0) - COALESCE(cn.credit_retention, 0) AS VARCHAR), ',') WITHIN GROUP (ORDER BY cn.issue_date, cn.id) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
+    private String creditsOwedTaken;
+
+    /**
      * The late interest charged so far (see {@link #accrueLateInterest}); not stored, worked out again
      * each time the invoice is read.
      */
@@ -696,7 +704,9 @@ public class Invoice {
      * d days earns B x ((1 + rate / 100 / 360)^d - 1), rounded half up to the cent. Each payment after
      * the grace period ends a period; every period earns interest on what the invoice still owed during it
      * (earlier interest, the fee and retention left out), and a payment pays the invoice, then the fee,
-     * then the interest earned so far. An invoice spread over instalments instead earns interest
+     * then the interest earned so far. A credit note issued after the grace period ends a period too:
+     * what it took off what the invoice owed counts only from its issue date, so the periods before it
+     * earn interest on what was owed before the credit. An invoice spread over instalments instead earns interest
      * instalment by instalment and is charged the late fee once on each instalment (see
      * {@link #accrueInstalmentInterest}). On the day the
      * charges were waived (after the day's payments), the fee and interest still unpaid are written off
@@ -727,14 +737,30 @@ public class Invoice {
         if (!earnsInterest && fee.signum() <= 0) {
             return;
         }
-        record Part(LocalDate on, Long paymentId, BigDecimal amount) {
+        record Part(LocalDate on, Long paymentId, BigDecimal amount, boolean credit) {
         }
-        List<Part> inOrder = payments.stream().filter(p -> !p.isReversed())
+        List<Part> inOrder = new ArrayList<>();
+        payments.stream().filter(p -> !p.isReversed())
                 .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
-                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
+                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount(), false)))
                 .filter(p -> !p.on().isAfter(today))
-                .sorted(Comparator.comparing(Part::on).thenComparing(Part::paymentId)).toList();
+                .forEach(inOrder::add);
+        // What a credit note took off what the invoice owed counts only from its issue date: until then
+        // the invoice still owed it. One issued during the grace period, or later than today, comes off
+        // from the start.
         BigDecimal owed = payableBeforeInterest(taxRate).subtract(retentionReleased(taxRate));
+        if (creditsOwedTaken != null && !creditsOwedTaken.isBlank()) {
+            for (String credit : creditsOwedTaken.split(",")) {
+                String[] parts = credit.split("=");
+                LocalDate on = LocalDate.parse(parts[0].trim());
+                BigDecimal amount = new BigDecimal(parts[1].trim());
+                if (amount.signum() > 0 && on.isAfter(dueDate.plusDays(graceDays())) && !on.isAfter(today)) {
+                    owed = owed.add(amount);
+                    inOrder.add(new Part(on, Long.MIN_VALUE, amount, true));
+                }
+            }
+        }
+        inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
         BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(dueDate.plusDays(graceDays())))
                 .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (owed.subtract(paidInGrace).signum() <= 0) {
@@ -780,6 +806,10 @@ public class Invoice {
                 charged = charged.add(earned);
                 unpaidInterest = unpaidInterest.add(earned);
                 from = part.on();
+            }
+            if (part.credit()) {
+                owed = owed.subtract(part.amount());
+                continue;
             }
             BigDecimal toOwed = part.amount().min(owed).max(BigDecimal.ZERO);
             BigDecimal rest = part.amount().subtract(toOwed);
