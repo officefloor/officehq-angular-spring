@@ -1,0 +1,36 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 59d92bc..3bd8677 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -623,6 +623,11 @@ public class Invoice {
+         return lateFee.setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
++    /** The most late fee charged: 10% of the grand total at the tax rate, rounded down to the cent. */
++    private BigDecimal lateFeeCap(BigDecimal taxRate) {
++        return total(taxRate).divide(BigDecimal.TEN).setScale(scale(), RoundingMode.DOWN);
++    }
++
+     /**
+      * The late fee in the invoice's currency: the fee in US dollars converted as a payment in another
+      * currency is, through the workspace rate on the day it is charged, worked out exactly and
+@@ -638,7 +643,8 @@ public class Invoice {
+     /**
+      * Works out the late fee and late interest charged by the given day, at the late fee (in US
+      * dollars) and annual rate (a percentage), from the payments (those not reversed count), and keeps
+-     * them as part of what is payable. The fee is charged once, on the day the invoice becomes overdue
++     * them as part of what is payable. The fee is never more than 10% of the grand total (see
++     * {@link #lateFeeCap}). The fee is charged once, on the day the invoice becomes overdue
+      * ({@link #graceDays()} days after its due date), when something is still owed then; it earns no
+      * interest, and a payment from then on pays it first. A sent invoice not
+      * spread over instalments, with something still owed more than {@link #graceDays()} days after its
+@@ -671,7 +677,8 @@ public class Invoice {
+             return;
+         }
+         boolean earnsInterest = annualRate != null && annualRate.signum() > 0;
+-        BigDecimal fee = lateFeeUsd == null || lateFeeUsd.signum() <= 0 ? zero() : lateFeeIn(lateFeeUsd, dueDate.plusDays(graceDays() + 1));
++        BigDecimal fee = lateFeeUsd == null || lateFeeUsd.signum() <= 0 ? zero()
++                : lateFeeIn(lateFeeUsd, dueDate.plusDays(graceDays() + 1)).min(lateFeeCap(taxRate)).max(zero());
+         if (!earnsInterest && fee.signum() <= 0) {
+             return;
+         }
