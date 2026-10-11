@@ -207,13 +207,29 @@ public class InvoiceService {
             if (invoice.getLines().isEmpty()) {
                 throw new InvoiceRejectedException("Add at least one line before sending the invoice.");
             }
-            LocalDate issued = today.date();
-            invoice.markSent(issued, dueDateFor(invoice.getClientId(), issued));
-            invoices.saveAndFlush(invoice);
-            audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
-                    + " total=" + invoice.total(taxRate.percent()).toPlainString());
+            markSent(invoice);
         });
         return found;
+    }
+
+    /**
+     * Sends each of the client's drafts that has at least one line, lowest id first, as {@link #send}
+     * would; drafts with no lines stay drafts.
+     */
+    @Transactional
+    public void sendAllDrafts(Long clientId) {
+        invoices.findByClientIdOrderByIdAsc(clientId).stream()
+                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty())
+                .forEach(this::markSent);
+    }
+
+    /** Issues the draft today, due on the client's terms, and records it in the audit. */
+    private void markSent(Invoice invoice) {
+        LocalDate issued = today.date();
+        invoice.markSent(issued, dueDateFor(invoice.getClientId(), issued));
+        invoices.saveAndFlush(invoice);
+        audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
+                + " total=" + invoice.total(taxRate.percent()).toPlainString());
     }
 
     /**

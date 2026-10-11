@@ -41,6 +41,9 @@ import { money, statusLabel } from './invoice-format';
       <button type="button" data-testid="invoice-new" [disabled]="creating()" (click)="newDraft()">
         New invoice
       </button>
+      <button type="button" data-testid="invoice-send-all" [disabled]="sendingAll()" (click)="sendAllDrafts()">
+        Send all drafts
+      </button>
       <table data-testid="invoice-list">
         <thead>
           <tr>
@@ -98,6 +101,7 @@ import { money, statusLabel } from './invoice-format';
     @if (selectedId(); as id) {
       <app-invoice-panel
         [invoiceId]="id"
+        [reload]="reloadPanel()"
         [allocations]="allocations()"
         (changed)="totalChanged($event)"
         (split)="splitRecorded($event)"
@@ -127,6 +131,9 @@ export class ClientInvoices {
   protected readonly invoices = signal<InvoiceSummary[]>([]);
   protected readonly selectedId = signal<number | null>(null);
   protected readonly creating = signal(false);
+  protected readonly sendingAll = signal(false);
+  // Bumped to make the invoice panel load its invoice again.
+  protected readonly reloadPanel = signal(0);
   // The part of a payment typed for each invoice, by id, as entered.
   protected readonly allocated = signal<Record<number, string>>({});
   // The parts that have been filled in, for the payment form.
@@ -165,6 +172,21 @@ export class ClientInvoices {
         this.creating.set(false);
       },
       error: () => this.creating.set(false),
+    });
+  }
+
+  // Sends every draft with lines: show their new statuses and dates, and load the open invoice
+  // again so the panel shows it as sent.
+  protected sendAllDrafts(): void {
+    this.sendingAll.set(true);
+    this.service.sendAllDrafts(this.clientId()).subscribe({
+      next: (list) => {
+        this.invoices.set(list);
+        this.reloadPanel.update((n) => n + 1);
+        this.sendingAll.set(false);
+        this.changed.emit();
+      },
+      error: () => this.sendingAll.set(false),
     });
   }
 

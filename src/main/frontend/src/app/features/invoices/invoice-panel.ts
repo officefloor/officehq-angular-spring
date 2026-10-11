@@ -392,6 +392,8 @@ export class InvoicePanel {
   private readonly service = inject(InvoiceService);
 
   readonly invoiceId = input.required<number>();
+  // Bumped when the invoice was changed elsewhere (sent with the client's other drafts), to load it again.
+  readonly reload = input(0);
   // The invoice after a change made here, so the list can show its new total.
   readonly changed = output<InvoiceDetail>();
   // The parts of a payment filled in on the list; when any is, a payment is spread over them.
@@ -435,6 +437,7 @@ export class InvoicePanel {
   constructor() {
     effect((onCleanup) => {
       const id = this.invoiceId();
+      this.reload();
       this.invoice.set(null);
       this.form.reset();
       this.error.set('');

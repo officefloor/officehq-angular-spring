@@ -178,6 +178,12 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/send`, null);
   }
 
+  // Sends every draft of the client that has at least one line, lowest id first; drafts with no
+  // lines stay drafts. Answers the client's invoices with their new statuses.
+  sendAllDrafts(clientId: number): Observable<InvoiceSummary[]> {
+    return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/invoices/send-drafts`, null);
+  }
+
   // Copies an invoice into a new draft for the same client: its lines and invoice discount, issued
   // today and due as any new invoice; payments are not copied. Answers the new draft.
   duplicate(invoiceId: number): Observable<InvoiceDetail> {

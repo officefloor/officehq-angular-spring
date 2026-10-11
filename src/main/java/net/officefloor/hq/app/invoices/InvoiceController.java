@@ -261,6 +261,13 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
     }
 
+    /** Sends every draft of the client that has a line; answers the client's invoices with their new statuses. */
+    @PostMapping("/api/clients/{clientId}/invoices/send-drafts")
+    public List<InvoiceSummary> sendAllDrafts(@PathVariable Long clientId) {
+        invoices.sendAllDrafts(clientId);
+        return forClient(clientId);
+    }
+
     @GetMapping("/api/invoices/{id}")
     public InvoiceDetail open(@PathVariable Long id) {
         return invoices.find(id).map(this::detail)
