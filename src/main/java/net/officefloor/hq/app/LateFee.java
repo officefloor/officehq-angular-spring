@@ -6,8 +6,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 /**
- * The workspace's late fee: the stored {@code late_fee} setting, a fixed amount in US dollars such as
- * 25, charged once on an invoice (on a plan, once on each instalment) when it becomes overdue. With no fee set none is charged, so it is 0.
+ * The workspace's late fee switch: the stored {@code late_fee} setting, an amount in US dollars such as
+ * 25. With any fee set, a late fee of 2% of what is owed (at least $10.00) is charged once on an invoice
+ * (on a plan, once on each instalment) when it becomes overdue, whatever amount the setting holds. With
+ * no fee set none is charged, so it is 0.
  */
 @Service
 public class LateFee {
