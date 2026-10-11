@@ -40,7 +40,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays");
     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
@@ -76,10 +76,13 @@ public class TestSupportController {
 
     private final VolumeDiscounts volumeDiscounts;
 
+    private final RegionGrace regionGrace;
+
     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
             PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
             CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList, Today today, LateInterestRate lateInterestRate,
-            VolumeDiscounts volumeDiscounts) {
+            VolumeDiscounts volumeDiscounts, RegionGrace regionGrace) {
+        this.regionGrace = regionGrace;
         this.volumeDiscounts = volumeDiscounts;
         this.lateInterestRate = lateInterestRate;
         this.today = today;
@@ -221,6 +224,18 @@ public class TestSupportController {
                     }
                     lateInterestRate.setRegionMaximum(region,
                             percent(e.getValue(), "settings.regionMaxInterest." + region));
+                }
+            }
+            if (values.get("regionGraceDays") != null) {
+                if (!(values.get("regionGraceDays") instanceof Map<?, ?> graces)) {
+                    throw refuse("settings.regionGraceDays must be an object of days by region");
+                }
+                for (Map.Entry<?, ?> e : graces.entrySet()) {
+                    String region = e.getKey().toString();
+                    if (region.isBlank() || e.getValue() == null) {
+                        throw refuse("settings.regionGraceDays needs a region and days, not " + region + ": " + e.getValue());
+                    }
+                    regionGrace.set(region, graceDays(e.getValue(), "settings.regionGraceDays." + region));
                 }
             }
             if (values.get("homeRegion") != null) {
@@ -525,6 +540,10 @@ public class TestSupportController {
         if (!regionMaxInterest.isEmpty()) {
             settings.put("regionMaxInterest", regionMaxInterest);
         }
+        Map<String, Integer> regionGraceDays = this.regionGrace.all();
+        if (!regionGraceDays.isEmpty()) {
+            settings.put("regionGraceDays", regionGraceDays);
+        }
         Map<String, BigDecimal> regionTaxRates = this.taxRate.regions();
         if (!regionTaxRates.isEmpty()) {
             settings.put("regionTaxRates", regionTaxRates);
@@ -600,7 +619,9 @@ public class TestSupportController {
                     if (r.get("MINIMUM_CHARGE") != null) {
                         row.put("minimumCharge", r.get("MINIMUM_CHARGE"));
                     }
-                    row.put("graceDays", r.get("GRACE_DAYS"));
+                    if (r.get("GRACE_DAYS") != null) {
+                        row.put("graceDays", r.get("GRACE_DAYS"));
+                    }
                     if (r.get("INTEREST_RATE") != null) {
                         row.put("interestRate", r.get("INTEREST_RATE"));
                     }
@@ -886,11 +907,11 @@ public class TestSupportController {
         }
     }
 
-    /** A grace period of 0 to 30 whole days; the standard week when left out. */
-    private static int graceDays(Object value, String field) {
+    /** A grace period of 0 to 30 whole days; null (the region's, else the standard week) when left out. */
+    private static Integer graceDays(Object value, String field) {
         Integer days = days(value, field);
         if (days == null) {
-            return Invoice.GRACE_DAYS;
+            return null;
         }
         if (days > Client.MAX_GRACE_DAYS) {
             throw refuse(field + " must be from 0 to " + Client.MAX_GRACE_DAYS + " days, not " + value);

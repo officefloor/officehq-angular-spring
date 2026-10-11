@@ -17,7 +17,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import net.officefloor.hq.app.invoices.Invoice;
 
 /** A client invoices are raised for. */
 @Entity
@@ -79,10 +78,10 @@ public class Client {
 
     /**
      * Days past its due date an invoice or instalment for this client is given before it is overdue,
-     * and earns late interest: 0 to {@link #MAX_GRACE_DAYS}, a week as standard.
+     * and earns late interest: 0 to {@link #MAX_GRACE_DAYS}; null for their region's, else a week.
      */
     @Column(name = "grace_days")
-    private int graceDays = Invoice.GRACE_DAYS;
+    private Integer graceDays;
 
     /**
      * The client's own annual late-interest rate (0 to {@link #MAX_INTEREST_RATE} percent) charged
@@ -150,7 +149,7 @@ public class Client {
         this.earlyPayPct = earlyPayPct == null ? BigDecimal.ZERO : earlyPayPct;
         this.earlyPayDays = earlyPayDays;
         this.retentionPct = retentionPct == null ? BigDecimal.ZERO : retentionPct;
-        this.graceDays = graceDays == null ? Invoice.GRACE_DAYS : graceDays;
+        this.graceDays = graceDays;
         this.interestRate = interestRate;
         this.region = region;
         this.taxNumber = taxNumber;
@@ -219,7 +218,7 @@ public class Client {
         return minimumCharge;
     }
 
-    public int getGraceDays() {
+    public Integer getGraceDays() {
         return graceDays;
     }
 

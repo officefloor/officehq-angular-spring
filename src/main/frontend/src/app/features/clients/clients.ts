@@ -9,8 +9,6 @@ import { Client, ClientService, byName } from './client.service';
 // A proper email address: a mailbox, an @, and a domain with at least one dot — name@company.com,
 // not name@company (a typo). The same rule the server applies.
 const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
-// The grace period, in days past the due date, a client is given when none is set: a week.
-const STANDARD_GRACE_DAYS = 7;
 
 // A tax number (spaces already removed) is two letters then ten digits whose last two digits are
 // 97 less the remainder of the first eight divided by 97 (a remainder of 0 gives 97).
@@ -174,7 +172,7 @@ function validTaxNumber(taxNumber: string): boolean {
           step="0.01"
           formControlName="rateDiscountPct"
         />
-        <label for="client-grace">Grace period in days, 0 to 30 (optional, a week if left out)</label>
+        <label for="client-grace">Grace period in days, 0 to 30 (optional, the region's or else a week if left out)</label>
         <input
           id="client-grace"
           data-testid="client-form-grace-days"
@@ -435,7 +433,7 @@ export class Clients {
       withholdingPct: withholdingPct ?? 0,
       minimumCharge,
       rateDiscountPct: rateDiscountPct ?? 0,
-      graceDays: graceDays ?? STANDARD_GRACE_DAYS,
+      graceDays,
       interestRate,
       region: region || null,
       taxNumber: taxNumber || null,

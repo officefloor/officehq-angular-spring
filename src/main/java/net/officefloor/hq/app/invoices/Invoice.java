@@ -291,8 +291,11 @@ public class Invoice {
         return withholdingPct == null ? BigDecimal.ZERO : withholdingPct;
     }
 
-    /** The client's grace period in days; read from the client. */
-    @Formula("(SELECT c.grace_days FROM client c WHERE c.id = client_id)")
+    /**
+     * The client's grace period in days: their own, else their region's; read from the client and the
+     * workspace's regional grace periods, null when neither is set.
+     */
+    @Formula("(SELECT COALESCE(c.grace_days, (SELECT CAST(s.setting_value AS INT) FROM app_setting s WHERE s.name = 'region_grace_days_' || c.region)) FROM client c WHERE c.id = client_id)")
     private Integer clientGraceDays;
 
     /**
@@ -1625,7 +1628,10 @@ public class Invoice {
         return rate.min(new BigDecimal(regionMaxInterest.trim()));
     }
 
-    /** Days past its due date this invoice is given before it becomes overdue: its client's grace period. */
+    /**
+     * Days past its due date this invoice is given before it becomes overdue: its client's grace
+     * period, else their region's, else the standard week.
+     */
     public int graceDays() {
         return clientGraceDays == null ? GRACE_DAYS : clientGraceDays;
     }

@@ -28,7 +28,7 @@ public class ClientController {
 
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
-            BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
+            BigDecimal retentionPct, Integer graceDays, BigDecimal interestRate, String region, String taxNumber,
             List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
             LocalDate taxExemptUntil) {
         static ClientView of(Client c) {
