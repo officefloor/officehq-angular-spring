@@ -166,7 +166,7 @@ function problemWith(line: NewLine): string {
 // be duplicated into a new draft for the same client, which then opens. A draft's due date can be set
 // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
 // server refuses to send it once that date is past. A draft can hold back retention, a percentage of
-// the grand total (0 to 20); while held it is not part of the amount due, and once nothing else is due
+// the amount before tax, the subtotal less the discount (0 to 20); while held it is not part of the amount due, and once nothing else is due
 // it can be released on the sent invoice, falling due 30 days later. A draft without retention can
 // instead be spread over 2 to 24 monthly instalments at an annual interest rate (0 to 30); the server
 // works out the schedule from the grand total, dated from the issue date (and again when it is sent),

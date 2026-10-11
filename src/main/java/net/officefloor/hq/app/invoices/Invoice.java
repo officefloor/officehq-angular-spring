@@ -37,7 +37,7 @@ public class Invoice {
     /** A part payment must be at least this share of the grand total, unless it settles the invoice. */
     public static final BigDecimal MINIMUM_PART_SHARE = new BigDecimal("0.10");
 
-    /** The most retention a draft can hold back, as a percentage of the grand total. */
+    /** The most retention a draft can hold back, as a percentage of the amount before tax. */
     public static final BigDecimal MAX_RETENTION_PCT = new BigDecimal("20");
 
     /** Released retention falls due this many days after the day it was released. */
@@ -329,7 +329,7 @@ public class Invoice {
         this.discountPct = BigDecimal.ZERO;
     }
 
-    /** The percentage of the grand total held back as retention, 0 to {@link #MAX_RETENTION_PCT}. */
+    /** The percentage of the amount before tax held back as retention, 0 to {@link #MAX_RETENTION_PCT}. */
     public BigDecimal getRetentionPct() {
         return retentionPct;
     }
@@ -354,12 +354,15 @@ public class Invoice {
         this.retentionReleasedOn = on;
     }
 
-    /** The retention at the tax rate: the retention percentage of the grand total, rounded down to the cent. */
+    /**
+     * The retention: the retention percentage of the amount before tax (the subtotal less the
+     * discount), rounded down to the cent. Tax is never held back, so the tax rate does not change it.
+     */
     public BigDecimal retention(BigDecimal taxRate) {
         if (isCreditNote()) {
             return zero();
         }
-        return total(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+        return subtotal().subtract(discount()).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
     }
 
     /**

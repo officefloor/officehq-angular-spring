@@ -102,7 +102,7 @@ public class InvoiceController {
      * it, payments taken in date order; null while it is not fully paid. {@code credited} is what
      * issued credit notes take off it; {@code creditOf} the id of the invoice a credit note credits
      * (null for an ordinary invoice) and {@code listedTotal} the total as listed, negative for a credit note.
-     * {@code retentionPct} (without trailing zeros) is the share of the grand total held back as
+     * {@code retentionPct} (without trailing zeros) is the share of the amount before tax (subtotal less discount) held back as
      * {@code retention}, rounded down to the cent; {@code retentionHeld} is what is still held back (not
      * part of the amount due), {@code retentionReleasedOn} the day it was released (null while held) and
      * {@code retentionDueDate} the day released retention falls due. {@code instalments} is how many

@@ -114,7 +114,7 @@ export interface InvoiceDetail {
   creditOf: number | null;
   // The total as listed: negative for a credit note.
   listedTotal: string;
-  // The percentage of the grand total held back (without trailing zeros), and `retention`, that share
+  // The percentage of the amount before tax held back (without trailing zeros), and `retention`, that share
   // rounded down to the cent; `retentionHeld` is what is still held back, not part of `amountDue`.
   retentionPct: string;
   retention: string;
@@ -255,7 +255,7 @@ export class InvoiceService {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/due-date`, { dueDate });
   }
 
-  // Sets the percentage of a draft's grand total held back as retention (0 to 20, up to two decimals);
+  // Sets the percentage of a draft's amount before tax held back as retention (0 to 20, up to two decimals);
   // refused (400) outside that, or (409) when it is not a draft.
   setRetention(invoiceId: number, retentionPct: string): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct });
