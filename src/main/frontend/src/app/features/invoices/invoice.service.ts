@@ -64,6 +64,9 @@ export interface InvoiceLineView {
   taxRate: string | null;
   // The id of the invoice line a credit note's line credits; null when none.
   creditOfLine: number | null;
+  // Whether the line is priced in progressive tiers from the client's rate card; its `unitPrice` is
+  // then the first band's, and a change of quantity reprices it from the bands.
+  tiered: boolean;
 }
 
 // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to

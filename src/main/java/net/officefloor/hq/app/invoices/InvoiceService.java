@@ -21,8 +21,10 @@ import net.officefloor.hq.app.LateInterestRate;
 import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
 import net.officefloor.hq.app.clients.Client;
+import net.officefloor.hq.app.clients.ClientRate;
 import net.officefloor.hq.app.clients.ClientRepository;
 import net.officefloor.hq.app.clients.Currency;
+import net.officefloor.hq.app.clients.RateTiers;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -218,10 +220,10 @@ public class InvoiceService {
             BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
-            BigDecimal price = linePrice(invoice, unitType, unitPrice);
-            requireWhole(invoice.currency(), price, "The unit price");
+            LinePrice price = linePrice(invoice, unitType, unitPrice);
             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
-            invoice.addLine(new InvoiceLine(description, qty, unitType, price, taxExempt, discountPct, taxRate));
+            invoice.addLine(new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), taxExempt,
+                    discountPct, taxRate));
             invoices.saveAndFlush(invoice);
             if (reopened) {
                 audit.record("INVOICE_REOPENED id=" + invoice.getId());
@@ -270,10 +272,10 @@ public class InvoiceService {
         if (!invoice.hasLine(lineId)) {
             return Optional.empty();
         }
-        BigDecimal price = linePrice(invoice, unitType, unitPrice);
-        requireWhole(invoice.currency(), price, "The unit price");
+        LinePrice price = linePrice(invoice, unitType, unitPrice);
         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
-        invoice.updateLine(lineId, description, qty, unitType, price, taxExempt, discountPct, taxRate);
+        invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), taxExempt,
+                discountPct, taxRate);
         invoices.saveAndFlush(invoice);
         if (reopened) {
             audit.record("INVOICE_REOPENED id=" + invoice.getId());
@@ -1370,24 +1372,35 @@ public class InvoiceService {
      * Refuses an amount entered with more decimals than the currency has: whole yen for a yen client
      * (the cent is already checked for the rest).
      */
+    /** A line's unit price, and the tiers it is priced in (null when it has a single price). */
+    private record LinePrice(BigDecimal unitPrice, String tiers) {
+    }
+
     /**
-     * A line's unit price: the one entered, or else the client's rate for the line's unit type.
-     * Refused when neither is there.
+     * A line's price: the unit price entered, or else the client's rate for the line's unit type —
+     * a single price, or tiers starting from the first band. Refused when neither is there, and a
+     * single price with more decimals than the currency has.
      */
-    private BigDecimal linePrice(Invoice invoice, String unitType, BigDecimal unitPrice) {
+    private LinePrice linePrice(Invoice invoice, String unitType, BigDecimal unitPrice) {
         if (unitPrice != null) {
-            return unitPrice;
+            requireWhole(invoice.currency(), unitPrice, "The unit price");
+            return new LinePrice(unitPrice, null);
         }
         if (unitType == null) {
             throw new InvoiceRejectedException("Enter a unit price or a unit type.");
         }
         Client client = clients.findById(invoice.getClientId()).orElse(null);
-        BigDecimal rate = client == null ? null : client.rateFor(unitType);
+        ClientRate rate = client == null ? null : client.rateFor(unitType);
         if (rate == null) {
             throw new InvoiceRejectedException("The client's rate card has no rate for " + unitType
                     + "; enter a unit price.");
         }
-        return rate;
+        RateTiers tiers = rate.tiers();
+        if (tiers != null) {
+            return new LinePrice(tiers.firstPrice(), tiers.format());
+        }
+        requireWhole(invoice.currency(), rate.getUnitPrice(), "The unit price");
+        return new LinePrice(rate.getUnitPrice(), null);
     }
 
     private static void requireWhole(Currency currency, BigDecimal amount, String what) {

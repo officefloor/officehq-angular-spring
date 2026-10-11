@@ -253,7 +253,7 @@ function problemWith(line: NewLine): string {
                 <td data-testid="line-description">{{ l.description }}</td>
                 <td data-testid="line-qty">{{ l.qty }}</td>
                 <td data-testid="line-unit-type">{{ l.unitType ?? '' }}</td>
-                <td data-testid="line-unit-price">{{ amount(l.unitPrice) }}</td>
+                <td data-testid="line-unit-price">{{ l.tiered ? 'Tiered from ' + amount(l.unitPrice) : amount(l.unitPrice) }}</td>
                 <td data-testid="line-discount">{{ amount(l.discount) }}</td>
                 <td data-testid="line-amount">{{ amount(l.amount) }}</td>
                 <td data-testid="line-discount-share">{{ amount(l.discountShare) }}</td>
@@ -905,7 +905,8 @@ export class InvoicePanel {
       description: line.description,
       qty: line.qty,
       unitType: line.unitType ?? '',
-      unitPrice: line.unitPrice,
+      // A tiered line has no price of its own: left empty, it is repriced from the rate card's bands.
+      unitPrice: line.tiered ? '' : line.unitPrice,
       taxExempt: line.taxExempt,
       discountPct: Number(line.discountPct) === 0 ? '' : line.discountPct,
       taxRate: line.taxRate ?? '',

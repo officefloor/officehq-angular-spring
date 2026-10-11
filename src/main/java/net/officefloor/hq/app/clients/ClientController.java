@@ -13,7 +13,9 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.TreeMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,12 +32,21 @@ public class ClientController {
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
             boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
-            Map<String, BigDecimal> rates) {
+            Map<String, RateView> rates) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
-                    new TreeMap<>(c.getRates()));
+                    new TreeMap<>(c.getRates().entrySet().stream().collect(Collectors.toMap(
+                            Map.Entry::getKey, e -> RateView.of(e.getValue())))));
+        }
+    }
+
+    /** A rate card entry: its single unit price, or else its tiers (null when it has a single price). */
+    public record RateView(BigDecimal unitPrice, List<RateTiers.Band> tiers) {
+        static RateView of(ClientRate r) {
+            RateTiers tiers = r.tiers();
+            return new RateView(r.getUnitPrice(), tiers == null ? null : tiers.bands());
         }
     }
 

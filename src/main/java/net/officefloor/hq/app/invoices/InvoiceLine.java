@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import net.officefloor.hq.app.clients.RateTiers;
 
 /**
  * One line of an invoice: a quantity (up to two decimals) times a unit price, less the line's own
@@ -48,6 +49,12 @@ public class InvoiceLine {
     @Column(name = "unit_type")
     private String unitType;
 
+    /**
+     * The progressive tiers the line is priced in, from its client's rate card (see {@link RateTiers});
+     * null when it has a single unit price. A tiered line keeps its first band's price as its unit price.
+     */
+    private String tiers;
+
     protected InvoiceLine() {
     }
 
@@ -67,9 +74,15 @@ public class InvoiceLine {
         this.unitType = unitType;
     }
 
-    /** A new line with the same description, quantity, unit type, price, discount, tax rate and exemption. */
+    public InvoiceLine(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
+            boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+        this(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
+        this.tiers = tiers;
+    }
+
+    /** A new line with the same description, quantity, unit type, price, tiers, discount, tax rate and exemption. */
     public InvoiceLine copy() {
-        return new InvoiceLine(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
+        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate);
     }
 
     /** A new credit note line crediting this line, with its description, quantity, price, discount, tax rate and exemption. */
@@ -80,12 +93,13 @@ public class InvoiceLine {
     }
 
     /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
-    public void update(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, boolean taxExempt,
-            BigDecimal discountPct, BigDecimal taxRate) {
+    public void update(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
+            boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
         this.description = description;
         this.unitType = unitType;
         this.qty = qty;
         this.unitPrice = unitPrice;
+        this.tiers = tiers;
         this.taxExempt = taxExempt;
         this.discountPct = discountPct;
         this.taxRate = taxRate;
@@ -111,6 +125,11 @@ public class InvoiceLine {
         return unitPrice;
     }
 
+    /** Whether the line is priced in progressive tiers rather than at its unit price. */
+    public boolean isTiered() {
+        return tiers != null;
+    }
+
     public boolean isTaxExempt() {
         return taxExempt;
     }
@@ -133,10 +152,14 @@ public class InvoiceLine {
     }
 
     /**
-     * Quantity times unit price, rounded half up to the given number of decimals (2, the cent; 0 for
-     * whole yen), before the line's discount.
+     * Quantity times unit price — or, for a tiered line, the total of its bands starting from the
+     * first — rounded half up to the given number of decimals (2, the cent; 0 for whole yen), before
+     * the line's discount.
      */
     public BigDecimal grossAmount(int scale) {
+        if (tiers != null) {
+            return RateTiers.parse(tiers).total(qty, scale);
+        }
         return qty.multiply(unitPrice).setScale(scale, RoundingMode.HALF_UP);
     }
 

@@ -81,10 +81,11 @@ public class InvoiceController {
      * tax rate, null when it uses the workspace rate. {@code discountPct}
      * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
      * {@code amount} is after it. {@code creditOfLine} is the id of the line a credit note's line credits, null when none.
+     * {@code tiered} lines are priced in progressive tiers from the rate card; their {@code unitPrice} is the first band's.
      */
     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
             String discount, String amount, String discountShare, String tax, boolean taxExempt, String taxRate,
-            Long creditOfLine) {
+            Long creditOfLine, boolean tiered) {
         static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
                     l.getUnitType(), l.getUnitPrice().setScale(2).toPlainString(),
@@ -92,7 +93,7 @@ public class InvoiceController {
                     l.amount(scale).toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
                     l.isTaxExempt(),
                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
-                    l.getCreditOfLine());
+                    l.getCreditOfLine(), l.isTiered());
         }
     }
 

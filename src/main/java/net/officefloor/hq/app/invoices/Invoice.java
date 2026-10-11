@@ -1689,19 +1689,20 @@ public class Invoice {
      * the subtotal would then be less than a fixed discount on the invoice.
      */
     public boolean updateLine(Long lineId, String description, BigDecimal qty, String unitType, BigDecimal unitPrice,
-            boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+            String tiers, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
         InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
         if (line == null) {
             return false;
         }
-        BigDecimal changed = new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate).amount(scale());
+        BigDecimal changed = new InvoiceLine(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate)
+                .amount(scale());
         BigDecimal left = subtotal().subtract(line.amount(scale())).add(changed);
         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
             throw new InvoiceRejectedException("This line cannot be changed: the "
                     + currency().format(left) + " subtotal would be less than the "
                     + currency().format(discountAmount) + " discount.");
         }
-        line.update(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
+        line.update(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate);
         return true;
     }
 

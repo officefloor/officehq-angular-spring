@@ -85,12 +85,11 @@ public class Client {
     @Column(name = "tax_number")
     private String taxNumber;
 
-    /** The client's rate card: its price per unit type (hour, day, ...); empty for none. */
+    /** The client's rate card: its price, single or tiered, per unit type (hour, day, ...); empty for none. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "client_rate", joinColumns = @JoinColumn(name = "client_id"))
     @MapKeyColumn(name = "unit_type")
-    @Column(name = "unit_price")
-    private Map<String, BigDecimal> rates = new TreeMap<>();
+    private Map<String, ClientRate> rates = new TreeMap<>();
 
     /** The highest late-interest rate a client can be given, as a percentage. */
     public static final int MAX_INTEREST_RATE = 30;
@@ -175,12 +174,12 @@ public class Client {
         return taxNumber;
     }
 
-    public Map<String, BigDecimal> getRates() {
+    public Map<String, ClientRate> getRates() {
         return rates;
     }
 
-    /** The client's price for the given unit type (matched ignoring case and surrounding spaces); null when not on its card. */
-    public BigDecimal rateFor(String unitType) {
+    /** The client's rate for the given unit type (matched ignoring case and surrounding spaces); null when not on its card. */
+    public ClientRate rateFor(String unitType) {
         if (unitType == null) {
             return null;
         }

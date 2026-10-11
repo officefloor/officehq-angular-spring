@@ -12,6 +12,7 @@ import java.util.Set;
 import jakarta.persistence.EntityManager;
 import net.officefloor.hq.app.clients.Client;
 import net.officefloor.hq.app.clients.Currency;
+import net.officefloor.hq.app.clients.RateTiers;
 import net.officefloor.hq.app.invoices.Invoice;
 import net.officefloor.hq.app.invoices.InvoiceRepository;
 import net.officefloor.hq.app.invoices.PaymentRepository;
@@ -211,12 +212,18 @@ public class TestSupportController {
             Long clientId = id(row.get("id") == null
                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
-                only(rate, Set.of("unitType", "unitPrice"), "clients[].rates[]");
+                only(rate, Set.of("unitType", "unitPrice", "tiers"), "clients[].rates[]");
                 if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
                     throw refuse("clients[].rates[].unitType is required");
                 }
-                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price) VALUES (?, ?, ?)", clientId,
-                        rate.get("unitType").toString(), cents(rate.get("unitPrice"), "clients[].rates[].unitPrice"));
+                RateTiers tiers = tiers(rate.get("tiers"));
+                if ((tiers == null) == (rate.get("unitPrice") == null)) {
+                    throw refuse("clients[].rates[] needs either unitPrice or tiers");
+                }
+                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price, tiers) VALUES (?, ?, ?, ?)", clientId,
+                        rate.get("unitType").toString(),
+                        tiers != null ? null : cents(rate.get("unitPrice"), "clients[].rates[].unitPrice"),
+                        tiers == null ? null : tiers.format());
             }
         }
         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
@@ -262,11 +269,12 @@ public class TestSupportController {
                     skippedInstalment(row.get("skippedInstalment"), "invoices[].skippedInstalment"));
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                Object[] price = linePrice(invoiceId, line);
                 insert("invoice_line", line.get("id"),
-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type"},
+                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type"},
                         invoiceId, text(line, "description"),
                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
-                        linePrice(invoiceId, line),
+                        price[0], price[1],
                         flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"),
                         percent(line.get("discountPct"), "invoices[].lineItems[].discountPct"),
                         line.get("taxRate") == null ? null : percent(line.get("taxRate"), "invoices[].lineItems[].taxRate"),
@@ -421,11 +429,23 @@ public class TestSupportController {
                         row.put("taxNumber", r.get("TAX_NUMBER"));
                     }
                     List<Map<String, Object>> rateCard = jdbc.queryForList(
-                            "SELECT unit_type, unit_price FROM client_rate WHERE client_id = ? ORDER BY unit_type",
+                            "SELECT unit_type, unit_price, tiers FROM client_rate WHERE client_id = ? ORDER BY unit_type",
                             r.get("ID")).stream().map(c -> {
                                 Map<String, Object> rate = new LinkedHashMap<>();
                                 rate.put("unitType", c.get("UNIT_TYPE"));
-                                rate.put("unitPrice", c.get("UNIT_PRICE"));
+                                RateTiers tiers = RateTiers.parse((String) c.get("TIERS"));
+                                if (tiers == null) {
+                                    rate.put("unitPrice", c.get("UNIT_PRICE"));
+                                } else {
+                                    rate.put("tiers", tiers.bands().stream().map(b -> {
+                                        Map<String, Object> band = new LinkedHashMap<>();
+                                        if (b.units() != null) {
+                                            band.put("units", b.units());
+                                        }
+                                        band.put("unitPrice", b.unitPrice());
+                                        return band;
+                                    }).toList());
+                                }
                                 return rate;
                             }).toList();
                     if (!rateCard.isEmpty()) {
@@ -549,21 +569,61 @@ public class TestSupportController {
     }
 
     /**
-     * A seeded line's unit price: the one given, or else its invoice's client's rate for the line's
-     * unit type; refused when neither is there.
+     * A seeded line's unit price and the tiers it is priced in (null for a single price): the price
+     * given, or else its invoice's client's rate for the line's unit type — a single price, or tiers
+     * whose first band's price is kept as the unit price; refused when neither is there.
      */
-    private BigDecimal linePrice(Long invoiceId, Map<String, Object> line) {
+    private Object[] linePrice(Long invoiceId, Map<String, Object> line) {
         if (line.get("unitPrice") != null || line.get("unitType") == null) {
-            return cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice");
+            return new Object[] {cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"), null};
         }
-        List<BigDecimal> rate = jdbc.queryForList("SELECT r.unit_price FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
-                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", BigDecimal.class, invoiceId,
+        List<Map<String, Object>> rate = jdbc.queryForList("SELECT r.unit_price, r.tiers FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
+                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", invoiceId,
                 line.get("unitType").toString().trim());
         if (rate.isEmpty()) {
             throw refuse("invoices[].lineItems[].unitPrice is required: the client has no rate for unitType "
                     + line.get("unitType"));
         }
-        return rate.get(0);
+        RateTiers tiers = RateTiers.parse((String) rate.get(0).get("TIERS"));
+        if (tiers != null) {
+            return new Object[] {tiers.firstPrice(), tiers.format()};
+        }
+        return new Object[] {rate.get(0).get("UNIT_PRICE"), null};
+    }
+
+    /**
+     * A rate card entry's tiers: bands of {@code units} each with its {@code unitPrice}, the last with
+     * no units covering everything above; null when left out.
+     */
+    private static RateTiers tiers(Object value) {
+        if (value == null) {
+            return null;
+        }
+        List<Map<String, Object>> rows = rows(value, "clients[].rates[].tiers");
+        if (rows.isEmpty()) {
+            throw refuse("clients[].rates[].tiers needs at least one band");
+        }
+        List<RateTiers.Band> bands = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {
+            Map<String, Object> band = rows.get(i);
+            only(band, Set.of("units", "unitPrice"), "clients[].rates[].tiers[]");
+            boolean last = i == rows.size() - 1;
+            if (!last && band.get("units") == null) {
+                throw refuse("clients[].rates[].tiers[].units is required on every band but the last");
+            }
+            if (last && band.get("units") != null) {
+                throw refuse("clients[].rates[].tiers[].units must be left out of the last band, which covers the rest");
+            }
+            BigDecimal units = last ? null : cents(band.get("units"), "clients[].rates[].tiers[].units");
+            if (units != null && units.signum() <= 0) {
+                throw refuse("clients[].rates[].tiers[].units must be more than zero, not " + band.get("units"));
+            }
+            if (band.get("unitPrice") == null) {
+                throw refuse("clients[].rates[].tiers[].unitPrice is required");
+            }
+            bands.add(new RateTiers.Band(units, cents(band.get("unitPrice"), "clients[].rates[].tiers[].unitPrice")));
+        }
+        return new RateTiers(bands);
     }
 
     /** A whole number of days, not negative; null when left out. */
