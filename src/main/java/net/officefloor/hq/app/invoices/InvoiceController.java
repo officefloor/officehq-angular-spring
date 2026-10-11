@@ -506,7 +506,7 @@ public class InvoiceController {
     /**
      * Records one payment spread over several of the client's invoices, or, with no parts given,
      * applied to the invoices whose references are quoted (several may be, separated by commas) or, with none,
-     * to all its unpaid invoices, earliest due date first; answers the client's invoices
+     * to all its unpaid invoices, overdue first (earliest due date first), then the largest amount due first; answers the client's invoices
      * with their new statuses.
      */
     @PostMapping("/api/clients/{clientId}/payments")

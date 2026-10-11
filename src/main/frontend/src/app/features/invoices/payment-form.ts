@@ -102,7 +102,7 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
 
 // Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`), or, when none
 // is open, to the client's invoices whose references are quoted (several may be, separated by
-// commas: RF references or invoice numbers, applied earliest due date first), or without one to the client's unpaid invoices earliest due date first; once any invoice in the list has a part, the
+// commas: RF references or invoice numbers, applied overdue first, then largest due first), or without one to the client's unpaid invoices in that order; once any invoice in the list has a part, the
 // payment is spread over those invoices instead, and the parts must add up to it, none over what its invoice has due. Otherwise what is paid beyond
 // what is due is held on the client's account as credit. The server refuses a payment on a draft, or dated after today
 // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The

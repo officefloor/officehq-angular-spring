@@ -765,9 +765,10 @@ public class InvoiceService {
     }
 
     /**
-     * Records one payment of the amount on the date against the client's unpaid sent invoices, earliest
-     * due date first (lower id first on the same due date) so overdue invoices are cleared first,
-     * paying each off in full before the next.
+     * Records one payment of the amount on the date against the client's unpaid sent invoices: the overdue
+     * ones first, earliest due date first (lower id first on the same due date), then the rest from the
+     * largest amount due to the smallest (lower id first on the same amount), paying each off in full
+     * before the next.
      * What it pays beyond everything the client owes is held on the client's account as credit; the
      * rest is checked and recorded as a split payment over the invoices it reaches.
      * References (empty when none, each already checked) instead limit the payment to the client's
@@ -804,17 +805,33 @@ public class InvoiceService {
             }
             candidates = ofClient.stream().filter(i -> named.contains(i.getId())).toList();
         }
-        List<Invoice> sent = candidates.stream()
+        List<Invoice> unordered = candidates.stream()
                 .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote())
-                .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(Invoice::getId))
                 .toList();
-        Map<Long, BigDecimal> paid = paid(sent);
+        Map<Long, BigDecimal> paid = paid(unordered);
+        LocalDate now = today.date();
+        Map<Long, BigDecimal> dues = new HashMap<>();
+        Set<Long> overdue = new HashSet<>();
+        for (Invoice invoice : unordered) {
+            BigDecimal invoicePaid = paid.get(invoice.getId());
+            dues.put(invoice.getId(), invoice.amountDue(invoicePaid, taxRate.percent()));
+            if (invoice.statusWhenPaid(invoicePaid, taxRate.percent(), now) == InvoiceStatus.OVERDUE) {
+                overdue.add(invoice.getId());
+            }
+        }
+        // Overdue first, oldest due date first; then the rest, largest amount due first; lower id on a tie.
+        Comparator<Invoice> byPriority = Comparator.<Invoice, Boolean>comparing(i -> !overdue.contains(i.getId()))
+                .thenComparing(i -> overdue.contains(i.getId()) ? i.getDueDate() : null,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(i -> overdue.contains(i.getId()) ? BigDecimal.ZERO : dues.get(i.getId()),
+                        Comparator.reverseOrder())
+                .thenComparing(Invoice::getId);
+        List<Invoice> sent = unordered.stream().sorted(byPriority).toList();
         BigDecimal owed = BigDecimal.ZERO;
         BigDecimal left = amount;
         List<PaymentAllocation> parts = new ArrayList<>();
         for (Invoice invoice : sent) {
-            BigDecimal due = invoice.amountDue(paid.get(invoice.getId()), taxRate.percent());
+            BigDecimal due = dues.get(invoice.getId());
             if (due.signum() <= 0) {
                 continue;
             }
