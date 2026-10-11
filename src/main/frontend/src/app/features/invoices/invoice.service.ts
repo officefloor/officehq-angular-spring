@@ -457,6 +457,12 @@ export class InvoiceService {
     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/refunds`, refund);
   }
 
+  // Adds a rate to the client's rate card, or replaces the price for its unit type; the client's drafts priced
+  // from the card are repriced. Answers the client's invoices.
+  setRate(clientId: number, rate: { unitType: string; unitPrice: string }): Observable<InvoiceSummary[]> {
+    return this.http.put<InvoiceSummary[]>(`/api/clients/${clientId}/rates`, rate);
+  }
+
   // Reverses a payment (a bounced cheque) on every invoice it was applied to; refused (409) when it
   // has already been reversed or has had credit refunded. Answers the opened invoice with its payments and new status.
   reversePayment(invoiceId: number, paymentId: number): Observable<InvoiceDetail> {

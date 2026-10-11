@@ -78,6 +78,13 @@ public class InvoiceLine {
      */
     private boolean overtime;
 
+    /**
+     * Whether the line's price comes from its client's rate card for its unit type: on a draft it follows the
+     * card when that rate is changed. Sending fixes the price on the line and clears it.
+     */
+    @Column(name = "card_priced")
+    private boolean cardPriced;
+
     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
@@ -139,6 +146,23 @@ public class InvoiceLine {
         this.taxExempt = taxExempt;
         this.discountPct = discountPct;
         this.taxRate = taxRate;
+    }
+
+    /** Whether the line's price comes from its client's rate card. */
+    public boolean isCardPriced() {
+        return cardPriced;
+    }
+
+    void setCardPriced(boolean cardPriced) {
+        this.cardPriced = cardPriced;
+    }
+
+    /** Prices the line afresh from its client's rate card: the rate's single price or tiers, increment and minimum units. */
+    void reprice(BigDecimal unitPrice, String tiers, BigDecimal increment, BigDecimal minUnits) {
+        this.unitPrice = unitPrice;
+        this.tiers = tiers;
+        this.increment = increment;
+        this.minUnits = minUnits;
     }
 
     /** Puts the line on the given invoice. */

@@ -302,6 +302,17 @@ public class InvoiceController {
      * A refund of unused credit: an amount more than zero with at most two decimals, the currency it is
      * refunded in, and the date it was refunded.
      */
+    /** A rate for a client's rate card: a unit type and a price more than zero with at most two decimals. */
+    public record NewRate(
+            @NotBlank(message = "Enter the unit type.")
+            @Size(max = 64, message = "The unit type must be at most 64 characters.")
+            String unitType,
+            @NotNull(message = "Enter the price.")
+            @DecimalMin(value = "0", inclusive = false, message = "The price must be more than zero.")
+            @Digits(integer = 17, fraction = 2, message = "The price can have at most two decimals.")
+            BigDecimal unitPrice) {
+    }
+
     public record NewRefund(
             @NotNull(message = "Enter an amount.")
             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
@@ -731,6 +742,17 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> refundCredit(@PathVariable Long clientId, @Valid @RequestBody NewRefund body) {
         invoices.refundCredit(clientId, body.amount(), body.currency(), body.date())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+        return forClient(clientId);
+    }
+
+    /**
+     * Adds the rate to the client's rate card, or replaces the price for its unit type, repricing the
+     * client's drafts priced from the card; answers the client's invoices.
+     */
+    @PutMapping("/api/clients/{clientId}/rates")
+    public List<InvoiceSummary> setRate(@PathVariable Long clientId, @Valid @RequestBody NewRate body) {
+        invoices.setRate(clientId, body.unitType(), body.unitPrice())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
         return forClient(clientId);
     }

@@ -27,6 +27,13 @@ public class ClientRate {
     protected ClientRate() {
     }
 
+    /** A single unit price, billed in the given increment and minimum units (null for none). */
+    public ClientRate(BigDecimal unitPrice, BigDecimal increment, BigDecimal minUnits) {
+        this.unitPrice = unitPrice;
+        this.increment = increment;
+        this.minUnits = minUnits;
+    }
+
     public BigDecimal getUnitPrice() {
         return unitPrice;
     }

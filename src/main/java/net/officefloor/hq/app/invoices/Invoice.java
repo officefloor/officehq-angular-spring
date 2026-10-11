@@ -1630,6 +1630,7 @@ public class Invoice {
      */
     public void markSent(LocalDate issueDate, LocalDate dueDate) {
         this.status = InvoiceStatus.SENT;
+        lines.forEach(l -> l.setCardPriced(false));
         this.issueDate = issueDate;
         if (!manualDueDate) {
             this.dueDate = dueDate;

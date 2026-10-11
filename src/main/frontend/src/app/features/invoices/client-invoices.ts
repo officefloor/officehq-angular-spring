@@ -3,6 +3,7 @@ import { Component, effect, inject, input, output, signal, untracked } from '@an
 import { InvoiceDetail, InvoiceService, InvoiceSummary } from './invoice.service';
 import { PaymentForm } from './payment-form';
 import { RefundForm } from './refund-form';
+import { RateForm } from './rate-form';
 import { InvoicePanel } from './invoice-panel';
 import { Currency, money, statusLabel } from './invoice-format';
 
@@ -15,7 +16,7 @@ import { Currency, money, statusLabel } from './invoice-format';
 // what they owe with Apply credit.
 @Component({
   selector: 'app-client-invoices',
-  imports: [InvoicePanel, PaymentForm, RefundForm],
+  imports: [InvoicePanel, PaymentForm, RefundForm, RateForm],
   styles: `
     :host {
       display: flex;
@@ -90,6 +91,7 @@ import { Currency, money, statusLabel } from './invoice-format';
         </tbody>
       </table>
       <app-refund-form [clientId]="clientId()" [currency]="currency()" (refunded)="splitRecorded($event)" />
+      <app-rate-form [clientId]="clientId()" (saved)="rateSaved($event)" />
     </section>
 
     @if (selectedId(); as id) {
@@ -221,6 +223,14 @@ export class ClientInvoices {
       list.some((i) => i.id === id) ? list.map((i) => (i.id === id ? { ...i, ...row } : i)) : [...list, row],
     );
     this.selectedId.set(id);
+  }
+
+  // A rate on the client's card changed: show the drafts' new totals, and load the open invoice again
+  // so the panel shows its repriced lines.
+  protected rateSaved(list: InvoiceSummary[]): void {
+    this.invoices.set(list);
+    this.reloadPanel.update((n) => n + 1);
+    this.changed.emit();
   }
 
   // A payment was spread over several invoices: show their new statuses.

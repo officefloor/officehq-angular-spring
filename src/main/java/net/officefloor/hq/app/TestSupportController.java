@@ -370,7 +370,7 @@ public class TestSupportController {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 Object[] price = linePrice(invoiceId, line);
                 insert("invoice_line", line.get("id"),
-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime"},
+                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced"},
                         invoiceId, text(line, "description"),
                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
                         price[0], price[1],
@@ -380,7 +380,8 @@ public class TestSupportController {
                         line.get("creditOfLine") == null ? null : id(line.get("creditOfLine")),
                         line.get("unitType") == null ? null : line.get("unitType").toString(),
                         lineRate(invoiceId, line, "increment"), lineRate(invoiceId, line, "min_units"),
-                        flag(line.get("overtime"), "invoices[].lineItems[].overtime"));
+                        flag(line.get("overtime"), "invoices[].lineItems[].overtime"),
+                        price[2]);
             }
         }
         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
@@ -719,11 +720,12 @@ public class TestSupportController {
     /**
      * A seeded line's unit price and the tiers it is priced in (null for a single price): the price
      * given, or else its invoice's client's rate for the line's unit type — a single price, or tiers
-     * whose first band's price is kept as the unit price; refused when neither is there.
+     * whose first band's price is kept as the unit price; refused when neither is there — and whether
+     * the line is priced from the card.
      */
     private Object[] linePrice(Long invoiceId, Map<String, Object> line) {
         if (line.get("unitPrice") != null || line.get("unitType") == null) {
-            return new Object[] {cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"), null};
+            return new Object[] {cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"), null, false};
         }
         List<Map<String, Object>> rate = jdbc.queryForList("SELECT r.unit_price, r.tiers FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
                 + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", invoiceId,
@@ -738,13 +740,15 @@ public class TestSupportController {
                 throw refuse("invoices[].lineItems[].unitPrice is required: neither the client's rate card nor the price list has unitType "
                         + line.get("unitType"));
             }
-            return new Object[] {listed.unitPrice(), listed.tiers()};
+            return new Object[] {listed.unitPrice(), listed.tiers(), false};
         }
+        // A draft's line priced from the card follows it; a sent invoice's has its price fixed.
+        boolean draft = "DRAFT".equals(jdbc.queryForObject("SELECT status FROM invoice WHERE id = ?", String.class, invoiceId));
         RateTiers tiers = RateTiers.parse((String) rate.get(0).get("TIERS"));
         if (tiers != null) {
-            return new Object[] {tiers.firstPrice(), tiers.format()};
+            return new Object[] {tiers.firstPrice(), tiers.format(), draft};
         }
-        return new Object[] {rate.get(0).get("UNIT_PRICE"), null};
+        return new Object[] {rate.get(0).get("UNIT_PRICE"), null, draft};
     }
 
     /** A seeded line's billing increment or minimum units: its invoice's client's given column for the line's unit type; null for none. */

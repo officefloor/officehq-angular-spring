@@ -229,8 +229,10 @@ public class InvoiceService {
         found.ifPresent(invoice -> {
             LinePrice price = linePrice(invoice, unitType, unitPrice);
             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
-            invoice.addLine(new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
-                    discountPct, taxRate));
+            InvoiceLine line = new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
+                    discountPct, taxRate);
+            line.setCardPriced(price.fromCard());
+            invoice.addLine(line);
             invoices.saveAndFlush(invoice);
             if (reopened) {
                 audit.record("INVOICE_REOPENED id=" + invoice.getId());
@@ -283,6 +285,7 @@ public class InvoiceService {
         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
         invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
                 discountPct, taxRate);
+        invoice.getLines().stream().filter(l -> lineId.equals(l.getId())).forEach(l -> l.setCardPriced(price.fromCard()));
         invoices.saveAndFlush(invoice);
         if (reopened) {
             audit.record("INVOICE_REOPENED id=" + invoice.getId());
@@ -576,6 +579,43 @@ public class InvoiceService {
             BigDecimal amount = invoice.writtenOff(paid, rate);
             invoices.saveAndFlush(invoice);
             audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + amount.toPlainString());
+        });
+        return found;
+    }
+
+    /**
+     * Puts a single price for the unit type on the client's rate card, adding it or replacing its price
+     * (its increment and minimum units are kept); empty if no such client. The price has already been
+     * checked. The lines of the client's drafts priced from the card in that unit type are repriced
+     * straight away; sent invoices keep the prices they were sent with.
+     */
+    @Transactional
+    public Optional<Client> setRate(Long clientId, String unitType, BigDecimal unitPrice) {
+        Optional<Client> found = clients.findById(clientId);
+        found.ifPresent(client -> {
+            String type = unitType.trim();
+            String key = client.getRates().keySet().stream().filter(k -> k.equalsIgnoreCase(type)).findFirst().orElse(type);
+            ClientRate old = client.getRates().get(key);
+            requireWhole(client.getCurrency(), unitPrice, "The price");
+            client.getRates().put(key, new ClientRate(unitPrice, old == null ? null : old.getIncrement(),
+                    old == null ? null : old.getMinUnits()));
+            clients.saveAndFlush(client);
+            for (Invoice invoice : invoices.findByClientIdOrderByIdAsc(clientId)) {
+                if (!invoice.isDraft()) {
+                    continue;
+                }
+                boolean changed = false;
+                for (InvoiceLine line : invoice.getLines()) {
+                    if (line.isCardPriced() && line.getUnitType() != null && line.getUnitType().trim().equalsIgnoreCase(type)) {
+                        LinePrice price = linePrice(invoice, line.getUnitType(), null);
+                        line.reprice(price.unitPrice(), price.tiers(), price.increment(), price.minUnits());
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    invoices.saveAndFlush(invoice);
+                }
+            }
         });
         return found;
     }
@@ -1439,7 +1479,11 @@ public class InvoiceService {
      * (the cent is already checked for the rest).
      */
     /** A line's unit price, and the tiers it is priced in (null when it has a single price). */
-    private record LinePrice(BigDecimal unitPrice, String tiers, BigDecimal increment, BigDecimal minUnits) {
+    private record LinePrice(BigDecimal unitPrice, String tiers, BigDecimal increment, BigDecimal minUnits, boolean fromCard) {
+
+        LinePrice(BigDecimal unitPrice, String tiers, BigDecimal increment, BigDecimal minUnits) {
+            this(unitPrice, tiers, increment, minUnits, false);
+        }
     }
 
     /**
@@ -1472,10 +1516,10 @@ public class InvoiceService {
         }
         RateTiers tiers = rate.tiers();
         if (tiers != null) {
-            return new LinePrice(tiers.firstPrice(), tiers.format(), increment, minUnits);
+            return new LinePrice(tiers.firstPrice(), tiers.format(), increment, minUnits, true);
         }
         requireWhole(invoice.currency(), rate.getUnitPrice(), "The unit price");
-        return new LinePrice(rate.getUnitPrice(), null, increment, minUnits);
+        return new LinePrice(rate.getUnitPrice(), null, increment, minUnits, true);
     }
 
     private static void requireWhole(Currency currency, BigDecimal amount, String what) {
