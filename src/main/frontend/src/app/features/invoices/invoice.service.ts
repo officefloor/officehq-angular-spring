@@ -181,6 +181,9 @@ export interface InvoiceDetail {
   // Whether it is reverse charged: its client is registered (a valid tax number) outside the
   // workspace's home region and accounts for the tax itself, so no line is taxed.
   reverseCharge: boolean;
+  // What the amount after its discounts falls short of the workspace's minimum charge, added to the
+  // invoice and taxed at the client's rate; "0.00" when there is none.
+  minimumCharge: string;
 }
 
 // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,

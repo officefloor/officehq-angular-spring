@@ -322,6 +322,10 @@ function problemWith(line: NewLine): string {
                 <td data-testid="invoice-discount-reason">{{ inv.discountReason }}</td>
               </tr>
             }
+            <tr>
+              <th scope="row" colspan="9">Minimum charge</th>
+              <td data-testid="invoice-minimum-charge">{{ amount(inv.minimumCharge) }}</td>
+            </tr>
             @if (inv.reverseCharge) {
               <tr>
                 <td colspan="10" data-testid="invoice-reverse-charge">Reverse charge</td>
