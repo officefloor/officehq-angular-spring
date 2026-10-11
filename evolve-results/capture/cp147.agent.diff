@@ -1,0 +1,169 @@
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index f47643a..3b87aca 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -138,7 +138,7 @@ function problemWithCash(payment: NewPayment, invoiceOpen: boolean, clientCurren
+       <select id="payment-method" data-testid="payment-form-method" formControlName="method">
+         <option value="BANK">Bank transfer</option>
+         <option value="CASH">Cash (rounded down to 0.05)</option>
+-        <option value="CARD">Card (the card surcharge is taken out of it)</option>
++        <option value="CARD">Card (the card surcharge, up to its cap, is taken out of it)</option>
+       </select>
+       <label for="payment-amount">Amount ({{ symbolOf(paidIn()) }})</label>
+       <input
+diff --git a/src/main/java/net/officefloor/hq/app/CardSurcharge.java b/src/main/java/net/officefloor/hq/app/CardSurcharge.java
+index 873a3f2..b5f429c 100644
+--- a/src/main/java/net/officefloor/hq/app/CardSurcharge.java
++++ b/src/main/java/net/officefloor/hq/app/CardSurcharge.java
+@@ -3,7 +3,10 @@ package net.officefloor.hq.app;
+ import java.math.BigDecimal;
+ import java.math.MathContext;
+ import java.math.RoundingMode;
++import java.time.LocalDate;
+ import java.util.List;
++import java.util.Optional;
++import net.officefloor.hq.app.clients.Currency;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+ 
+@@ -11,16 +14,29 @@ import org.springframework.stereotype.Service;
+  * The workspace's card surcharge: the stored {@code card_surcharge_pct} setting, a percentage such as
+  * 2.5 passed on to a client paying by card; 0 when none is set. Part of a card payment is the
+  * surcharge: the amount less the amount divided by 1 plus the rate, rounded half up to the cent.
++ * The surcharge on one payment is never more than the {@code card_surcharge_cap} setting, in US dollars
++ * converted to the payment's currency at the payment date's rate and rounded down; no cap when none is set.
+  */
+ @Service
+ public class CardSurcharge {
+ 
+     public static final String CARD_SURCHARGE_PCT = "card_surcharge_pct";
+ 
++    public static final String CARD_SURCHARGE_CAP = "card_surcharge_cap";
++
+     private final JdbcTemplate jdbc;
+ 
+-    public CardSurcharge(JdbcTemplate jdbc) {
++    private final ExchangeRates exchangeRates;
++
++    public CardSurcharge(JdbcTemplate jdbc, ExchangeRates exchangeRates) {
+         this.jdbc = jdbc;
++        this.exchangeRates = exchangeRates;
++    }
++
++    /** The most surcharge on one payment, in US dollars; empty when there is no cap. */
++    public Optional<BigDecimal> cap() {
++        return jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class, CARD_SURCHARGE_CAP)
++                .stream().findFirst().map(v -> new BigDecimal(v.trim()));
+     }
+ 
+     public BigDecimal percent() {
+@@ -29,14 +45,20 @@ public class CardSurcharge {
+         return rate.isEmpty() ? BigDecimal.ZERO : new BigDecimal(rate.get(0));
+     }
+ 
+-    /** The surcharge in the amount paid by card, rounded half up to the scale (2 for cents, 0 for yen). */
+-    public BigDecimal of(BigDecimal amount, int scale) {
++    /**
++     * The surcharge in the amount paid by card in the currency on the date, rounded half up to the
++     * currency's scale (2 for cents, 0 for yen), and no more than the cap converted on that date.
++     */
++    public BigDecimal of(BigDecimal amount, Currency currency, LocalDate on) {
++        int scale = currency.scale();
+         BigDecimal rate = percent();
+         if (rate.signum() == 0) {
+             return BigDecimal.ZERO.setScale(scale);
+         }
+         BigDecimal factor = BigDecimal.ONE.add(rate.movePointLeft(2));
+         BigDecimal net = amount.divide(factor, MathContext.DECIMAL128);
+-        return amount.subtract(net).setScale(scale, RoundingMode.HALF_UP);
++        BigDecimal surcharge = amount.subtract(net).setScale(scale, RoundingMode.HALF_UP);
++        return cap().map(usd -> exchangeRates.convert(usd, Currency.USD, currency, on))
++                .filter(cap -> cap.compareTo(surcharge) < 0).orElse(surcharge);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 7a5fe55..50905b3 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -40,7 +40,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown");
+     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
+     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+@@ -180,6 +180,11 @@ public class TestSupportController {
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                         CardSurcharge.CARD_SURCHARGE_PCT, rate.toPlainString());
+             }
++            if (values.get("cardSurchargeCap") != null) {
++                BigDecimal cap = money(values.get("cardSurchargeCap"), "settings.cardSurchargeCap");
++                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
++                        CardSurcharge.CARD_SURCHARGE_CAP, cap.toPlainString());
++            }
+             if (values.get("fxFeePct") != null) {
+                 BigDecimal rate = percent(values.get("fxFeePct"), "settings.fxFeePct");
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+@@ -484,7 +489,8 @@ public class TestSupportController {
+             BigDecimal amount = foreign ? exchangeRates.convert(paidAmount, paidIn, clientCurrency, date(row.get("date"), "payments[].date")) : paidAmount;
+             // Part of a card payment is the workspace's card surcharge, as when one is recorded.
+             BigDecimal surcharge = PaymentMethod.CARD.name().equals(method) && amount != null
+-                    ? cardSurcharge.of(amount, clientCurrency.scale()) : BigDecimal.ZERO;
++                    ? cardSurcharge.of(amount, clientCurrency, row.get("date") == null ? today.date()
++                            : date(row.get("date"), "payments[].date")) : BigDecimal.ZERO;
+             // Part of a payment in another currency is the workspace's conversion fee, as when one is recorded.
+             BigDecimal fee = foreign ? fxFee.of(amount, clientCurrency.scale()) : BigDecimal.ZERO;
+             Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method", "surcharge", "fx_fee"},
+@@ -561,6 +567,7 @@ public class TestSupportController {
+         if (!cardSurchargePct.isEmpty()) {
+             settings.put("cardSurchargePct", new BigDecimal(cardSurchargePct.get(0)));
+         }
++        cardSurcharge.cap().ifPresent(cap -> settings.put("cardSurchargeCap", cap));
+         List<String> fxFeePct = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+                 String.class, FxFee.FX_FEE_PCT);
+         if (!fxFeePct.isEmpty()) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 5cf7dfd..05e67df 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -968,7 +968,7 @@ public class InvoiceService {
+         if (date.isAfter(now)) {
+             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+         }
+-        BigDecimal surcharge = surchargeOf(amount, currency, method);
++        BigDecimal surcharge = surchargeOf(amount, currency, method, date);
+         BigDecimal fee = feeOf(amount, paidIn, currency);
+         Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date, reference)
+                 .paidIn(paidIn, paidAmount, currency).by(method).surcharged(surcharge).feeCharged(fee));
+@@ -1175,7 +1175,7 @@ public class InvoiceService {
+             }
+             BigDecimal received = converted(paidAmount, paidIn, invoice.currency(), date);
+             // Only what is left once the conversion fee and card surcharge are taken out pays the invoice.
+-            BigDecimal surcharge = surchargeOf(received, invoice.currency(), method);
++            BigDecimal surcharge = surchargeOf(received, invoice.currency(), method, date);
+             BigDecimal fee = feeOf(received, paidIn, invoice.currency());
+             BigDecimal amount = received.subtract(surcharge).subtract(fee);
+             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+@@ -1280,7 +1280,7 @@ public class InvoiceService {
+         Currency currency = currencyOf(clientId);
+         BigDecimal received = converted(paidAmount, paidIn, currency, date);
+         // Only what is left once the conversion fee and card surcharge are taken out pays invoices or is held as credit.
+-        BigDecimal surcharge = surchargeOf(received, currency, method);
++        BigDecimal surcharge = surchargeOf(received, currency, method, date);
+         BigDecimal fee = feeOf(received, paidIn, currency);
+         BigDecimal amount = received.subtract(surcharge).subtract(fee);
+         List<Invoice> ofClient = loadForClient(clientId);
+@@ -1650,8 +1650,9 @@ public class InvoiceService {
+     }
+ 
+     /** The card surcharge in the amount received by the method (null for a bank transfer): 0 unless by card. */
+-    private BigDecimal surchargeOf(BigDecimal received, Currency currency, PaymentMethod method) {
+-        return method == PaymentMethod.CARD ? cardSurcharge.of(received, currency.scale()) : BigDecimal.ZERO;
++    private BigDecimal surchargeOf(BigDecimal received, Currency currency, PaymentMethod method, LocalDate date) {
++        return method == PaymentMethod.CARD
++                ? cardSurcharge.of(received, currency, date == null ? today.date() : date) : BigDecimal.ZERO;
+     }
+ 
+     /**
