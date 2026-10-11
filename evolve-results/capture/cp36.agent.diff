@@ -1,0 +1,22 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 658e498..50a1410 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -255,7 +255,8 @@ public class Invoice {
+      * Each line's share of the discount, in the order of the lines. The discount's cents are split in
+      * proportion to the line amounts: each line first gets the whole cents of its exact share
+      * (rounded down), then the cents left over go one each to the lines with the largest leftover
+-     * fractions, equal fractions going to the lower line id. The shares add up to the discount.
++     * fractions; between equal fractions the cent goes to the line with the larger amount, and between
++     * equal amounts too to the lower line id. The shares add up to the discount.
+      */
+     public List<BigDecimal> discountShares() {
+         BigInteger discountCents = discount().movePointRight(2).toBigIntegerExact();
+@@ -283,6 +284,7 @@ public class Invoice {
+             order.add(i);
+         }
+         order.sort(Comparator.<Integer, BigInteger>comparing(i -> leftovers[i]).reversed()
++                .thenComparing(Comparator.<Integer, BigDecimal>comparing(i -> lines.get(i).amount()).reversed())
+                 .thenComparing(i -> lines.get(i).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
+         int left = discountCents.subtract(given).intValueExact();
+         for (int k = 0; k < left; k++) {
