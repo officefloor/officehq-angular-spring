@@ -1,0 +1,1554 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 72adae5..e8a58eb 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -1,6 +1,7 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
++import { Currency } from '../invoices/invoice-format';
+ 
+ export interface Client {
+   id: number;
+@@ -12,6 +13,8 @@ export interface Client {
+   discountPct: number;
+   // Whether the client is tax exempt (a charity, say): its invoices charge no tax on any line.
+   taxExempt: boolean;
++  // The currency the client is billed in: everything on its invoices is in it.
++  currency: Currency;
+ }
+ 
+ export type NewClient = Omit<Client, 'id'>;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index a92a625..b96aa8c 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -2,7 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { ClientInvoices } from '../invoices/client-invoices';
+-import { money } from '../invoices/invoice-format';
++import { CURRENCIES, Currency, money } from '../invoices/invoice-format';
+ import { ClientBalance, InvoiceService } from '../invoices/invoice.service';
+ import { Client, ClientService, byName } from './client.service';
+ 
+@@ -73,9 +73,9 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+               <span data-testid="client-name">{{ c.name }}</span>
+               <span data-testid="client-email">{{ c.email }}</span>
+               <span>
+-                Owes <span data-testid="client-balance">{{ money(balanceOf(c.id).balance) }}</span>,
+-                overdue <span data-testid="client-overdue">{{ money(balanceOf(c.id).overdue) }}</span>,
+-                credit <span data-testid="client-credit">{{ money(balanceOf(c.id).credit) }}</span>
++                Owes <span data-testid="client-balance">{{ money(balanceOf(c.id).balance, c.currency) }}</span>,
++                overdue <span data-testid="client-overdue">{{ money(balanceOf(c.id).overdue, c.currency) }}</span>,
++                credit <span data-testid="client-credit">{{ money(balanceOf(c.id).credit, c.currency) }}</span>
+               </span>
+             </button>
+           </li>
+@@ -117,6 +117,12 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+           step="0.01"
+           formControlName="discountPct"
+         />
++        <label for="client-currency">Currency</label>
++        <select id="client-currency" data-testid="client-form-currency" formControlName="currency">
++          @for (code of currencies; track code) {
++            <option [value]="code">{{ code }}</option>
++          }
++        </select>
+         <input
+           id="client-tax-exempt"
+           data-testid="client-form-tax-exempt"
+@@ -137,6 +143,7 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+       <app-client-invoices
+         [clientId]="client.id"
+         [clientName]="client.name"
++        [currency]="client.currency"
+         [openInvoice]="openInvoice()"
+         (changed)="loadBalances()"
+       />
+@@ -151,6 +158,7 @@ export class Clients {
+   // What each client owes, by client id; a client not listed owes nothing.
+   protected readonly balances = signal<Map<number, ClientBalance>>(new Map());
+   protected readonly money = money;
++  protected readonly currencies = CURRENCIES;
+   protected readonly saving = signal(false);
+   protected readonly error = signal('');
+   protected readonly selectedId = signal<number | null>(null);
+@@ -174,6 +182,7 @@ export class Clients {
+     terms: new FormControl<number | null>(null),
+     discountPct: new FormControl<number | null>(null),
+     taxExempt: new FormControl(false, { nonNullable: true }),
++    currency: new FormControl<Currency>('USD', { nonNullable: true }),
+   });
+ 
+   constructor() {
+@@ -200,7 +209,8 @@ export class Clients {
+     const discount = this.form.controls.discountPct.value;
+     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
+     const taxExempt = this.form.controls.taxExempt.value;
+-    this.form.setValue({ name, email, terms: termsDays, discountPct, taxExempt });
++    const currency = this.form.controls.currency.value;
++    this.form.setValue({ name, email, terms: termsDays, discountPct, taxExempt, currency });
+     const problem = this.problemWith(name, email, termsDays, discountPct);
+     if (problem) {
+       this.form.markAllAsTouched();
+@@ -209,7 +219,7 @@ export class Clients {
+     }
+     this.saving.set(true);
+     this.error.set('');
+-    this.service.add({ name, email, termsDays, discountPct: discountPct ?? 0, taxExempt }).subscribe({
++    this.service.add({ name, email, termsDays, discountPct: discountPct ?? 0, taxExempt, currency }).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created].sort(byName));
+         this.form.reset();
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index f9e32df..18998cd 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -3,7 +3,7 @@ import { InvoiceDetail, InvoiceService, InvoiceSummary, NewAllocation } from './
+ import { PaymentForm } from './payment-form';
+ import { RefundForm } from './refund-form';
+ import { InvoicePanel } from './invoice-panel';
+-import { money, statusLabel } from './invoice-format';
++import { Currency, money, statusLabel, symbolOf } from './invoice-format';
+ 
+ // One client's invoices, each with its status, total, issue and due dates. Clicking an invoice
+ // opens it in the invoice panel beside the list; New invoice starts an empty draft and opens it.
+@@ -54,7 +54,7 @@ import { money, statusLabel } from './invoice-format';
+             <th scope="col">Total</th>
+             <th scope="col">Issued</th>
+             <th scope="col">Due</th>
+-            <th scope="col">Part of payment ($)</th>
++            <th scope="col">Part of payment ({{ symbolOf(currency()) }})</th>
+           </tr>
+         </thead>
+         <tbody>
+@@ -74,7 +74,7 @@ import { money, statusLabel } from './invoice-format';
+                 </button>
+               </td>
+               <td data-testid="invoice-status">{{ statusLabel(i.status) }}</td>
+-              <td data-testid="invoice-total">{{ money(i.total) }}</td>
++              <td data-testid="invoice-total">{{ money(i.total, currency()) }}</td>
+               <td data-testid="invoice-issue">{{ i.issueDate }}</td>
+               <td data-testid="invoice-due">{{ i.dueDate }}</td>
+               <td>
+@@ -98,7 +98,7 @@ import { money, statusLabel } from './invoice-format';
+           }
+         </tbody>
+       </table>
+-      <app-refund-form [clientId]="clientId()" (refunded)="splitRecorded($event)" />
++      <app-refund-form [clientId]="clientId()" [currency]="currency()" (refunded)="splitRecorded($event)" />
+     </section>
+ 
+     @if (selectedId(); as id) {
+@@ -114,6 +114,7 @@ import { money, statusLabel } from './invoice-format';
+     } @else if (invoices().length > 0) {
+       <app-payment-form
+         [clientId]="clientId()"
++        [currency]="currency()"
+         [allocations]="allocations()"
+         (split)="splitRecorded($event)"
+         (deposited)="splitRecorded($event)"
+@@ -126,6 +127,8 @@ export class ClientInvoices {
+ 
+   readonly clientId = input.required<number>();
+   readonly clientName = input('');
++  // The currency the client is billed in, which its invoices' amounts are in.
++  readonly currency = input<Currency>('USD');
+   // An invoice to open, looked up by number; a new object for each lookup, so the same invoice
+   // can be opened again.
+   readonly openInvoice = input<{ id: number; clientId: number } | null>(null);
+@@ -149,6 +152,7 @@ export class ClientInvoices {
+   );
+   protected readonly statusLabel = statusLabel;
+   protected readonly money = money;
++  protected readonly symbolOf = symbolOf;
+ 
+   constructor() {
+     effect((onCleanup) => {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-format.ts b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+index 809d0ca..cf27521 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-format.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+@@ -18,7 +18,20 @@ const INSTALMENT_STATUS_LABEL: Record<InstalmentStatus, string> = {
+   OVERDUE: 'Overdue',
+   DUE: 'Due',
+ };
+-const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
++// The currencies a client can be billed in.
++export type Currency = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CHF';
++export const CURRENCIES: readonly Currency[] = ['USD', 'EUR', 'GBP', 'JPY', 'CHF'];
++// The symbol each currency's amounts are shown with, and how many decimals they have (yen none).
++const SYMBOL: Record<Currency, string> = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', CHF: 'CHF ' };
++const NUMBER: Record<number, Intl.NumberFormat> = {
++  0: new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
++  2: new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
++};
++
++// How many decimals amounts in the currency have: 2, to the cent, or 0 for whole yen.
++export function decimalsOf(currency: Currency): number {
++  return currency === 'JPY' ? 0 : 2;
++}
+ 
+ export function statusLabel(status: InvoiceStatus): string {
+   return STATUS_LABEL[status];
+@@ -28,9 +41,17 @@ export function instalmentStatusLabel(status: InstalmentStatus): string {
+   return INSTALMENT_STATUS_LABEL[status];
+ }
+ 
+-// Money from the server is already to the cent, so the number shown is exact.
+-export function money(amount: string): string {
+-  return MONEY.format(Number(amount));
++// Money from the server is already to the cent (whole yen for yen), so the number shown is exact:
++// $1,234.50, €1,234.50, £1,234.50, ¥1,235, CHF 1,234.50.
++export function money(amount: string, currency: Currency = 'USD'): string {
++  const value = Number(amount);
++  const shown = NUMBER[decimalsOf(currency)].format(Math.abs(value));
++  return (value < 0 ? '-' : '') + SYMBOL[currency] + shown;
++}
++
++// The symbol amounts in the currency are entered in, for form labels.
++export function symbolOf(currency: Currency): string {
++  return SYMBOL[currency].trim();
+ }
+ 
+ // A positive decimal with at most two decimals, e.g. 1, 1.5 or 12.35. The server applies the same rules.
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index dc45cdc..cf0c293 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -10,7 +10,7 @@ import {
+   NewDiscount,
+   NewLine,
+ } from './invoice.service';
+-import { TWO_DECIMALS, instalmentStatusLabel, money, statusLabel } from './invoice-format';
++import { TWO_DECIMALS, instalmentStatusLabel, money, statusLabel, symbolOf } from './invoice-format';
+ import { PaymentForm } from './payment-form';
+ 
+ // A percentage from 0 to 100 with at most two decimals, e.g. 15 or 12.5; the server checks it again.
+@@ -205,13 +205,13 @@ function problemWith(line: NewLine): string {
+               <tr [attr.data-testid]="'line-row-' + l.id">
+                 <td data-testid="line-description">{{ l.description }}</td>
+                 <td data-testid="line-qty">{{ l.qty }}</td>
+-                <td data-testid="line-unit-price">{{ money(l.unitPrice) }}</td>
+-                <td data-testid="line-discount">{{ money(l.discount) }}</td>
+-                <td data-testid="line-amount">{{ money(l.amount) }}</td>
+-                <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
++                <td data-testid="line-unit-price">{{ amount(l.unitPrice) }}</td>
++                <td data-testid="line-discount">{{ amount(l.discount) }}</td>
++                <td data-testid="line-amount">{{ amount(l.amount) }}</td>
++                <td data-testid="line-discount-share">{{ amount(l.discountShare) }}</td>
+                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
+                 <td data-testid="line-tax-rate">{{ (l.taxRate ?? inv.taxRate) + '%' }}</td>
+-                <td data-testid="line-tax">{{ money(l.tax) }}</td>
++                <td data-testid="line-tax">{{ amount(l.tax) }}</td>
+                 <td>
+                   <button
+                     type="button"
+@@ -242,18 +242,18 @@ function problemWith(line: NewLine): string {
+           <tfoot>
+             <tr>
+               <th scope="row" colspan="8">Subtotal</th>
+-              <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
++              <td data-testid="invoice-subtotal">{{ amount(inv.subtotal) }}</td>
+             </tr>
+             <tr>
+               <th scope="row" colspan="8">
+                 @if (+inv.discountAmount > 0) {
+-                  Discount (fixed@if (inv.discountCap !== null) {, max {{ money(inv.discountCap) }} in all})
++                  Discount (fixed@if (inv.discountCap !== null) {, max {{ amount(inv.discountCap) }} in all})
+                 } @else {
+                   Discount ({{ inv.discountPct }}%@if (inv.discountCap !== null) {, max
+-                    {{ money(inv.discountCap) }} in all})
++                    {{ amount(inv.discountCap) }} in all})
+                 }
+               </th>
+-              <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
++              <td data-testid="invoice-discount">{{ amount(inv.discount) }}</td>
+             </tr>
+             @if (inv.discountReason) {
+               <tr>
+@@ -263,18 +263,18 @@ function problemWith(line: NewLine): string {
+             }
+             <tr>
+               <th scope="row" colspan="8">Tax (lines at their own rate, otherwise {{ inv.taxRate }}%)</th>
+-              <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
++              <td data-testid="invoice-tax">{{ amount(inv.tax) }}</td>
+             </tr>
+             <tr>
+               <th scope="row" colspan="8">Total</th>
+-              <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
++              <td data-testid="invoice-grand-total">{{ amount(inv.total) }}</td>
+             </tr>
+             <tr>
+               <th scope="row" colspan="8">
+                 Retention ({{ inv.retentionPct }}%@if (inv.retentionReleasedOn) {, released
+                   {{ inv.retentionReleasedOn }}, due {{ inv.retentionDueDate }}} @else if (+inv.retention > 0) {, held back})
+               </th>
+-              <td data-testid="invoice-retention">{{ money(inv.retention) }}</td>
++              <td data-testid="invoice-retention">{{ amount(inv.retention) }}</td>
+             </tr>
+           </tfoot>
+         </table>
+@@ -299,11 +299,11 @@ function problemWith(line: NewLine): string {
+                 <tr [attr.data-testid]="'instalment-row-' + s.number">
+                   <td>{{ s.number }}</td>
+                   <td data-testid="instalment-due">{{ s.dueDate }}</td>
+-                  <td data-testid="instalment-payment">{{ money(s.payment) }}</td>
+-                  <td data-testid="instalment-interest">{{ money(s.interest) }}</td>
+-                  <td data-testid="instalment-principal">{{ money(s.principal) }}</td>
+-                  <td data-testid="instalment-balance">{{ money(s.balance) }}</td>
+-                  <td data-testid="instalment-paid">{{ money(s.paid) }}</td>
++                  <td data-testid="instalment-payment">{{ amount(s.payment) }}</td>
++                  <td data-testid="instalment-interest">{{ amount(s.interest) }}</td>
++                  <td data-testid="instalment-principal">{{ amount(s.principal) }}</td>
++                  <td data-testid="instalment-balance">{{ amount(s.balance) }}</td>
++                  <td data-testid="instalment-paid">{{ amount(s.paid) }}</td>
+                   <td data-testid="instalment-status">{{ instalmentStatusLabel(s.status) }}</td>
+                 </tr>
+               }
+@@ -311,7 +311,7 @@ function problemWith(line: NewLine): string {
+             <tfoot>
+               <tr>
+                 <th scope="row" colspan="5">Plan total</th>
+-                <td data-testid="invoice-plan-total">{{ money(inv.planTotal ?? '0') }}</td>
++                <td data-testid="invoice-plan-total">{{ amount(inv.planTotal ?? '0') }}</td>
+                 <td colspan="2"></td>
+               </tr>
+             </tfoot>
+@@ -332,15 +332,15 @@ function problemWith(line: NewLine): string {
+             @for (p of inv.payments; track p.id) {
+               <tr [attr.data-testid]="'payment-row-' + p.id">
+                 <td data-testid="payment-date">{{ p.date }}</td>
+-                <td data-testid="payment-amount">{{ money(p.amount) }}</td>
+-                <td data-testid="payment-allocated">{{ money(p.allocated) }}</td>
++                <td data-testid="payment-amount">{{ amount(p.amount) }}</td>
++                <td data-testid="payment-allocated">{{ amount(p.allocated) }}</td>
+                 <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
+                 <td>
+                   <button
+                     type="button"
+                     data-testid="payment-reverse"
+                     [disabled]="reversing()"
+-                    [attr.aria-label]="'Reverse payment of ' + money(p.amount) + ' on ' + p.date"
++                    [attr.aria-label]="'Reverse payment of ' + amount(p.amount) + ' on ' + p.date"
+                     (click)="reversePayment(inv.id, inv.clientId, p.id)"
+                   >
+                     Reverse
+@@ -356,21 +356,21 @@ function problemWith(line: NewLine): string {
+           <tfoot>
+             <tr>
+               <th scope="row" colspan="4">Paid</th>
+-              <td data-testid="invoice-paid">{{ money(inv.paid) }}</td>
++              <td data-testid="invoice-paid">{{ amount(inv.paid) }}</td>
+             </tr>
+             @if (inv.creditOf === null) {
+               <tr>
+                 <th scope="row" colspan="4">Credited</th>
+-                <td data-testid="invoice-credited">{{ money(inv.credited) }}</td>
++                <td data-testid="invoice-credited">{{ amount(inv.credited) }}</td>
+               </tr>
+             }
+             <tr>
+               <th scope="row" colspan="4">Amount due</th>
+-              <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
++              <td data-testid="invoice-amount-due">{{ amount(inv.amountDue) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="4">Written off (under $1.00 left)</th>
+-              <td data-testid="invoice-written-off">{{ money(inv.writtenOff) }}</td>
++              <th scope="row" colspan="4">Written off (worth under $1.00 left)</th>
++              <td data-testid="invoice-written-off">{{ amount(inv.writtenOff) }}</td>
+             </tr>
+           </tfoot>
+         </table>
+@@ -387,6 +387,7 @@ function problemWith(line: NewLine): string {
+         ) {
+           <app-payment-form
+             [clientId]="inv.clientId"
++            [currency]="inv.currency"
+             [invoiceId]="inv.id"
+             [allocations]="allocations()"
+             (paid)="paymentRecorded($event)"
+@@ -506,7 +507,7 @@ function problemWith(line: NewLine): string {
+             formControlName="qty"
+             required
+           />
+-          <label for="line-unit-price">Unit price ($)</label>
++          <label for="line-unit-price">Unit price ({{ symbol() }})</label>
+           <input
+             id="line-unit-price"
+             data-testid="line-form-unit-price"
+@@ -560,14 +561,14 @@ function problemWith(line: NewLine): string {
+               inputmode="decimal"
+               formControlName="pct"
+             />
+-            <label for="discount-amount">or amount ($)</label>
++            <label for="discount-amount">or amount ({{ symbol() }})</label>
+             <input
+               id="discount-amount"
+               data-testid="discount-form-amount"
+               inputmode="decimal"
+               formControlName="amount"
+             />
+-            <label for="discount-cap">capped at ($, optional)</label>
++            <label for="discount-cap">capped at ({{ symbol() }}, optional)</label>
+             <input
+               id="discount-cap"
+               data-testid="discount-form-cap"
+@@ -637,7 +638,14 @@ export class InvoicePanel {
+   protected readonly reverseError = signal('');
+   protected readonly statusLabel = statusLabel;
+   protected readonly instalmentStatusLabel = instalmentStatusLabel;
+-  protected readonly money = money;
++  // An amount shown in the currency of the open invoice's client.
++  protected amount(value: string): string {
++    return money(value, this.invoice()?.currency ?? 'USD');
++  }
++  // The symbol amounts on the open invoice are entered in.
++  protected symbol(): string {
++    return symbolOf(this.invoice()?.currency ?? 'USD');
++  }
+ 
+   protected readonly form = new FormGroup({
+     description: new FormControl('', { nonNullable: true }),
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 83f0ce9..ebce72d 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -1,6 +1,7 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
++import { Currency } from './invoice-format';
+ 
+ // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
+ // nothing is due, or PAID_LATE when the payment that cleared it (payments in date order) came after
+@@ -130,6 +131,8 @@ export interface InvoiceDetail {
+   planTotal: string | null;
+   // The due date as listed (yyyy-mm-dd): for a plan, its next unpaid instalment's due date.
+   listedDueDate: string | null;
++  // The currency the client is billed in: every amount is in it (whole yen for a yen client).
++  currency: Currency;
+ }
+ 
+ // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index c4da533..948e874 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -8,7 +8,7 @@ import {
+   NewAllocation,
+   NewPayment,
+ } from './invoice.service';
+-import { TWO_DECIMALS, cents } from './invoice-format';
++import { Currency, TWO_DECIMALS, cents, symbolOf } from './invoice-format';
+ 
+ // Whether a reference passes the ISO 11649 check: its first four characters moved to the end,
+ // letters as numbers (A=10 up to Z=35), mod 97 is 1. Spaces and capitals are ignored by the caller.
+@@ -112,7 +112,7 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
+   imports: [ReactiveFormsModule],
+   template: `
+     <form [formGroup]="form" (ngSubmit)="record()" aria-label="Record a payment" novalidate>
+-      <label for="payment-amount">Amount ($)</label>
++      <label for="payment-amount">Amount ({{ symbolOf(currency()) }})</label>
+       <input
+         id="payment-amount"
+         data-testid="payment-form-amount"
+@@ -162,6 +162,9 @@ export class PaymentForm {
+   private readonly service = inject(InvoiceService);
+ 
+   readonly clientId = input.required<number>();
++  // The currency the client is billed in, which the payment is in (whole yen for yen; the server checks).
++  readonly currency = input<Currency>('USD');
++  protected readonly symbolOf = symbolOf;
+   // The open invoice, which takes the payment when no parts are filled in; null when none is open.
+   readonly invoiceId = input<number | null>(null);
+   readonly allocations = input<NewAllocation[]>([]);
+diff --git a/src/main/frontend/src/app/features/invoices/refund-form.ts b/src/main/frontend/src/app/features/invoices/refund-form.ts
+index a8bf627..b6cff84 100644
+--- a/src/main/frontend/src/app/features/invoices/refund-form.ts
++++ b/src/main/frontend/src/app/features/invoices/refund-form.ts
+@@ -2,7 +2,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { InvoiceService, InvoiceSummary } from './invoice.service';
+-import { TWO_DECIMALS } from './invoice-format';
++import { Currency, TWO_DECIMALS, symbolOf } from './invoice-format';
+ 
+ // Refunds the client's unused credit: an amount more than zero with at most two decimals, and the
+ // date it was refunded. It comes out of the oldest payment's credit first; the server refuses a
+@@ -12,7 +12,7 @@ import { TWO_DECIMALS } from './invoice-format';
+   imports: [ReactiveFormsModule],
+   template: `
+     <form [formGroup]="form" (ngSubmit)="refund()" aria-label="Refund unused credit" novalidate>
+-      <label for="refund-amount">Refund ($)</label>
++      <label for="refund-amount">Refund ({{ symbolOf(currency()) }})</label>
+       <input
+         id="refund-amount"
+         data-testid="refund-form-amount"
+@@ -33,6 +33,9 @@ export class RefundForm {
+   private readonly service = inject(InvoiceService);
+ 
+   readonly clientId = input.required<number>();
++  // The currency the client is billed in, which the refund is in.
++  readonly currency = input<Currency>('USD');
++  protected readonly symbolOf = symbolOf;
+   // The client's invoices after a refund.
+   readonly refunded = output<InvoiceSummary[]>();
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/ExchangeRates.java b/src/main/java/net/officefloor/hq/app/ExchangeRates.java
+new file mode 100644
+index 0000000..47751df
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ExchangeRates.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.LinkedHashMap;
++import java.util.Map;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++
++/**
++ * The workspace's exchange rates: the US dollars one unit of each currency is worth, stored as the
++ * {@code usd_per_<code>} settings. A US dollar is worth one; a currency with no rate set is taken
++ * at par. Invoices read their client's rate themselves (see Invoice).
++ */
++@Service
++public class ExchangeRates {
++
++    /** The prefix of the setting holding a currency's rate, followed by its code (usd_per_EUR). */
++    public static final String USD_PER = "usd_per_";
++
++    private final JdbcTemplate jdbc;
++
++    public ExchangeRates(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    /** Every rate set, by currency code. */
++    public Map<String, BigDecimal> all() {
++        Map<String, BigDecimal> rates = new LinkedHashMap<>();
++        jdbc.queryForList("SELECT name, setting_value FROM app_setting WHERE name LIKE ? ORDER BY name", USD_PER + "%")
++                .forEach(r -> rates.put(((String) r.get("NAME")).substring(USD_PER.length()),
++                        new BigDecimal((String) r.get("SETTING_VALUE"))));
++        return rates;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index a974419..8eba2b1 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -10,6 +10,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ import jakarta.persistence.EntityManager;
++import net.officefloor.hq.app.clients.Currency;
+ import net.officefloor.hq.app.invoices.Invoice;
+ import net.officefloor.hq.app.invoices.InvoiceRepository;
+ import net.officefloor.hq.app.invoices.PaymentRepository;
+@@ -35,8 +36,8 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+@@ -50,9 +51,11 @@ public class TestSupportController {
+     private final TaxRate taxRate;
+     private final PaymentRepository payments;
+     private final EntityManager entityManager;
++    private final ExchangeRates exchangeRates;
+ 
+     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
+-            PaymentRepository payments, EntityManager entityManager) {
++            PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates) {
++        this.exchangeRates = exchangeRates;
+         this.payments = payments;
+         this.entityManager = entityManager;
+         this.audit = audit;
+@@ -102,13 +105,39 @@ public class TestSupportController {
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", TaxRate.TAX_RATE,
+                         rate.toPlainString());
+             }
++            if (values.get("usdPer") != null) {
++                if (!(values.get("usdPer") instanceof Map<?, ?> rates)) {
++                    throw refuse("settings.usdPer must be an object of rates by currency code");
++                }
++                for (Map.Entry<?, ?> e : rates.entrySet()) {
++                    String code = e.getKey().toString();
++                    if (Currency.of(code) == null) {
++                        throw refuse("unsupported currency in settings.usdPer: " + code);
++                    }
++                    BigDecimal usdPer;
++                    try {
++                        usdPer = new BigDecimal(String.valueOf(e.getValue()));
++                    } catch (NumberFormatException ex) {
++                        throw refuse("settings.usdPer." + code + " must be a number, not " + e.getValue());
++                    }
++                    if (usdPer.signum() <= 0) {
++                        throw refuse("settings.usdPer." + code + " must be more than zero, not " + e.getValue());
++                    }
++                    jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
++                            ExchangeRates.USD_PER + code, usdPer.toPlainString());
++                }
++            }
+         }
+         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
+             only(row, CLIENT_FIELDS, "clients[]");
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt"},
++            String currency = row.get("currency") == null ? Currency.USD.name() : row.get("currency").toString();
++            if (Currency.of(currency) == null) {
++                throw refuse("unsupported value of clients[].currency: " + currency);
++            }
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+                     percent(row.get("discountPct"), "clients[].discountPct"),
+-                    flag(row.get("taxExempt"), "clients[].taxExempt"));
++                    flag(row.get("taxExempt"), "clients[].taxExempt"), currency);
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+             only(row, INVOICE_FIELDS, "invoices[]");
+@@ -221,10 +250,18 @@ public class TestSupportController {
+         }
+         List<String> taxRate = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+                 String.class, TaxRate.TAX_RATE);
++        Map<String, Object> settings = new LinkedHashMap<>();
+         if (!taxRate.isEmpty()) {
+-            out.put("settings", Map.of("taxRate", new BigDecimal(taxRate.get(0))));
++            settings.put("taxRate", new BigDecimal(taxRate.get(0)));
++        }
++        Map<String, BigDecimal> rates = exchangeRates.all();
++        if (!rates.isEmpty()) {
++            settings.put("usdPer", rates);
++        }
++        if (!settings.isEmpty()) {
++            out.put("settings", settings);
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -235,6 +272,7 @@ public class TestSupportController {
+                     }
+                     row.put("discountPct", r.get("DISCOUNT_PCT"));
+                     row.put("taxExempt", r.get("TAX_EXEMPT"));
++                    row.put("currency", r.get("CURRENCY"));
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 53e076c..519654b 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.clients;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EnumType;
++import jakarta.persistence.Enumerated;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+@@ -32,15 +34,21 @@ public class Client {
+     @Column(name = "tax_exempt")
+     private boolean taxExempt;
+ 
++    /** The currency the client is billed in: everything on its invoices is in it. */
++    @Enumerated(EnumType.STRING)
++    private Currency currency = Currency.USD;
++
+     protected Client() {
+     }
+ 
+-    public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt) {
++    public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
++            Currency currency) {
+         this.name = name;
+         this.email = email;
+         this.termsDays = termsDays;
+         this.discountPct = discountPct == null ? BigDecimal.ZERO : discountPct;
+         this.taxExempt = taxExempt;
++        this.currency = currency == null ? Currency.USD : currency;
+     }
+ 
+     public Long getId() {
+@@ -66,4 +74,8 @@ public class Client {
+     public boolean isTaxExempt() {
+         return taxExempt;
+     }
++
++    public Currency getCurrency() {
++        return currency;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index fd59607..ecffaa9 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -25,10 +25,10 @@ import org.springframework.web.bind.annotation.RestController;
+ public class ClientController {
+ 
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+-            boolean taxExempt) {
++            boolean taxExempt, Currency currency) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+-                    c.isTaxExempt());
++                    c.isTaxExempt(), c.getCurrency());
+         }
+     }
+ 
+@@ -49,7 +49,10 @@ public class ClientController {
+             @Digits(integer = 3, fraction = 2, message = "The standard discount can have at most two decimals.")
+             BigDecimal discountPct,
+             /** Whether the client is tax exempt; taxed when left out. */
+-            Boolean taxExempt) {
++            Boolean taxExempt,
++            /** The currency the client is billed in; US dollars when left out. */
++            @Pattern(regexp = "USD|EUR|GBP|JPY|CHF", message = "The currency must be USD, EUR, GBP, JPY or CHF.")
++            String currency) {
+     }
+ 
+     /**
+@@ -73,6 +76,6 @@ public class ClientController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClientView add(@Valid @RequestBody NewClient body) {
+         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+-                Boolean.TRUE.equals(body.taxExempt())));
++                Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency())));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 9b4dd9e..27592df 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -30,11 +30,12 @@ public class ClientService {
+     }
+ 
+     @Transactional
+-    public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt) {
++    public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
++            Currency currency) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+-        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt));
++        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Currency.java b/src/main/java/net/officefloor/hq/app/clients/Currency.java
+new file mode 100644
+index 0000000..336af12
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/Currency.java
+@@ -0,0 +1,57 @@
++package net.officefloor.hq.app.clients;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.text.DecimalFormat;
++import java.text.DecimalFormatSymbols;
++import java.util.Locale;
++
++/**
++ * A currency a client is billed in, with the symbol its amounts are shown with and how many decimals
++ * they have: yen have none, so every amount for a yen client is in whole yen.
++ */
++public enum Currency {
++    USD("$", 2), EUR("€", 2), GBP("£", 2), JPY("¥", 0), CHF("CHF ", 2);
++
++    private final String symbol;
++    private final int scale;
++
++    Currency(String symbol, int scale) {
++        this.symbol = symbol;
++        this.scale = scale;
++    }
++
++    /** How many decimals an amount has: 2 (to the cent), or 0 for yen. */
++    public int scale() {
++        return scale;
++    }
++
++    /** Whether the amount is whole in this currency: no more decimals than {@link #scale()}. */
++    public boolean isWhole(BigDecimal amount) {
++        return amount.stripTrailingZeros().scale() <= scale;
++    }
++
++    /** The amount with its symbol and thousands separators, e.g. €1,234.50 or ¥1,235. */
++    public String format(BigDecimal amount) {
++        DecimalFormat number = new DecimalFormat(scale == 0 ? "#,##0" : "#,##0.00",
++                DecimalFormatSymbols.getInstance(Locale.US));
++        BigDecimal rounded = amount.setScale(scale, RoundingMode.HALF_UP);
++        return (rounded.signum() < 0 ? "-" : "") + symbol + number.format(rounded.abs());
++    }
++
++    /** The currency with the code, or null when there is no such currency. */
++    public static Currency of(String code) {
++        for (Currency c : values()) {
++            if (c.name().equals(code)) {
++                return c;
++            }
++        }
++        return null;
++    }
++
++    /** The currency with the code; US dollars when there is none. */
++    public static Currency orUsd(String code) {
++        Currency c = code == null ? null : of(code);
++        return c == null ? USD : c;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 758f6b5..235681f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -21,6 +21,7 @@ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.List;
++import net.officefloor.hq.app.clients.Currency;
+ 
+ /** An invoice raised for a client, made of lines. */
+ @Entity
+@@ -30,7 +31,7 @@ public class Invoice {
+     /** A due date set by hand can be at most this many days after the issue date. */
+     public static final int MAX_DUE_DAYS = 120;
+ 
+-    /** Payments that leave less than this still due have the rest written off. */
++    /** Payments that leave less than this many US dollars' worth still due have the rest written off. */
+     public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("1.00");
+ 
+     /** A part payment must be at least this share of the grand total, unless it settles the invoice. */
+@@ -102,6 +103,17 @@ public class Invoice {
+     @Column(name = "credit_of")
+     private Long creditOf;
+ 
++    /** The code of the currency the invoice's client is billed in; read from the client. */
++    @Formula("(SELECT c.currency FROM client c WHERE c.id = client_id)")
++    private String clientCurrency;
++
++    /**
++     * The US dollars one unit of the client's currency is worth, from the workspace rates; read from
++     * them, null when no rate is set (taken at par).
++     */
++    @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'usd_per_' || c.currency)")
++    private String usdPer;
++
+     /** An issued credit note's grand total, kept when it is issued; null until then. */
+     @Column(name = "credit_total")
+     private BigDecimal creditTotal;
+@@ -138,10 +150,12 @@ public class Invoice {
+     }
+ 
+     /** A new, empty draft for a client, issued and due on the given dates. */
+-    public static Invoice draft(Long clientId, boolean clientTaxExempt, LocalDate issueDate, LocalDate dueDate) {
++    public static Invoice draft(Long clientId, boolean clientTaxExempt, Currency currency, LocalDate issueDate,
++            LocalDate dueDate) {
+         Invoice invoice = new Invoice();
+         invoice.clientId = clientId;
+         invoice.clientTaxExempt = clientTaxExempt;
++        invoice.clientCurrency = currency.name();
+         invoice.status = InvoiceStatus.DRAFT;
+         invoice.issueDate = issueDate;
+         invoice.dueDate = dueDate;
+@@ -153,7 +167,7 @@ public class Invoice {
+      * discount, issued and due on the given dates. Payments stay with this invoice.
+      */
+     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
+-        Invoice copy = draft(clientId, clientTaxExempt, issueDate, dueDate);
++        Invoice copy = draft(clientId, clientTaxExempt, currency(), issueDate, dueDate);
+         copy.discountPct = discountPct;
+         copy.discountAmount = discountAmount;
+         copy.discountCap = discountCap;
+@@ -170,11 +184,35 @@ public class Invoice {
+      * discount, taxed as the original's lines are.
+      */
+     public Invoice creditNote(LocalDate issueDate) {
+-        Invoice note = draft(clientId, clientTaxExempt, issueDate, null);
++        Invoice note = draft(clientId, clientTaxExempt, currency(), issueDate, null);
+         note.creditOf = id;
+         return note;
+     }
+ 
++    /** The currency the invoice is in: its client's. */
++    public Currency currency() {
++        return Currency.orUsd(clientCurrency);
++    }
++
++    /**
++     * How many decimals its amounts have: 2, to the cent, or 0 for whole yen. Wherever an amount is
++     * rounded to the cent it is rounded to this instead.
++     */
++    public int scale() {
++        return currency().scale();
++    }
++
++    /** Nothing, in the invoice's currency. */
++    private BigDecimal zero() {
++        return BigDecimal.ZERO.setScale(scale());
++    }
++
++    /** Whether what is left is worth less than {@link #WRITE_OFF_LIMIT} US dollars at the workspace rates. */
++    private boolean isSmallEnoughToWriteOff(BigDecimal left) {
++        BigDecimal rate = usdPer == null ? BigDecimal.ONE : new BigDecimal(usdPer.trim());
++        return left.multiply(rate).compareTo(WRITE_OFF_LIMIT) < 0;
++    }
++
+     /** Whether this is a credit note against another invoice. */
+     public boolean isCreditNote() {
+         return creditOf != null;
+@@ -192,7 +230,7 @@ public class Invoice {
+ 
+     /** What the credit notes issued against this invoice add up to, to the cent. */
+     public BigDecimal getCredited() {
+-        return (credited == null ? BigDecimal.ZERO : credited).setScale(2, RoundingMode.HALF_UP);
++        return (credited == null ? BigDecimal.ZERO : credited).setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
+     /** Whether a credit note has been issued against this invoice: it can then no longer change. */
+@@ -285,7 +323,7 @@ public class Invoice {
+     public void setDiscountAmount(BigDecimal discountAmount) {
+         if (discountAmount.compareTo(subtotal()) > 0) {
+             throw new InvoiceRejectedException("The discount cannot be more than the subtotal of "
+-                    + subtotal().toPlainString() + ".");
++                    + currency().format(subtotal()) + ".");
+         }
+         this.discountAmount = discountAmount;
+         this.discountPct = BigDecimal.ZERO;
+@@ -319,9 +357,9 @@ public class Invoice {
+     /** The retention at the tax rate: the retention percentage of the grand total, rounded down to the cent. */
+     public BigDecimal retention(BigDecimal taxRate) {
+         if (isCreditNote()) {
+-            return BigDecimal.ZERO.setScale(2);
++            return zero();
+         }
+-        return total(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.DOWN);
++        return total(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+     }
+ 
+     /**
+@@ -330,10 +368,10 @@ public class Invoice {
+      */
+     public BigDecimal retentionHeld(BigDecimal taxRate) {
+         if (retentionReleasedOn != null) {
+-            return BigDecimal.ZERO.setScale(2);
++            return zero();
+         }
+         BigDecimal cleared = retentionCredited == null ? BigDecimal.ZERO : retentionCredited;
+-        return retention(taxRate).subtract(cleared).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
++        return retention(taxRate).subtract(cleared).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
+     /**
+@@ -349,7 +387,7 @@ public class Invoice {
+ 
+     /** The retention released at the tax rate: nothing until it is released, then all of it. */
+     public BigDecimal retentionReleased(BigDecimal taxRate) {
+-        return retentionReleasedOn == null ? BigDecimal.ZERO.setScale(2) : retention(taxRate);
++        return retentionReleasedOn == null ? zero() : retention(taxRate);
+     }
+ 
+     /**
+@@ -401,16 +439,16 @@ public class Invoice {
+         int n = instalments;
+         BigDecimal payment;
+         if (i.signum() == 0) {
+-            payment = principal.divide(BigDecimal.valueOf(n), 2, RoundingMode.HALF_UP);
++            payment = principal.divide(BigDecimal.valueOf(n), scale(), RoundingMode.HALF_UP);
+         } else {
+             BigDecimal growth = BigDecimal.ONE.add(i).pow(n, mc);
+             payment = principal.multiply(i).multiply(growth)
+-                    .divide(growth.subtract(BigDecimal.ONE), mc).setScale(2, RoundingMode.HALF_UP);
++                    .divide(growth.subtract(BigDecimal.ONE), mc).setScale(scale(), RoundingMode.HALF_UP);
+         }
+         List<Instalment> schedule = new ArrayList<>(n);
+-        BigDecimal balance = principal.setScale(2, RoundingMode.HALF_UP);
++        BigDecimal balance = principal.setScale(scale(), RoundingMode.HALF_UP);
+         for (int k = 1; k <= n; k++) {
+-            BigDecimal interest = balance.multiply(i).setScale(2, RoundingMode.HALF_UP);
++            BigDecimal interest = balance.multiply(i).setScale(scale(), RoundingMode.HALF_UP);
+             BigDecimal paid = k == n ? balance.add(interest) : payment;
+             BigDecimal repaid = paid.subtract(interest);
+             balance = balance.subtract(repaid);
+@@ -425,7 +463,7 @@ public class Invoice {
+         if (!hasPlan()) {
+             return null;
+         }
+-        return schedule(taxRate).stream().map(Instalment::payment).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++        return schedule(taxRate).stream().map(Instalment::payment).reduce(zero(), BigDecimal::add);
+     }
+ 
+     /**
+@@ -438,7 +476,7 @@ public class Invoice {
+         List<Instalment.Progress> progress = new ArrayList<>();
+         BigDecimal left = paid.add(getCredited()).add(writtenOff(paid, taxRate));
+         for (Instalment instalment : schedule(taxRate)) {
+-            BigDecimal part = left.min(instalment.payment()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
++            BigDecimal part = left.min(instalment.payment()).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
+             left = left.subtract(part);
+             BigDecimal unpaid = instalment.payment().subtract(part);
+             Instalment.Status status;
+@@ -462,14 +500,14 @@ public class Invoice {
+      */
+     public BigDecimal overdueAmount(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
+         if (statusWhenPaid(paid, taxRate, today) != InvoiceStatus.OVERDUE) {
+-            return BigDecimal.ZERO.setScale(2);
++            return zero();
+         }
+         if (!hasPlan()) {
+             return amountDue(paid, taxRate);
+         }
+         return instalmentProgress(paid, taxRate, today).stream()
+                 .filter(p -> p.status() == Instalment.Status.OVERDUE).map(Instalment.Progress::unpaid)
+-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++                .reduce(zero(), BigDecimal::add);
+     }
+ 
+     /**
+@@ -492,7 +530,7 @@ public class Invoice {
+     public BigDecimal earliestUnpaid(BigDecimal paid, BigDecimal taxRate) {
+         return instalmentProgress(paid, taxRate, LocalDate.MIN).stream()
+                 .map(Instalment.Progress::unpaid).filter(u -> u.signum() > 0)
+-                .findFirst().orElse(BigDecimal.ZERO.setScale(2));
++                .findFirst().orElse(zero());
+     }
+ 
+     public List<InvoiceLine> getLines() {
+@@ -628,7 +666,7 @@ public class Invoice {
+         BigDecimal sum = BigDecimal.ZERO;
+         for (Part p : inOrder) {
+             sum = sum.add(p.amount());
+-            if (sum.signum() > 0 && total.subtract(sum).compareTo(WRITE_OFF_LIMIT) < 0) {
++            if (sum.signum() > 0 && isSmallEnoughToWriteOff(total.subtract(sum))) {
+                 return p.on();
+             }
+         }
+@@ -642,7 +680,7 @@ public class Invoice {
+      */
+     public BigDecimal amountDue(BigDecimal paid, BigDecimal taxRate) {
+         if (isCreditNote()) {
+-            return BigDecimal.ZERO.setScale(2);
++            return zero();
+         }
+         return payable(taxRate).subtract(paid).subtract(writtenOff(paid, taxRate));
+     }
+@@ -653,14 +691,14 @@ public class Invoice {
+      */
+     public BigDecimal writtenOff(BigDecimal paid, BigDecimal taxRate) {
+         BigDecimal left = payable(taxRate).subtract(paid);
+-        return !isCreditNote() && paid.signum() > 0 && left.signum() > 0 && left.compareTo(WRITE_OFF_LIMIT) < 0
+-                ? left.setScale(2, RoundingMode.HALF_UP)
+-                : BigDecimal.ZERO.setScale(2);
++        return !isCreditNote() && paid.signum() > 0 && left.signum() > 0 && isSmallEnoughToWriteOff(left)
++                ? left.setScale(scale(), RoundingMode.HALF_UP)
++                : zero();
+     }
+ 
+     /** The least a part payment may be at the tax rate: {@link #MINIMUM_PART_SHARE} of the grand total. */
+     public BigDecimal minimumPart(BigDecimal taxRate) {
+-        return total(taxRate).multiply(MINIMUM_PART_SHARE).setScale(2, RoundingMode.HALF_UP);
++        return total(taxRate).multiply(MINIMUM_PART_SHARE).setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
+     /**
+@@ -695,11 +733,11 @@ public class Invoice {
+         if (line == null) {
+             return false;
+         }
+-        BigDecimal left = subtotal().subtract(line.amount());
++        BigDecimal left = subtotal().subtract(line.amount(scale()));
+         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
+-            throw new InvoiceRejectedException("This line cannot be removed: the $"
+-                    + left.setScale(2).toPlainString() + " left would be less than the $"
+-                    + discountAmount.setScale(2).toPlainString() + " discount.");
++            throw new InvoiceRejectedException("This line cannot be removed: the "
++                    + currency().format(left) + " left would be less than the "
++                    + currency().format(discountAmount) + " discount.");
+         }
+         lines.remove(line);
+         return true;
+@@ -715,12 +753,12 @@ public class Invoice {
+         if (line == null) {
+             return false;
+         }
+-        BigDecimal changed = new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate).amount();
+-        BigDecimal left = subtotal().subtract(line.amount()).add(changed);
++        BigDecimal changed = new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate).amount(scale());
++        BigDecimal left = subtotal().subtract(line.amount(scale())).add(changed);
+         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
+-            throw new InvoiceRejectedException("This line cannot be changed: the $"
+-                    + left.setScale(2).toPlainString() + " subtotal would be less than the $"
+-                    + discountAmount.setScale(2).toPlainString() + " discount.");
++            throw new InvoiceRejectedException("This line cannot be changed: the "
++                    + currency().format(left) + " subtotal would be less than the "
++                    + currency().format(discountAmount) + " discount.");
+         }
+         line.update(description, qty, unitPrice, taxExempt, discountPct, taxRate);
+         return true;
+@@ -731,8 +769,8 @@ public class Invoice {
+      * matches what a client gets by adding up the lines shown.
+      */
+     public BigDecimal subtotal() {
+-        return lines.stream().map(InvoiceLine::amount)
+-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++        return lines.stream().map(l -> l.amount(scale()))
++                .reduce(zero(), BigDecimal::add);
+     }
+ 
+     /**
+@@ -743,14 +781,14 @@ public class Invoice {
+      */
+     public BigDecimal discount() {
+         BigDecimal discount = discountAmount.signum() > 0
+-                ? discountAmount.min(subtotal()).setScale(2, RoundingMode.HALF_UP)
+-                : subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.DOWN);
++                ? discountAmount.min(subtotal()).setScale(scale(), RoundingMode.HALF_UP)
++                : subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+         if (discountCap == null) {
+             return discount;
+         }
+-        BigDecimal lineDiscounts = lines.stream().map(InvoiceLine::discount)
+-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+-        BigDecimal left = discountCap.setScale(2, RoundingMode.HALF_UP).subtract(lineDiscounts).max(BigDecimal.ZERO.setScale(2));
++        BigDecimal lineDiscounts = lines.stream().map(l -> l.discount(scale()))
++                .reduce(zero(), BigDecimal::add);
++        BigDecimal left = discountCap.setScale(scale(), RoundingMode.HALF_UP).subtract(lineDiscounts).max(zero());
+         return discount.min(left);
+     }
+ 
+@@ -762,8 +800,8 @@ public class Invoice {
+      * equal amounts too to the lower line id. The shares add up to the discount.
+      */
+     public List<BigDecimal> discountShares() {
+-        BigInteger discountCents = discount().movePointRight(2).toBigIntegerExact();
+-        BigInteger subtotalCents = subtotal().movePointRight(2).toBigIntegerExact();
++        BigInteger discountCents = discount().movePointRight(scale()).toBigIntegerExact();
++        BigInteger subtotalCents = subtotal().movePointRight(scale()).toBigIntegerExact();
+         int n = lines.size();
+         BigInteger[] shares = new BigInteger[n];
+         BigInteger[] leftovers = new BigInteger[n];
+@@ -775,7 +813,7 @@ public class Invoice {
+             } else {
+                 // The exact share is discount * amount / subtotal; all fractions share the subtotal
+                 // as denominator, so the remainders compare as the fractions do.
+-                BigInteger[] qr = discountCents.multiply(lines.get(i).amount().movePointRight(2).toBigIntegerExact())
++                BigInteger[] qr = discountCents.multiply(lines.get(i).amount(scale()).movePointRight(scale()).toBigIntegerExact())
+                         .divideAndRemainder(subtotalCents);
+                 shares[i] = qr[0];
+                 leftovers[i] = qr[1];
+@@ -787,7 +825,7 @@ public class Invoice {
+             order.add(i);
+         }
+         order.sort(Comparator.<Integer, BigInteger>comparing(i -> leftovers[i]).reversed()
+-                .thenComparing(Comparator.<Integer, BigDecimal>comparing(i -> lines.get(i).amount()).reversed())
++                .thenComparing(Comparator.<Integer, BigDecimal>comparing(i -> lines.get(i).amount(scale())).reversed())
+                 .thenComparing(i -> lines.get(i).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
+         int left = discountCents.subtract(given).intValueExact();
+         for (int k = 0; k < left; k++) {
+@@ -796,7 +834,7 @@ public class Invoice {
+         }
+         List<BigDecimal> result = new ArrayList<>(n);
+         for (BigInteger share : shares) {
+-            result.add(new BigDecimal(share, 2));
++            result.add(new BigDecimal(share, scale()));
+         }
+         return result;
+     }
+@@ -811,16 +849,16 @@ public class Invoice {
+         List<BigDecimal> taxes = new ArrayList<>(lines.size());
+         for (int i = 0; i < lines.size(); i++) {
+             InvoiceLine line = lines.get(i);
+-            taxes.add(clientTaxExempt || line.isTaxExempt() ? BigDecimal.ZERO.setScale(2)
+-                    : line.amount().subtract(shares.get(i)).multiply(line.taxRate(taxRate)).divide(BigDecimal.valueOf(100))
+-                            .setScale(2, RoundingMode.HALF_UP));
++            taxes.add(clientTaxExempt || line.isTaxExempt() ? zero()
++                    : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(taxRate)).divide(BigDecimal.valueOf(100))
++                            .setScale(scale(), RoundingMode.HALF_UP));
+         }
+         return taxes;
+     }
+ 
+     /** The tax charged at the given rate (a percentage): the sum of the line taxes. */
+     public BigDecimal tax(BigDecimal taxRate) {
+-        return lineTaxes(taxRate).stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++        return lineTaxes(taxRate).stream().reduce(zero(), BigDecimal::add);
+     }
+ 
+     /** The grand total: the subtotal less the discount, plus tax at the given rate. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index c2df806..b8e450c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -18,6 +18,7 @@ import java.util.TreeMap;
+ import java.util.stream.IntStream;
+ import net.officefloor.hq.app.TaxRate;
+ import net.officefloor.hq.app.Today;
++import net.officefloor.hq.app.clients.Currency;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -81,11 +82,11 @@ public class InvoiceController {
+      */
+     public record LineView(Long id, String description, String qty, String unitPrice, String discountPct,
+             String discount, String amount, String discountShare, String tax, boolean taxExempt, String taxRate) {
+-        static LineView of(InvoiceLine l, BigDecimal discountShare, BigDecimal tax) {
++        static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax) {
+             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
+                     l.getUnitPrice().setScale(2).toPlainString(),
+-                    l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount().toPlainString(),
+-                    l.amount().toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
++                    l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount(scale).toPlainString(),
++                    l.amount(scale).toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
+                     l.isTaxExempt(),
+                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString());
+         }
+@@ -108,14 +109,16 @@ public class InvoiceController {
+      * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
+      * (without trailing zeros); {@code schedule} lists them and {@code planTotal} is what they add up to
+      * (null without a plan), from which what is paid comes off for the amount due. {@code listedDueDate}
+-     * is the due date as listed: for a plan, its next unpaid instalment's.
++     * is the due date as listed: for a plan, its next unpaid instalment's. {@code currency} is the
++     * currency its client is billed in, which every amount is in (whole yen for a yen client).
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
+             String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
+             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+-            String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate) {
++            String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
++            Currency currency) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -123,7 +126,7 @@ public class InvoiceController {
+             List<BigDecimal> shares = i.discountShares();
+             List<BigDecimal> taxes = i.lineTaxes(taxRate);
+             List<LineView> lines = IntStream.range(0, shares.size())
+-                    .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n), taxes.get(n))).toList();
++                    .mapToObj(n -> LineView.of(i.getLines().get(n), i.scale(), shares.get(n), taxes.get(n))).toList();
+             return new InvoiceDetail(i.getId(), i.number(),
+                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
+                     i.statusWhenPaid(paid, paidOn, taxRate, today), i.getIssueDate(), i.getDueDate(),
+@@ -141,7 +144,8 @@ public class InvoiceController {
+                     i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate(),
+                     i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
+                     i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
+-                    i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate));
++                    i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate),
++                    i.currency());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 33be531..065dbc2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -102,19 +102,22 @@ public class InvoiceLine {
+         return taxRate == null ? workspaceRate : taxRate;
+     }
+ 
+-    /** Quantity times unit price, rounded half up to the cent, before the line's discount. */
+-    public BigDecimal grossAmount() {
+-        return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
++    /**
++     * Quantity times unit price, rounded half up to the given number of decimals (2, the cent; 0 for
++     * whole yen), before the line's discount.
++     */
++    public BigDecimal grossAmount(int scale) {
++        return qty.multiply(unitPrice).setScale(scale, RoundingMode.HALF_UP);
+     }
+ 
+-    /** The line's discount: its percentage of the gross amount, rounded down to the cent. */
+-    public BigDecimal discount() {
+-        return grossAmount().multiply(discountPct).divide(BigDecimal.valueOf(100))
+-                .setScale(2, RoundingMode.DOWN);
++    /** The line's discount: its percentage of the gross amount, rounded down to the given number of decimals. */
++    public BigDecimal discount(int scale) {
++        return grossAmount(scale).multiply(discountPct).divide(BigDecimal.valueOf(100))
++                .setScale(scale, RoundingMode.DOWN);
+     }
+ 
+-    /** The line amount: the gross amount less the line's discount. */
+-    public BigDecimal amount() {
+-        return grossAmount().subtract(discount());
++    /** The line amount, to the given number of decimals: the gross amount less the line's discount. */
++    public BigDecimal amount(int scale) {
++        return grossAmount(scale).subtract(discount(scale));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 43f14f3..f246150 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -17,6 +17,7 @@ import net.officefloor.hq.app.TaxRate;
+ import net.officefloor.hq.app.Today;
+ import net.officefloor.hq.app.clients.Client;
+ import net.officefloor.hq.app.clients.ClientRepository;
++import net.officefloor.hq.app.clients.Currency;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -70,7 +71,7 @@ public class InvoiceService {
+     public Optional<Invoice> newDraft(Long clientId) {
+         return clients.findById(clientId).map(client -> {
+             LocalDate issued = today.date();
+-            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), issued, dueDateFor(clientId, issued));
++            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), client.getCurrency(), issued, dueDateFor(clientId, issued));
+             draft.setDiscountPct(client.getDiscountPct());
+             return invoices.save(draft);
+         });
+@@ -141,6 +142,7 @@ public class InvoiceService {
+             boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+         found.ifPresent(invoice -> {
++            requireWhole(invoice.currency(), unitPrice, "The unit price");
+             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
+             invoice.addLine(new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate));
+             invoices.saveAndFlush(invoice);
+@@ -191,6 +193,7 @@ public class InvoiceService {
+         if (!invoice.hasLine(lineId)) {
+             return Optional.empty();
+         }
++        requireWhole(invoice.currency(), unitPrice, "The unit price");
+         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
+         invoice.updateLine(lineId, description, qty, unitPrice, taxExempt, discountPct, taxRate);
+         invoices.saveAndFlush(invoice);
+@@ -215,6 +218,12 @@ public class InvoiceService {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException("A credit note has no discount.");
+             }
++            if (discountAmount != null) {
++                requireWhole(invoice.currency(), discountAmount, "The discount amount");
++            }
++            if (discountCap != null) {
++                requireWhole(invoice.currency(), discountCap, "The discount cap");
++            }
+             boolean reopened = reopenForChange(invoice, "A paid invoice cannot be given a discount.");
+             if (discountAmount != null) {
+                 invoice.setDiscountAmount(discountAmount);
+@@ -319,8 +328,8 @@ public class InvoiceService {
+             }
+             BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), rate);
+             if (due.signum() > 0) {
+-                throw new InvoiceRejectedException("The retention can only be released once nothing else is due; $"
+-                        + due.setScale(2, RoundingMode.HALF_UP).toPlainString() + " is still due.");
++                throw new InvoiceRejectedException("The retention can only be released once nothing else is due; "
++                        + invoice.currency().format(due) + " is still due.");
+             }
+             invoice.releaseRetention(today.date());
+             invoices.saveAndFlush(invoice);
+@@ -483,7 +492,7 @@ public class InvoiceService {
+             payment.apply(invoice.getId(), part, now);
+             payments.saveAndFlush(payment);
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
+-                    + part.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++                    + part.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
+             due = due.subtract(part);
+             used = true;
+         }
+@@ -499,16 +508,19 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Payment> recordDeposit(Long clientId, BigDecimal amount, LocalDate date) {
+-        if (clients.findById(clientId).isEmpty()) {
++        Optional<Client> client = clients.findById(clientId);
++        if (client.isEmpty()) {
+             return Optional.empty();
+         }
++        Currency currency = client.get().getCurrency();
++        requireWhole(currency, amount, "The amount");
+         LocalDate now = today.date();
+         if (date.isAfter(now)) {
+             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+         }
+         Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date));
+         audit.record("DEPOSIT_RECORDED id=" + payment.getId() + " client=" + clientId + " amount="
+-                + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++                + amount.setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+         return Optional.of(payment);
+     }
+ 
+@@ -520,9 +532,12 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Long> refundCredit(Long clientId, BigDecimal amount, LocalDate date) {
+-        if (clients.findById(clientId).isEmpty()) {
++        Optional<Client> client = clients.findById(clientId);
++        if (client.isEmpty()) {
+             return Optional.empty();
+         }
++        Currency currency = client.get().getCurrency();
++        requireWhole(currency, amount, "The refund");
+         LocalDate now = today.date();
+         if (date.isAfter(now)) {
+             throw new InvoiceRejectedException("The refund date cannot be after today (" + now + ").");
+@@ -550,15 +565,15 @@ public class InvoiceService {
+             left = left.subtract(part);
+         }
+         if (left.signum() > 0) {
+-            throw new InvoiceRejectedException("The refund cannot be more than the client's unused credit of $"
+-                    + credit.setScale(2, RoundingMode.UNNECESSARY).toPlainString() + ".");
++            throw new InvoiceRejectedException("The refund cannot be more than the client's unused credit of "
++                    + currency.format(credit) + ".");
+         }
+         for (int i = 0; i < from.size(); i++) {
+             Payment payment = from.get(i);
+             payment.refund(parts.get(i));
+             payments.saveAndFlush(payment);
+             audit.record("CREDIT_REFUNDED payment=" + payment.getId() + " amount="
+-                    + parts.get(i).setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++                    + parts.get(i).setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+         }
+         return Optional.of(clientId);
+     }
+@@ -664,6 +679,7 @@ public class InvoiceService {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException("A credit note takes no payments.");
+             }
++            requireWhole(invoice.currency(), amount, "The amount");
+             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+             if (due.signum() <= 0) {
+@@ -671,13 +687,13 @@ public class InvoiceService {
+             }
+             BigDecimal applied = amount.min(due);
+             if (invoice.hasPlan() && invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
+-                throw new InvoiceRejectedException("A payment must be at least the $"
+-                        + invoice.earliestUnpaid(paidSoFar, taxRate.percent()).toPlainString()
++                throw new InvoiceRejectedException("A payment must be at least the "
++                        + invoice.currency().format(invoice.earliestUnpaid(paidSoFar, taxRate.percent()))
+                         + " still unpaid on the earliest unpaid instalment, unless it settles the plan.");
+             }
+             if (invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
+-                throw new InvoiceRejectedException("A part payment must be at least $"
+-                        + invoice.minimumPart(taxRate.percent()).toPlainString()
++                throw new InvoiceRejectedException("A part payment must be at least "
++                        + invoice.currency().format(invoice.minimumPart(taxRate.percent()))
+                         + " (10% of the total), unless it settles the invoice.");
+             }
+             LocalDate now = today.date();
+@@ -695,7 +711,7 @@ public class InvoiceService {
+             }
+             Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, applied, date, reference));
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
+-                    + applied.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++                    + applied.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
+             recordWriteOff(invoice);
+             recordCreditHeld(payment);
+         });
+@@ -716,6 +732,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, List<String> references) {
++        requireWhole(currencyOf(clientId), amount, "The amount");
+         List<Invoice> ofClient = invoices.findByClientIdOrderByIdAsc(clientId);
+         List<Invoice> candidates = ofClient;
+         if (!references.isEmpty()) {
+@@ -793,10 +810,15 @@ public class InvoiceService {
+         if (parts.isEmpty()) {
+             throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
+         }
++        Currency currency = currencyOf(clientId);
++        requireWhole(currency, amount, "The amount");
++        for (PaymentAllocation part : parts) {
++            requireWhole(currency, part.getAmount(), "Each invoice's part");
++        }
+         BigDecimal sum = parts.stream().map(PaymentAllocation::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+         if (holdCredit ? sum.compareTo(amount) > 0 : sum.compareTo(amount) != 0) {
+-            throw new InvoiceRejectedException("The amounts for the invoices add up to $"
+-                    + sum.setScale(2).toPlainString() + ", not the $" + amount.setScale(2).toPlainString() + " paid.");
++            throw new InvoiceRejectedException("The amounts for the invoices add up to "
++                    + currency.format(sum) + ", not the " + currency.format(amount) + " paid.");
+         }
+         LocalDate now = today.date();
+         if (date.isAfter(now)) {
+@@ -824,17 +846,17 @@ public class InvoiceService {
+             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+             if (part.getAmount().compareTo(due) > 0) {
+-                throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
+-                        + number + " is more than the $" + due.toPlainString() + " it has due.");
++                throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
++                        + number + " is more than the " + currency.format(due) + " it has due.");
+             }
+             if (invoice.hasPlan() && invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
+-                throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
+-                        + number + " is less than the $" + invoice.earliestUnpaid(paidSoFar, taxRate.percent()).toPlainString()
++                throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
++                        + number + " is less than the " + currency.format(invoice.earliestUnpaid(paidSoFar, taxRate.percent()))
+                         + " still unpaid on its earliest unpaid instalment, unless it settles the plan.");
+             }
+             if (invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
+-                throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
+-                        + number + " is less than $" + invoice.minimumPart(taxRate.percent()).toPlainString()
++                throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
++                        + number + " is less than " + currency.format(invoice.minimumPart(taxRate.percent()))
+                         + " (10% of its total), unless it settles the invoice.");
+             }
+             if (invoice.getIssueDate() != null && date.isBefore(invoice.getIssueDate())) {
+@@ -850,19 +872,34 @@ public class InvoiceService {
+         Payment payment = payments.saveAndFlush(Payment.split(clientId, amount, date, reference, parts));
+         for (PaymentAllocation part : parts) {
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + part.getInvoiceId() + " amount="
+-                    + part.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++                    + part.getAmount().setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+         }
+         spreadOver.forEach(this::recordWriteOff);
+         recordCreditHeld(payment);
+         return payment;
+     }
+ 
++    /** The currency the client is billed in; US dollars when there is no such client. */
++    private Currency currencyOf(Long clientId) {
++        return clients.findById(clientId).map(Client::getCurrency).orElse(Currency.USD);
++    }
++
++    /**
++     * Refuses an amount entered with more decimals than the currency has: whole yen for a yen client
++     * (the cent is already checked for the rest).
++     */
++    private static void requireWhole(Currency currency, BigDecimal amount, String what) {
++        if (amount != null && !currency.isWhole(amount)) {
++            throw new InvoiceRejectedException(what + " must be in whole yen, with no decimals.");
++        }
++    }
++
+     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
+     private void recordCreditHeld(Payment payment) {
+         BigDecimal credit = payment.credit();
+         if (credit.signum() > 0) {
+             audit.record("CREDIT_HELD payment=" + payment.getId() + " amount="
+-                    + credit.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++                    + credit.setScale(currencyOf(payment.getClientId()).scale(), RoundingMode.UNNECESSARY).toPlainString());
+         }
+     }
+ 
+@@ -895,7 +932,8 @@ public class InvoiceService {
+             payment.reverse();
+             payments.saveAndFlush(payment);
+             audit.record("PAYMENT_REVERSED id=" + payment.getId() + " amount="
+-                    + payment.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++                    + payment.getAmount().setScale(currencyOf(payment.getClientId()).scale(), RoundingMode.UNNECESSARY)
++                            .toPlainString());
+         });
+         return found;
+     }
+diff --git a/src/main/resources/db/migration/V23__client_currency.sql b/src/main/resources/db/migration/V23__client_currency.sql
+new file mode 100644
+index 0000000..ec20f6f
+--- /dev/null
++++ b/src/main/resources/db/migration/V23__client_currency.sql
+@@ -0,0 +1,2 @@
++-- The currency a client is billed in (USD, EUR, GBP, JPY or CHF); clients are billed in US dollars by default.
++ALTER TABLE client ADD COLUMN currency VARCHAR(3) DEFAULT 'USD' NOT NULL;
