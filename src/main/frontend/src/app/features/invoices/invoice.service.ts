@@ -24,7 +24,8 @@ export interface InvoiceSummary {
 // decimal string to the cent. `discountShare` is the line's share of the invoice discount, split in
 // cents in proportion to the line amounts by the server; the shares add up to the discount. `tax` is
 // the tax rate on the amount less that share, rounded half up to the cent; a `taxExempt` line
-// (postage, say) has none. `discountPct` is the line's own
+// (postage, say) has none. `taxRate` is the line's own tax rate (without trailing zeros), null when
+// it uses the workspace rate. `discountPct` is the line's own
 // discount (without trailing zeros), `discount` what it takes off quantity x unit price, and
 // `amount` is after it.
 export interface InvoiceLineView {
@@ -38,6 +39,7 @@ export interface InvoiceLineView {
   discountShare: string;
   tax: string;
   taxExempt: boolean;
+  taxRate: string | null;
 }
 
 // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
@@ -101,14 +103,15 @@ export interface NewSplitPayment extends NewPayment {
   allocations: NewAllocation[];
 }
 
-// A line to add to a draft: quantity, unit price and the line's own discount percentage as entered
-// (left out when none), checked again by the server.
+// A line to add to a draft: quantity, unit price, the line's own discount percentage and its own tax
+// rate as entered (each left out when none), checked again by the server.
 export interface NewLine {
   description: string;
   qty: string;
   unitPrice: string;
   taxExempt: boolean;
   discountPct?: string;
+  taxRate?: string;
 }
 
 // A discount to give: either a percentage or a fixed amount, as entered, with an optional cap on

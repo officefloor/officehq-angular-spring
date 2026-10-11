@@ -36,16 +36,21 @@ public class InvoiceLine {
     @Column(name = "discount_pct")
     private BigDecimal discountPct = BigDecimal.ZERO;
 
+    /** The line's own tax percentage, 0 to 100 with up to two decimals; null uses the workspace rate. */
+    @Column(name = "tax_rate")
+    private BigDecimal taxRate;
+
     protected InvoiceLine() {
     }
 
     public InvoiceLine(String description, BigDecimal qty, BigDecimal unitPrice, boolean taxExempt,
-            BigDecimal discountPct) {
+            BigDecimal discountPct, BigDecimal taxRate) {
         this.description = description;
         this.qty = qty;
         this.unitPrice = unitPrice;
         this.taxExempt = taxExempt;
         this.discountPct = discountPct;
+        this.taxRate = taxRate;
     }
 
     public Long getId() {
@@ -70,6 +75,15 @@ public class InvoiceLine {
 
     public BigDecimal getDiscountPct() {
         return discountPct;
+    }
+
+    public BigDecimal getTaxRate() {
+        return taxRate;
+    }
+
+    /** The rate the line is taxed at: its own rate, or the given workspace rate when it has none. */
+    public BigDecimal taxRate(BigDecimal workspaceRate) {
+        return taxRate == null ? workspaceRate : taxRate;
     }
 
     /** Quantity times unit price, rounded half up to the cent, before the line's discount. */

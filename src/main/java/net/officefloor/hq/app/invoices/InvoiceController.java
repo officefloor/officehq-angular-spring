@@ -66,18 +66,20 @@ public class InvoiceController {
      * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
      * money is a decimal string to the cent. {@code discountShare} is the line's share of the
      * invoice discount; {@code tax} is the line's tax, the rate on its amount less that share, and
-     * {@code taxExempt} lines have none. {@code discountPct}
+     * {@code taxExempt} lines have none. {@code taxRate} (without trailing zeros) is the line's own
+     * tax rate, null when it uses the workspace rate. {@code discountPct}
      * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
      * {@code amount} is after it.
      */
     public record LineView(Long id, String description, String qty, String unitPrice, String discountPct,
-            String discount, String amount, String discountShare, String tax, boolean taxExempt) {
+            String discount, String amount, String discountShare, String tax, boolean taxExempt, String taxRate) {
         static LineView of(InvoiceLine l, BigDecimal discountShare, BigDecimal tax) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
                     l.getUnitPrice().setScale(2).toPlainString(),
                     l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount().toPlainString(),
                     l.amount().toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
-                    l.isTaxExempt());
+                    l.isTaxExempt(),
+                    l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString());
         }
     }
 
@@ -139,7 +141,8 @@ public class InvoiceController {
     /**
      * A line to add: a description, a quantity above zero and a unit price of at least $0.01, and
      * whether it is tax exempt (taxable when left out), and its own discount percentage from 0 to 100
-     * with at most two decimals (none when left out).
+     * with at most two decimals (none when left out), and its own tax rate from 0 to 100 with at most
+     * two decimals (the workspace rate when left out).
      */
     public record NewLine(
             @NotBlank(message = "Enter a description.")
@@ -157,7 +160,11 @@ public class InvoiceController {
             @DecimalMin(value = "0", message = "The line discount must be from 0 to 100 percent.")
             @DecimalMax(value = "100", message = "The line discount must be from 0 to 100 percent.")
             @Digits(integer = 3, fraction = 2, message = "The line discount can have at most two decimals.")
-            BigDecimal discountPct) {
+            BigDecimal discountPct,
+            @DecimalMin(value = "0", message = "The line tax rate must be from 0 to 100 percent.")
+            @DecimalMax(value = "100", message = "The line tax rate must be from 0 to 100 percent.")
+            @Digits(integer = 3, fraction = 2, message = "The line tax rate can have at most two decimals.")
+            BigDecimal taxRate) {
     }
 
     /**
@@ -275,7 +282,7 @@ public class InvoiceController {
     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
         return invoices.addLine(id, body.description().trim(), body.qty(), body.unitPrice(),
                 Boolean.TRUE.equals(body.taxExempt()),
-                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct())
+                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

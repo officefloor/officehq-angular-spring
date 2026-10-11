@@ -284,9 +284,9 @@ public class Invoice {
     }
 
     /**
-     * Each line's tax at the given rate (a percentage), in the order of the lines: the rate on the
-     * line's amount less its share of the discount, rounded half up to the cent. Tax-exempt lines
-     * have no tax.
+     * Each line's tax, in the order of the lines: the line's own rate (a percentage), or the given
+     * workspace rate when it has none, on the line's amount less its share of the discount, rounded
+     * half up to the cent. Tax-exempt lines have no tax.
      */
     public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
         List<BigDecimal> shares = discountShares();
@@ -294,7 +294,7 @@ public class Invoice {
         for (int i = 0; i < lines.size(); i++) {
             InvoiceLine line = lines.get(i);
             taxes.add(line.isTaxExempt() ? BigDecimal.ZERO.setScale(2)
-                    : line.amount().subtract(shares.get(i)).multiply(taxRate).divide(BigDecimal.valueOf(100))
+                    : line.amount().subtract(shares.get(i)).multiply(line.taxRate(taxRate)).divide(BigDecimal.valueOf(100))
                             .setScale(2, RoundingMode.HALF_UP));
         }
         return taxes;

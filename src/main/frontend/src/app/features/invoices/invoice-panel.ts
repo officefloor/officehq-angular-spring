@@ -98,6 +98,15 @@ function problemWith(line: NewLine): string {
       problems.push('The line discount can have at most two decimals.');
     }
   }
+  if (line.taxRate !== undefined) {
+    if (!/^-?\d+(\.\d+)?$/.test(line.taxRate)) {
+      problems.push('The line tax rate must be a number, like 5 or 12.5.');
+    } else if (Number(line.taxRate) < 0 || Number(line.taxRate) > 100) {
+      problems.push('The line tax rate must be from 0 to 100 percent.');
+    } else if (!TWO_DECIMALS.test(line.taxRate)) {
+      problems.push('The line tax rate can have at most two decimals.');
+    }
+  }
   return problems.join(' ');
 }
 
@@ -135,6 +144,7 @@ function problemWith(line: NewLine): string {
               <th scope="col">Amount</th>
               <th scope="col">Discount share</th>
               <th scope="col">Tax status</th>
+              <th scope="col">Tax rate</th>
               <th scope="col">Tax</th>
               <th scope="col">Actions</th>
             </tr>
@@ -149,6 +159,7 @@ function problemWith(line: NewLine): string {
                 <td data-testid="line-amount">{{ money(l.amount) }}</td>
                 <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
+                <td data-testid="line-tax-rate">{{ (l.taxRate ?? inv.taxRate) + '%' }}</td>
                 <td data-testid="line-tax">{{ money(l.tax) }}</td>
                 <td>
                   <button
@@ -164,17 +175,17 @@ function problemWith(line: NewLine): string {
               </tr>
             } @empty {
               <tr>
-                <td colspan="9" data-testid="line-empty">No lines yet.</td>
+                <td colspan="10" data-testid="line-empty">No lines yet.</td>
               </tr>
             }
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row" colspan="7">Subtotal</th>
+              <th scope="row" colspan="8">Subtotal</th>
               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="7">
+              <th scope="row" colspan="8">
                 @if (+inv.discountAmount > 0) {
                   Discount (fixed@if (inv.discountCap !== null) {, max {{ money(inv.discountCap) }} in all})
                 } @else {
@@ -185,11 +196,11 @@ function problemWith(line: NewLine): string {
               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="7">Tax ({{ inv.taxRate }}%)</th>
+              <th scope="row" colspan="8">Tax (lines at their own rate, otherwise {{ inv.taxRate }}%)</th>
               <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="7">Total</th>
+              <th scope="row" colspan="8">Total</th>
               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
             </tr>
           </tfoot>
@@ -306,6 +317,13 @@ function problemWith(line: NewLine): string {
             inputmode="decimal"
             formControlName="discountPct"
           />
+          <label for="line-tax-rate">Tax rate (%, optional)</label>
+          <input
+            id="line-tax-rate"
+            data-testid="line-form-tax-rate"
+            inputmode="decimal"
+            formControlName="taxRate"
+          />
           <input
             id="line-exempt"
             type="checkbox"
@@ -390,6 +408,7 @@ export class InvoicePanel {
     unitPrice: new FormControl('', { nonNullable: true }),
     taxExempt: new FormControl(false, { nonNullable: true }),
     discountPct: new FormControl('', { nonNullable: true }),
+    taxRate: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly discountForm = new FormGroup({
@@ -425,6 +444,10 @@ export class InvoicePanel {
     const discountPct = raw.discountPct.trim().replace(/%$/, '').trim();
     if (discountPct) {
       line.discountPct = discountPct;
+    }
+    const taxRate = raw.taxRate.trim().replace(/%$/, '').trim();
+    if (taxRate) {
+      line.taxRate = taxRate;
     }
     const problem = problemWith(line);
     if (problem) {
