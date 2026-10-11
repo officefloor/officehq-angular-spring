@@ -132,6 +132,13 @@ public class Invoice {
     @Column(name = "early_discount")
     private BigDecimal earlyDiscount = BigDecimal.ZERO;
 
+    /**
+     * The interest of the instalments not yet due that was dropped when the plan was paid off early;
+     * 0 when it was not.
+     */
+    @Column(name = "interest_saved")
+    private BigDecimal interestSaved = BigDecimal.ZERO;
+
     /** An issued credit note's grand total, kept when it is issued; null until then. */
     @Column(name = "credit_total")
     private BigDecimal creditTotal;
@@ -461,7 +468,8 @@ public class Invoice {
     /** As {@link #payable}, but without the late fee and interest charged. */
     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
         BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate);
-        return owed.subtract(getCredited()).subtract(retentionHeld(taxRate)).subtract(getEarlyDiscountTaken());
+        return owed.subtract(getCredited()).subtract(retentionHeld(taxRate)).subtract(getEarlyDiscountTaken())
+                .subtract(getInterestSaved());
     }
 
     /** The late interest charged, to the cent; 0 when none is. */
@@ -633,6 +641,10 @@ public class Invoice {
                 .filter(p -> !p.on().isAfter(today))
                 .forEach(inOrder::add);
         inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
+        if (getInterestSaved().signum() > 0 && !inOrder.isEmpty()) {
+            // The interest dropped by paying the plan off counts as paid with the payment that settled it.
+            inOrder.add(new Part(inOrder.get(inOrder.size() - 1).on(), Long.MAX_VALUE, getInterestSaved()));
+        }
         BigDecimal[] left = inOrder.stream().map(Part::amount).toArray(BigDecimal[]::new);
         BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36500), MathContext.DECIMAL128));
         List<BigDecimal> charges = new ArrayList<>();
@@ -730,6 +742,37 @@ public class Invoice {
         this.earlyDiscount = amount;
     }
 
+    /** The interest dropped when the plan was paid off early, to the cent; 0 when it was not. */
+    public BigDecimal getInterestSaved() {
+        return (interestSaved == null ? BigDecimal.ZERO : interestSaved).setScale(scale(), RoundingMode.HALF_UP);
+    }
+
+    /** Settles the plan early, dropping the given interest (0 to clear it again). */
+    public void saveInterest(BigDecimal amount) {
+        this.interestSaved = amount;
+    }
+
+    /**
+     * What would pay off a sent plan not yet paid off on the given day, once the given amount has been
+     * paid, at the tax rate: the principal still owed on all its instalments, plus what is unpaid of
+     * the interest of the instalments already due (due on or before the day) and any late interest.
+     * Within an instalment what is paid goes to its interest first. Null without a plan, or when
+     * nothing is due.
+     */
+    public BigDecimal payoff(BigDecimal paid, BigDecimal taxRate, LocalDate on) {
+        if (!hasPlan() || status != InvoiceStatus.SENT || isCreditNote() || getInterestSaved().signum() > 0
+                || amountDue(paid, taxRate).signum() <= 0) {
+            return null;
+        }
+        BigDecimal payoff = zero();
+        for (Instalment.Progress p : instalmentProgress(paid, taxRate, on)) {
+            LocalDate due = p.instalment().dueDate();
+            BigDecimal unpaid = due == null || !due.isAfter(on) ? p.unpaid() : p.unpaid().min(p.instalment().principal());
+            payoff = payoff.add(unpaid).add(p.interestUnpaid());
+        }
+        return payoff;
+    }
+
     /** Whether the invoice is spread over monthly instalments. */
     public boolean hasPlan() {
         return instalments != null;
@@ -806,7 +849,7 @@ public class Invoice {
      */
     public List<Instalment.Progress> instalmentProgress(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
         List<Instalment.Progress> progress = new ArrayList<>();
-        BigDecimal left = paid.add(getCredited()).add(writtenOff(paid, taxRate));
+        BigDecimal left = paid.add(getCredited()).add(writtenOff(paid, taxRate)).add(getInterestSaved());
         List<Instalment> schedule = schedule(taxRate);
         for (int k = 0; k < schedule.size(); k++) {
             Instalment instalment = schedule.get(k);
@@ -981,7 +1024,8 @@ public class Invoice {
         if (due) {
             return InvoiceStatus.PART_PAID;
         }
-        return paidOn != null && dueDate != null && paidOn.isAfter(dueDate) ? InvoiceStatus.PAID_LATE
+        LocalDate finalDue = hasPlan() ? schedule(taxRate).get(instalments - 1).dueDate() : dueDate;
+        return paidOn != null && finalDue != null && paidOn.isAfter(finalDue) ? InvoiceStatus.PAID_LATE
                 : InvoiceStatus.PAID;
     }
 

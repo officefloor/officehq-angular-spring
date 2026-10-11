@@ -146,6 +146,10 @@ export interface InvoiceDetail {
   lateFee: string;
   // The late fee and interest written off by waiving them ("0.00" when none were).
   lateWaived: string;
+  // What would pay off its plan today (null without a plan or once it is paid off), and the interest
+  // of instalments not yet due that paying it off early dropped ("0.00" when none was).
+  payoff: string | null;
+  interestSaved: string;
 }
 
 // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,

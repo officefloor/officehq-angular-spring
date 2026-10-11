@@ -401,6 +401,18 @@ function problemWith(line: NewLine): string {
                 <td data-testid="invoice-settle-amount">{{ amount(inv.settleAmount) }}</td>
               </tr>
             }
+            @if (inv.payoff !== null) {
+              <tr>
+                <th scope="row" colspan="4">Pays off the plan if paid now</th>
+                <td data-testid="invoice-payoff">{{ amount(inv.payoff) }}</td>
+              </tr>
+            }
+            @if (inv.instalments !== null) {
+              <tr>
+                <th scope="row" colspan="4">Interest saved by paying off early</th>
+                <td data-testid="invoice-interest-saved">{{ amount(inv.interestSaved) }}</td>
+              </tr>
+            }
             <tr>
               <th scope="row" colspan="4">Written off (worth under $1.00 left)</th>
               <td data-testid="invoice-written-off">{{ amount(inv.writtenOff) }}</td>

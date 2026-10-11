@@ -791,6 +791,13 @@ public class InvoiceService {
                 invoice.takeEarlyDiscount(early);
                 due = settle;
             }
+            BigDecimal saved = BigDecimal.ZERO;
+            BigDecimal payoff = date.isAfter(now) ? null : invoice.payoff(paidSoFar, taxRate.percent(), now);
+            if (payoff != null && amount.compareTo(payoff) >= 0) {
+                saved = due.subtract(payoff).max(BigDecimal.ZERO);
+                invoice.saveInterest(saved);
+                due = payoff;
+            }
             BigDecimal applied = amount.min(due);
             if (invoice.hasPlan() && invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
                 throw new InvoiceRejectedException("A payment must be at least the "
@@ -821,6 +828,10 @@ public class InvoiceService {
             if (early.signum() > 0) {
                 invoices.saveAndFlush(invoice);
                 audit.record("EARLY_DISCOUNT id=" + invoice.getId() + " amount=" + early.toPlainString());
+            }
+            if (payoff != null && amount.compareTo(payoff) >= 0) {
+                invoices.saveAndFlush(invoice);
+                audit.record("PLAN_SETTLED id=" + invoice.getId() + " saved=" + saved.toPlainString());
             }
             recordWriteOff(invoice);
             recordCreditHeld(payment);
@@ -1106,10 +1117,12 @@ public class InvoiceService {
             }
             payment.reverse();
             payments.saveAndFlush(payment);
-            // An invoice the payment settled early is no longer paid off, so its early discount lapses.
+            // An invoice the payment settled early is no longer paid off, so its early discount or the
+            // interest its plan's payoff dropped lapses.
             payment.getAllocations().forEach(a -> load(a.getInvoiceId()).ifPresent(invoice -> {
-                if (invoice.getEarlyDiscountTaken().signum() > 0) {
+                if (invoice.getEarlyDiscountTaken().signum() > 0 || invoice.getInterestSaved().signum() > 0) {
                     invoice.takeEarlyDiscount(BigDecimal.ZERO);
+                    invoice.saveInterest(BigDecimal.ZERO);
                     invoices.saveAndFlush(invoice);
                 }
             }));

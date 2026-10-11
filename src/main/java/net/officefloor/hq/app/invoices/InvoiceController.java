@@ -117,7 +117,9 @@ public class InvoiceController {
      * {@code settleAmount} what would settle it today while its early-payment window is open (null otherwise).
      * {@code lateInterest} is the late interest charged on it so far, and {@code lateFee} the late fee
      * charged on it (0 when none), both part of the amount due; {@code lateWaived} is the late fee and
-     * interest written off by waiving them (0 when none was).
+     * interest written off by waiving them (0 when none was). {@code payoff} is what would pay off its
+     * plan today (null without a plan or once it is paid off), and {@code interestSaved} the interest
+     * of instalments not yet due that paying it off early dropped (0 when none was).
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
@@ -125,7 +127,8 @@ public class InvoiceController {
             String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
             String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
-            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived) {
+            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
+            String payoff, String interestSaved) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -155,7 +158,9 @@ public class InvoiceController {
                     i.currency(), i.getEarlyDiscountTaken().toPlainString(),
                     Optional.ofNullable(i.settleAmount(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
                     i.getLateInterest().toPlainString(), i.getLateFee().toPlainString(),
-                    i.getLateWaived().toPlainString());
+                    i.getLateWaived().toPlainString(),
+                    Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
+                    i.getInterestSaved().toPlainString());
         }
     }
 
