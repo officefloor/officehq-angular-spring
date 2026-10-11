@@ -145,4 +145,11 @@ public class InvoiceController {
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
+
+    @PostMapping("/api/invoices/{id}/send")
+    public InvoiceDetail send(@PathVariable Long id) {
+        return invoices.send(id)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
 }

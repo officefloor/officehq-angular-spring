@@ -87,4 +87,9 @@ export class InvoiceService {
   setDiscount(invoiceId: number, discountPct: string): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/discount`, { discountPct });
   }
+
+  // Sends a draft invoice, keeping its issue and due dates; refused (409) when it has no lines.
+  send(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/send`, null);
+  }
 }

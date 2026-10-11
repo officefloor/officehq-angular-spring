@@ -48,7 +48,7 @@ function problemWith(line: NewLine): string {
 }
 
 // One opened invoice: its status, its lines and its totals. A draft takes new lines and a
-// percentage discount.
+// percentage discount, and can be sent; once sent, the server refuses further changes.
 @Component({
   selector: 'app-invoice-panel',
   imports: [ReactiveFormsModule],
@@ -103,60 +103,67 @@ function problemWith(line: NewLine): string {
         </table>
 
         @if (inv.status === 'DRAFT') {
-          <form [formGroup]="form" (ngSubmit)="addLine(inv.id)" aria-label="Add a line" novalidate>
-            <label for="line-description">Description</label>
-            <input
-              id="line-description"
-              data-testid="line-form-description"
-              formControlName="description"
-              required
-            />
-            <label for="line-qty">Quantity</label>
-            <input
-              id="line-qty"
-              data-testid="line-form-qty"
-              inputmode="decimal"
-              formControlName="qty"
-              required
-            />
-            <label for="line-unit-price">Unit price ($)</label>
-            <input
-              id="line-unit-price"
-              data-testid="line-form-unit-price"
-              inputmode="decimal"
-              formControlName="unitPrice"
-              required
-            />
-            <button type="submit" data-testid="line-form-submit" [disabled]="saving()">
-              Add line
-            </button>
-            @if (error()) {
-              <p role="alert" data-testid="line-form-error">{{ error() }}</p>
-            }
-          </form>
-
-          <form
-            [formGroup]="discountForm"
-            (ngSubmit)="setDiscount(inv.id)"
-            aria-label="Discount"
-            novalidate
-          >
-            <label for="discount-pct">Discount (%)</label>
-            <input
-              id="discount-pct"
-              data-testid="discount-form-pct"
-              inputmode="decimal"
-              formControlName="pct"
-              required
-            />
-            <button type="submit" data-testid="discount-form-submit" [disabled]="savingDiscount()">
-              Apply discount
-            </button>
-            @if (discountError()) {
-              <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
-            }
-          </form>
+          <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv.id)">
+            Send invoice
+          </button>
+          @if (sendError()) {
+            <p role="alert" data-testid="invoice-send-error">{{ sendError() }}</p>
+          }
         }
+
+        <form [formGroup]="form" (ngSubmit)="addLine(inv.id)" aria-label="Add a line" novalidate>
+          <label for="line-description">Description</label>
+          <input
+            id="line-description"
+            data-testid="line-form-description"
+            formControlName="description"
+            required
+          />
+          <label for="line-qty">Quantity</label>
+          <input
+            id="line-qty"
+            data-testid="line-form-qty"
+            inputmode="decimal"
+            formControlName="qty"
+            required
+          />
+          <label for="line-unit-price">Unit price ($)</label>
+          <input
+            id="line-unit-price"
+            data-testid="line-form-unit-price"
+            inputmode="decimal"
+            formControlName="unitPrice"
+            required
+          />
+          <button type="submit" data-testid="line-form-submit" [disabled]="saving()">
+            Add line
+          </button>
+          @if (error()) {
+            <p role="alert" data-testid="line-form-error">{{ error() }}</p>
+          }
+        </form>
+
+        <form
+          [formGroup]="discountForm"
+          (ngSubmit)="setDiscount(inv.id)"
+          aria-label="Discount"
+          novalidate
+        >
+          <label for="discount-pct">Discount (%)</label>
+          <input
+            id="discount-pct"
+            data-testid="discount-form-pct"
+            inputmode="decimal"
+            formControlName="pct"
+            required
+          />
+          <button type="submit" data-testid="discount-form-submit" [disabled]="savingDiscount()">
+            Apply discount
+          </button>
+          @if (discountError()) {
+            <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
+          }
+        </form>
       }
     </section>
   `,
@@ -173,6 +180,8 @@ export class InvoicePanel {
   protected readonly error = signal('');
   protected readonly savingDiscount = signal(false);
   protected readonly discountError = signal('');
+  protected readonly sending = signal(false);
+  protected readonly sendError = signal('');
   protected readonly statusLabel = statusLabel;
   protected readonly money = money;
 
@@ -194,6 +203,7 @@ export class InvoicePanel {
       this.error.set('');
       this.discountForm.reset();
       this.discountError.set('');
+      this.sendError.set('');
       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
       onCleanup(() => sub.unsubscribe());
     });
@@ -254,6 +264,25 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The discount could not be applied.',
         );
         this.savingDiscount.set(false);
+      },
+    });
+  }
+
+  protected send(invoiceId: number): void {
+    this.sending.set(true);
+    this.sendError.set('');
+    this.service.send(invoiceId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.sending.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.sendError.set(
+          typeof detail === 'string' && detail ? detail : 'The invoice could not be sent.',
+        );
+        this.sending.set(false);
       },
     });
   }

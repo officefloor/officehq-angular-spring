@@ -124,10 +124,20 @@ export class ClientInvoices {
     });
   }
 
-  // An invoice changed in the panel: show its new total in the list.
+  // An invoice changed in the panel: show its new status, dates and total in the list.
   protected totalChanged(detail: InvoiceDetail): void {
     this.invoices.update((list) =>
-      list.map((i) => (i.id === detail.id ? { ...i, total: detail.total } : i)),
+      list.map((i) =>
+        i.id === detail.id
+          ? {
+              ...i,
+              status: detail.status,
+              issueDate: detail.issueDate,
+              dueDate: detail.dueDate,
+              total: detail.total,
+            }
+          : i,
+      ),
     );
   }
 }

@@ -99,6 +99,11 @@ public class Invoice {
         return status == InvoiceStatus.DRAFT;
     }
 
+    /** Marks the invoice sent; its issue and due dates stay as they are. */
+    public void markSent() {
+        this.status = InvoiceStatus.SENT;
+    }
+
     /** Adds a line to the end of the invoice. */
     public void addLine(InvoiceLine line) {
         lines.add(line);
