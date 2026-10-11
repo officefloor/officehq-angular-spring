@@ -36,7 +36,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "lateInterestRate", "lateFee");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee");
+    private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "interestWaivedOn", "lineItems");
@@ -70,6 +71,7 @@ public class TestSupportController {
     public void reset() {
         audit.clear();
         jdbc.execute("DELETE FROM app_setting");
+        jdbc.execute("DELETE FROM fx_rate");
         jdbc.execute("DELETE FROM payment_allocation");
         for (String table : List.of("payment", "invoice_line", "invoice", "client")) {
             jdbc.execute("DELETE FROM " + table);
@@ -136,6 +138,26 @@ public class TestSupportController {
                     jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                             ExchangeRates.USD_PER + code, usdPer.toPlainString());
                 }
+            }
+            for (Map<String, Object> rate : rows(values.get("fxRates"), "settings.fxRates")) {
+                only(rate, FX_RATE_FIELDS, "settings.fxRates[]");
+                if (rate.get("from") == null || rate.get("currency") == null || rate.get("usdPer") == null) {
+                    throw refuse("settings.fxRates[] needs from, currency and usdPer");
+                }
+                Currency currency = Currency.of(rate.get("currency").toString());
+                if (currency == null) {
+                    throw refuse("unsupported value of settings.fxRates[].currency: " + rate.get("currency"));
+                }
+                BigDecimal usdPer;
+                try {
+                    usdPer = new BigDecimal(String.valueOf(rate.get("usdPer")));
+                } catch (NumberFormatException ex) {
+                    throw refuse("settings.fxRates[].usdPer must be a number, not " + rate.get("usdPer"));
+                }
+                if (usdPer.signum() <= 0) {
+                    throw refuse("settings.fxRates[].usdPer must be more than zero, not " + rate.get("usdPer"));
+                }
+                exchangeRates.addDated(date(rate.get("from"), "settings.fxRates[].from"), currency, usdPer);
             }
         }
         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
@@ -218,7 +240,7 @@ public class TestSupportController {
             BigDecimal paidAmount = cents(row.get("amount"), "payments[].amount");
             boolean foreign = paidIn != clientCurrency && paidAmount != null;
             Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount"},
-                    id(row.get("clientId")), foreign ? exchangeRates.convert(paidAmount, paidIn, clientCurrency) : paidAmount,
+                    id(row.get("clientId")), foreign ? exchangeRates.convert(paidAmount, paidIn, clientCurrency, date(row.get("date"), "payments[].date")) : paidAmount,
                     date(row.get("date"), "payments[].date"),
                     row.get("reference") == null ? null : row.get("reference").toString(),
                     flag(row.get("reversed"), "payments[].reversed"),
@@ -294,6 +316,16 @@ public class TestSupportController {
         Map<String, BigDecimal> rates = exchangeRates.all();
         if (!rates.isEmpty()) {
             settings.put("usdPer", rates);
+        }
+        List<Map<String, Object>> fxRates = exchangeRates.dated().stream().map(r -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("from", r.from().toString());
+            row.put("currency", r.currency().name());
+            row.put("usdPer", r.usdPer());
+            return row;
+        }).toList();
+        if (!fxRates.isEmpty()) {
+            settings.put("fxRates", fxRates);
         }
         if (!settings.isEmpty()) {
             out.put("settings", settings);

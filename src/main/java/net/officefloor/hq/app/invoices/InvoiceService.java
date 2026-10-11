@@ -611,7 +611,7 @@ public class InvoiceService {
                     + " is not the reference of any of this client's drafts, so the deposit cannot be held for it.");
         }
         Currency currency = client.get().getCurrency();
-        BigDecimal amount = converted(paidAmount, paidIn, currency);
+        BigDecimal amount = converted(paidAmount, paidIn, currency, date);
         LocalDate now = today.date();
         if (date.isAfter(now)) {
             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
@@ -793,7 +793,7 @@ public class InvoiceService {
             if (invoice.isCreditNote()) {
                 throw new InvoiceRejectedException("A credit note takes no payments.");
             }
-            BigDecimal amount = converted(paidAmount, paidIn, invoice.currency());
+            BigDecimal amount = converted(paidAmount, paidIn, invoice.currency(), date);
             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
             if (due.signum() <= 0) {
@@ -871,7 +871,7 @@ public class InvoiceService {
     @Transactional
     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
             List<String> references) {
-        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId));
+        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId), date);
         List<Invoice> ofClient = loadForClient(clientId);
         List<Invoice> candidates = ofClient;
         if (!references.isEmpty()) {
@@ -952,7 +952,7 @@ public class InvoiceService {
     @Transactional
     public Payment recordSplitPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
             String reference, List<PaymentAllocation> parts) {
-        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId));
+        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId), date);
         return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, false);
     }
 
@@ -1038,13 +1038,14 @@ public class InvoiceService {
 
     /**
      * The amount paid in the currency (null for the client's own) converted into the client's currency
-     * through US dollars at the workspace rates; this is what is applied and checked. The amount must be
+     * through US dollars at the workspace rates in force on the date paid (today when none is given);
+     * this is what is applied and checked. The amount must be
      * whole in the currency it was paid in, and must still be more than zero once converted.
      */
-    private BigDecimal converted(BigDecimal paidAmount, Currency paidIn, Currency clientCurrency) {
+    private BigDecimal converted(BigDecimal paidAmount, Currency paidIn, Currency clientCurrency, LocalDate date) {
         Currency from = paidIn == null ? clientCurrency : paidIn;
         requireWhole(from, paidAmount, "The amount");
-        BigDecimal amount = exchangeRates.convert(paidAmount, from, clientCurrency);
+        BigDecimal amount = exchangeRates.convert(paidAmount, from, clientCurrency, date == null ? today.date() : date);
         if (amount.signum() <= 0) {
             throw new InvoiceRejectedException("The amount is worth nothing once converted into "
                     + clientCurrency.name() + ".");

@@ -174,7 +174,8 @@ export class PaymentForm {
 
   readonly clientId = input.required<number>();
   // The currency the client is billed in: the payment's by default. A payment in another currency is
-  // converted into it by the server at the workspace rates (whole yen for yen; the server checks).
+  // converted into it by the server at the workspace rates in force on the payment date (whole yen
+  // for yen; the server checks).
   readonly currency = input<Currency>('USD');
   protected readonly symbolOf = symbolOf;
   protected readonly currencies = CURRENCIES;

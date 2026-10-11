@@ -120,6 +120,17 @@ public class Invoice {
     @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'usd_per_' || c.currency)")
     private String usdPer;
 
+    /**
+     * The dated rates of the client's currency, as "from date=US dollars per unit" joined by commas in
+     * date order; null when there are none. Read from the workspace's dated rates.
+     */
+    @Formula("(SELECT LISTAGG(CAST(r.from_date AS VARCHAR) || '=' || CAST(r.usd_per AS VARCHAR), ',') WITHIN GROUP (ORDER BY r.from_date, r.id) FROM fx_rate r, client c WHERE c.id = client_id AND r.currency = c.currency)")
+    private String datedRates;
+
+    /** The latest day a payment (not reversed) was applied to the invoice; null when none was. */
+    @Formula("(SELECT MAX(COALESCE(a.applied_date, p.payment_date)) FROM payment_allocation a, payment p WHERE a.invoice_id = id AND p.id = a.payment_id AND p.reversed = FALSE)")
+    private LocalDate lastPaidOn;
+
     /** The client's early-payment discount, a percentage of the grand total; read from the client. */
     @Formula("(SELECT c.early_pay_pct FROM client c WHERE c.id = client_id)")
     private BigDecimal earlyPayPct;
@@ -268,10 +279,39 @@ public class Invoice {
         return BigDecimal.ZERO.setScale(scale());
     }
 
-    /** Whether what is left is worth less than {@link #WRITE_OFF_LIMIT} US dollars at the workspace rates. */
-    private boolean isSmallEnoughToWriteOff(BigDecimal left) {
+    /**
+     * The US dollars one unit of the invoice's currency is worth on the date: the latest dated rate on
+     * or before it, otherwise the standing rate (at par when none is set, or when there is no date).
+     */
+    private BigDecimal usdPerOn(LocalDate on) {
+        if (currency() == Currency.USD) {
+            return BigDecimal.ONE;
+        }
         BigDecimal rate = usdPer == null ? BigDecimal.ONE : new BigDecimal(usdPer.trim());
-        return left.multiply(rate).compareTo(WRITE_OFF_LIMIT) < 0;
+        if (datedRates == null || on == null) {
+            return rate;
+        }
+        for (String entry : datedRates.split(",")) {
+            String[] parts = entry.split("=");
+            if (LocalDate.parse(parts[0].trim()).isAfter(on)) {
+                break;
+            }
+            rate = new BigDecimal(parts[1].trim());
+        }
+        return rate;
+    }
+
+    /**
+     * Whether what is left is worth less than {@link #WRITE_OFF_LIMIT} US dollars at the workspace rate
+     * on the day of the latest payment.
+     */
+    private boolean isSmallEnoughToWriteOff(BigDecimal left) {
+        return isSmallEnoughToWriteOff(left, lastPaidOn);
+    }
+
+    /** Whether what is left is worth less than {@link #WRITE_OFF_LIMIT} US dollars at the rate on the date. */
+    private boolean isSmallEnoughToWriteOff(BigDecimal left, LocalDate on) {
+        return left.multiply(usdPerOn(on)).compareTo(WRITE_OFF_LIMIT) < 0;
     }
 
     /** Whether this is a credit note against another invoice. */
@@ -503,14 +543,14 @@ public class Invoice {
 
     /**
      * The late fee in the invoice's currency: the fee in US dollars converted as a payment in another
-     * currency is, through the workspace rate, rounded half up to the currency's step.
+     * currency is, through the workspace rate on the day it is charged, rounded half up to the
+     * currency's step.
      */
-    private BigDecimal lateFeeIn(BigDecimal feeUsd) {
+    private BigDecimal lateFeeIn(BigDecimal feeUsd, LocalDate on) {
         if (currency() == Currency.USD) {
             return feeUsd.setScale(scale(), RoundingMode.HALF_UP);
         }
-        BigDecimal rate = usdPer == null ? BigDecimal.ONE : new BigDecimal(usdPer.trim());
-        return currency().roundToStep(feeUsd.divide(rate, MathContext.DECIMAL128));
+        return currency().roundToStep(feeUsd.divide(usdPerOn(on), MathContext.DECIMAL128));
     }
 
     /**
@@ -546,7 +586,7 @@ public class Invoice {
             return;
         }
         boolean earnsInterest = annualRate != null && annualRate.signum() > 0;
-        BigDecimal fee = lateFeeUsd == null || lateFeeUsd.signum() <= 0 ? zero() : lateFeeIn(lateFeeUsd);
+        BigDecimal fee = lateFeeUsd == null || lateFeeUsd.signum() <= 0 ? zero() : lateFeeIn(lateFeeUsd, dueDate.plusDays(GRACE_DAYS + 1));
         if (!earnsInterest && fee.signum() <= 0) {
             return;
         }
@@ -1113,7 +1153,7 @@ public class Invoice {
         BigDecimal sum = BigDecimal.ZERO;
         for (Part p : inOrder) {
             sum = sum.add(p.amount());
-            if (sum.signum() > 0 && isSmallEnoughToWriteOff(total.subtract(sum))) {
+            if (sum.signum() > 0 && isSmallEnoughToWriteOff(total.subtract(sum), p.on())) {
                 return p.on();
             }
         }
