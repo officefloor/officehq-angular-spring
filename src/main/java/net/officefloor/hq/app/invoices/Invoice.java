@@ -41,7 +41,7 @@ public class Invoice {
      * Payments that leave less than this many US dollars' worth still due, and no more than
      * {@link #WRITE_OFF_SHARE} of the grand total, have the rest written off.
      */
-    public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("2.00");
+    public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("0.05");
 
     /** A plan's monthly instalment must be worth at least this many US dollars. */
     public static final BigDecimal MIN_INSTALMENT_USD = new BigDecimal("25.00");

@@ -211,7 +211,7 @@ function problemWith(line: NewLine): string {
 // percentage or fixed discount, can have lines removed (refused when what is left would be less than a
 // fixed discount), and can be sent; a change to a sent invoice with no payments puts it back to
 // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
-// until nothing is due, less than $2.00 (and no more than 1% of the grand total) left being written off; the panel lists them with what has
+// until nothing is due, less than $0.05 (and no more than 1% of the grand total) left being written off; the panel lists them with what has
 // been paid, what is still due and what was written off. The
 // server refuses a payment on a draft, or dated after today or before the issue date; what a payment
 // pays beyond what is due is held on the client's account as credit.

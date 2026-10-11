@@ -106,7 +106,7 @@ export interface InvoicePaymentView {
 // discount takes off, rounded down to the cent (a percentage) and shrunk so the total taken off stays within the cap; `taxRate` is the workspace's tax percentage (without
 // trailing zeros, "0" when none is set); `discountReason` is why the discount was given (null when none) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
 // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
-// `amountDue` is the total less that and less `writtenOff`: when payments leave less than $2.00 due (and no more than 1% of the grand total),
+// `amountDue` is the total less that and less `writtenOff`: when payments leave less than $0.05 due (and no more than 1% of the grand total),
 // the rest is written off ("0.00" when nothing is). `reference` is its ISO 11649 RF payment reference, made from
 // the seven digits of its number, in groups of four (RF16 0000 075).
 export interface InvoiceDetail {

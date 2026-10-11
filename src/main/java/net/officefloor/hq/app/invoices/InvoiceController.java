@@ -111,7 +111,7 @@ public class InvoiceController {
      * An opened invoice: its lines, subtotal, discount percentage (without trailing zeros, "12.5"),
      * the amount it takes off, the tax rate (without trailing zeros) and the tax charged, the sum of the
      * line taxes, and the grand total; the payments made to it, what they add up to, what is still due and what was written off because less than
-     * $2.00, and no more than 1% of the grand total, was left (money as
+     * $0.05, and no more than 1% of the grand total, was left (money as
      * decimal strings to the cent). Its status follows what has been paid. {@code reference} is its
      * RF payment reference in groups of four. {@code paidDate} is the date of the payment that cleared
      * it, payments taken in date order; null while it is not fully paid. {@code credited} is what
