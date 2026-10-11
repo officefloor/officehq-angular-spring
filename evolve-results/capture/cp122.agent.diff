@@ -1,0 +1,146 @@
+diff --git a/src/main/java/net/officefloor/hq/app/LateInterestRate.java b/src/main/java/net/officefloor/hq/app/LateInterestRate.java
+index 08f0088..c62e8ba 100644
+--- a/src/main/java/net/officefloor/hq/app/LateInterestRate.java
++++ b/src/main/java/net/officefloor/hq/app/LateInterestRate.java
+@@ -2,18 +2,25 @@ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
+ import java.util.List;
++import java.util.Map;
++import java.util.TreeMap;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+ 
+ /**
+  * The workspace's annual late-interest rate: the stored {@code late_interest_rate} setting, a
+- * percentage such as 12. With no rate set no late interest is charged, so the rate is 0.
++ * percentage such as 12. With no rate set no late interest is charged, so the rate is 0. A region can
++ * have a legal maximum annual rate, the {@code region_max_interest_<region>} setting: its clients are
++ * charged late interest at no more than it (invoices read the cap themselves, see Invoice).
+  */
+ @Service
+ public class LateInterestRate {
+ 
+     static final String LATE_INTEREST_RATE = "late_interest_rate";
+ 
++    /** The prefix of the setting holding a region's legal maximum rate, followed by the region (region_max_interest_NY). */
++    public static final String REGION_MAX_INTEREST = "region_max_interest_";
++
+     private final JdbcTemplate jdbc;
+ 
+     public LateInterestRate(JdbcTemplate jdbc) {
+@@ -25,4 +32,19 @@ public class LateInterestRate {
+                 String.class, LATE_INTEREST_RATE);
+         return rate.isEmpty() ? BigDecimal.ZERO : new BigDecimal(rate.get(0));
+     }
++
++    /** Every region's legal maximum annual rate, by region. */
++    public Map<String, BigDecimal> regionMaximums() {
++        Map<String, BigDecimal> caps = new TreeMap<>();
++        jdbc.queryForList("SELECT name, setting_value FROM app_setting WHERE name LIKE ? ORDER BY name", REGION_MAX_INTEREST + "%")
++                .forEach(r -> caps.put(((String) r.get("NAME")).substring(REGION_MAX_INTEREST.length()),
++                        new BigDecimal((String) r.get("SETTING_VALUE"))));
++        return caps;
++    }
++
++    /** Records the region's legal maximum annual rate. */
++    public void setRegionMaximum(String region, BigDecimal percent) {
++        jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", REGION_MAX_INTEREST + region,
++                percent.toPlainString());
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index ebcf294..c7889bf 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -39,7 +39,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges", "regionMaxInterest");
+     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+     private static final String MINIMUM_CHARGE = "minimum_charge";
+@@ -66,9 +66,12 @@ public class TestSupportController {
+ 
+     private final Today today;
+ 
++    private final LateInterestRate lateInterestRate;
++
+     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
+             PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
+-            CardSurcharge cardSurcharge, PriceList priceList, Today today) {
++            CardSurcharge cardSurcharge, PriceList priceList, Today today, LateInterestRate lateInterestRate) {
++        this.lateInterestRate = lateInterestRate;
+         this.today = today;
+         this.priceList = priceList;
+         this.cardSurcharge = cardSurcharge;
+@@ -190,6 +193,19 @@ public class TestSupportController {
+                             TaxRate.REGION_TAX_RATE + region, rate.toPlainString());
+                 }
+             }
++            if (values.get("regionMaxInterest") != null) {
++                if (!(values.get("regionMaxInterest") instanceof Map<?, ?> caps)) {
++                    throw refuse("settings.regionMaxInterest must be an object of percentages by region");
++                }
++                for (Map.Entry<?, ?> e : caps.entrySet()) {
++                    String region = e.getKey().toString();
++                    if (region.isBlank() || e.getValue() == null) {
++                        throw refuse("settings.regionMaxInterest needs a region and a rate, not " + region + ": " + e.getValue());
++                    }
++                    lateInterestRate.setRegionMaximum(region,
++                            percent(e.getValue(), "settings.regionMaxInterest." + region));
++                }
++            }
+             if (values.get("homeRegion") != null) {
+                 String home = values.get("homeRegion").toString();
+                 if (home.isBlank()) {
+@@ -464,6 +480,10 @@ public class TestSupportController {
+         if (!minimumCharge.isEmpty()) {
+             settings.put("minimumCharge", new BigDecimal(minimumCharge.get(0)));
+         }
++        Map<String, BigDecimal> regionMaxInterest = this.lateInterestRate.regionMaximums();
++        if (!regionMaxInterest.isEmpty()) {
++            settings.put("regionMaxInterest", regionMaxInterest);
++        }
+         Map<String, BigDecimal> regionTaxRates = this.taxRate.regions();
+         if (!regionTaxRates.isEmpty()) {
+             settings.put("regionTaxRates", regionTaxRates);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 68a59c5..b9c9cb6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -242,6 +242,13 @@ public class Invoice {
+     @Formula("(SELECT c.interest_rate FROM client c WHERE c.id = client_id)")
+     private BigDecimal clientInterestRate;
+ 
++    /**
++     * The legal maximum annual late-interest rate of the client's region, a percentage; read from the
++     * workspace's regional caps, null when the client has no region or it has no cap.
++     */
++    @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_max_interest_' || c.region)")
++    private String regionMaxInterest;
++
+     /** The early discount the invoice was settled with; 0 when none was taken. */
+     @Column(name = "early_discount")
+     private BigDecimal earlyDiscount = BigDecimal.ZERO;
+@@ -1620,9 +1627,16 @@ public class Invoice {
+     /** The standard days past its due date an invoice is given before it becomes overdue: a week's grace. */
+     public static final int GRACE_DAYS = 7;
+ 
+-    /** The annual late-interest rate this invoice is charged: its client's own, else the workspace's. */
++    /**
++     * The annual late-interest rate this invoice is charged: its client's own, else the workspace's,
++     * but no more than the legal maximum of the client's region.
++     */
+     public BigDecimal lateInterestRate(BigDecimal workspaceRate) {
+-        return clientInterestRate == null ? workspaceRate : clientInterestRate;
++        BigDecimal rate = clientInterestRate == null ? workspaceRate : clientInterestRate;
++        if (regionMaxInterest == null || rate == null) {
++            return rate;
++        }
++        return rate.min(new BigDecimal(regionMaxInterest.trim()));
+     }
+ 
+     /** Days past its due date this invoice is given before it becomes overdue: its client's grace period. */
