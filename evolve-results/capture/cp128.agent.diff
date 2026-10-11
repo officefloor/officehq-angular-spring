@@ -1,0 +1,800 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 6eac4c0..868f105 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -30,7 +30,7 @@ export interface Client {
+   // of the workspace's; null for the workspace's, 0 for never charged a minimum.
+   minimumCharge: number | null;
+   // Days (0 to 30, a week as standard) past its due date an invoice or instalment is given before it
+-  // is overdue, earns late interest and is charged the late fee.
++  // is overdue and earns late interest.
+   graceDays: number;
+   // The client's own annual late-interest rate (0 to 30 percent) charged instead of the workspace's;
+   // null for the workspace's, 0 for never charged late interest.
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 4d71d23..8238b80 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -406,7 +406,6 @@ function problemWith(line: NewLine): string {
+                 <th scope="col">Principal</th>
+                 <th scope="col">Balance</th>
+                 <th scope="col">Paid</th>
+-                <th scope="col">Late fee</th>
+                 <th scope="col">Late interest</th>
+                 <th scope="col">Status</th>
+                 <th scope="col">Actions</th>
+@@ -422,7 +421,6 @@ function problemWith(line: NewLine): string {
+                   <td data-testid="instalment-principal">{{ amount(s.principal) }}</td>
+                   <td data-testid="instalment-balance">{{ amount(s.balance) }}</td>
+                   <td data-testid="instalment-paid">{{ amount(s.paid) }}</td>
+-                  <td data-testid="instalment-late-fee">{{ amount(s.lateFee) }}</td>
+                   <td data-testid="instalment-late-interest">{{ amount(s.lateInterest) }}</td>
+                   <td data-testid="instalment-status">{{ instalmentStatusLabel(s.status) }}</td>
+                   <td>
+@@ -508,12 +506,6 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="invoice-early-discount">{{ amount(inv.earlyDiscount) }}</td>
+               </tr>
+             }
+-            @if (inv.creditOf === null) {
+-              <tr>
+-                <th scope="row" colspan="5">Late fee</th>
+-                <td data-testid="invoice-late-fee">{{ amount(inv.lateFee) }}</td>
+-              </tr>
+-            }
+             @if (inv.creditOf === null) {
+               <tr>
+                 <th scope="row" colspan="5">Late interest</th>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 3d662da..d2ec5e0 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -175,9 +175,7 @@ export interface InvoiceDetail {
+   settleAmount: string | null;
+   // The late interest charged on it so far ("0.00" when none): part of `amountDue`.
+   lateInterest: string;
+-  // The late fee charged on it ("0.00" when none), in its currency: part of `amountDue`.
+-  lateFee: string;
+-  // The late fee and interest written off by waiving them ("0.00" when none were).
++  // The late interest written off by waiving it ("0.00" when none was).
+   lateWaived: string;
+   // What would pay off its plan today (null without a plan or once it is paid off), and the interest
+   // of instalments not yet due that paying it off early dropped ("0.00" when none was).
+@@ -213,7 +211,7 @@ export interface InvoiceDetail {
+ 
+ // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
+ // interest, principal and the balance left after it, decimal strings to the cent; what has been paid
+-// off it (payments pay the instalments in order, each itself first, then its late fee and late interest), the late interest it
++// off it (payments pay the instalments in order, each itself first, then its late interest), the late interest it
+ // has been charged ("0.00" when none) and its status.
+ export type InstalmentStatus = 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE';
+ 
+@@ -225,7 +223,6 @@ export interface InstalmentView {
+   principal: string;
+   balance: string;
+   paid: string;
+-  lateFee: string;
+   lateInterest: string;
+   status: InstalmentStatus;
+ }
+@@ -364,7 +361,7 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/write-off`, null);
+   }
+ 
+-  // Waives the late fee and late interest still unpaid on an overdue invoice; interest starts again
++  // Waives the late interest still unpaid on an overdue invoice; interest starts again
+   // from today on what is still owed. Refused (409) when there is nothing to waive.
+   waiveInterest(invoiceId: number): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/waive-interest`, null);
+diff --git a/src/main/java/net/officefloor/hq/app/LateFee.java b/src/main/java/net/officefloor/hq/app/LateFee.java
+deleted file mode 100644
+index eb8edf0..0000000
+--- a/src/main/java/net/officefloor/hq/app/LateFee.java
++++ /dev/null
+@@ -1,30 +0,0 @@
+-package net.officefloor.hq.app;
+-
+-import java.math.BigDecimal;
+-import java.util.List;
+-import org.springframework.jdbc.core.JdbcTemplate;
+-import org.springframework.stereotype.Service;
+-
+-/**
+- * The workspace's late fee switch: the stored {@code late_fee} setting, an amount in US dollars such as
+- * 25. With any fee set, a late fee of 2% of what is owed (at least $10.00) is charged once on an invoice
+- * (on a plan, once on each instalment) when it becomes overdue, whatever amount the setting holds. With
+- * no fee set none is charged, so it is 0.
+- */
+-@Service
+-public class LateFee {
+-
+-    static final String LATE_FEE = "late_fee";
+-
+-    private final JdbcTemplate jdbc;
+-
+-    public LateFee(JdbcTemplate jdbc) {
+-        this.jdbc = jdbc;
+-    }
+-
+-    public BigDecimal usd() {
+-        List<String> fee = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+-                String.class, LATE_FEE);
+-        return fee.isEmpty() ? BigDecimal.ZERO : new BigDecimal(fee.get(0));
+-    }
+-}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index d0b4270..34b325a 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -39,7 +39,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts");
+     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
+     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+@@ -140,11 +140,6 @@ public class TestSupportController {
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                         LateInterestRate.LATE_INTEREST_RATE, rate.toPlainString());
+             }
+-            if (values.get("lateFee") != null) {
+-                BigDecimal fee = money(values.get("lateFee"), "settings.lateFee");
+-                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+-                        LateFee.LATE_FEE, fee.toPlainString());
+-            }
+             if (values.get("minimumCharge") != null) {
+                 BigDecimal minimum = money(values.get("minimumCharge"), "settings.minimumCharge");
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+@@ -482,11 +477,6 @@ public class TestSupportController {
+         if (!lateInterestRate.isEmpty()) {
+             settings.put("lateInterestRate", new BigDecimal(lateInterestRate.get(0)));
+         }
+-        List<String> lateFee = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+-                String.class, LateFee.LATE_FEE);
+-        if (!lateFee.isEmpty()) {
+-            settings.put("lateFee", new BigDecimal(lateFee.get(0)));
+-        }
+         List<String> cardSurchargePct = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+                 String.class, CardSurcharge.CARD_SURCHARGE_PCT);
+         if (!cardSurchargePct.isEmpty()) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 2cb837c..984381e 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -71,7 +71,7 @@ public class Client {
+ 
+     /**
+      * Days past its due date an invoice or instalment for this client is given before it is overdue,
+-     * earns late interest and is charged the late fee: 0 to {@link #MAX_GRACE_DAYS}, a week as standard.
++     * and earns late interest: 0 to {@link #MAX_GRACE_DAYS}, a week as standard.
+      */
+     @Column(name = "grace_days")
+     private int graceDays = Invoice.GRACE_DAYS;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Instalment.java b/src/main/java/net/officefloor/hq/app/invoices/Instalment.java
+index 4cdd783..a8ae82f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Instalment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Instalment.java
+@@ -16,20 +16,20 @@ public record Instalment(int number, LocalDate dueDate, BigDecimal payment, BigD
+     }
+ 
+     /**
+-     * What has been paid off an instalment, what is still unpaid on it, the late fee and late interest
+-     * it has been charged and what of each is still unpaid, and its status on a day.
++     * What has been paid off an instalment, what is still unpaid on it, the late interest it has been
++     * charged and what of it is still unpaid, and its status on a day.
+      */
+-    public record Progress(Instalment instalment, BigDecimal paid, BigDecimal unpaid, BigDecimal lateFee,
+-            BigDecimal feeUnpaid, BigDecimal lateInterest, BigDecimal interestUnpaid, Status status) {
++    public record Progress(Instalment instalment, BigDecimal paid, BigDecimal unpaid, BigDecimal lateInterest,
++            BigDecimal interestUnpaid, Status status) {
+ 
+-        /** All still owed on the instalment: what is unpaid on it, its late fee and its late interest. */
++        /** All still owed on the instalment: what is unpaid on it and its late interest. */
+         public BigDecimal owed() {
+-            return unpaid.add(feeUnpaid).add(interestUnpaid);
++            return unpaid.add(interestUnpaid);
+         }
+ 
+-        /** What is still unpaid of the late fee and late interest the instalment has been charged. */
++        /** What is still unpaid of the late interest the instalment has been charged. */
+         public BigDecimal chargesUnpaid() {
+-            return feeUnpaid.add(interestUnpaid);
++            return interestUnpaid;
+         }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 0915bc6..1f20d62 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -124,7 +124,7 @@ public class Invoice {
+     @Column(name = "retention_released_amount")
+     private BigDecimal retentionReleasedAmount;
+ 
+-    /** The day the late fee and interest still unpaid were last waived; null when never. */
++    /** The day the late interest still unpaid was last waived; null when never. */
+     @Column(name = "interest_waived_on")
+     private LocalDate interestWaivedOn;
+ 
+@@ -349,14 +349,7 @@ public class Invoice {
+     private BigDecimal retentionInterest = BigDecimal.ZERO;
+ 
+     /**
+-     * The late fee charged (see {@link #accrueLateInterest}), in the invoice's currency; not stored,
+-     * worked out again each time the invoice is read.
+-     */
+-    @Transient
+-    private BigDecimal lateFee = BigDecimal.ZERO;
+-
+-    /**
+-     * The late fee and interest written off when they were waived (see {@link #accrueLateInterest}); not
++     * The late interest written off when they were waived (see {@link #accrueLateInterest}); not
+      * stored, worked out again each time the invoice is read.
+      */
+     @Transient
+@@ -370,14 +363,6 @@ public class Invoice {
+     @Transient
+     private List<BigDecimal> instalmentInterest = List.of();
+ 
+-    /**
+-     * The late fee each instalment of a plan has been charged (see {@link #accrueLateInterest}), in the
+-     * order of the instalments; empty when none is. Not stored, worked out again each time the invoice
+-     * is read.
+-     */
+-    @Transient
+-    private List<BigDecimal> instalmentFees = List.of();
+-
+     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+     @JoinColumn(name = "invoice_id", nullable = false)
+     @OrderBy("id")
+@@ -668,12 +653,12 @@ public class Invoice {
+         return retentionReleasedOn == null ? null : retentionReleasedOn.plusDays(RETENTION_DUE_DAYS);
+     }
+ 
+-    /** The day the late fee and interest still unpaid were last waived; null when never. */
++    /** The day the late interest still unpaid was last waived; null when never. */
+     public LocalDate getInterestWaivedOn() {
+         return interestWaivedOn;
+     }
+ 
+-    /** Waives the late fee and interest still unpaid on the given day; interest starts again from then. */
++    /** Waives the late interest still unpaid on the given day; interest starts again from then. */
+     public void waiveInterest(LocalDate on) {
+         this.interestWaivedOn = on;
+     }
+@@ -786,14 +771,14 @@ public class Invoice {
+ 
+     /**
+      * What the invoice is owed in all, held retention left out: the grand total (the plan total when it
+-     * is spread over instalments) less what is credited and held, plus the late fee and interest charged.
++     * is spread over instalments) less what is credited and held, plus the late interest charged.
+      */
+     private BigDecimal payable(BigDecimal taxRate) {
+-        return payableBeforeInterest(taxRate).add(getLateFee()).add(getLateInterest());
++        return payableBeforeInterest(taxRate).add(getLateInterest());
+     }
+ 
+     /**
+-     * As {@link #payable}, but without the late fee and interest charged. A plan's credit notes have
++     * As {@link #payable}, but without the late interest charged. A plan's credit notes have
+      * already come off its plan total.
+      */
+     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
+@@ -807,103 +792,54 @@ public class Invoice {
+         return lateInterest.setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
+-    /** The late fee and interest written off by waiving them, to the cent; 0 when none was. */
++    /** The late interest written off by waiving it, to the cent; 0 when none was. */
+     public BigDecimal getLateWaived() {
+         return lateWaived.setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
+-    /** The late fee charged, in the invoice's currency; 0 when none is. */
+-    public BigDecimal getLateFee() {
+-        return lateFee.setScale(scale(), RoundingMode.HALF_UP);
+-    }
+-
+-    /** The most late fee charged: 10% of the grand total at the tax rate, rounded down to the cent. */
+-    private BigDecimal lateFeeCap(BigDecimal taxRate) {
+-        return owedTotal(taxRate).divide(BigDecimal.TEN).setScale(scale(), RoundingMode.DOWN);
+-    }
+-
+-    /** The late fee's percentage of what is owed when it is charged. */
+-    private static final BigDecimal LATE_FEE_PCT = BigDecimal.valueOf(2);
+-
+-    /** The least late fee charged, in US dollars (before the cap). */
+-    private static final BigDecimal LATE_FEE_MIN_USD = BigDecimal.TEN;
+-
+-    /**
+-     * The late fee charged on what is unpaid when it is charged (before late charges), in the invoice's
+-     * currency: 2% of it rounded down to the cent, but at least $10.00 (see {@link #usdIn}), and never
+-     * more than the cap.
+-     */
+-    private BigDecimal lateFeeOn(BigDecimal unpaid, LocalDate on, BigDecimal cap) {
+-        BigDecimal pct = unpaid.max(BigDecimal.ZERO).multiply(LATE_FEE_PCT).divide(BigDecimal.valueOf(100))
+-                .setScale(scale(), RoundingMode.DOWN);
+-        return pct.max(usdIn(LATE_FEE_MIN_USD, on)).min(cap).max(zero());
+-    }
+-
+     /**
+-     * An amount in US dollars in the invoice's currency: converted as a payment in another currency is,
+-     * through the workspace rate on the given day, worked out exactly and rounded down to the
+-     * currency's step.
+-     */
+-    private BigDecimal usdIn(BigDecimal usd, LocalDate on) {
+-        if (currency() == Currency.USD) {
+-            return usd.setScale(scale(), RoundingMode.HALF_UP);
+-        }
+-        return currency().divideDownToStep(usd, usdPerOn(on));
+-    }
+-
+-    /**
+-     * Works out the late fee and late interest charged by the given day, at the late fee (in US
+-     * dollars) and annual rate (a percentage), from the payments (those not reversed count), and keeps
+-     * them as part of what is payable. With a late fee set (whatever its amount) the fee is 2% of what the
+-     * invoice still owes when it is charged (see {@link #lateFeeOn}), never more than 10% of the grand
+-     * total (see {@link #lateFeeCap}). The fee is charged once, on the day the invoice becomes overdue
+-     * ({@link #graceDays()} days after its due date), when something is still owed then; it earns no
+-     * interest, and a payment from then on pays it once the invoice itself is paid. A sent invoice not
++     * Works out the late interest charged by the given day, at the annual rate (a percentage), from the
++     * payments (those not reversed count), and keeps it as part of what is payable. No late fee is
++     * charged. A sent invoice not
+      * spread over instalments, with something still owed more than {@link #graceDays()} days after its
+      * due date, earns interest from the end of its grace period ({@link #graceDays()} days after its due
+      * date), compounded daily at rate / 360 (Actual/360): a balance B owing for
+      * d days earns B x ((1 + rate / 100 / 360)^d - 1), rounded half up to the cent. Each payment after
+      * the grace period ends a period; every period earns interest on what the invoice still owed during it
+-     * (earlier interest, the fee and retention left out), and a payment pays the invoice, then the fee,
+-     * then the interest earned so far. A credit note issued after the grace period ends a period too:
++     * (earlier interest and retention left out), and a payment pays the invoice, then the interest earned
++     * so far. A credit note issued after the grace period ends a period too:
+      * what it took off what the invoice owed counts only from its issue date, so the periods before it
+      * earn interest on what was owed before the credit. An invoice spread over instalments instead earns interest
+-     * instalment by instalment and is charged the late fee once on each instalment (see
+-     * {@link #accrueInstalmentInterest}). On the day the
+-     * charges were waived (after the day's payments), the fee and interest still unpaid are written off
++     * instalment by instalment (see {@link #accrueInstalmentInterest}). On the day the
++     * interest was waived (after the day's payments), the interest still unpaid is written off
+      * (kept as what was waived) and that day ends a period: interest starts again from it on what is
+-     * still owed, and no new fee is charged. A written-off invoice is charged only up to the day it was
++     * still owed. A written-off invoice is charged only up to the day it was
+      * written off. Released retention still unpaid also earns interest (see
+      * {@link #accrueRetentionInterest}).
+      */
+-    public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+-            BigDecimal lateFeeUsd, LocalDate asOf) {
++    public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate, LocalDate asOf) {
+         annualRate = lateInterestRate(annualRate);
+         LocalDate today = writtenOffOn != null && writtenOffOn.isBefore(asOf) ? writtenOffOn : asOf;
+         this.lateInterest = BigDecimal.ZERO;
+-        this.lateFee = BigDecimal.ZERO;
+         this.lateWaived = BigDecimal.ZERO;
+         this.retentionInterest = BigDecimal.ZERO;
+         this.instalmentInterest = List.of();
+-        this.instalmentFees = List.of();
+         if (status == InvoiceStatus.SENT && !isCreditNote() && hasPlan()) {
+-            accrueInstalmentInterest(payments, taxRate, annualRate, lateFeeUsd, today);
++            accrueInstalmentInterest(payments, taxRate, annualRate, today);
+             return;
+         }
+-        accrueInvoiceInterest(payments, taxRate, annualRate, lateFeeUsd, today);
++        accrueInvoiceInterest(payments, taxRate, annualRate, today);
+         accrueRetentionInterest(payments, taxRate, annualRate, today);
+     }
+ 
+     /** The late interest charged on the invoice itself, released retention left out (see {@link #accrueLateInterest}). */
+     private void accrueInvoiceInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+-            BigDecimal lateFeeUsd, LocalDate today) {
++            LocalDate today) {
+         if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || dueDate == null
+                 || !today.isAfter(dueDate.plusDays(graceDays()))) {
+             return;
+         }
+-        boolean earnsInterest = annualRate != null && annualRate.signum() > 0;
+-        boolean chargesFee = lateFeeUsd != null && lateFeeUsd.signum() > 0;
+-        if (!earnsInterest && !chargesFee) {
++        if (annualRate == null || annualRate.signum() <= 0) {
+             return;
+         }
+         record Part(LocalDate on, Long paymentId, BigDecimal amount, boolean credit) {
+@@ -936,45 +872,26 @@ public class Invoice {
+             return;
+         }
+         LocalDate overdueOn = dueDate.plusDays(graceDays() + 1);
+-        BigDecimal fee = chargesFee ? lateFeeOn(owed.subtract(paidInGrace), overdueOn, lateFeeCap(taxRate)) : zero();
+-        if (!earnsInterest && fee.signum() <= 0) {
+-            return;
+-        }
+-        BigDecimal daily = earnsInterest
+-                ? BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128))
+-                : null;
++        BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
+         BigDecimal charged = BigDecimal.ZERO;
+         BigDecimal unpaidInterest = BigDecimal.ZERO;
+-        BigDecimal unpaidFee = BigDecimal.ZERO;
+-        boolean feeCharged = false;
+         LocalDate from = dueDate.plusDays(graceDays());
+         LocalDate waiveOn = interestWaivedOn != null && !interestWaivedOn.isBefore(overdueOn)
+                 && !interestWaivedOn.isAfter(today) ? interestWaivedOn : null;
+-        BigDecimal feeWaived = BigDecimal.ZERO;
+         BigDecimal interestWaived = BigDecimal.ZERO;
+         for (Part part : inOrder) {
+             if (waiveOn != null && part.on().isAfter(waiveOn)) {
+-                if (!feeCharged) {
+-                    unpaidFee = fee;
+-                    feeCharged = true;
+-                }
+-                if (earnsInterest && owed.signum() > 0) {
++                if (owed.signum() > 0) {
+                     BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
+                     charged = charged.add(earned);
+                     unpaidInterest = unpaidInterest.add(earned);
+                 }
+                 from = waiveOn;
+-                feeWaived = unpaidFee;
+                 interestWaived = unpaidInterest;
+-                unpaidFee = BigDecimal.ZERO;
+                 unpaidInterest = BigDecimal.ZERO;
+                 waiveOn = null;
+             }
+-            if (!feeCharged && !part.on().isBefore(overdueOn)) {
+-                unpaidFee = fee;
+-                feeCharged = true;
+-            }
+-            if (earnsInterest && part.on().isAfter(from) && owed.signum() > 0) {
++            if (part.on().isAfter(from) && owed.signum() > 0) {
+                 BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
+                 charged = charged.add(earned);
+                 unpaidInterest = unpaidInterest.add(earned);
+@@ -986,35 +903,30 @@ public class Invoice {
+             }
+             BigDecimal toOwed = part.amount().min(owed).max(BigDecimal.ZERO);
+             BigDecimal rest = part.amount().subtract(toOwed);
+-            BigDecimal toFee = rest.min(unpaidFee).max(BigDecimal.ZERO);
+-            unpaidFee = unpaidFee.subtract(toFee);
+-            rest = rest.subtract(toFee);
+             BigDecimal toInterest = rest.min(unpaidInterest).max(BigDecimal.ZERO);
+             unpaidInterest = unpaidInterest.subtract(toInterest);
+             owed = owed.subtract(toOwed).subtract(rest.subtract(toInterest));
+         }
+         if (waiveOn != null) {
+-            if (earnsInterest && owed.signum() > 0) {
++            if (owed.signum() > 0) {
+                 BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
+                 charged = charged.add(earned);
+                 unpaidInterest = unpaidInterest.add(earned);
+             }
+             from = waiveOn;
+-            feeWaived = feeCharged ? unpaidFee : fee;
+             interestWaived = unpaidInterest;
+         }
+-        if (earnsInterest && owed.signum() > 0) {
++        if (owed.signum() > 0) {
+             charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
+         }
+-        this.lateFee = fee.subtract(feeWaived);
+         this.lateInterest = charged.subtract(interestWaived);
+-        this.lateWaived = feeWaived.add(interestWaived);
++        this.lateWaived = interestWaived;
+     }
+ 
+     /**
+      * Works out the late interest released retention has been charged by the given day, at the annual
+      * rate (a percentage), and adds it to the late interest. Payments, in the order they were made, pay
+-     * the rest of the invoice with its late fee and interest first; what is left of them pays the
++     * the rest of the invoice with its late interest first; what is left of them pays the
+      * released retention, then its interest earned so far. Released retention still unpaid more than
+      * {@link #graceDays()} days after it falls due ({@link #retentionDueDate()}) earns interest by the
+      * same rule as an invoice: from the end of its grace period, compounded daily at rate / 360
+@@ -1039,8 +951,8 @@ public class Invoice {
+                         .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
+                 .filter(p -> !p.on().isAfter(today))
+                 .sorted(Comparator.comparing(Part::on).thenComparing(Part::paymentId)).toList();
+-        // What the payments leave once the rest of the invoice, its fee and its interest are paid.
+-        BigDecimal ahead = payableBeforeInterest(taxRate).subtract(released).add(getLateFee()).add(getLateInterest());
++        // What the payments leave once the rest of the invoice and its interest are paid.
++        BigDecimal ahead = payableBeforeInterest(taxRate).subtract(released).add(getLateInterest());
+         List<Part> toRetention = new ArrayList<>();
+         for (Part part : inOrder) {
+             BigDecimal toAhead = part.amount().min(ahead).max(BigDecimal.ZERO);
+@@ -1110,22 +1022,18 @@ public class Invoice {
+     }
+ 
+     /**
+-     * Works out the late fee and late interest each instalment of the plan has been charged by the given
+-     * day, at the late fee (in US dollars) and annual rate (a percentage), from the payments (those not
++     * Works out the late interest each instalment of the plan has been charged by the given
++     * day, at the annual rate (a percentage), from the payments (those not
+      * reversed count; what credit notes took off has already come off the schedule). Payments, in the
+-     * order they were made, pay each instalment itself, then its fee and then its interest earned
++     * order they were made, pay each instalment itself and then its interest earned
+      * so far, earliest instalment first. An instalment still not paid off more than
+-     * {@link #graceDays()} days after its due date is charged the late fee once, on the day it becomes
+-     * overdue (2% of what is unpaid of it then, see {@link #lateFeeOn}), never more than 10% of the instalment
+-     * (rounded down to the cent), and earns interest by the
++     * {@link #graceDays()} days after its due date is charged no late fee, and earns interest by the
+      * same rule as an invoice: from the end of its own grace period, compounded daily at rate / 360 (Actual/360), on
+      * what is still unpaid of it, with each payment after its grace period ending a period.
+      */
+     private void accrueInstalmentInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+-            BigDecimal lateFeeUsd, LocalDate today) {
+-        boolean earnsInterest = annualRate != null && annualRate.signum() > 0;
+-        boolean chargesFee = lateFeeUsd != null && lateFeeUsd.signum() > 0;
+-        if (!earnsInterest && !chargesFee) {
++            LocalDate today) {
++        if (annualRate == null || annualRate.signum() <= 0) {
+             return;
+         }
+         record Part(LocalDate on, Long paymentId, BigDecimal amount) {
+@@ -1142,18 +1050,13 @@ public class Invoice {
+             inOrder.add(new Part(inOrder.get(inOrder.size() - 1).on(), Long.MAX_VALUE, getInterestSaved()));
+         }
+         BigDecimal[] left = inOrder.stream().map(Part::amount).toArray(BigDecimal[]::new);
+-        BigDecimal daily = earnsInterest
+-                ? BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128))
+-                : null;
++        BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
+         List<BigDecimal> charges = new ArrayList<>();
+-        List<BigDecimal> fees = new ArrayList<>();
+         BigDecimal total = BigDecimal.ZERO;
+-        BigDecimal feeTotal = BigDecimal.ZERO;
+         for (Instalment instalment : schedule(taxRate)) {
+             LocalDate due = instalment.dueDate();
+             BigDecimal owed = instalment.payment();
+             boolean late = false;
+-            BigDecimal unpaidWhenLate = owed;
+             if (due != null && today.isAfter(due.plusDays(graceDays()))) {
+                 BigDecimal paidInGrace = BigDecimal.ZERO;
+                 for (int j = 0; j < left.length; j++) {
+@@ -1162,25 +1065,13 @@ public class Invoice {
+                     }
+                 }
+                 late = paidInGrace.compareTo(owed) < 0;
+-                unpaidWhenLate = owed.subtract(paidInGrace);
+             }
+-            LocalDate overdueOn = due == null ? null : due.plusDays(graceDays() + 1);
+-            BigDecimal fee = late && chargesFee
+-                    ? lateFeeOn(unpaidWhenLate, overdueOn, instalment.payment().divide(BigDecimal.TEN)
+-                            .setScale(scale(), RoundingMode.DOWN))
+-                    : zero();
+-            BigDecimal unpaidFee = BigDecimal.ZERO;
+-            boolean feeCharged = false;
+             BigDecimal charged = BigDecimal.ZERO;
+             BigDecimal unpaidInterest = BigDecimal.ZERO;
+             LocalDate from = due == null ? null : due.plusDays(graceDays());
+             for (int j = 0; j < left.length; j++) {
+                 Part part = inOrder.get(j);
+-                if (late && !feeCharged && !part.on().isBefore(overdueOn)) {
+-                    unpaidFee = fee;
+-                    feeCharged = true;
+-                }
+-                if (earnsInterest && late && part.on().isAfter(from) && owed.signum() > 0) {
++                if (late && part.on().isAfter(from) && owed.signum() > 0) {
+                     BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
+                     charged = charged.add(earned);
+                     unpaidInterest = unpaidInterest.add(earned);
+@@ -1189,25 +1080,18 @@ public class Invoice {
+                 BigDecimal toOwed = left[j].min(owed).max(BigDecimal.ZERO);
+                 owed = owed.subtract(toOwed);
+                 left[j] = left[j].subtract(toOwed);
+-                BigDecimal toFee = left[j].min(unpaidFee).max(BigDecimal.ZERO);
+-                unpaidFee = unpaidFee.subtract(toFee);
+-                left[j] = left[j].subtract(toFee);
+                 BigDecimal toInterest = left[j].min(unpaidInterest).max(BigDecimal.ZERO);
+                 unpaidInterest = unpaidInterest.subtract(toInterest);
+                 left[j] = left[j].subtract(toInterest);
+             }
+-            if (earnsInterest && late && owed.signum() > 0) {
++            if (late && owed.signum() > 0) {
+                 charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
+             }
+             charges.add(charged.setScale(scale(), RoundingMode.HALF_UP));
+             total = total.add(charged);
+-            fees.add(fee);
+-            feeTotal = feeTotal.add(fee);
+         }
+         this.instalmentInterest = charges;
+-        this.instalmentFees = fees;
+         this.lateInterest = total;
+-        this.lateFee = feeTotal;
+     }
+ 
+     /** The interest the balance earns over the days at the daily growth factor, rounded half up to the cent. */
+@@ -1514,7 +1398,7 @@ public class Invoice {
+     /**
+      * Each instalment of the plan at the tax rate once the given amount has been paid, on the given
+      * day: payments (with anything written off) pay the instalments in
+-     * order, each itself, its late fee and then its late interest, each paid off before the next. An instalment not
++     * order, each itself and then its late interest, each paid off before the next. An instalment not
+      * paid off more than {@link #graceDays()} days after its due date is overdue; empty when there is no
+      * plan.
+      */
+@@ -1527,16 +1411,12 @@ public class Invoice {
+             BigDecimal part = left.min(instalment.payment()).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
+             left = left.subtract(part);
+             BigDecimal unpaid = instalment.payment().subtract(part);
+-            BigDecimal fee = k < instalmentFees.size() ? instalmentFees.get(k) : zero();
+-            BigDecimal toFee = left.min(fee).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
+-            left = left.subtract(toFee);
+-            BigDecimal feeUnpaid = fee.subtract(toFee);
+             BigDecimal interest = k < instalmentInterest.size() ? instalmentInterest.get(k) : zero();
+             BigDecimal toInterest = left.min(interest).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
+             left = left.subtract(toInterest);
+             BigDecimal interestUnpaid = interest.subtract(toInterest);
+             Instalment.Status status;
+-            if (unpaid.signum() <= 0 && feeUnpaid.signum() <= 0 && interestUnpaid.signum() <= 0) {
++            if (unpaid.signum() <= 0 && interestUnpaid.signum() <= 0) {
+                 status = Instalment.Status.PAID;
+             } else if (instalment.dueDate() != null && today.isAfter(instalment.dueDate().plusDays(graceDays()))) {
+                 status = Instalment.Status.OVERDUE;
+@@ -1545,7 +1425,7 @@ public class Invoice {
+             } else {
+                 status = Instalment.Status.DUE;
+             }
+-            progress.add(new Instalment.Progress(instalment, part, unpaid, fee, feeUnpaid, interest,
++            progress.add(new Instalment.Progress(instalment, part, unpaid, interest,
+                     interestUnpaid, status));
+         }
+         return progress;
+@@ -1553,7 +1433,7 @@ public class Invoice {
+ 
+     /**
+      * What is overdue at the tax rate once the given amount has been paid, on the given day: for a plan,
+-     * only what is unpaid on its overdue instalments, their late fees and interest included; otherwise all that is due when it is overdue.
++     * only what is unpaid on its overdue instalments, their late interest included; otherwise all that is due when it is overdue.
+      */
+     public BigDecimal overdueAmount(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
+         if (statusWhenPaid(paid, taxRate, today) != InvoiceStatus.OVERDUE) {
+@@ -1581,7 +1461,7 @@ public class Invoice {
+     }
+ 
+     /**
+-     * What is still unpaid on the earliest instalment not yet paid off, its late fee and interest included, at
++     * What is still unpaid on the earliest instalment not yet paid off, its late interest included, at
+      * the tax rate, once the given amount has been paid; zero when there is no plan or all are paid.
+      */
+     public BigDecimal earliestUnpaid(BigDecimal paid, BigDecimal taxRate) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 89e7ce8..0e55101 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -128,9 +128,8 @@ public class InvoiceController {
+      * currency its client is billed in, which every amount is in (whole yen for a yen client).
+      * {@code earlyDiscount} is the early-payment discount it was settled with (0 when none), and
+      * {@code settleAmount} what would settle it today while its early-payment window is open (null otherwise).
+-     * {@code lateInterest} is the late interest charged on it so far, and {@code lateFee} the late fee
+-     * charged on it (0 when none), both part of the amount due; {@code lateWaived} is the late fee and
+-     * interest written off by waiving them (0 when none was). {@code payoff} is what would pay off its
++     * {@code lateInterest} is the late interest charged on it so far, part of the amount due;
++     * {@code lateWaived} is the late interest written off by waiving it (0 when none was). {@code payoff} is what would pay off its
+      * plan today (null without a plan or once it is paid off), and {@code interestSaved} the interest
+      * of instalments not yet due that paying it off early dropped (0 when none was). {@code fxDifference}
+      * is, for a client billed in another currency, the exchange difference in US dollars of the payments
+@@ -152,7 +151,7 @@ public class InvoiceController {
+             String credited, Long creditOf, String listedTotal, String retentionPct, String retentionCap, String retention,
+             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+-            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
++            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+             String withholdingPct) {
+@@ -189,7 +188,7 @@ public class InvoiceController {
+                     i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate),
+                     i.currency(), i.getEarlyDiscountTaken().toPlainString(),
+                     Optional.ofNullable(i.settleAmount(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
+-                    i.getLateInterest().toPlainString(), i.getLateFee().toPlainString(),
++                    i.getLateInterest().toPlainString(),
+                     i.getLateWaived().toPlainString(),
+                     Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
+                     i.getInterestSaved().toPlainString(),
+@@ -382,16 +381,16 @@ public class InvoiceController {
+ 
+     /**
+      * One instalment of a plan: its number, the day it falls due, and its payment, interest, principal
+-     * and the balance left after it, what has been paid off it and the late fee and late interest it
++     * and the balance left after it, what has been paid off it and the late interest it
+      * has been charged, decimal strings to the cent; and its status.
+      */
+     public record InstalmentView(int number, LocalDate dueDate, String payment, String interest, String principal,
+-            String balance, String paid, String lateFee, String lateInterest, Instalment.Status status) {
++            String balance, String paid, String lateInterest, Instalment.Status status) {
+         static InstalmentView of(Instalment.Progress p) {
+             Instalment i = p.instalment();
+             return new InstalmentView(i.number(), i.dueDate(), i.payment().toPlainString(),
+                     i.interest().toPlainString(), i.principal().toPlainString(), i.balance().toPlainString(),
+-                    p.paid().toPlainString(), p.lateFee().toPlainString(), p.lateInterest().toPlainString(), p.status());
++                    p.paid().toPlainString(), p.lateInterest().toPlainString(), p.status());
+         }
+     }
+ 
+@@ -585,7 +584,7 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
+-    /** Waives the late fee and late interest still unpaid on an overdue invoice. */
++    /** Waives the late interest still unpaid on an overdue invoice. */
+     @PostMapping("/api/invoices/{id}/waive-interest")
+     public InvoiceDetail waiveInterest(@PathVariable Long id) {
+         return invoices.waiveInterest(id)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 4d9b173..3d1f037 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -17,7 +17,6 @@ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.CardSurcharge;
+ import net.officefloor.hq.app.ExchangeRates;
+-import net.officefloor.hq.app.LateFee;
+ import net.officefloor.hq.app.LateInterestRate;
+ import net.officefloor.hq.app.PriceList;
+ import net.officefloor.hq.app.TaxRate;
+@@ -47,16 +46,14 @@ public class InvoiceService {
+     private final ExchangeRates exchangeRates;
+     private final LateInterestRate lateInterestRate;
+     private final PriceList priceList;
+-    private final LateFee lateFee;
+     private final CardSurcharge cardSurcharge;
+ 
+     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
+             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
+-            LateInterestRate lateInterestRate, LateFee lateFee, CardSurcharge cardSurcharge, PriceList priceList) {
++            LateInterestRate lateInterestRate, CardSurcharge cardSurcharge, PriceList priceList) {
+         this.priceList = priceList;
+         this.cardSurcharge = cardSurcharge;
+         this.lateInterestRate = lateInterestRate;
+-        this.lateFee = lateFee;
+         this.exchangeRates = exchangeRates;
+         this.entityManager = entityManager;
+         this.invoices = invoices;
+@@ -91,7 +88,7 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Works out the late fee and late interest each of the invoices has been charged by today (see
++     * Works out the late interest each of the invoices has been charged by today (see
+      * {@link Invoice#accrueLateInterest}).
+      */
+     private List<Invoice> withInterest(List<Invoice> list) {
+@@ -101,9 +98,8 @@ public class InvoiceService {
+         List<Payment> found = payments.findForInvoices(list.stream().map(Invoice::getId).toList());
+         BigDecimal rate = taxRate.percent();
+         BigDecimal annual = lateInterestRate.percent();
+-        BigDecimal feeUsd = lateFee.usd();
+         LocalDate now = today.date();
+-        list.forEach(i -> i.accrueLateInterest(found, rate, annual, feeUsd, now));
++        list.forEach(i -> i.accrueLateInterest(found, rate, annual, now));
+         return list;
+     }
+ 
+@@ -481,9 +477,9 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Waives the late fee and late interest still unpaid on a sent invoice today, writing them off, and
++     * Waives the late interest still unpaid on a sent invoice today, writing it off, and
+      * records what was waived in the audit; empty if no such invoice. Interest starts again from today on
+-     * what is still owed, with no new fee. Refused when there is nothing to waive.
++     * what is still owed. Refused when there is nothing to waive.
+      */
+     @Transactional
+     public Optional<Invoice> waiveInterest(Long invoiceId) {
+@@ -497,7 +493,7 @@ public class InvoiceService {
+             withInterest(List.of(invoice));
+             BigDecimal waived = invoice.getLateWaived().subtract(before);
+             if (invoice.hasPlan() || waived.signum() <= 0) {
+-                throw new InvoiceRejectedException("There is no unpaid late interest or late fee to waive.");
++                throw new InvoiceRejectedException("There is no unpaid late interest to waive.");
+             }
+             invoices.saveAndFlush(invoice);
+             audit.record("INTEREST_WAIVED id=" + invoice.getId() + " amount=" + waived.toPlainString());
+diff --git a/src/main/resources/db/migration/V56__drop_late_fee.sql b/src/main/resources/db/migration/V56__drop_late_fee.sql
+new file mode 100644
+index 0000000..4ac4f68
+--- /dev/null
++++ b/src/main/resources/db/migration/V56__drop_late_fee.sql
+@@ -0,0 +1,2 @@
++-- Late fees are no longer charged: drop the workspace's late fee setting.
++DELETE FROM app_setting WHERE name = 'late_fee';
