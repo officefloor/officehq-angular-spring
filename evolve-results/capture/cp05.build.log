@@ -1,0 +1,21 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610112340/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 10 tests using 1 worker
+
+[1A[2K[1/10] [chromium] › cp01_workspace_clients.spec.ts:7:7 › workspace clients › lists clients by name ignoring capitals
+[1A[2K[2/10] [chromium] › cp01_workspace_clients.spec.ts:25:7 › workspace clients › adds a client in its place in the list
+[1A[2K[3/10] [chromium] › cp02_client_validation.spec.ts:7:7 › client validation › refuses a client without a name or with a bad email
+[1A[2K[4/10] [chromium] › cp02_client_validation.spec.ts:27:7 › client validation › refuses an email another client already has
+[1A[2K[5/10] [chromium] › cp02_client_validation.spec.ts:38:7 › client validation › accepts a proper new client
+[1A[2K[6/10] [chromium] › cp03_client_invoices.spec.ts:10:7 › client invoices › lists only the selected client's invoices
+[1A[2K[7/10] [chromium] › cp03_client_invoices.spec.ts:46:7 › client invoices › totals an invoice from its fractional-quantity lines
+[1A[2K[8/10] [chromium] › cp04_line_rounding.spec.ts:7:7 › line rounding › rounds each line before adding them up
+[1A[2K[9/10] [chromium] › cp05_invoice_panel.spec.ts:9:7 › invoice panel › opens an invoice with its lines and totals
+[1A[2K[10/10] [chromium] › cp05_invoice_panel.spec.ts:40:7 › invoice panel › creates a draft for the selected client
+[1A[2K  10 passed (4.9s)

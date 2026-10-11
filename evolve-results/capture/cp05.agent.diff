@@ -1,0 +1,432 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index ef9b03b..f1d5921 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -1,40 +1,82 @@
+ import { Component, effect, inject, input, signal } from '@angular/core';
+-import { InvoiceService, InvoiceStatus, InvoiceSummary } from './invoice.service';
++import { InvoiceService, InvoiceSummary } from './invoice.service';
++import { InvoicePanel } from './invoice-panel';
++import { money, statusLabel } from './invoice-format';
+ 
+-const STATUS_LABEL: Record<InvoiceStatus, string> = { DRAFT: 'Draft', SENT: 'Sent' };
+-const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+-
+-// One client's invoices, each with its status, total and due date.
++// One client's invoices, each with its status, total, issue and due dates. Clicking an invoice
++// opens it in the invoice panel beside the list; New invoice starts an empty draft and opens it.
+ @Component({
+   selector: 'app-client-invoices',
++  imports: [InvoicePanel],
++  styles: `
++    :host {
++      display: flex;
++      flex-wrap: wrap;
++      gap: 2rem;
++      align-items: flex-start;
++    }
++    tr[aria-selected='true'] {
++      font-weight: bold;
++    }
++    .open {
++      font: inherit;
++      color: inherit;
++      background: none;
++      border: none;
++      padding: 0;
++      cursor: pointer;
++      text-decoration: underline;
++    }
++  `,
+   template: `
+     <section aria-labelledby="invoices-heading">
+       <h2 id="invoices-heading">Invoices for {{ clientName() }}</h2>
++      <button type="button" data-testid="invoice-new" [disabled]="creating()" (click)="newDraft()">
++        New invoice
++      </button>
+       <table data-testid="invoice-list">
+         <thead>
+           <tr>
+             <th scope="col">Invoice</th>
+             <th scope="col">Status</th>
+             <th scope="col">Total</th>
++            <th scope="col">Issued</th>
+             <th scope="col">Due</th>
+           </tr>
+         </thead>
+         <tbody>
+           @for (i of invoices(); track i.id) {
+-            <tr [attr.data-testid]="'invoice-row-' + i.id">
+-              <td>#{{ i.id }}</td>
++            <tr
++              [attr.data-testid]="'invoice-row-' + i.id"
++              [attr.aria-selected]="selectedId() === i.id"
++              (click)="selectedId.set(i.id)"
++            >
++              <td>
++                <button
++                  type="button"
++                  class="open"
++                  (click)="$event.stopPropagation(); selectedId.set(i.id)"
++                >
++                  #{{ i.id }}
++                </button>
++              </td>
+               <td data-testid="invoice-status">{{ statusLabel(i.status) }}</td>
+               <td data-testid="invoice-total">{{ money(i.total) }}</td>
++              <td data-testid="invoice-issue">{{ i.issueDate }}</td>
+               <td data-testid="invoice-due">{{ i.dueDate }}</td>
+             </tr>
+           } @empty {
+             <tr>
+-              <td colspan="4" data-testid="invoice-empty">No invoices yet.</td>
++              <td colspan="5" data-testid="invoice-empty">No invoices yet.</td>
+             </tr>
+           }
+         </tbody>
+       </table>
+     </section>
++
++    @if (selectedId(); as id) {
++      <app-invoice-panel [invoiceId]="id" />
++    }
+   `,
+ })
+ export class ClientInvoices {
+@@ -44,22 +86,30 @@ export class ClientInvoices {
+   readonly clientName = input('');
+ 
+   protected readonly invoices = signal<InvoiceSummary[]>([]);
++  protected readonly selectedId = signal<number | null>(null);
++  protected readonly creating = signal(false);
++  protected readonly statusLabel = statusLabel;
++  protected readonly money = money;
+ 
+   constructor() {
+     effect((onCleanup) => {
+       const id = this.clientId();
+       this.invoices.set([]);
++      this.selectedId.set(null);
+       const sub = this.service.forClient(id).subscribe((list) => this.invoices.set(list));
+       onCleanup(() => sub.unsubscribe());
+     });
+   }
+ 
+-  protected statusLabel(status: InvoiceStatus): string {
+-    return STATUS_LABEL[status];
+-  }
+-
+-  // The total is already to the cent, so the number shown is exact.
+-  protected money(total: string): string {
+-    return MONEY.format(Number(total));
++  protected newDraft(): void {
++    this.creating.set(true);
++    this.service.newDraft(this.clientId()).subscribe({
++      next: (created) => {
++        this.invoices.update((list) => [...list, created]);
++        this.selectedId.set(created.id);
++        this.creating.set(false);
++      },
++      error: () => this.creating.set(false),
++    });
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-format.ts b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+new file mode 100644
+index 0000000..89c8785
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+@@ -0,0 +1,13 @@
++import { InvoiceStatus } from './invoice.service';
++
++const STATUS_LABEL: Record<InvoiceStatus, string> = { DRAFT: 'Draft', SENT: 'Sent' };
++const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
++
++export function statusLabel(status: InvoiceStatus): string {
++  return STATUS_LABEL[status];
++}
++
++// Money from the server is already to the cent, so the number shown is exact.
++export function money(amount: string): string {
++  return MONEY.format(Number(amount));
++}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+new file mode 100644
+index 0000000..9d2c63c
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -0,0 +1,68 @@
++import { Component, effect, inject, input, signal } from '@angular/core';
++import { InvoiceDetail, InvoiceService } from './invoice.service';
++import { money, statusLabel } from './invoice-format';
++
++// One opened invoice: its status, its lines and its totals.
++@Component({
++  selector: 'app-invoice-panel',
++  template: `
++    <section data-testid="invoice-panel" aria-labelledby="invoice-panel-heading">
++      <h2 id="invoice-panel-heading">Invoice #{{ invoiceId() }}</h2>
++      @if (invoice(); as inv) {
++        <p>Status: <span data-testid="invoice-panel-status">{{ statusLabel(inv.status) }}</span></p>
++        <table>
++          <thead>
++            <tr>
++              <th scope="col">Description</th>
++              <th scope="col">Qty</th>
++              <th scope="col">Unit price</th>
++              <th scope="col">Amount</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (l of inv.lines; track l.id) {
++              <tr [attr.data-testid]="'line-row-' + l.id">
++                <td data-testid="line-description">{{ l.description }}</td>
++                <td data-testid="line-qty">{{ l.qty }}</td>
++                <td data-testid="line-unit-price">{{ money(l.unitPrice) }}</td>
++                <td data-testid="line-amount">{{ money(l.amount) }}</td>
++              </tr>
++            } @empty {
++              <tr>
++                <td colspan="4" data-testid="line-empty">No lines yet.</td>
++              </tr>
++            }
++          </tbody>
++          <tfoot>
++            <tr>
++              <th scope="row" colspan="3">Subtotal</th>
++              <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
++            </tr>
++            <tr>
++              <th scope="row" colspan="3">Total</th>
++              <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
++            </tr>
++          </tfoot>
++        </table>
++      }
++    </section>
++  `,
++})
++export class InvoicePanel {
++  private readonly service = inject(InvoiceService);
++
++  readonly invoiceId = input.required<number>();
++
++  protected readonly invoice = signal<InvoiceDetail | null>(null);
++  protected readonly statusLabel = statusLabel;
++  protected readonly money = money;
++
++  constructor() {
++    effect((onCleanup) => {
++      const id = this.invoiceId();
++      this.invoice.set(null);
++      const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
++      onCleanup(() => sub.unsubscribe());
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index aa67df7..7f401c7 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -14,6 +14,28 @@ export interface InvoiceSummary {
+   dueDate: string | null;
+ }
+ 
++// One line of an opened invoice. `qty` is as entered, without trailing zeros ("1.5"); money is a
++// decimal string to the cent.
++export interface InvoiceLineView {
++  id: number;
++  description: string;
++  qty: string;
++  unitPrice: string;
++  amount: string;
++}
++
++// An opened invoice with its lines and totals, all worked out by the server.
++export interface InvoiceDetail {
++  id: number;
++  clientId: number;
++  status: InvoiceStatus;
++  issueDate: string | null;
++  dueDate: string | null;
++  lines: InvoiceLineView[];
++  subtotal: string;
++  total: string;
++}
++
+ // The invoices REST API.
+ @Injectable({ providedIn: 'root' })
+ export class InvoiceService {
+@@ -22,4 +44,13 @@ export class InvoiceService {
+   forClient(clientId: number): Observable<InvoiceSummary[]> {
+     return this.http.get<InvoiceSummary[]>(`/api/clients/${clientId}/invoices`);
+   }
++
++  // Starts an empty draft for the client, issued today and due 30 days later.
++  newDraft(clientId: number): Observable<InvoiceSummary> {
++    return this.http.post<InvoiceSummary>(`/api/clients/${clientId}/invoices`, null);
++  }
++
++  open(id: number): Observable<InvoiceDetail> {
++    return this.http.get<InvoiceDetail>(`/api/invoices/${id}`);
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 351126a..1b3f165 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -45,6 +45,16 @@ public class Invoice {
+     protected Invoice() {
+     }
+ 
++    /** A new, empty draft for a client, issued and due on the given dates. */
++    public static Invoice draft(Long clientId, LocalDate issueDate, LocalDate dueDate) {
++        Invoice invoice = new Invoice();
++        invoice.clientId = clientId;
++        invoice.status = InvoiceStatus.DRAFT;
++        invoice.issueDate = issueDate;
++        invoice.dueDate = dueDate;
++        return invoice;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 359d573..1c4e87f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -3,9 +3,13 @@ package net.officefloor.hq.app.invoices;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ @RestController
+ public class InvoiceController {
+@@ -20,6 +24,27 @@ public class InvoiceController {
+         }
+     }
+ 
++    /**
++     * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
++     * money is a decimal string to the cent.
++     */
++    public record LineView(Long id, String description, String qty, String unitPrice, String amount) {
++        static LineView of(InvoiceLine l) {
++            return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
++                    l.getUnitPrice().setScale(2).toPlainString(), l.amount().toPlainString());
++        }
++    }
++
++    /** An opened invoice: its lines, subtotal and grand total (money as decimal strings to the cent). */
++    public record InvoiceDetail(Long id, Long clientId, InvoiceStatus status, LocalDate issueDate,
++            LocalDate dueDate, List<LineView> lines, String subtotal, String total) {
++        static InvoiceDetail of(Invoice i) {
++            String total = i.total().toPlainString();
++            return new InvoiceDetail(i.getId(), i.getClientId(), i.getStatus(), i.getIssueDate(), i.getDueDate(),
++                    i.getLines().stream().map(LineView::of).toList(), total, total);
++        }
++    }
++
+     private final InvoiceService invoices;
+ 
+     public InvoiceController(InvoiceService invoices) {
+@@ -30,4 +55,17 @@ public class InvoiceController {
+     public List<InvoiceSummary> forClient(@PathVariable Long clientId) {
+         return invoices.forClient(clientId).stream().map(InvoiceSummary::of).toList();
+     }
++
++    @PostMapping("/api/clients/{clientId}/invoices")
++    @ResponseStatus(HttpStatus.CREATED)
++    public InvoiceSummary newDraft(@PathVariable Long clientId) {
++        return invoices.newDraft(clientId).map(InvoiceSummary::of)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
++    }
++
++    @GetMapping("/api/invoices/{id}")
++    public InvoiceDetail open(@PathVariable Long id) {
++        return invoices.find(id).map(InvoiceDetail::of)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java
+index 0498312..2ecccdc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.invoices;
+ 
+ import java.util.List;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.EntityGraph;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+@@ -8,4 +9,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+ 
+     @EntityGraph(attributePaths = "lines")
+     List<Invoice> findByClientIdOrderByIdAsc(Long clientId);
++
++    @EntityGraph(attributePaths = "lines")
++    Optional<Invoice> findWithLinesById(Long id);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index a6d47de..630f163 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1,21 +1,47 @@
+ package net.officefloor.hq.app.invoices;
+ 
++import java.time.LocalDate;
+ import java.util.List;
++import java.util.Optional;
++import net.officefloor.hq.app.Today;
++import net.officefloor.hq.app.clients.ClientRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** Lists a client's invoices. */
++/** Lists a client's invoices, opens one, and starts new drafts. */
+ @Service
+ public class InvoiceService {
+ 
++    /** A new invoice is due this many days after it is issued. */
++    static final int PAYMENT_TERMS_DAYS = 30;
++
+     private final InvoiceRepository invoices;
++    private final ClientRepository clients;
++    private final Today today;
+ 
+-    public InvoiceService(InvoiceRepository invoices) {
++    public InvoiceService(InvoiceRepository invoices, ClientRepository clients, Today today) {
+         this.invoices = invoices;
++        this.clients = clients;
++        this.today = today;
+     }
+ 
+     @Transactional(readOnly = true)
+     public List<Invoice> forClient(Long clientId) {
+         return invoices.findByClientIdOrderByIdAsc(clientId);
+     }
++
++    @Transactional(readOnly = true)
++    public Optional<Invoice> find(Long id) {
++        return invoices.findWithLinesById(id);
++    }
++
++    /** An empty draft for the client, issued today and due 30 days later; empty if no such client. */
++    @Transactional
++    public Optional<Invoice> newDraft(Long clientId) {
++        if (!clients.existsById(clientId)) {
++            return Optional.empty();
++        }
++        LocalDate issued = today.date();
++        return Optional.of(invoices.save(Invoice.draft(clientId, issued, issued.plusDays(PAYMENT_TERMS_DAYS))));
++    }
+ }
