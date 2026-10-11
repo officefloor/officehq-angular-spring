@@ -1,0 +1,16 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610112340/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 5 tests using 1 worker
+
+[1A[2K[1/5] [chromium] › cp01_workspace_clients.spec.ts:7:7 › workspace clients › lists clients by name ignoring capitals
+[1A[2K[2/5] [chromium] › cp01_workspace_clients.spec.ts:25:7 › workspace clients › adds a client in its place in the list
+[1A[2K[3/5] [chromium] › cp02_client_validation.spec.ts:7:7 › client validation › refuses a client without a name or with a bad email
+[1A[2K[4/5] [chromium] › cp02_client_validation.spec.ts:27:7 › client validation › refuses an email another client already has
+[1A[2K[5/5] [chromium] › cp02_client_validation.spec.ts:38:7 › client validation › accepts a proper new client
+[1A[2K  5 passed (2.9s)

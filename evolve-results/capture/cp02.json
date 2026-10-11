@@ -1,0 +1,118 @@
+{
+  "checkpoint": 2,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "60a0e172a480a4ec3b53df5bc1692c14ea7afe7b"
+  },
+  "checkpoint_id": "cp02_client_validation",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Check clients before saving them. A client needs a name and a proper email address like\nname@company.com; something like name@company, with nothing after the company name, is a typo.\nTwo clients can't share an email address, and capitals don't make it a different one. If\nsomething is wrong, tell me what and add nothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for this implementation's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nCheck clients before saving them. A client needs a name and a proper email address like\nname@company.com; something like name@company, with nothing after the company name, is a typo.\nTwo clients can't share an email address, and capitals don't make it a different one. If\nsomething is wrong, tell me what and add nothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5d94c7244ff83b52e5dac5cf7521ed21fb5018ed",
+  "reset_sha": "",
+  "preagent_sha": "e22b9b17faee93f1f89deeda36e71a8e08db04a6",
+  "prev_sha": "e22b9b17faee93f1f89deeda36e71a8e08db04a6",
+  "base_sha": "60a0e172a480a4ec3b53df5bc1692c14ea7afe7b",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.33589500000000005,
+    "input_tokens": 18,
+    "output_tokens": 5404,
+    "cache_read_tokens": 220915,
+    "cache_creation_tokens": 22945,
+    "num_turns": 9,
+    "duration_ms": 76540,
+    "duration_api_ms": 50521,
+    "model": "claude-opus-5-5",
+    "session_id": "93e542ba-cf70-4dca-8715-ca49fcbbecec",
+    "stop_reason": "success",
+    "result_text": "Clients are now checked before they're saved. If something is wrong, the form says what and nothing is added. `bin/e2e` passes all 3 tests. I also sent requests straight to the server: it refuses a bad entry with a clear message and accepts a good one.\n\n**The rules**\n- **Name is required.** A name of only spaces counts as empty.\n- **The email must look like `name@company.com`.** It needs a mailbox, an `@`, and a company name followed by at least one `.something`. So `sam@initech` (nothing after the company name), `sam.initech.example` (no `@`) and an empty email are all refused.\n- **No shared emails, ignoring capitals.** `OPS@Acme.example` is refused when a client already has `ops@acme.example`. A different mailbox at the same company, like `finance@acme.example`, is fine.\n\n**Where the checks happen**\n- **The form** checks all three rules before it sends anything. It shows a specific message, such as \"Enter a proper email address, like name@company.com.\" or \"Another client already has the email OPS@Acme.example.\"\n- **The server** checks the same rules again, so they can't be bypassed by calling it directly. A missing name or bad email comes back as a 400 error and a duplicate email as a 409. The form shows the server's message whenever the server refuses a client.\n\nThe duplicate check is in the code only; the database itself doesn't forbid two clients with the same email. If two people add the same email at exactly the same moment, both could get through. I didn't add the database rule because it could reject older test data that already has repeated emails. It can be added if you want that guarantee.\n\nThe server changes are in `ClientController.java`, `ClientService.java` and `ClientRepository.java`, plus two new files, `ClientErrors.java` and `ClientRejectedException.java`. The form change is in `features/clients/clients.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.33589500000000005,
+        "num_turns": 9,
+        "duration_ms": 76540,
+        "duration_api_ms": 50521,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp02.agent.jsonl",
+  "agent_diff_file": "cp02.agent.diff",
+  "build_log_file": "cp02.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 5,
+    "results": {
+      "cp01_workspace_clients.spec.ts::lists clients by name ignoring capitals": true,
+      "cp01_workspace_clients.spec.ts::adds a client in its place in the list": true,
+      "cp02_client_validation.spec.ts::refuses a client without a name or with a bad email": true,
+      "cp02_client_validation.spec.ts::refuses an email another client already has": true,
+      "cp02_client_validation.spec.ts::accepts a proper new client": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_workspace_clients.spec.ts::lists clients by name ignoring capitals",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 739,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_workspace_clients.spec.ts::adds a client in its place in the list",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 589,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_validation.spec.ts::refuses a client without a name or with a bad email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 438,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_validation.spec.ts::refuses an email another client already has",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 202,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_validation.spec.ts::accepts a proper new client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 191,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 2,
+      "failures": []
+    }
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

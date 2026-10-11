@@ -1,0 +1,214 @@
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 172c72a..709f94e 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -1,7 +1,12 @@
+ import { Component, inject, signal } from '@angular/core';
++import { HttpErrorResponse } from '@angular/common/http';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Client, ClientService, byName } from './client.service';
+ 
++// A proper email address: a mailbox, an @, and a domain with at least one dot — name@company.com,
++// not name@company (a typo). The same rule the server applies.
++const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
++
+ // The workspace's clients: listed A to Z by name (ignoring capitals), with a form to add one.
+ @Component({
+   selector: 'app-clients',
+@@ -21,7 +26,7 @@ import { Client, ClientService, byName } from './client.service';
+         }
+       </ul>
+ 
+-      <form [formGroup]="form" (ngSubmit)="add()" aria-label="Add a client">
++      <form [formGroup]="form" (ngSubmit)="add()" aria-label="Add a client" novalidate>
+         <label for="client-name">Name</label>
+         <input id="client-name" data-testid="client-form-name" formControlName="name" required />
+         <label for="client-email">Email</label>
+@@ -53,7 +58,7 @@ export class Clients {
+     name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+     email: new FormControl('', {
+       nonNullable: true,
+-      validators: [Validators.required, Validators.email],
++      validators: [Validators.required, Validators.pattern(PROPER_EMAIL)],
+     }),
+   });
+ 
+@@ -62,23 +67,47 @@ export class Clients {
+   }
+ 
+   protected add(): void {
+-    if (this.form.invalid) {
++    const name = this.form.controls.name.value.trim();
++    const email = this.form.controls.email.value.trim();
++    this.form.setValue({ name, email });
++    const problem = this.problemWith(name, email);
++    if (problem) {
+       this.form.markAllAsTouched();
+-      this.error.set('Enter a name and a valid email.');
++      this.error.set(problem);
+       return;
+     }
+     this.saving.set(true);
+     this.error.set('');
+-    this.service.add(this.form.getRawValue()).subscribe({
++    this.service.add({ name, email }).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created].sort(byName));
+         this.form.reset();
+         this.saving.set(false);
+       },
+-      error: () => {
+-        this.error.set('The client could not be added.');
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.error.set(
++          typeof detail === 'string' && detail ? detail : 'The client could not be added.',
++        );
+         this.saving.set(false);
+       },
+     });
+   }
++
++  // What is wrong with the client, or '' when it can be saved. A duplicate email is checked here
++  // for a quick answer; the server is the authority.
++  private problemWith(name: string, email: string): string {
++    const problems: string[] = [];
++    if (!name) {
++      problems.push("Enter the client's name.");
++    }
++    if (!email) {
++      problems.push("Enter the client's email address.");
++    } else if (!PROPER_EMAIL.test(email)) {
++      problems.push('Enter a proper email address, like name@company.com.');
++    } else if (this.clients().some((c) => c.email.toLowerCase() === email.toLowerCase())) {
++      problems.push(`Another client already has the email ${email}.`);
++    }
++    return problems.join(' ');
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 89036bf..d7fd274 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.clients;
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.util.List;
+ import org.springframework.http.HttpStatus;
+@@ -24,10 +25,22 @@ public class ClientController {
+     }
+ 
+     public record NewClient(
+-            @NotBlank @Size(max = 255) String name,
+-            @NotBlank @Email @Size(max = 255) String email) {
++            @NotBlank(message = "Enter the client's name.")
++            @Size(max = 255, message = "The name must be at most 255 characters.")
++            String name,
++            @NotBlank(message = "Enter the client's email address.")
++            @Email(regexp = PROPER_EMAIL,
++                    message = "Enter a proper email address, like name@company.com.")
++            @Size(max = 255, message = "The email must be at most 255 characters.")
++            String email) {
+     }
+ 
++    /**
++     * A proper email address: a mailbox, an @, and a domain with at least one dot whose parts are
++     * not empty — so name@company.com, but not name@company (a typo) or name.company.com.
++     */
++    static final String PROPER_EMAIL = "\\s*[^@\\s]+@[^@\\s.]+(\\.[^@\\s.]+)+\\s*";
++
+     private final ClientService clients;
+ 
+     public ClientController(ClientService clients) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientErrors.java b/src/main/java/net/officefloor/hq/app/clients/ClientErrors.java
+new file mode 100644
+index 0000000..f174418
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientErrors.java
+@@ -0,0 +1,29 @@
++package net.officefloor.hq.app.clients;
++
++import java.util.Comparator;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.web.bind.MethodArgumentNotValidException;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.RestControllerAdvice;
++
++/** Turns a refused client into a problem response whose detail says what is wrong. */
++@RestControllerAdvice(assignableTypes = ClientController.class)
++public class ClientErrors {
++
++    @ExceptionHandler(MethodArgumentNotValidException.class)
++    public ProblemDetail invalid(MethodArgumentNotValidException e) {
++        String detail = e.getBindingResult().getFieldErrors().stream()
++                .sorted(Comparator.comparing(f -> f.getField().equals("name") ? 0 : 1))
++                .map(f -> f.getDefaultMessage())
++                .distinct()
++                .reduce((a, b) -> a + " " + b)
++                .orElse("The client is not valid.");
++        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
++    }
++
++    @ExceptionHandler(ClientRejectedException.class)
++    public ProblemDetail rejected(ClientRejectedException e) {
++        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientRejectedException.java b/src/main/java/net/officefloor/hq/app/clients/ClientRejectedException.java
+new file mode 100644
+index 0000000..ff6a589
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientRejectedException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.clients;
++
++/** A client that cannot be saved; the message says why, in words the user can act on. */
++public class ClientRejectedException extends RuntimeException {
++
++    public ClientRejectedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java b/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
+index 5e62875..d67d957 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
+@@ -3,4 +3,6 @@ package net.officefloor.hq.app.clients;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface ClientRepository extends JpaRepository<Client, Long> {
++
++    boolean existsByEmailIgnoreCase(String email);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 8dd9fd0..38c14c2 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -5,7 +5,10 @@ import java.util.List;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** Lists and adds clients. Clients are listed A to Z by name, ignoring capitals. */
++/**
++ * Lists and adds clients. Clients are listed A to Z by name, ignoring capitals. No two clients share
++ * an email address, ignoring capitals.
++ */
+ @Service
+ public class ClientService {
+ 
+@@ -27,6 +30,10 @@ public class ClientService {
+ 
+     @Transactional
+     public Client add(String name, String email) {
+-        return clients.save(new Client(name.trim(), email.trim()));
++        String address = email.trim();
++        if (clients.existsByEmailIgnoreCase(address)) {
++            throw new ClientRejectedException("Another client already has the email " + address + ".");
++        }
++        return clients.save(new Client(name.trim(), address));
+     }
+ }
