@@ -158,6 +158,10 @@ public class Invoice {
     @Formula("(SELECT c.grace_days FROM client c WHERE c.id = client_id)")
     private Integer clientGraceDays;
 
+    /** The client's own annual late-interest rate, a percentage; null for the workspace's. Read from the client. */
+    @Formula("(SELECT c.interest_rate FROM client c WHERE c.id = client_id)")
+    private BigDecimal clientInterestRate;
+
     /** The early discount the invoice was settled with; 0 when none was taken. */
     @Column(name = "early_discount")
     private BigDecimal earlyDiscount = BigDecimal.ZERO;
@@ -652,6 +656,7 @@ public class Invoice {
      */
     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
             BigDecimal lateFeeUsd, LocalDate asOf) {
+        annualRate = lateInterestRate(annualRate);
         LocalDate today = writtenOffOn != null && writtenOffOn.isBefore(asOf) ? writtenOffOn : asOf;
         this.lateInterest = BigDecimal.ZERO;
         this.lateFee = BigDecimal.ZERO;
@@ -1191,6 +1196,11 @@ public class Invoice {
 
     /** The standard days past its due date an invoice is given before it becomes overdue: a week's grace. */
     public static final int GRACE_DAYS = 7;
+
+    /** The annual late-interest rate this invoice is charged: its client's own, else the workspace's. */
+    public BigDecimal lateInterestRate(BigDecimal workspaceRate) {
+        return clientInterestRate == null ? workspaceRate : clientInterestRate;
+    }
 
     /** Days past its due date this invoice is given before it becomes overdue: its client's grace period. */
     public int graceDays() {

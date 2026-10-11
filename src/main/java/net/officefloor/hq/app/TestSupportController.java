@@ -39,7 +39,7 @@ public class TestSupportController {
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee");
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
@@ -167,14 +167,15 @@ public class TestSupportController {
             if (Currency.of(currency) == null) {
                 throw refuse("unsupported value of clients[].currency: " + currency);
             }
-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days"},
+            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate"},
                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
                     percent(row.get("discountPct"), "clients[].discountPct"),
                     flag(row.get("taxExempt"), "clients[].taxExempt"), currency,
                     percent(row.get("earlyPayPct"), "clients[].earlyPayPct"),
                     days(row.get("earlyPayDays"), "clients[].earlyPayDays"),
                     percent(row.get("retentionPct"), "clients[].retentionPct"),
-                    graceDays(row.get("graceDays"), "clients[].graceDays"));
+                    graceDays(row.get("graceDays"), "clients[].graceDays"),
+                    interestRate(row.get("interestRate"), "clients[].interestRate"));
         }
         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
             only(row, INVOICE_FIELDS, "invoices[]");
@@ -337,7 +338,7 @@ public class TestSupportController {
         if (!settings.isEmpty()) {
             out.put("settings", settings);
         }
-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days FROM client ORDER BY id").stream()
+        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -355,6 +356,9 @@ public class TestSupportController {
                     }
                     row.put("retentionPct", r.get("RETENTION_PCT"));
                     row.put("graceDays", r.get("GRACE_DAYS"));
+                    if (r.get("INTEREST_RATE") != null) {
+                        row.put("interestRate", r.get("INTEREST_RATE"));
+                    }
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
@@ -486,6 +490,18 @@ public class TestSupportController {
             throw refuse(field + " must be from 0 to " + Client.MAX_GRACE_DAYS + " days, not " + value);
         }
         return days;
+    }
+
+    /** A client's own late-interest rate, 0 to 30 percent to the hundredth; null (the workspace's) when left out. */
+    private static BigDecimal interestRate(Object value, String field) {
+        if (value == null) {
+            return null;
+        }
+        BigDecimal rate = cents(value, field);
+        if (rate.signum() < 0 || rate.compareTo(BigDecimal.valueOf(Client.MAX_INTEREST_RATE)) > 0) {
+            throw refuse(field + " must be from 0 to " + Client.MAX_INTEREST_RATE + ", not " + value);
+        }
+        return rate;
     }
 
     /** A whole number of instalments from 2 to 24; null (no plan) when left out. */

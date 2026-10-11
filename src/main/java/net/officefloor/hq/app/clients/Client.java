@@ -58,6 +58,16 @@ public class Client {
     @Column(name = "grace_days")
     private int graceDays = Invoice.GRACE_DAYS;
 
+    /**
+     * The client's own annual late-interest rate (0 to {@link #MAX_INTEREST_RATE} percent) charged
+     * instead of the workspace's; null for the workspace's, 0 for never charged late interest.
+     */
+    @Column(name = "interest_rate")
+    private BigDecimal interestRate;
+
+    /** The highest late-interest rate a client can be given, as a percentage. */
+    public static final int MAX_INTEREST_RATE = 30;
+
     /** The longest grace period a client can be given, in days. */
     public static final int MAX_GRACE_DAYS = 30;
 
@@ -66,7 +76,7 @@ public class Client {
 
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
             Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
-            Integer graceDays) {
+            Integer graceDays, BigDecimal interestRate) {
         this.name = name;
         this.email = email;
         this.termsDays = termsDays;
@@ -77,6 +87,7 @@ public class Client {
         this.earlyPayDays = earlyPayDays;
         this.retentionPct = retentionPct == null ? BigDecimal.ZERO : retentionPct;
         this.graceDays = graceDays == null ? Invoice.GRACE_DAYS : graceDays;
+        this.interestRate = interestRate;
     }
 
     public Long getId() {
@@ -121,5 +132,9 @@ public class Client {
 
     public int getGraceDays() {
         return graceDays;
+    }
+
+    public BigDecimal getInterestRate() {
+        return interestRate;
     }
 }

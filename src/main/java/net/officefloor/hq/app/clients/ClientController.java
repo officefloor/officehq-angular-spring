@@ -27,11 +27,11 @@ public class ClientController {
 
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
             boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
-            BigDecimal retentionPct, int graceDays) {
+            BigDecimal retentionPct, int graceDays, BigDecimal interestRate) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
-                    c.getRetentionPct(), c.getGraceDays());
+                    c.getRetentionPct(), c.getGraceDays(), c.getInterestRate());
         }
     }
 
@@ -70,7 +70,12 @@ public class ClientController {
             /** The client's grace period in days; the standard week when left out. */
             @Min(value = 0, message = "The grace period must be from 0 to 30 days.")
             @Max(value = Client.MAX_GRACE_DAYS, message = "The grace period must be from 0 to 30 days.")
-            Integer graceDays) {
+            Integer graceDays,
+            /** The client's own late-interest rate; the workspace's when left out. */
+            @DecimalMin(value = "0", message = "The interest rate must be from 0 to 30 percent.")
+            @DecimalMax(value = "30", message = "The interest rate must be from 0 to 30 percent.")
+            @Digits(integer = 2, fraction = 2, message = "The interest rate can have at most two decimals.")
+            BigDecimal interestRate) {
 
         @AssertTrue(message = "Enter both the early-payment discount and its number of days, or neither.")
         public boolean isEarlyPayComplete() {
@@ -100,6 +105,6 @@ public class ClientController {
     public ClientView add(@Valid @RequestBody NewClient body) {
         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
                 Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
-                body.retentionPct(), body.graceDays()));
+                body.retentionPct(), body.graceDays(), body.interestRate()));
     }
 }

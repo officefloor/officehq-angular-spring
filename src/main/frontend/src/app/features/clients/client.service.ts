@@ -24,6 +24,9 @@ export interface Client {
   // Days (0 to 30, a week as standard) past its due date an invoice or instalment is given before it
   // is overdue, earns late interest and is charged the late fee.
   graceDays: number;
+  // The client's own annual late-interest rate (0 to 30 percent) charged instead of the workspace's;
+  // null for the workspace's, 0 for never charged late interest.
+  interestRate: number | null;
 }
 
 export type NewClient = Omit<Client, 'id'>;

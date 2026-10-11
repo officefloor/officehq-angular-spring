@@ -31,11 +31,12 @@ public class ClientService {
 
     @Transactional
     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
-            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays) {
+            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays,
+            BigDecimal interestRate) {
         String address = email.trim();
         if (clients.existsByEmailIgnoreCase(address)) {
             throw new ClientRejectedException("Another client already has the email " + address + ".");
         }
-        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays));
+        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays, interestRate));
     }
 }

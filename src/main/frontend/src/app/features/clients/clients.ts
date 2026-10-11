@@ -141,6 +141,17 @@ const STANDARD_GRACE_DAYS = 7;
           step="1"
           formControlName="graceDays"
         />
+        <label for="client-interest-rate">Late-interest rate %, 0 to 30 (optional, the workspace's if left out)</label>
+        <input
+          id="client-interest-rate"
+          data-testid="client-form-interest-rate"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          max="30"
+          step="0.01"
+          formControlName="interestRate"
+        />
         <label for="client-early-pct">Early-payment discount % (optional)</label>
         <input
           id="client-early-pct"
@@ -232,6 +243,7 @@ export class Clients {
     discountPct: new FormControl<number | null>(null),
     retentionPct: new FormControl<number | null>(null),
     graceDays: new FormControl<number | null>(null),
+    interestRate: new FormControl<number | null>(null),
     earlyPct: new FormControl<number | null>(null),
     earlyDays: new FormControl<number | null>(null),
     taxExempt: new FormControl(false, { nonNullable: true }),
@@ -265,6 +277,8 @@ export class Clients {
     const retentionPct = retention === null || (retention as unknown) === '' ? null : Number(retention);
     const grace = this.form.controls.graceDays.value;
     const graceDays = grace === null || (grace as unknown) === '' ? null : Number(grace);
+    const interest = this.form.controls.interestRate.value;
+    const interestRate = interest === null || (interest as unknown) === '' ? null : Number(interest);
     const taxExempt = this.form.controls.taxExempt.value;
     const currency = this.form.controls.currency.value;
     const early = this.form.controls.earlyPct.value;
@@ -278,6 +292,7 @@ export class Clients {
       discountPct,
       retentionPct,
       graceDays,
+      interestRate,
       earlyPct: earlyPayPct,
       earlyDays: earlyPayDays,
       taxExempt,
@@ -290,6 +305,7 @@ export class Clients {
       discountPct,
       retentionPct,
       graceDays,
+      interestRate,
       earlyPayPct,
       earlyPayDays,
     );
@@ -311,6 +327,7 @@ export class Clients {
       earlyPayDays,
       retentionPct: retentionPct ?? 0,
       graceDays: graceDays ?? STANDARD_GRACE_DAYS,
+      interestRate,
     };
     this.service.add(client).subscribe({
       next: (created) => {
@@ -369,6 +386,7 @@ export class Clients {
     discountPct: number | null,
     retentionPct: number | null,
     graceDays: number | null,
+    interestRate: number | null,
     earlyPayPct: number | null,
     earlyPayDays: number | null,
   ): string {
@@ -402,6 +420,13 @@ export class Clients {
     }
     if (graceDays !== null && !(Number.isInteger(graceDays) && graceDays >= 0 && graceDays <= 30)) {
       problems.push('The grace period must be from 0 to 30 days.');
+    }
+    if (interestRate !== null) {
+      if (!(Number.isFinite(interestRate) && interestRate >= 0 && interestRate <= 30)) {
+        problems.push('The interest rate must be from 0 to 30 percent.');
+      } else if (Math.abs(Math.round(interestRate * 100) - interestRate * 100) > 1e-6) {
+        problems.push('The interest rate can have at most two decimals.');
+      }
     }
     if (earlyPayPct !== null) {
       if (!(Number.isFinite(earlyPayPct) && earlyPayPct >= 0 && earlyPayPct <= 100)) {
