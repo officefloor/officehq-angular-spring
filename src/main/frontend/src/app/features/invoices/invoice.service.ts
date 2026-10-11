@@ -182,6 +182,7 @@ export interface InstalmentView {
   principal: string;
   balance: string;
   paid: string;
+  lateFee: string;
   lateInterest: string;
   status: InstalmentStatus;
 }

@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * The workspace's late fee: the stored {@code late_fee} setting, a fixed amount in US dollars such as
- * 25, charged once on an invoice when it becomes overdue. With no fee set none is charged, so it is 0.
+ * 25, charged once on an invoice (on a plan, once on each instalment) when it becomes overdue. With no fee set none is charged, so it is 0.
  */
 @Service
 public class LateFee {
