@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.stream.IntStream;
 import net.officefloor.hq.app.TaxRate;
@@ -365,12 +366,18 @@ public class InvoiceController {
         return forClient(clientId);
     }
 
-    /** The quoted reference without spaces, or null when none was; a mistyped one is refused. */
+    /**
+     * The quoted reference without spaces, or null when none was; a mistyped one is refused. An
+     * invoice number quoted instead (INV-0000075, any capitals) stands for that invoice's RF reference.
+     */
     private static String reference(String typed) {
         if (typed == null || typed.isBlank()) {
             return null;
         }
-        return PaymentReference.parse(typed).orElseThrow(() -> new ResponseStatusException(
+        Optional<String> parsed = typed.trim().toUpperCase().startsWith("INV")
+                ? InvoiceNumber.idOf(typed).map(PaymentReference::of)
+                : PaymentReference.parse(typed);
+        return parsed.orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.BAD_REQUEST, typed.trim() + " is mistyped: check the payment reference."));
     }
 

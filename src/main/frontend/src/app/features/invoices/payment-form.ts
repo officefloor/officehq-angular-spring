@@ -26,6 +26,27 @@ function referenceChecks(reference: string): boolean {
   return rest === 1;
 }
 
+// Whether an invoice number quoted instead of a reference (INV-, six digits, then a Luhn check
+// digit over them) passes its check. Spaces and capitals are ignored by the caller.
+function invoiceNumberChecks(typed: string): boolean {
+  const m = /^INV-(\d{6})(\d)$/.exec(typed);
+  if (!m) {
+    return false;
+  }
+  let sum = 0;
+  [...m[1]].reverse().forEach((c, i) => {
+    let d = Number(c);
+    if (i % 2 === 0) {
+      d *= 2;
+      if (d > 9) {
+        d -= 9;
+      }
+    }
+    sum += d;
+  });
+  return (10 - (sum % 10)) % 10 === Number(m[2]);
+}
+
 // What is wrong with a payment, or '' when it can be recorded.
 function problemWithPayment(payment: NewPayment): string {
   const problems: string[] = [];
@@ -39,7 +60,12 @@ function problemWithPayment(payment: NewPayment): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(payment.date)) {
     problems.push('Enter the date it was paid.');
   }
-  if (payment.reference && !referenceChecks(payment.reference)) {
+  if (
+    payment.reference &&
+    !(payment.reference.startsWith('INV')
+      ? invoiceNumberChecks(payment.reference)
+      : referenceChecks(payment.reference))
+  ) {
     problems.push('The payment reference is mistyped: check it against the invoice.');
   }
   return problems.join(' ');
@@ -64,7 +90,8 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
 // Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`), or, when none
 // is open, to the client's invoice with the quoted reference, or without one to the client's unpaid invoices earliest due date first; once any invoice in the list has a part, the
 // payment is spread over those invoices instead, and the parts must add up to it. The server refuses a payment on a draft, over what is due, or dated after today
-// or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's.
+// or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
+// invoice number may be quoted instead: it must pass its Luhn check and stands for that invoice's reference.
 @Component({
   selector: 'app-payment-form',
   imports: [ReactiveFormsModule],
@@ -86,7 +113,7 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
         formControlName="date"
         required
       />
-      <label for="payment-reference">Reference quoted (optional)</label>
+      <label for="payment-reference">Reference or invoice number quoted (optional)</label>
       <input
         id="payment-reference"
         data-testid="payment-form-reference"
