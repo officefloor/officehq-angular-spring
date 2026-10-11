@@ -713,6 +713,8 @@ public class InvoiceService {
                         && !invoice.dueDatePassedBy(today.date()))
                 .forEach(invoice -> {
                     if (!invoice.isCreditNote()) {
+                        // Read again the client's sent invoices: one sent just before counts towards its month's volume.
+                        entityManager.refresh(invoice);
                         markSent(invoice);
                     } else if (creditNoteRefusal(invoice) == null) {
                         issue(invoice);

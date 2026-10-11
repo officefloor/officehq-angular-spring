@@ -184,6 +184,19 @@ public class Invoice {
     @Formula("(SELECT LISTAGG(r.unit_type || CHAR(31) || COALESCE(CAST(r.effective_from AS VARCHAR), '') || CHAR(31) || COALESCE(CAST(r.tax_rate AS VARCHAR), ''), CHAR(30)) WITHIN GROUP (ORDER BY r.unit_type) FROM client_rate r WHERE r.client_id = client_id)")
     private String cardTaxRates;
 
+    /**
+     * The tiered lines on the client's other sent invoices (not credit notes), as the invoice id, its issue
+     * date, the line's unit type and its billed units separated by CHAR(31), lines separated by CHAR(30);
+     * null when there are none. Their units count first through the bands of an invoice issued later in
+     * the same month (see {@link #tieredUnitsBefore}).
+     */
+    @Formula("(SELECT LISTAGG(CAST(o.id AS VARCHAR) || CHAR(31) || CAST(o.issue_date AS VARCHAR) || CHAR(31) || l.unit_type || CHAR(31)"
+            + " || CAST(GREATEST(CASE WHEN l.billing_increment > 0 THEN CEILING(l.qty / l.billing_increment) * l.billing_increment ELSE l.qty END,"
+            + " COALESCE(l.billing_min_units, 0)) AS VARCHAR), CHAR(30)) WITHIN GROUP (ORDER BY o.id, l.id)"
+            + " FROM invoice o, invoice_line l WHERE o.client_id = client_id AND o.id <> id AND o.status = 'SENT'"
+            + " AND o.credit_of IS NULL AND o.issue_date IS NOT NULL AND l.invoice_id = o.id AND l.tiers IS NOT NULL AND l.unit_type IS NOT NULL)")
+    private String clientTieredUnits;
+
     /** The issue date of the invoice this credit note credits; null for an ordinary invoice. */
     @Formula("(SELECT o.issue_date FROM invoice o WHERE o.id = credit_of)")
     private LocalDate creditedIssueDate;
@@ -1723,7 +1736,7 @@ public class Invoice {
     BigDecimal tieredUnitsBefore(InvoiceLine line) {
         List<InvoiceLine> ordered = new ArrayList<>(lines);
         ordered.sort(Comparator.comparing(InvoiceLine::getId, Comparator.nullsLast(Comparator.naturalOrder())));
-        BigDecimal before = BigDecimal.ZERO;
+        BigDecimal before = monthUnitsBefore(line.getUnitType());
         for (InvoiceLine other : ordered) {
             if (other == line) {
                 return before;
@@ -1733,6 +1746,34 @@ public class Invoice {
             }
         }
         return BigDecimal.ZERO;
+    }
+
+    /**
+     * How many units of the tiered unit type the client was already billed this calendar month before this
+     * invoice: the tiered lines of that unit type on the client's other sent invoices (not credit notes)
+     * issued earlier in the same month as this one, or on the same date with a lower id. Drafts, void
+     * invoices and credit notes don't count; a credit note itself carries on from none.
+     */
+    private BigDecimal monthUnitsBefore(String unitType) {
+        BigDecimal before = BigDecimal.ZERO;
+        if (clientTieredUnits == null || unitType == null || issueDate == null || isCreditNote()) {
+            return before;
+        }
+        for (String entry : clientTieredUnits.split(String.valueOf((char) 30))) {
+            String[] parts = entry.split(String.valueOf((char) 31), -1);
+            if (parts.length < 4 || !unitType.equals(parts[2])) {
+                continue;
+            }
+            Long otherId = Long.valueOf(parts[0]);
+            LocalDate issued = LocalDate.parse(parts[1]);
+            boolean sameMonth = issued.getYear() == issueDate.getYear() && issued.getMonth() == issueDate.getMonth();
+            boolean earlier = issued.isBefore(issueDate)
+                    || (issued.isEqual(issueDate) && (id == null || otherId < id));
+            if (sameMonth && earlier) {
+                before = before.add(new BigDecimal(parts[3]));
+            }
+        }
+        return before;
     }
 
     /** Whether the invoice has the line with the given id. */
