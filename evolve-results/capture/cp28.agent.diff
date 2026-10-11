@@ -1,0 +1,42 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index a06a686..508cc6b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -133,9 +133,11 @@ public class Invoice {
+         this.status = InvoiceStatus.VOID;
+     }
+ 
+-    /** Marks the invoice sent; its issue and due dates stay as they are. */
+-    public void markSent() {
++    /** Marks the invoice sent, issued on the given date and due on the given date. */
++    public void markSent(LocalDate issueDate, LocalDate dueDate) {
+         this.status = InvoiceStatus.SENT;
++        this.issueDate = issueDate;
++        this.dueDate = dueDate;
+     }
+ 
+     /** Puts a sent invoice back to draft, so it has to be sent again. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 152e2dc..3443a84 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -137,7 +137,8 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Sends a draft invoice, keeping its issue and due dates, and records it in the audit; empty if
++     * Sends a draft invoice, issuing it today and making it due on the last day of the following
++     * month, and records it in the audit; empty if
+      * no such invoice. An invoice already sent, or with no lines, is refused.
+      */
+     @Transactional
+@@ -153,7 +154,8 @@ public class InvoiceService {
+             if (invoice.getLines().isEmpty()) {
+                 throw new InvoiceRejectedException("Add at least one line before sending the invoice.");
+             }
+-            invoice.markSent();
++            LocalDate issued = today.date();
++            invoice.markSent(issued, dueDateFor(issued));
+             invoices.saveAndFlush(invoice);
+             audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
+                     + " total=" + invoice.total(taxRate.percent()).toPlainString());
