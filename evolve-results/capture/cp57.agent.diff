@@ -1,0 +1,624 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 010f752..88b24c6 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -41,6 +41,27 @@ function problemWithRetention(pct: string): string {
+   return '';
+ }
+ 
++// A plan of 2 to 24 monthly instalments at an annual rate from 0 to 30 with at most two decimals;
++// the server checks them again.
++function problemWithPlan(count: string, rate: string): string {
++  if (!/^\d+$/.test(count)) {
++    return 'The number of instalments must be a whole number, like 3 or 12.';
++  }
++  if (Number(count) < 2 || Number(count) > 24) {
++    return 'The plan must have from 2 to 24 instalments.';
++  }
++  if (!/^-?\d+(\.\d+)?$/.test(rate)) {
++    return 'The interest rate must be a number, like 12 or 7.5.';
++  }
++  if (Number(rate) < 0 || Number(rate) > 30) {
++    return 'The interest rate must be from 0 to 30 percent.';
++  }
++  if (!TWO_DECIMALS.test(rate)) {
++    return 'The interest rate can have at most two decimals.';
++  }
++  return '';
++}
++
+ // A fixed amount of money, not negative and to the cent, e.g. 25 or 12.50; the server checks it is
+ // no more than the subtotal.
+ function problemWithDiscountAmount(amount: string): string {
+@@ -146,7 +167,10 @@ function problemWith(line: NewLine): string {
+ // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
+ // server refuses to send it once that date is past. A draft can hold back retention, a percentage of
+ // the grand total (0 to 20); while held it is not part of the amount due, and once nothing else is due
+-// it can be released on the sent invoice, falling due 30 days later.
++// it can be released on the sent invoice, falling due 30 days later. A draft without retention can
++// instead be spread over 2 to 24 monthly instalments at an annual interest rate (0 to 30); the server
++// works out the schedule from the grand total, dated from the issue date (and again when it is sent),
++// and the amount due is then the plan total less what is paid.
+ @Component({
+   selector: 'app-invoice-panel',
+   imports: [ReactiveFormsModule, PaymentForm],
+@@ -255,6 +279,40 @@ function problemWith(line: NewLine): string {
+           </tfoot>
+         </table>
+ 
++        @if (inv.instalments !== null) {
++          <table aria-label="Instalments">
++            <caption>{{ inv.instalments }} monthly instalments at {{ inv.instalmentRate }}% a year</caption>
++            <thead>
++              <tr>
++                <th scope="col">No.</th>
++                <th scope="col">Due</th>
++                <th scope="col">Payment</th>
++                <th scope="col">Interest</th>
++                <th scope="col">Principal</th>
++                <th scope="col">Balance</th>
++              </tr>
++            </thead>
++            <tbody>
++              @for (s of inv.schedule; track s.number) {
++                <tr [attr.data-testid]="'instalment-row-' + s.number">
++                  <td>{{ s.number }}</td>
++                  <td data-testid="instalment-due">{{ s.dueDate }}</td>
++                  <td data-testid="instalment-payment">{{ money(s.payment) }}</td>
++                  <td data-testid="instalment-interest">{{ money(s.interest) }}</td>
++                  <td data-testid="instalment-principal">{{ money(s.principal) }}</td>
++                  <td data-testid="instalment-balance">{{ money(s.balance) }}</td>
++                </tr>
++              }
++            </tbody>
++            <tfoot>
++              <tr>
++                <th scope="row" colspan="5">Plan total</th>
++                <td data-testid="invoice-plan-total">{{ money(inv.planTotal ?? '0') }}</td>
++              </tr>
++            </tfoot>
++          </table>
++        }
++
+         <table aria-label="Payments">
+           <thead>
+             <tr>
+@@ -356,6 +414,19 @@ function problemWith(line: NewLine): string {
+           </form>
+         }
+ 
++        @if (inv.status === 'DRAFT' && inv.creditOf === null) {
++          <form [formGroup]="planForm" (ngSubmit)="setPlan(inv.id)" aria-label="Instalment plan" novalidate>
++            <label for="plan-count">Monthly instalments (2 to 24)</label>
++            <input id="plan-count" data-testid="plan-form-count" inputmode="numeric" formControlName="count" />
++            <label for="plan-rate">Annual interest rate (%, 0 to 30)</label>
++            <input id="plan-rate" data-testid="plan-form-rate" inputmode="decimal" formControlName="rate" />
++            <button type="submit" data-testid="plan-form-submit" [disabled]="savingPlan()">Set plan</button>
++            @if (planError()) {
++              <p role="alert" data-testid="plan-form-error">{{ planError() }}</p>
++            }
++          </form>
++        }
++
+         @if (
+           inv.creditOf === null &&
+           inv.status !== 'DRAFT' &&
+@@ -545,6 +616,8 @@ export class InvoicePanel {
+   protected readonly dueError = signal('');
+   protected readonly savingRetention = signal(false);
+   protected readonly retentionError = signal('');
++  protected readonly savingPlan = signal(false);
++  protected readonly planError = signal('');
+   protected readonly releasing = signal(false);
+   protected readonly releaseError = signal('');
+   protected readonly sending = signal(false);
+@@ -580,6 +653,11 @@ export class InvoicePanel {
+     pct: new FormControl('', { nonNullable: true }),
+   });
+ 
++  protected readonly planForm = new FormGroup({
++    count: new FormControl('', { nonNullable: true }),
++    rate: new FormControl('', { nonNullable: true }),
++  });
++
+   protected readonly dueForm = new FormGroup({
+     dueDate: new FormControl('', { nonNullable: true }),
+   });
+@@ -598,6 +676,8 @@ export class InvoicePanel {
+       this.dueError.set('');
+       this.retentionForm.reset();
+       this.retentionError.set('');
++      this.planForm.reset();
++      this.planError.set('');
+       this.releaseError.set('');
+       this.sendError.set('');
+       this.voidError.set('');
+@@ -800,6 +880,35 @@ export class InvoicePanel {
+     });
+   }
+ 
++  protected setPlan(invoiceId: number): void {
++    const raw = this.planForm.getRawValue();
++    const count = raw.count.trim();
++    const rate = raw.rate.trim().replace(/%$/, '').trim();
++    const problem = problemWithPlan(count, rate);
++    if (problem) {
++      this.planForm.markAllAsTouched();
++      this.planError.set(problem);
++      return;
++    }
++    this.savingPlan.set(true);
++    this.planError.set('');
++    this.service.setPlan(invoiceId, count, rate).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.planForm.reset();
++        this.savingPlan.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.planError.set(
++          typeof detail === 'string' && detail ? detail : 'The plan could not be set.',
++        );
++        this.savingPlan.set(false);
++      },
++    });
++  }
++
+   protected releaseRetention(invoiceId: number): void {
+     this.releasing.set(true);
+     this.releaseError.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 57f875f..cdfbe29 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -121,6 +121,24 @@ export interface InvoiceDetail {
+   // The day (yyyy-mm-dd) the retention was released, and the day it then falls due; null while held.
+   retentionReleasedOn: string | null;
+   retentionDueDate: string | null;
++  // How many monthly instalments it is spread over (null without a plan), at the annual
++  // `instalmentRate` (without trailing zeros); `schedule` lists them and `planTotal` is what they add
++  // up to (null without a plan). The amount due on a planned invoice is the plan total less what is paid.
++  instalments: number | null;
++  instalmentRate: string;
++  schedule: InstalmentView[];
++  planTotal: string | null;
++}
++
++// One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,
++// interest, principal and the balance left after it, decimal strings to the cent.
++export interface InstalmentView {
++  number: number;
++  dueDate: string | null;
++  payment: string;
++  interest: string;
++  principal: string;
++  balance: string;
+ }
+ 
+ // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
+@@ -233,6 +251,12 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct });
+   }
+ 
++  // Spreads a draft over monthly instalments (2 to 24) at an annual interest rate (0 to 30, up to two
++  // decimals); refused (400) outside that, or (409) when it is not a draft or holds back retention.
++  setPlan(invoiceId: number, instalments: string, instalmentRate: string): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/plan`, { instalments, instalmentRate });
++  }
++
+   // Releases the retention held back on a sent invoice, adding it to the amount due; refused (409)
+   // while anything else is due or when there is nothing to release.
+   releaseRetention(invoiceId: number): Observable<InvoiceDetail> {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 5383787..a974419 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -38,7 +38,7 @@ public class TestSupportController {
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -127,7 +127,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_released_on"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_released_on", "instalments", "instalment_rate"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -139,7 +139,9 @@ public class TestSupportController {
+                     row.get("creditOf") == null ? null : id(row.get("creditOf")),
+                     percent(row.get("retentionPct"), "invoices[].retentionPct"),
+                     row.get("retentionReleasedOn") == null ? null
+-                            : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"));
++                            : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"),
++                    instalments(row.get("instalments"), "invoices[].instalments"),
++                    instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 insert("invoice_line", line.get("id"),
+@@ -236,7 +238,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_released_on FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_released_on, instalments, instalment_rate FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -255,6 +257,10 @@ public class TestSupportController {
+                     if (r.get("RETENTION_RELEASED_ON") != null) {
+                         row.put("retentionReleasedOn", r.get("RETENTION_RELEASED_ON").toString());
+                     }
++                    if (r.get("INSTALMENTS") != null) {
++                        row.put("instalments", r.get("INSTALMENTS"));
++                    }
++                    row.put("instalmentRate", r.get("INSTALMENT_RATE"));
+                     if (r.get("CREDIT_OF") != null) {
+                         row.put("creditOf", r.get("CREDIT_OF"));
+                     }
+@@ -338,6 +344,32 @@ public class TestSupportController {
+         }
+     }
+ 
++    /** A whole number of instalments from 2 to 24; null (no plan) when left out. */
++    private static Integer instalments(Object value, String field) {
++        if (value == null) {
++            return null;
++        }
++        try {
++            int count = new BigDecimal(value.toString()).intValueExact();
++            if (count < Invoice.MIN_INSTALMENTS || count > Invoice.MAX_INSTALMENTS) {
++                throw refuse(field + " must be from " + Invoice.MIN_INSTALMENTS + " to " + Invoice.MAX_INSTALMENTS
++                        + ", not " + value);
++            }
++            return count;
++        } catch (NumberFormatException | ArithmeticException e) {
++            throw refuse(field + " must be a whole number, not " + value);
++        }
++    }
++
++    /** An annual interest rate from 0 to 30 with at most two decimals; none given is zero. */
++    private static BigDecimal instalmentRate(Object value, String field) {
++        BigDecimal rate = percent(value, field);
++        if (rate.compareTo(Invoice.MAX_INSTALMENT_RATE) > 0) {
++            throw refuse(field + " must be from 0 to " + Invoice.MAX_INSTALMENT_RATE + ", not " + value);
++        }
++        return rate;
++    }
++
+     /** A true/false flag; false when left out. */
+     private static boolean flag(Object value, String where) {
+         if (value == null) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Instalment.java b/src/main/java/net/officefloor/hq/app/invoices/Instalment.java
+new file mode 100644
+index 0000000..a6b13bd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/Instalment.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.invoices;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * One instalment of an invoice's plan: its number (from 1), the day it falls due, what is paid, the
++ * interest and principal it is made of, and the balance still owed after it; money to the cent.
++ */
++public record Instalment(int number, LocalDate dueDate, BigDecimal payment, BigDecimal interest,
++        BigDecimal principal, BigDecimal balance) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 7069b73..3d77c11 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -15,6 +15,7 @@ import jakarta.persistence.Table;
+ import org.hibernate.annotations.Formula;
+ import java.math.BigDecimal;
+ import java.math.BigInteger;
++import java.math.MathContext;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+@@ -41,6 +42,13 @@ public class Invoice {
+     /** Released retention falls due this many days after the day it was released. */
+     public static final int RETENTION_DUE_DAYS = 30;
+ 
++    /** The fewest and most monthly instalments a plan can have. */
++    public static final int MIN_INSTALMENTS = 2;
++    public static final int MAX_INSTALMENTS = 24;
++
++    /** The highest annual interest rate a plan can charge, as a percentage. */
++    public static final BigDecimal MAX_INSTALMENT_RATE = new BigDecimal("30");
++
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+     private Long id;
+@@ -78,6 +86,14 @@ public class Invoice {
+     @Column(name = "retention_released_on")
+     private LocalDate retentionReleasedOn;
+ 
++    /** How many monthly instalments the invoice is spread over; null when it has no plan. */
++    @Column(name = "instalments")
++    private Integer instalments;
++
++    /** The annual interest rate of the plan, a percentage from 0 to {@link #MAX_INSTALMENT_RATE}. */
++    @Column(name = "instalment_rate")
++    private BigDecimal instalmentRate = BigDecimal.ZERO;
++
+     /** Whether the invoice's client is tax exempt, so no line is taxed; read from the client. */
+     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
+     private boolean clientTaxExempt;
+@@ -143,6 +159,8 @@ public class Invoice {
+         copy.discountCap = discountCap;
+         copy.discountReason = discountReason;
+         copy.retentionPct = retentionPct;
++        copy.instalments = instalments;
++        copy.instalmentRate = instalmentRate;
+         lines.forEach(line -> copy.lines.add(line.copy()));
+         return copy;
+     }
+@@ -334,9 +352,80 @@ public class Invoice {
+         return retentionReleasedOn == null ? BigDecimal.ZERO.setScale(2) : retention(taxRate);
+     }
+ 
+-    /** What the invoice is owed in all, held retention left out: the grand total less what is credited and held. */
++    /**
++     * What the invoice is owed in all, held retention left out: the grand total (the plan total when it
++     * is spread over instalments) less what is credited and held.
++     */
+     private BigDecimal payable(BigDecimal taxRate) {
+-        return total(taxRate).subtract(getCredited()).subtract(retentionHeld(taxRate));
++        BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate);
++        return owed.subtract(getCredited()).subtract(retentionHeld(taxRate));
++    }
++
++    /** Whether the invoice is spread over monthly instalments. */
++    public boolean hasPlan() {
++        return instalments != null;
++    }
++
++    /** How many monthly instalments the invoice is spread over; null when it has no plan. */
++    public Integer getInstalments() {
++        return instalments;
++    }
++
++    /** The plan's annual interest rate, a percentage; 0 when it has no plan. */
++    public BigDecimal getInstalmentRate() {
++        return instalmentRate;
++    }
++
++    /** Spreads the invoice over the number of monthly instalments at the annual rate; both have already been checked. */
++    public void setPlan(int instalments, BigDecimal instalmentRate) {
++        this.instalments = instalments;
++        this.instalmentRate = instalmentRate;
++    }
++
++    /**
++     * The plan's schedule at the tax rate, an ordinary loan of the grand total; empty when there is no
++     * plan. With the monthly rate i (the annual rate / 12 / 100) the instalment is P x i / (1 - (1 +
++     * i)^-n), or P / n at 0%, rounded half up to the cent. Each month's interest is the balance still
++     * owed x i, rounded half up to the cent, and its principal the instalment less the interest; the
++     * last instalment pays off the whole balance left plus its interest, so the schedule ends at zero.
++     * Instalment k falls due k months after the issue date, on the same day (the month's last day when
++     * it is shorter).
++     */
++    public List<Instalment> schedule(BigDecimal taxRate) {
++        if (!hasPlan()) {
++            return List.of();
++        }
++        MathContext mc = MathContext.DECIMAL128;
++        BigDecimal principal = total(taxRate);
++        BigDecimal i = instalmentRate.divide(BigDecimal.valueOf(1200), mc);
++        int n = instalments;
++        BigDecimal payment;
++        if (i.signum() == 0) {
++            payment = principal.divide(BigDecimal.valueOf(n), 2, RoundingMode.HALF_UP);
++        } else {
++            BigDecimal growth = BigDecimal.ONE.add(i).pow(n, mc);
++            payment = principal.multiply(i).multiply(growth)
++                    .divide(growth.subtract(BigDecimal.ONE), mc).setScale(2, RoundingMode.HALF_UP);
++        }
++        List<Instalment> schedule = new ArrayList<>(n);
++        BigDecimal balance = principal.setScale(2, RoundingMode.HALF_UP);
++        for (int k = 1; k <= n; k++) {
++            BigDecimal interest = balance.multiply(i).setScale(2, RoundingMode.HALF_UP);
++            BigDecimal paid = k == n ? balance.add(interest) : payment;
++            BigDecimal repaid = paid.subtract(interest);
++            balance = balance.subtract(repaid);
++            LocalDate due = issueDate == null ? null : issueDate.plusMonths(k);
++            schedule.add(new Instalment(k, due, paid, interest, repaid, balance));
++        }
++        return schedule;
++    }
++
++    /** The plan total at the tax rate: the sum of the instalments; null when there is no plan. */
++    public BigDecimal planTotal(BigDecimal taxRate) {
++        if (!hasPlan()) {
++            return null;
++        }
++        return schedule(taxRate).stream().map(Instalment::payment).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
+     public List<InvoiceLine> getLines() {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index e9727f7..e847827 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -104,13 +104,17 @@ public class InvoiceController {
+      * {@code retentionPct} (without trailing zeros) is the share of the grand total held back as
+      * {@code retention}, rounded down to the cent; {@code retentionHeld} is what is still held back (not
+      * part of the amount due), {@code retentionReleasedOn} the day it was released (null while held) and
+-     * {@code retentionDueDate} the day released retention falls due.
++     * {@code retentionDueDate} the day released retention falls due. {@code instalments} is how many
++     * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
++     * (without trailing zeros); {@code schedule} lists them and {@code planTotal} is what they add up to
++     * (null without a plan), from which what is paid comes off for the amount due.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
+             String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
+-            String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate) {
++            String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
++            String instalmentRate, List<InstalmentView> schedule, String planTotal) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -133,7 +137,10 @@ public class InvoiceController {
+                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
+                     i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
+                     i.getRetentionPct().stripTrailingZeros().toPlainString(), i.retention(taxRate).toPlainString(),
+-                    i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate());
++                    i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate(),
++                    i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
++                    i.schedule(taxRate).stream().map(InstalmentView::of).toList(),
++                    i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null);
+         }
+     }
+ 
+@@ -236,6 +243,35 @@ public class InvoiceController {
+             BigDecimal retentionPct) {
+     }
+ 
++    /**
++     * A plan to spread a draft over: a whole number of monthly instalments from 2 to 24 and an annual
++     * interest rate from 0 to 30 with at most two decimals.
++     */
++    public record NewPlan(
++            @NotNull(message = "Enter the number of instalments.")
++            @DecimalMin(value = "2", message = "The plan must have from 2 to 24 instalments.")
++            @DecimalMax(value = "24", message = "The plan must have from 2 to 24 instalments.")
++            @Digits(integer = 2, fraction = 0, message = "The number of instalments must be a whole number.")
++            BigDecimal instalments,
++            @NotNull(message = "Enter the annual interest rate.")
++            @DecimalMin(value = "0", message = "The interest rate must be from 0 to 30 percent.")
++            @DecimalMax(value = "30", message = "The interest rate must be from 0 to 30 percent.")
++            @Digits(integer = 2, fraction = 2, message = "The interest rate can have at most two decimals.")
++            BigDecimal instalmentRate) {
++    }
++
++    /**
++     * One instalment of a plan: its number, the day it falls due, and its payment, interest, principal
++     * and the balance left after it, decimal strings to the cent.
++     */
++    public record InstalmentView(int number, LocalDate dueDate, String payment, String interest, String principal,
++            String balance) {
++        static InstalmentView of(Instalment i) {
++            return new InstalmentView(i.number(), i.dueDate(), i.payment().toPlainString(),
++                    i.interest().toPlainString(), i.principal().toPlainString(), i.balance().toPlainString());
++        }
++    }
++
+     /** A due date to set on a draft by hand. */
+     public record NewDueDate(
+             @NotNull(message = "Enter the due date.")
+@@ -396,6 +432,13 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    @PutMapping("/api/invoices/{id}/plan")
++    public InvoiceDetail setPlan(@PathVariable Long id, @Valid @RequestBody NewPlan body) {
++        return invoices.setPlan(id, body.instalments().intValueExact(), body.instalmentRate())
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /** Releases the retention held back on a sent invoice once nothing else is due. */
+     @PostMapping("/api/invoices/{id}/release-retention")
+     public InvoiceDetail releaseRetention(@PathVariable Long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+index 346214c..a859e73 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RestControllerAdvice(assignableTypes = InvoiceController.class)
+ public class InvoiceErrors {
+ 
+-    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "discountAmount", "discountCap", "discountReason", "discountGiven", "amount", "date", "reference", "dueDate", "retentionPct");
++    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "discountAmount", "discountCap", "discountReason", "discountGiven", "amount", "date", "reference", "dueDate", "retentionPct", "instalments", "instalmentRate");
+ 
+     @ExceptionHandler(MethodArgumentNotValidException.class)
+     public ProblemDetail invalid(MethodArgumentNotValidException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index e4f4cfe..3563274 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -267,12 +267,39 @@ public class InvoiceService {
+             if (!invoice.isDraft()) {
+                 throw new InvoiceRejectedException("Retention can only be set on a draft.");
+             }
++            if (invoice.hasPlan() && retentionPct.signum() > 0) {
++                throw new InvoiceRejectedException("An invoice spread over instalments cannot also hold back retention.");
++            }
+             invoice.setRetentionPct(retentionPct);
+             invoices.saveAndFlush(invoice);
+         });
+         return found;
+     }
+ 
++    /**
++     * Spreads a draft over the number of monthly instalments at the annual interest rate; empty if no
++     * such invoice. Both have already been checked; any invoice that is not a draft, a credit note, or
++     * one holding back retention is refused.
++     */
++    @Transactional
++    public Optional<Invoice> setPlan(Long invoiceId, int instalments, BigDecimal instalmentRate) {
++        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isCreditNote()) {
++                throw new InvoiceRejectedException("A credit note cannot be spread over instalments.");
++            }
++            if (!invoice.isDraft()) {
++                throw new InvoiceRejectedException("Only a draft can be spread over instalments.");
++            }
++            if (invoice.getRetentionPct().signum() > 0) {
++                throw new InvoiceRejectedException("An invoice holding back retention cannot also be spread over instalments.");
++            }
++            invoice.setPlan(instalments, instalmentRate);
++            invoices.saveAndFlush(invoice);
++        });
++        return found;
++    }
++
+     /**
+      * Releases the retention held back on a sent invoice today, adding it to the amount due (falling
+      * due {@link Invoice#RETENTION_DUE_DAYS} days later), and records it in the audit; empty if no such
+@@ -422,7 +449,8 @@ public class InvoiceService {
+ 
+     /**
+      * Issues the draft today, due on the client's terms, and records it in the audit; then uses the
+-     * client's credit on it (see {@link #applyCredit}).
++     * client's credit on it (see {@link #applyCredit}), unless it is spread over instalments, whose
++     * schedule is dated from the new issue date.
+      */
+     private void markSent(Invoice invoice) {
+         LocalDate issued = today.date();
+@@ -430,7 +458,9 @@ public class InvoiceService {
+         invoices.saveAndFlush(invoice);
+         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
+                 + " total=" + invoice.total(taxRate.percent()).toPlainString());
+-        applyCredit(invoice);
++        if (!invoice.hasPlan()) {
++            applyCredit(invoice);
++        }
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/migration/V22__invoice_instalment_plan.sql b/src/main/resources/db/migration/V22__invoice_instalment_plan.sql
+new file mode 100644
+index 0000000..9243eb6
+--- /dev/null
++++ b/src/main/resources/db/migration/V22__invoice_instalment_plan.sql
+@@ -0,0 +1,4 @@
++-- A draft spread over monthly instalments: how many (2 to 24; null when there is no plan) and the
++-- annual interest rate (0 to 30, up to two decimals) the schedule is worked out at.
++ALTER TABLE invoice ADD COLUMN instalments INT;
++ALTER TABLE invoice ADD COLUMN instalment_rate DECIMAL(5, 2) DEFAULT 0 NOT NULL;
