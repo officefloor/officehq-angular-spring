@@ -53,6 +53,11 @@ public class InvoiceLine {
         this.taxRate = taxRate;
     }
 
+    /** A new line with the same description, quantity, price, discount, tax rate and exemption. */
+    public InvoiceLine copy() {
+        return new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate);
+    }
+
     public Long getId() {
         return id;
     }

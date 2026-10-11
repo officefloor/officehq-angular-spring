@@ -178,6 +178,12 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/send`, null);
   }
 
+  // Copies an invoice into a new draft for the same client: its lines and invoice discount, issued
+  // today and due as any new invoice; payments are not copied. Answers the new draft.
+  duplicate(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/duplicate`, null);
+  }
+
   // Voids a sent invoice with no payments; refused (409) for a draft, a void invoice or one with
   // payments. Answers the invoice with its new status.
   void(invoiceId: number): Observable<InvoiceDetail> {

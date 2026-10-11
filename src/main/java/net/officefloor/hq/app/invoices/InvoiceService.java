@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Lists a client's invoices, opens one, starts new drafts, adds lines to them, gives them a discount,
+ * Lists a client's invoices, opens one, starts new drafts, duplicates one, adds lines to them, gives them a discount,
  * sends them, voids them and records payments against them.
  */
 @Service
@@ -66,6 +66,22 @@ public class InvoiceService {
         }
         LocalDate issued = today.date();
         return Optional.of(invoices.save(Invoice.draft(clientId, issued, dueDateFor(issued))));
+    }
+
+    /**
+     * A new draft for the invoice's client with copies of its lines and the same invoice discount,
+     * issued today and due as any new invoice is, and records it in the audit; empty if no such
+     * invoice. Payments are not copied.
+     */
+    @Transactional
+    public Optional<Invoice> duplicate(Long invoiceId) {
+        return invoices.findWithLinesById(invoiceId).map(original -> {
+            LocalDate issued = today.date();
+            Invoice copy = invoices.saveAndFlush(original.duplicate(issued, dueDateFor(issued)));
+            audit.record("INVOICE_DUPLICATED from=" + InvoiceNumber.of(original.getId())
+                    + " to=" + InvoiceNumber.of(copy.getId()));
+            return copy;
+        });
     }
 
     /** A new invoice is due on the last day of the month after the month it is issued in. */

@@ -122,7 +122,8 @@ function problemWith(line: NewLine): string {
 // payment is spread over those invoices instead; each payment shows how much of it went here.
 // A sent invoice with no payments can be voided; the server refuses to void a draft or one with
 // payments, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
-// cheque): it is undone on every invoice it was applied to and never counts again.
+// cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
+// be duplicated into a new draft for the same client, which then opens.
 @Component({
   selector: 'app-invoice-panel',
   imports: [ReactiveFormsModule, PaymentForm],
@@ -206,56 +207,54 @@ function problemWith(line: NewLine): string {
           </tfoot>
         </table>
 
-        @if (inv.status !== 'DRAFT') {
-          <table aria-label="Payments">
-            <thead>
-              <tr>
-                <th scope="col">Paid on</th>
-                <th scope="col">Amount</th>
-                <th scope="col">To this invoice</th>
-                <th scope="col">Reference</th>
-                <th scope="col">Actions</th>
+        <table aria-label="Payments">
+          <thead>
+            <tr>
+              <th scope="col">Paid on</th>
+              <th scope="col">Amount</th>
+              <th scope="col">To this invoice</th>
+              <th scope="col">Reference</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (p of inv.payments; track p.id) {
+              <tr [attr.data-testid]="'payment-row-' + p.id">
+                <td data-testid="payment-date">{{ p.date }}</td>
+                <td data-testid="payment-amount">{{ money(p.amount) }}</td>
+                <td data-testid="payment-allocated">{{ money(p.allocated) }}</td>
+                <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
+                <td>
+                  <button
+                    type="button"
+                    data-testid="payment-reverse"
+                    [disabled]="reversing()"
+                    [attr.aria-label]="'Reverse payment of ' + money(p.amount) + ' on ' + p.date"
+                    (click)="reversePayment(inv.id, inv.clientId, p.id)"
+                  >
+                    Reverse
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              @for (p of inv.payments; track p.id) {
-                <tr [attr.data-testid]="'payment-row-' + p.id">
-                  <td data-testid="payment-date">{{ p.date }}</td>
-                  <td data-testid="payment-amount">{{ money(p.amount) }}</td>
-                  <td data-testid="payment-allocated">{{ money(p.allocated) }}</td>
-                  <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
-                  <td>
-                    <button
-                      type="button"
-                      data-testid="payment-reverse"
-                      [disabled]="reversing()"
-                      [attr.aria-label]="'Reverse payment of ' + money(p.amount) + ' on ' + p.date"
-                      (click)="reversePayment(inv.id, inv.clientId, p.id)"
-                    >
-                      Reverse
-                    </button>
-                  </td>
-                </tr>
-              } @empty {
-                <tr>
-                  <td colspan="5" data-testid="payment-empty">No payments yet.</td>
-                </tr>
-              }
-            </tbody>
-            <tfoot>
+            } @empty {
               <tr>
-                <th scope="row" colspan="4">Paid</th>
-                <td data-testid="invoice-paid">{{ money(inv.paid) }}</td>
+                <td colspan="5" data-testid="payment-empty">No payments yet.</td>
               </tr>
-              <tr>
-                <th scope="row" colspan="4">Amount due</th>
-                <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
-              </tr>
-            </tfoot>
-          </table>
-          @if (reverseError()) {
-            <p role="alert" data-testid="payment-reverse-error">{{ reverseError() }}</p>
-          }
+            }
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row" colspan="4">Paid</th>
+              <td data-testid="invoice-paid">{{ money(inv.paid) }}</td>
+            </tr>
+            <tr>
+              <th scope="row" colspan="4">Amount due</th>
+              <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+        @if (reverseError()) {
+          <p role="alert" data-testid="payment-reverse-error">{{ reverseError() }}</p>
         }
 
         @if (inv.status !== 'PAID') {
@@ -275,6 +274,18 @@ function problemWith(line: NewLine): string {
           @if (sendError()) {
             <p role="alert" data-testid="invoice-send-error">{{ sendError() }}</p>
           }
+        }
+
+        <button
+          type="button"
+          data-testid="invoice-duplicate"
+          [disabled]="duplicating()"
+          (click)="duplicate(inv.id)"
+        >
+          Duplicate invoice
+        </button>
+        @if (duplicateError()) {
+          <p role="alert" data-testid="invoice-duplicate-error">{{ duplicateError() }}</p>
         }
 
         @if (inv.status !== 'VOID') {
@@ -387,6 +398,8 @@ export class InvoicePanel {
   readonly allocations = input<NewAllocation[]>([]);
   // The client's invoices after a payment spread over several of them.
   readonly split = output<InvoiceSummary[]>();
+  // A new draft copied from this invoice, to be listed and opened.
+  readonly duplicated = output<InvoiceDetail>();
 
   protected readonly invoice = signal<InvoiceDetail | null>(null);
   protected readonly saving = signal(false);
@@ -395,6 +408,8 @@ export class InvoicePanel {
   protected readonly discountError = signal('');
   protected readonly sending = signal(false);
   protected readonly sendError = signal('');
+  protected readonly duplicating = signal(false);
+  protected readonly duplicateError = signal('');
   protected readonly voiding = signal(false);
   protected readonly voidError = signal('');
   protected readonly reversing = signal(false);
@@ -427,6 +442,7 @@ export class InvoicePanel {
       this.discountError.set('');
       this.sendError.set('');
       this.voidError.set('');
+      this.duplicateError.set('');
       this.reverseError.set('');
       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
       onCleanup(() => sub.unsubscribe());
@@ -553,6 +569,24 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The invoice could not be sent.',
         );
         this.sending.set(false);
+      },
+    });
+  }
+
+  protected duplicate(invoiceId: number): void {
+    this.duplicating.set(true);
+    this.duplicateError.set('');
+    this.service.duplicate(invoiceId).subscribe({
+      next: (detail) => {
+        this.duplicating.set(false);
+        this.duplicated.emit(detail);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.duplicateError.set(
+          typeof detail === 'string' && detail ? detail : 'The invoice could not be duplicated.',
+        );
+        this.duplicating.set(false);
       },
     });
   }

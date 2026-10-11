@@ -101,6 +101,7 @@ import { money, statusLabel } from './invoice-format';
         [allocations]="allocations()"
         (changed)="totalChanged($event)"
         (split)="splitRecorded($event)"
+        (duplicated)="duplicated($event)"
       />
     } @else if (invoices().length > 0) {
       <app-payment-form
@@ -165,6 +166,13 @@ export class ClientInvoices {
       },
       error: () => this.creating.set(false),
     });
+  }
+
+  // An invoice was duplicated: list the new draft and open it.
+  protected duplicated(detail: InvoiceDetail): void {
+    const { id, number, status, total, issueDate, dueDate } = detail;
+    this.invoices.update((list) => [...list, { id, number, status, total, issueDate, dueDate }]);
+    this.selectedId.set(id);
   }
 
   protected allocate(invoiceId: number, amount: string): void {

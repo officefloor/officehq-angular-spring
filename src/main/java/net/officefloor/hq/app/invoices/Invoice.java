@@ -68,6 +68,19 @@ public class Invoice {
         return invoice;
     }
 
+    /**
+     * A new draft for the same client with copies of this invoice's lines and the same invoice
+     * discount, issued and due on the given dates. Payments stay with this invoice.
+     */
+    public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
+        Invoice copy = draft(clientId, issueDate, dueDate);
+        copy.discountPct = discountPct;
+        copy.discountAmount = discountAmount;
+        copy.discountCap = discountCap;
+        lines.forEach(line -> copy.lines.add(line.copy()));
+        return copy;
+    }
+
     public Long getId() {
         return id;
     }

@@ -301,6 +301,14 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 
+    @PostMapping("/api/invoices/{id}/duplicate")
+    @ResponseStatus(HttpStatus.CREATED)
+    public InvoiceDetail duplicate(@PathVariable Long id) {
+        return invoices.duplicate(id)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
     @PostMapping("/api/invoices/{id}/send")
     public InvoiceDetail send(@PathVariable Long id) {
         return invoices.send(id)
