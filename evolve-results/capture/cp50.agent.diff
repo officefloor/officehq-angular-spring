@@ -1,0 +1,224 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 31a03ac..2db44e8 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -228,6 +228,8 @@ export class InvoiceService {
+ 
+   // Records one payment spread over several of the client's invoices; refused (409) unless the parts
+   // add up to the payment and each goes to a sent invoice of the client, no more than it has due.
++  // With no parts it goes to the invoices whose references are quoted (comma separated), earliest due
++  // date first, refused when one is mistyped (400), not the client's, or they owe less than the payment.
+   // Answers the client's invoices with their new statuses.
+   recordSplitPayment(clientId: number, payment: NewSplitPayment): Observable<InvoiceSummary[]> {
+     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment);
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index 370ebbe..de730e1 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -47,8 +47,14 @@ function invoiceNumberChecks(typed: string): boolean {
+   return (10 - (sum % 10)) % 10 === Number(m[2]);
+ }
+ 
+-// What is wrong with a payment, or '' when it can be recorded.
+-function problemWithPayment(payment: NewPayment): string {
++// Whether a typed reference (an RF reference or an invoice number) passes its check.
++function quotedReferenceChecks(reference: string): boolean {
++  return reference.startsWith('INV') ? invoiceNumberChecks(reference) : referenceChecks(reference);
++}
++
++// What is wrong with a payment, or '' when it can be recorded. With `several` the reference box may
++// hold several references separated by commas, each checked on its own.
++function problemWithPayment(payment: NewPayment, several: boolean): string {
+   const problems: string[] = [];
+   if (!payment.amount) {
+     problems.push('Enter an amount.');
+@@ -60,13 +66,18 @@ function problemWithPayment(payment: NewPayment): string {
+   if (!/^\d{4}-\d{2}-\d{2}$/.test(payment.date)) {
+     problems.push('Enter the date it was paid.');
+   }
+-  if (
+-    payment.reference &&
+-    !(payment.reference.startsWith('INV')
+-      ? invoiceNumberChecks(payment.reference)
+-      : referenceChecks(payment.reference))
+-  ) {
+-    problems.push('The payment reference is mistyped: check it against the invoice.');
++  const quoted = several
++    ? payment.reference.split(',').filter((r) => r)
++    : payment.reference
++      ? [payment.reference]
++      : [];
++  const mistyped = quoted.filter((r) => !quotedReferenceChecks(r));
++  if (mistyped.length > 0) {
++    problems.push(
++      quoted.length > 1
++        ? `Mistyped payment reference: ${mistyped.join(', ')}. Check it against the invoice.`
++        : 'The payment reference is mistyped: check it against the invoice.',
++    );
+   }
+   return problems.join(' ');
+ }
+@@ -88,7 +99,8 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
+ }
+ 
+ // Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`), or, when none
+-// is open, to the client's invoice with the quoted reference, or without one to the client's unpaid invoices earliest due date first; once any invoice in the list has a part, the
++// is open, to the client's invoices whose references are quoted (several may be, separated by
++// commas: RF references or invoice numbers, applied earliest due date first), or without one to the client's unpaid invoices earliest due date first; once any invoice in the list has a part, the
+ // payment is spread over those invoices instead, and the parts must add up to it. The server refuses a payment on a draft, over what is due, or dated after today
+ // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
+ // invoice number may be quoted instead: it must pass its Luhn check and stands for that invoice's reference.
+@@ -113,7 +125,13 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
+         formControlName="date"
+         required
+       />
+-      <label for="payment-reference">Reference or invoice number quoted (optional)</label>
++      <label for="payment-reference">
++        @if (invoiceId() === null) {
++          References or invoice numbers quoted, separated by commas (optional)
++        } @else {
++          Reference or invoice number quoted (optional)
++        }
++      </label>
+       <input
+         id="payment-reference"
+         data-testid="payment-form-reference"
+@@ -160,7 +178,7 @@ export class PaymentForm {
+     };
+     const allocations = this.allocations();
+     const invoiceId = this.invoiceId();
+-    let problem = problemWithPayment(payment);
++    let problem = problemWithPayment(payment, allocations.length === 0 && invoiceId === null);
+     if (allocations.length > 0) {
+       problem = [problem, problemWithAllocations(payment, allocations)].filter((p) => p).join(' ');
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 47a17a3..dbf7f61 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -10,6 +10,7 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.Arrays;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+@@ -214,7 +215,7 @@ public class InvoiceController {
+             BigDecimal amount,
+             @NotNull(message = "Enter the date it was paid.")
+             LocalDate date,
+-            @Size(max = 64, message = "The reference must be at most 64 characters.")
++            @Size(max = 255, message = "The references must be at most 255 characters.")
+             String reference,
+             @NotNull(message = "Enter how much of the payment goes to each invoice.")
+             List<@Valid NewAllocation> allocations) {
+@@ -365,14 +366,15 @@ public class InvoiceController {
+ 
+     /**
+      * Records one payment spread over several of the client's invoices, or, with no parts given,
+-     * applied wholly to the invoice with the quoted reference or, with none, to its oldest unpaid invoices first; answers the client's invoices
++     * applied to the invoices whose references are quoted (several may be, separated by commas) or, with none,
++     * to all its unpaid invoices, earliest due date first; answers the client's invoices
+      * with their new statuses.
+      */
+     @PostMapping("/api/clients/{clientId}/payments")
+     @ResponseStatus(HttpStatus.CREATED)
+     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
+         if (body.allocations().isEmpty()) {
+-            invoices.recordAutoPayment(clientId, body.amount(), body.date(), reference(body.reference()));
++            invoices.recordAutoPayment(clientId, body.amount(), body.date(), references(body.reference()));
+         } else {
+             invoices.recordSplitPayment(clientId, body.amount(), body.date(), reference(body.reference()),
+                     body.allocations().stream().map(a -> new PaymentAllocation(a.invoiceId(), a.amount())).toList());
+@@ -395,6 +397,21 @@ public class InvoiceController {
+                 HttpStatus.BAD_REQUEST, typed.trim() + " is mistyped: check the payment reference."));
+     }
+ 
++    /**
++     * The references quoted, separated by commas, each without spaces and in the order typed (an
++     * invoice number standing for its RF reference); empty when none was. A mistyped one is refused.
++     */
++    private static List<String> references(String typed) {
++        if (typed == null || typed.isBlank()) {
++            return List.of();
++        }
++        return Arrays.stream(typed.split(","))
++                .filter(part -> !part.isBlank())
++                .map(InvoiceController::reference)
++                .distinct()
++                .toList();
++    }
++
+     @PostMapping("/api/invoices/{id}/payments")
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 0919244..d39c5c2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -415,21 +415,35 @@ public class InvoiceService {
+      * paying each off in full before the next.
+      * A payment more than everything the client owes is refused; otherwise it is checked and recorded
+      * as a split payment over the invoices it reaches.
+-     * A reference (null when none, already checked) instead sends the whole payment to the client's
+-     * invoice with that reference; one that is not the reference of any of the client's invoices is refused.
++     * References (empty when none, each already checked) instead limit the payment to the client's
++     * invoices with those references, applied in the same order; one that is not the reference of any
++     * of the client's invoices is refused, as is a payment more than those invoices owe together.
++     * The payment keeps the reference of the first invoice it reaches.
+      */
+     @Transactional
+-    public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, String reference) {
+-        if (reference != null) {
+-            Invoice named = invoices.findByClientIdOrderByIdAsc(clientId).stream()
+-                    .filter(i -> reference.equals(PaymentReference.of(i.getId())))
+-                    .findFirst()
+-                    .orElseThrow(() -> new InvoiceRejectedException(PaymentReference.grouped(reference)
+-                            + " is not the reference of any of this client's invoices."));
+-            return recordSplitPayment(clientId, amount, date, reference,
+-                    List.of(new PaymentAllocation(named.getId(), amount)));
++    public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, List<String> references) {
++        List<Invoice> ofClient = invoices.findByClientIdOrderByIdAsc(clientId);
++        List<Invoice> candidates = ofClient;
++        if (!references.isEmpty()) {
++            Set<Long> named = new HashSet<>();
++            for (String reference : references) {
++                Invoice invoice = ofClient.stream()
++                        .filter(i -> reference.equals(PaymentReference.of(i.getId())))
++                        .findFirst()
++                        .orElseThrow(() -> new InvoiceRejectedException(PaymentReference.grouped(reference)
++                                + " is not the reference of any of this client's invoices."));
++                String number = InvoiceNumber.of(invoice.getId());
++                if (invoice.isDraft()) {
++                    throw new InvoiceRejectedException("Send " + number + " before recording a payment against it.");
++                }
++                if (invoice.isVoid()) {
++                    throw new InvoiceRejectedException(number + " is void and takes no payments.");
++                }
++                named.add(invoice.getId());
++            }
++            candidates = ofClient.stream().filter(i -> named.contains(i.getId())).toList();
+         }
+-        List<Invoice> sent = invoices.findByClientIdOrderByIdAsc(clientId).stream()
++        List<Invoice> sent = candidates.stream()
+                 .filter(i -> !i.isDraft() && !i.isVoid())
+                 .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                         .thenComparing(Invoice::getId))
+@@ -451,12 +465,14 @@ public class InvoiceService {
+             }
+         }
+         if (owed.signum() <= 0) {
+-            throw new InvoiceRejectedException("The client has no unpaid invoices to pay.");
++            throw new InvoiceRejectedException(references.isEmpty() ? "The client has no unpaid invoices to pay."
++                    : "Those invoices have already been paid.");
+         }
+         if (left.signum() > 0) {
+             throw new InvoiceRejectedException("The payment is more than the $" + owed.setScale(2).toPlainString()
+-                    + " the client owes.");
++                    + (references.isEmpty() ? " the client owes." : " those invoices owe together."));
+         }
++        String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
+         return recordSplitPayment(clientId, amount, date, reference, parts);
+     }
+ 
