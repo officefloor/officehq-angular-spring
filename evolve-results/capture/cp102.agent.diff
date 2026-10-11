@@ -1,0 +1,551 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index c8d6536..c069348 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -30,6 +30,10 @@ export interface Client {
+   // The region the client is in (a state, say): its invoices are taxed at the region's rate from the
+   // workspace's regional rates when one is listed; null for no region.
+   region: string | null;
++  // The client's tax number without spaces: two letters then ten digits, the last two a check on the
++  // first eight. With a valid one and a region outside the workspace's home region its invoices are
++  // reverse charged; null for no number.
++  taxNumber: string | null;
+ }
+ 
+ export type NewClient = Omit<Client, 'id'>;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 8fd5aad..48c66f5 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -12,6 +12,16 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+ // The grace period, in days past the due date, a client is given when none is set: a week.
+ const STANDARD_GRACE_DAYS = 7;
+ 
++// A tax number (spaces already removed) is two letters then ten digits whose last two digits are
++// 97 less the remainder of the first eight divided by 97 (a remainder of 0 gives 97).
++function validTaxNumber(taxNumber: string): boolean {
++  if (!/^[A-Za-z]{2}\d{10}$/.test(taxNumber)) {
++    return false;
++  }
++  const remainder = Number(taxNumber.slice(2, 10)) % 97;
++  return (remainder === 0 ? 97 : 97 - remainder) === Number(taxNumber.slice(10));
++}
++
+ // The workspace's clients: listed A to Z by name (ignoring capitals), with a form to add one.
+ // Clicking a client lists that client's invoices beside the clients. Typing an invoice number into
+ // the lookup box selects its client and opens the invoice; a mistyped number opens nothing.
+@@ -160,6 +170,14 @@ const STANDARD_GRACE_DAYS = 7;
+           maxlength="64"
+           formControlName="region"
+         />
++        <label for="client-tax-number">Tax number (optional, two letters then ten digits)</label>
++        <input
++          id="client-tax-number"
++          data-testid="client-form-tax-number"
++          type="text"
++          maxlength="64"
++          formControlName="taxNumber"
++        />
+         <label for="client-early-pct">Early-payment discount % (optional)</label>
+         <input
+           id="client-early-pct"
+@@ -253,6 +271,7 @@ export class Clients {
+     graceDays: new FormControl<number | null>(null),
+     interestRate: new FormControl<number | null>(null),
+     region: new FormControl('', { nonNullable: true }),
++    taxNumber: new FormControl('', { nonNullable: true }),
+     earlyPct: new FormControl<number | null>(null),
+     earlyDays: new FormControl<number | null>(null),
+     taxExempt: new FormControl(false, { nonNullable: true }),
+@@ -289,6 +308,7 @@ export class Clients {
+     const interest = this.form.controls.interestRate.value;
+     const interestRate = interest === null || (interest as unknown) === '' ? null : Number(interest);
+     const region = this.form.controls.region.value.trim();
++    const taxNumber = this.form.controls.taxNumber.value.replace(/ /g, '');
+     const taxExempt = this.form.controls.taxExempt.value;
+     const currency = this.form.controls.currency.value;
+     const early = this.form.controls.earlyPct.value;
+@@ -304,6 +324,7 @@ export class Clients {
+       graceDays,
+       interestRate,
+       region,
++      taxNumber,
+       earlyPct: earlyPayPct,
+       earlyDays: earlyPayDays,
+       taxExempt,
+@@ -319,6 +340,7 @@ export class Clients {
+       interestRate,
+       earlyPayPct,
+       earlyPayDays,
++      taxNumber,
+     );
+     if (problem) {
+       this.form.markAllAsTouched();
+@@ -340,6 +362,7 @@ export class Clients {
+       graceDays: graceDays ?? STANDARD_GRACE_DAYS,
+       interestRate,
+       region: region || null,
++      taxNumber: taxNumber || null,
+     };
+     this.service.add(client).subscribe({
+       next: (created) => {
+@@ -401,6 +424,7 @@ export class Clients {
+     interestRate: number | null,
+     earlyPayPct: number | null,
+     earlyPayDays: number | null,
++    taxNumber: string,
+   ): string {
+     const problems: string[] = [];
+     if (!name) {
+@@ -453,6 +477,11 @@ export class Clients {
+     if ((earlyPayPct === null || earlyPayPct === 0) !== (earlyPayDays === null)) {
+       problems.push('Enter both the early-payment discount and its number of days, or neither.');
+     }
++    if (taxNumber && !validTaxNumber(taxNumber)) {
++      problems.push(
++        'Enter a tax number of two letters then ten digits whose last two digits check the first eight, or leave it blank.',
++      );
++    }
+     return problems.join(' ');
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 3dc9af3..db1ecf0 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -316,6 +316,11 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="invoice-discount-reason">{{ inv.discountReason }}</td>
+               </tr>
+             }
++            @if (inv.reverseCharge) {
++              <tr>
++                <td colspan="9" data-testid="invoice-reverse-charge">Reverse charge</td>
++              </tr>
++            }
+             <tr>
+               <th scope="row" colspan="8">Tax (lines at their own rate, otherwise {{ inv.taxRate }}%)</th>
+               <td data-testid="invoice-tax">{{ amount(inv.tax) }}</td>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 3aa02dc..a284375 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -166,6 +166,9 @@ export interface InvoiceDetail {
+   // The day (yyyy-mm-dd) it was written off as a bad debt, null when it was not; everything it still
+   // owed then, late charges and retention included, is in `writtenOff`.
+   writtenOffOn: string | null;
++  // Whether it is reverse charged: its client is registered (a valid tax number) outside the
++  // workspace's home region and accounts for the tax itself, so no line is taxed.
++  reverseCharge: boolean;
+ }
+ 
+ // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
+diff --git a/src/main/java/net/officefloor/hq/app/TaxRate.java b/src/main/java/net/officefloor/hq/app/TaxRate.java
+index bee3556..28bdb57 100644
+--- a/src/main/java/net/officefloor/hq/app/TaxRate.java
++++ b/src/main/java/net/officefloor/hq/app/TaxRate.java
+@@ -20,6 +20,9 @@ public class TaxRate {
+     /** The prefix of the setting holding a region's rate, followed by the region (region_tax_rate_NY). */
+     public static final String REGION_TAX_RATE = "region_tax_rate_";
+ 
++    /** The setting holding the workspace's home region: registered clients outside it are reverse charged. */
++    public static final String HOME_REGION = "home_region";
++
+     private final JdbcTemplate jdbc;
+ 
+     public TaxRate(JdbcTemplate jdbc) {
+@@ -49,4 +52,10 @@ public class TaxRate {
+                         new BigDecimal((String) r.get("SETTING_VALUE"))));
+         return rates;
+     }
++
++    /** The workspace's home region; null when none is set. */
++    public String homeRegion() {
++        return jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class, HOME_REGION)
++                .stream().findFirst().orElse(null);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 38f1068..1882ebd 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -37,9 +37,9 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion");
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine");
+@@ -162,6 +162,13 @@ public class TestSupportController {
+                             TaxRate.REGION_TAX_RATE + region, rate.toPlainString());
+                 }
+             }
++            if (values.get("homeRegion") != null) {
++                String home = values.get("homeRegion").toString();
++                if (home.isBlank()) {
++                    throw refuse("settings.homeRegion must name a region");
++                }
++                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", TaxRate.HOME_REGION, home);
++            }
+             for (Map<String, Object> rate : rows(values.get("fxRates"), "settings.fxRates")) {
+                 only(rate, FX_RATE_FIELDS, "settings.fxRates[]");
+                 if (rate.get("from") == null || rate.get("currency") == null || rate.get("usdPer") == null) {
+@@ -189,7 +196,7 @@ public class TestSupportController {
+             if (Currency.of(currency) == null) {
+                 throw refuse("unsupported value of clients[].currency: " + currency);
+             }
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region"},
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+                     percent(row.get("discountPct"), "clients[].discountPct"),
+                     flag(row.get("taxExempt"), "clients[].taxExempt"), currency,
+@@ -198,7 +205,8 @@ public class TestSupportController {
+                     percent(row.get("retentionPct"), "clients[].retentionPct"),
+                     graceDays(row.get("graceDays"), "clients[].graceDays"),
+                     interestRate(row.get("interestRate"), "clients[].interestRate"),
+-                    row.get("region") == null ? null : row.get("region").toString());
++                    row.get("region") == null ? null : row.get("region").toString(),
++                    row.get("taxNumber") == null ? null : row.get("taxNumber").toString());
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+             only(row, INVOICE_FIELDS, "invoices[]");
+@@ -352,6 +360,10 @@ public class TestSupportController {
+         if (!regionTaxRates.isEmpty()) {
+             settings.put("regionTaxRates", regionTaxRates);
+         }
++        String homeRegion = this.taxRate.homeRegion();
++        if (homeRegion != null) {
++            settings.put("homeRegion", homeRegion);
++        }
+         Map<String, BigDecimal> rates = exchangeRates.all();
+         if (!rates.isEmpty()) {
+             settings.put("usdPer", rates);
+@@ -369,7 +381,7 @@ public class TestSupportController {
+         if (!settings.isEmpty()) {
+             out.put("settings", settings);
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -393,6 +405,9 @@ public class TestSupportController {
+                     if (r.get("REGION") != null) {
+                         row.put("region", r.get("REGION"));
+                     }
++                    if (r.get("TAX_NUMBER") != null) {
++                        row.put("taxNumber", r.get("TAX_NUMBER"));
++                    }
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 4336fcc..4d497ad 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -71,6 +71,13 @@ public class Client {
+      */
+     private String region;
+ 
++    /**
++     * The client's tax number, without spaces (see {@link TaxNumber}): with a valid one and a region
++     * outside the workspace's home region its invoices are reverse charged; null for no number.
++     */
++    @Column(name = "tax_number")
++    private String taxNumber;
++
+     /** The highest late-interest rate a client can be given, as a percentage. */
+     public static final int MAX_INTEREST_RATE = 30;
+ 
+@@ -82,7 +89,7 @@ public class Client {
+ 
+     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
+-            Integer graceDays, BigDecimal interestRate, String region) {
++            Integer graceDays, BigDecimal interestRate, String region, String taxNumber) {
+         this.name = name;
+         this.email = email;
+         this.termsDays = termsDays;
+@@ -95,6 +102,7 @@ public class Client {
+         this.graceDays = graceDays == null ? Invoice.GRACE_DAYS : graceDays;
+         this.interestRate = interestRate;
+         this.region = region;
++        this.taxNumber = taxNumber;
+     }
+ 
+     public Long getId() {
+@@ -148,4 +156,8 @@ public class Client {
+     public String getRegion() {
+         return region;
+     }
++
++    public String getTaxNumber() {
++        return taxNumber;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 596d2fa..9b6360d 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -27,11 +27,11 @@ public class ClientController {
+ 
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+             boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+-            BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region) {
++            BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+                     c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+-                    c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion());
++                    c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber());
+         }
+     }
+ 
+@@ -78,7 +78,14 @@ public class ClientController {
+             BigDecimal interestRate,
+             /** The region the client is in; none when left out or blank. */
+             @Size(max = 64, message = "The region must be at most 64 characters.")
+-            String region) {
++            String region,
++            /** The client's tax number; none when left out or blank. */
++            String taxNumber) {
++
++        @AssertTrue(message = "Enter a tax number of two letters then ten digits whose last two digits check the first eight, or leave it blank.")
++        public boolean isTaxNumberValid() {
++            return TaxNumber.normalize(taxNumber) == null || TaxNumber.isValid(taxNumber);
++        }
+ 
+         @AssertTrue(message = "Enter both the early-payment discount and its number of days, or neither.")
+         public boolean isEarlyPayComplete() {
+@@ -108,6 +115,6 @@ public class ClientController {
+     public ClientView add(@Valid @RequestBody NewClient body) {
+         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+                 Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
+-                body.retentionPct(), body.graceDays(), body.interestRate(), body.region()));
++                body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index e91b454..d78cd13 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -32,12 +32,12 @@ public class ClientService {
+     @Transactional
+     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays,
+-            BigDecimal interestRate, String region) {
++            BigDecimal interestRate, String region, String taxNumber) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+         return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays, interestRate,
+-                region == null || region.isBlank() ? null : region.trim()));
++                region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber)));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/TaxNumber.java b/src/main/java/net/officefloor/hq/app/clients/TaxNumber.java
+new file mode 100644
+index 0000000..14fa9a1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/TaxNumber.java
+@@ -0,0 +1,31 @@
++package net.officefloor.hq.app.clients;
++
++/**
++ * A client's tax number: two letters then ten digits, spaces ignored, where the last two digits are
++ * a check — 97 less the remainder of the first eight divided by 97 (a remainder of 0 gives 97).
++ */
++public final class TaxNumber {
++
++    private TaxNumber() {
++    }
++
++    /** The number without its spaces; null when there is none. */
++    public static String normalize(String number) {
++        if (number == null) {
++            return null;
++        }
++        String compact = number.replace(" ", "");
++        return compact.isEmpty() ? null : compact;
++    }
++
++    /** Whether the number, spaces ignored, is in the form and passes its check. */
++    public static boolean isValid(String number) {
++        String compact = normalize(number);
++        if (compact == null || !compact.matches("[A-Za-z]{2}[0-9]{10}")) {
++            return false;
++        }
++        int remainder = Integer.parseInt(compact.substring(2, 10)) % 97;
++        int check = remainder == 0 ? 97 : 97 - remainder;
++        return check == Integer.parseInt(compact.substring(10));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 63e507f..b93045c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -24,6 +24,7 @@ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.List;
+ import net.officefloor.hq.app.clients.Currency;
++import net.officefloor.hq.app.clients.TaxNumber;
+ 
+ /** An invoice raised for a client, made of lines. */
+ @Entity
+@@ -151,6 +152,15 @@ public class Invoice {
+     @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_tax_rate_' || c.region)")
+     private String regionTaxRate;
+ 
++    /**
++     * The tax number of the invoice's client when the client is in a region other than the workspace's
++     * home region; read from them, null when it has no number, no region, is in the home region or
++     * there is no home region. With a valid number the invoice is reverse charged (see {@link #isReverseCharge}).
++     */
++    @Formula("(SELECT c.tax_number FROM client c WHERE c.id = client_id AND c.region IS NOT NULL"
++            + " AND c.region <> (SELECT s.setting_value FROM app_setting s WHERE s.name = 'home_region'))")
++    private String outOfRegionTaxNumber;
++
+     /** The id of the invoice this credit note credits; null for an ordinary invoice. */
+     @Column(name = "credit_of")
+     private Long creditOf;
+@@ -296,12 +306,13 @@ public class Invoice {
+     }
+ 
+     /** A new, empty draft for a client, issued and due on the given dates. */
+-    public static Invoice draft(Long clientId, boolean clientTaxExempt, String regionTaxRate, Currency currency,
+-            LocalDate issueDate, LocalDate dueDate) {
++    public static Invoice draft(Long clientId, boolean clientTaxExempt, String regionTaxRate, String outOfRegionTaxNumber,
++            Currency currency, LocalDate issueDate, LocalDate dueDate) {
+         Invoice invoice = new Invoice();
+         invoice.clientId = clientId;
+         invoice.clientTaxExempt = clientTaxExempt;
+         invoice.regionTaxRate = regionTaxRate;
++        invoice.outOfRegionTaxNumber = outOfRegionTaxNumber;
+         invoice.clientCurrency = currency.name();
+         invoice.status = InvoiceStatus.DRAFT;
+         invoice.issueDate = issueDate;
+@@ -314,7 +325,7 @@ public class Invoice {
+      * discount, issued and due on the given dates. Payments stay with this invoice.
+      */
+     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
+-        Invoice copy = draft(clientId, clientTaxExempt, regionTaxRate, currency(), issueDate, dueDate);
++        Invoice copy = draft(clientId, clientTaxExempt, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+         copy.discountPct = discountPct;
+         copy.discountAmount = discountAmount;
+         copy.discountCap = discountCap;
+@@ -333,7 +344,7 @@ public class Invoice {
+      * discount, taxed as the original's lines are.
+      */
+     public Invoice creditNote(LocalDate issueDate) {
+-        Invoice note = draft(clientId, clientTaxExempt, regionTaxRate, currency(), issueDate, null);
++        Invoice note = draft(clientId, clientTaxExempt, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, null);
+         note.creditOf = id;
+         return note;
+     }
+@@ -1769,6 +1780,14 @@ public class Invoice {
+         return result;
+     }
+ 
++    /**
++     * Whether the invoice is reverse charged: its client is registered (a valid tax number) in a region
++     * other than the workspace's home region and accounts for the tax itself, so no line is taxed.
++     */
++    public boolean isReverseCharge() {
++        return TaxNumber.isValid(outOfRegionTaxNumber);
++    }
++
+     /** The rate lines without their own are taxed at: the client's regional rate, or the given workspace rate when it has none. */
+     public BigDecimal clientTaxRate(BigDecimal workspaceRate) {
+         return regionTaxRate == null ? workspaceRate : new BigDecimal(regionTaxRate.trim());
+@@ -1777,7 +1796,7 @@ public class Invoice {
+     /**
+      * Each line's exact tax, in the order of the lines: the line's own rate (a percentage), or when it
+      * has none the client's regional rate, or the given workspace rate when that has none either, on the line's amount less its share of the discount,
+-     * unrounded. Tax-exempt lines, and every line of a tax-exempt client, have no tax.
++     * unrounded. Tax-exempt lines, and every line of a tax-exempt client or a reverse-charged invoice, have no tax.
+      */
+     private List<BigDecimal> exactLineTaxes(BigDecimal taxRate) {
+         List<BigDecimal> shares = discountShares();
+@@ -1785,7 +1804,7 @@ public class Invoice {
+         List<BigDecimal> taxes = new ArrayList<>(lines.size());
+         for (int i = 0; i < lines.size(); i++) {
+             InvoiceLine line = lines.get(i);
+-            taxes.add(clientTaxExempt || line.isTaxExempt() ? BigDecimal.ZERO
++            taxes.add(clientTaxExempt || isReverseCharge() || line.isTaxExempt() ? BigDecimal.ZERO
+                     : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(clientRate)).movePointLeft(2));
+         }
+         return taxes;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 595f2c8..172e0f0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -135,7 +135,7 @@ public class InvoiceController {
+             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
+-            String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn) {
++            String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -172,7 +172,7 @@ public class InvoiceController {
+                     Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
+                     i.getInterestSaved().toPlainString(),
+                     i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
+-                    i.getWrittenOffOn());
++                    i.getWrittenOffOn(), i.isReverseCharge());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index dfecbc8..2e82d59 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -112,13 +112,20 @@ public class InvoiceService {
+     public Optional<Invoice> newDraft(Long clientId) {
+         return clients.findById(clientId).map(client -> {
+             LocalDate issued = today.date();
+-            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), taxRate.forRegion(client.getRegion()), client.getCurrency(), issued, dueDateFor(clientId, issued));
++            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), taxRate.forRegion(client.getRegion()),
++                    outOfHomeRegion(client) ? client.getTaxNumber() : null, client.getCurrency(), issued, dueDateFor(clientId, issued));
+             draft.setDiscountPct(client.getDiscountPct());
+             draft.setRetentionPct(client.getRetentionPct());
+             return invoices.save(draft);
+         });
+     }
+ 
++    /** Whether the client is in a region other than the workspace's home region (when it has one). */
++    private boolean outOfHomeRegion(Client client) {
++        String home = taxRate.homeRegion();
++        return home != null && client.getRegion() != null && !client.getRegion().equals(home);
++    }
++
+     /**
+      * A new draft for the invoice's client with copies of its lines and the same invoice discount,
+      * retention and instalment plan (not the client's standard ones), issued today and due as any new invoice is, and records it in the audit; empty if no such
+@@ -726,6 +733,10 @@ public class InvoiceService {
+         invoices.saveAndFlush(invoice);
+         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
+                 + " total=" + invoice.total(taxRate.percent()).toPlainString());
++        if (invoice.isReverseCharge()) {
++            audit.record("REVERSE_CHARGE id=" + invoice.getId() + " number=" + invoice.number()
++                    + " total=" + invoice.total(taxRate.percent()).toPlainString());
++        }
+         if (!invoice.hasPlan()) {
+             applyCredit(invoice);
+         }
+diff --git a/src/main/resources/db/migration/V39__client_tax_number.sql b/src/main/resources/db/migration/V39__client_tax_number.sql
+new file mode 100644
+index 0000000..d1f1c9c
+--- /dev/null
++++ b/src/main/resources/db/migration/V39__client_tax_number.sql
+@@ -0,0 +1,4 @@
++-- The client's tax number: two letters then ten digits, the last two a check on the first eight.
++-- A client with a valid number outside the workspace's home region (the home_region setting) is
++-- reverse charged: its invoices carry no tax. Null is no number.
++ALTER TABLE client ADD COLUMN tax_number VARCHAR(64);
