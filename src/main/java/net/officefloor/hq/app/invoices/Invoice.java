@@ -187,7 +187,7 @@ public class Invoice {
     @Formula("(SELECT MAX(COALESCE(a.applied_date, p.payment_date)) FROM payment_allocation a, payment p WHERE a.invoice_id = id AND p.id = a.payment_id AND p.reversed = FALSE)")
     private LocalDate lastPaidOn;
 
-    /** The client's early-payment discount, a percentage of the grand total; read from the client. */
+    /** The client's early-payment discount, a percentage of the amount before tax; read from the client. */
     @Formula("(SELECT c.early_pay_pct FROM client c WHERE c.id = client_id)")
     private BigDecimal earlyPayPct;
 
@@ -1107,8 +1107,8 @@ public class Invoice {
     }
 
     /**
-     * The early-payment discount on offer at the tax rate: the client's early-payment percentage of the
-     * grand total, rounded down to the cent; nothing for a credit note, or an invoice holding back
+     * The early-payment discount on offer: the client's early-payment percentage of the amount before
+     * tax (the subtotal less the discount), rounded down to the cent; nothing for a credit note, or an invoice holding back
      * retention or spread over instalments.
      */
     public BigDecimal earlyDiscount(BigDecimal taxRate) {
@@ -1116,7 +1116,7 @@ public class Invoice {
                 || earlyPayPct == null || earlyPayPct.signum() <= 0) {
             return zero();
         }
-        return total(taxRate).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+        return subtotal().subtract(discount()).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
     }
 
     /**

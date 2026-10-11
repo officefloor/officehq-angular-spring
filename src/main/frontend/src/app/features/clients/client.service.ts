@@ -15,7 +15,7 @@ export interface Client {
   taxExempt: boolean;
   // The currency the client is billed in: everything on its invoices is in it.
   currency: Currency;
-  // An early-payment discount: the percentage of the grand total (0 is none) taken off an invoice
+  // An early-payment discount: the percentage of the amount before tax (0 is none) taken off an invoice
   // paid off within earlyPayDays of its issue date (null when there is none).
   earlyPayPct: number;
   earlyPayDays: number | null;

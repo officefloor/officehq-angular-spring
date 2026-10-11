@@ -46,7 +46,7 @@ public class Client {
     @Enumerated(EnumType.STRING)
     private Currency currency = Currency.USD;
 
-    /** The percentage of the grand total taken off an invoice paid off early; 0 is none. */
+    /** The percentage of the amount before tax taken off an invoice paid off early; 0 is none. */
     @Column(name = "early_pay_pct")
     private BigDecimal earlyPayPct = BigDecimal.ZERO;
 
