@@ -50,7 +50,7 @@ public class Invoice {
     @Column(name = "discount_cap")
     private BigDecimal discountCap;
 
-    @OneToMany(cascade = CascadeType.ALL)
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
     private List<InvoiceLine> lines = new ArrayList<>();
@@ -184,6 +184,30 @@ public class Invoice {
     /** Adds a line to the end of the invoice. */
     public void addLine(InvoiceLine line) {
         lines.add(line);
+    }
+
+    /** Whether the invoice has the line with the given id. */
+    public boolean hasLine(Long lineId) {
+        return lines.stream().anyMatch(l -> lineId.equals(l.getId()));
+    }
+
+    /**
+     * Removes the line with the given id; whether the invoice had it. Refused when what is left would
+     * be less than a fixed discount on the invoice.
+     */
+    public boolean removeLine(Long lineId) {
+        InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
+        if (line == null) {
+            return false;
+        }
+        BigDecimal left = subtotal().subtract(line.amount());
+        if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
+            throw new InvoiceRejectedException("This line cannot be removed: the $"
+                    + left.setScale(2).toPlainString() + " left would be less than the $"
+                    + discountAmount.setScale(2).toPlainString() + " discount.");
+        }
+        lines.remove(line);
+        return true;
     }
 
     /**

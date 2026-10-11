@@ -156,6 +156,13 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines`, line);
   }
 
+  // Removes a line from a draft, or from a sent invoice with no payments (putting it back to draft);
+  // refused (409) when what is left would be less than a fixed discount. Answers the invoice with its
+  // remaining lines and new totals.
+  removeLine(invoiceId: number, lineId: number): Observable<InvoiceDetail> {
+    return this.http.delete<InvoiceDetail>(`/api/invoices/${invoiceId}/lines/${lineId}`);
+  }
+
   // Gives a draft invoice a discount — a percentage (0 to 100, up to two decimals) or a fixed amount
   // (to the cent, at most the subtotal); the one given clears the other. Answers the invoice with
   // its new totals.

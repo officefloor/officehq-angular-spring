@@ -103,7 +103,8 @@ function problemWith(line: NewLine): string {
 
 // One opened invoice: its status, its lines and its totals. A line may carry its own percentage
 // discount, shown on the line, with its amount after it, and its own tax. A draft takes new lines and a
-// percentage or fixed discount, and can be sent; a change to a sent invoice with no payments puts it back to
+// percentage or fixed discount, can have lines removed (refused when what is left would be less than a
+// fixed discount), and can be sent; a change to a sent invoice with no payments puts it back to
 // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
 // until nothing is due; the panel lists them with what has been paid and what is still due. The
 // server refuses a payment on a draft, over what is due, or dated after today or before the issue date.
@@ -135,6 +136,7 @@ function problemWith(line: NewLine): string {
               <th scope="col">Discount share</th>
               <th scope="col">Tax status</th>
               <th scope="col">Tax</th>
+              <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -148,10 +150,21 @@ function problemWith(line: NewLine): string {
                 <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
                 <td data-testid="line-tax">{{ money(l.tax) }}</td>
+                <td>
+                  <button
+                    type="button"
+                    data-testid="line-remove"
+                    [disabled]="saving()"
+                    [attr.aria-label]="'Remove line ' + l.description"
+                    (click)="removeLine(inv.id, l.id)"
+                  >
+                    Remove
+                  </button>
+                </td>
               </tr>
             } @empty {
               <tr>
-                <td colspan="8" data-testid="line-empty">No lines yet.</td>
+                <td colspan="9" data-testid="line-empty">No lines yet.</td>
               </tr>
             }
           </tbody>
@@ -432,6 +445,25 @@ export class InvoicePanel {
         const detail: unknown = e.error?.detail;
         this.error.set(
           typeof detail === 'string' && detail ? detail : 'The line could not be added.',
+        );
+        this.saving.set(false);
+      },
+    });
+  }
+
+  protected removeLine(invoiceId: number, lineId: number): void {
+    this.saving.set(true);
+    this.error.set('');
+    this.service.removeLine(invoiceId, lineId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.saving.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.error.set(
+          typeof detail === 'string' && detail ? detail : 'The line could not be removed.',
         );
         this.saving.set(false);
       },

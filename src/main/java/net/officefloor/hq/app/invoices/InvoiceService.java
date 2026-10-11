@@ -94,6 +94,30 @@ public class InvoiceService {
     }
 
     /**
+     * Removes a line from an invoice; empty if no such invoice or line. Refused when what is left would
+     * be less than a fixed discount. A sent invoice with no payments goes back to draft; one with a
+     * payment refuses it.
+     */
+    @Transactional
+    public Optional<Invoice> removeLine(Long invoiceId, Long lineId) {
+        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        if (found.isEmpty()) {
+            return found;
+        }
+        Invoice invoice = found.get();
+        if (!invoice.hasLine(lineId)) {
+            return Optional.empty();
+        }
+        boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines removed.");
+        invoice.removeLine(lineId);
+        invoices.saveAndFlush(invoice);
+        if (reopened) {
+            audit.record("INVOICE_REOPENED id=" + invoice.getId());
+        }
+        return found;
+    }
+
+    /**
      * Gives an invoice a percentage discount, or a fixed amount off when one is given; the one given
      * clears the other, and the cap (null for none) limits a percentage. Empty if no such invoice. The values have already been checked; a fixed amount
      * over the subtotal is refused. A sent invoice with no payments goes back to draft; one with a

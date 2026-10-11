@@ -17,6 +17,7 @@ import java.util.stream.IntStream;
 import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -277,6 +278,13 @@ public class InvoiceController {
                 body.discountPct() == null ? BigDecimal.ZERO : body.discountPct())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    @DeleteMapping("/api/invoices/{id}/lines/{lineId}")
+    public InvoiceDetail removeLine(@PathVariable Long id, @PathVariable Long lineId) {
+        return invoices.removeLine(id, lineId)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
     }
 
     @PutMapping("/api/invoices/{id}/discount")
