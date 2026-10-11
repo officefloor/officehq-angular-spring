@@ -1,0 +1,38 @@
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index 8184831..52c02a0 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -62,7 +62,7 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
+ }
+ 
+ // Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`), or, when none
+-// is open, to the client's unpaid invoices oldest first; once any invoice in the list has a part, the
++// is open, to the client's unpaid invoices earliest due date first; once any invoice in the list has a part, the
+ // payment is spread over those invoices instead, and the parts must add up to it. The server refuses a payment on a draft, over what is due, or dated after today
+ // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's.
+ @Component({
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 7519386..8dbc7b6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -204,8 +204,9 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Records one payment of the amount on the date against the client's unpaid sent invoices, oldest
+-     * issue date first (lower id first on the same date), paying each off in full before the next.
++     * Records one payment of the amount on the date against the client's unpaid sent invoices, earliest
++     * due date first (lower id first on the same due date) so overdue invoices are cleared first,
++     * paying each off in full before the next.
+      * A payment more than everything the client owes is refused; otherwise it is checked and recorded
+      * as a split payment over the invoices it reaches.
+      */
+@@ -213,7 +214,7 @@ public class InvoiceService {
+     public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, String reference) {
+         List<Invoice> sent = invoices.findByClientIdOrderByIdAsc(clientId).stream()
+                 .filter(i -> !i.isDraft())
+-                .sorted(Comparator.comparing(Invoice::getIssueDate, Comparator.nullsLast(Comparator.naturalOrder()))
++                .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                         .thenComparing(Invoice::getId))
+                 .toList();
+         Map<Long, BigDecimal> paid = paid(sent);
