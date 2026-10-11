@@ -27,6 +27,7 @@ import net.officefloor.hq.app.clients.ClientRate;
 import net.officefloor.hq.app.clients.ClientRepository;
 import net.officefloor.hq.app.clients.Currency;
 import net.officefloor.hq.app.clients.RateTiers;
+import net.officefloor.hq.app.clients.RateDiscount;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -1526,6 +1527,7 @@ public class InvoiceService {
         ClientRate rate = client == null ? null : client.rateFor(unitType, on);
         BigDecimal increment = rate == null ? null : rate.getIncrement();
         BigDecimal minUnits = rate == null ? null : rate.getMinUnits();
+        BigDecimal discountPct = client == null ? null : client.getRateDiscountPct();
         if (unitPrice != null) {
             requireWhole(invoice.currency(), unitPrice, "The unit price");
             return new LinePrice(unitPrice, null, increment, minUnits);
@@ -1539,14 +1541,17 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("The client's rate card has no rate for " + unitType
                         + "; enter a unit price.");
             }
-            return new LinePrice(listed.unitPrice(), listed.tiers(), null, null, true);
+            return new LinePrice(RateDiscount.price(listed.unitPrice(), discountPct, invoice.currency()),
+                    RateDiscount.tiers(listed.tiers(), discountPct, invoice.currency()), null, null, true);
         }
         RateTiers tiers = rate.tiers();
         if (tiers != null) {
-            return new LinePrice(tiers.firstPrice(), tiers.format(), increment, minUnits, true);
+            return new LinePrice(RateDiscount.price(tiers.firstPrice(), discountPct, invoice.currency()),
+                    RateDiscount.tiers(tiers.format(), discountPct, invoice.currency()), increment, minUnits, true);
         }
         requireWhole(invoice.currency(), rate.getUnitPrice(), "The unit price");
-        return new LinePrice(rate.getUnitPrice(), null, increment, minUnits, true);
+        return new LinePrice(RateDiscount.price(rate.getUnitPrice(), discountPct, invoice.currency()), null,
+                increment, minUnits, true);
     }
 
     private static void requireWhole(Currency currency, BigDecimal amount, String what) {

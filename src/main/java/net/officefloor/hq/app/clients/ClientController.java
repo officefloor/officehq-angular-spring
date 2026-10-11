@@ -29,12 +29,13 @@ public class ClientController {
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
-            List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge) {
+            List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
-                    c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge());
+                    c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
+                    c.getRateDiscountPct());
         }
     }
 
@@ -106,7 +107,12 @@ public class ClientController {
             /** The client's own minimum charge in its currency; the workspace's when left out, none when 0. */
             @DecimalMin(value = "0", message = "The minimum charge cannot be negative.")
             @Digits(integer = 17, fraction = 2, message = "The minimum charge can have at most two decimals.")
-            BigDecimal minimumCharge) {
+            BigDecimal minimumCharge,
+            /** The percentage taken off the prices the client's lines take from the rates; none when left out. */
+            @DecimalMin(value = "0", message = "The rate discount must be from 0 to 100 percent.")
+            @DecimalMax(value = "100", message = "The rate discount must be from 0 to 100 percent.")
+            @Digits(integer = 3, fraction = 2, message = "The rate discount can have at most two decimals.")
+            BigDecimal rateDiscountPct) {
 
         @AssertTrue(message = "Enter a tax number of two letters then ten digits whose last two digits check the first eight, or leave it blank.")
         public boolean isTaxNumberValid() {
@@ -141,6 +147,7 @@ public class ClientController {
     public ClientView add(@Valid @RequestBody NewClient body) {
         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
-                body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge()));
+                body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge(),
+                body.rateDiscountPct()));
     }
 }

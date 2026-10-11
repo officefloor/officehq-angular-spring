@@ -12,6 +12,7 @@ import java.util.Set;
 import jakarta.persistence.EntityManager;
 import net.officefloor.hq.app.clients.Client;
 import net.officefloor.hq.app.clients.Currency;
+import net.officefloor.hq.app.clients.RateDiscount;
 import net.officefloor.hq.app.clients.RateTiers;
 import net.officefloor.hq.app.invoices.Invoice;
 import net.officefloor.hq.app.invoices.InvoiceRepository;
@@ -47,7 +48,7 @@ public class TestSupportController {
 
     private static final String INTEREST_THRESHOLD = "interest_threshold";
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime");
@@ -294,7 +295,7 @@ public class TestSupportController {
             if (Currency.of(currency) == null) {
                 throw refuse("unsupported value of clients[].currency: " + currency);
             }
-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct", "minimum_charge"},
+            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct", "minimum_charge", "rate_discount_pct"},
                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
                     percent(row.get("discountPct"), "clients[].discountPct"),
                     flag(row.get("taxExempt"), "clients[].taxExempt"),
@@ -307,7 +308,8 @@ public class TestSupportController {
                     row.get("region") == null ? null : row.get("region").toString(),
                     row.get("taxNumber") == null ? null : row.get("taxNumber").toString(),
                     percent(row.get("withholdingPct"), "clients[].withholdingPct"),
-                    row.get("minimumCharge") == null ? null : money(row.get("minimumCharge"), "clients[].minimumCharge"));
+                    row.get("minimumCharge") == null ? null : money(row.get("minimumCharge"), "clients[].minimumCharge"),
+                    percent(row.get("rateDiscountPct"), "clients[].rateDiscountPct"));
             Long clientId = id(row.get("id") == null
                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
@@ -569,7 +571,7 @@ public class TestSupportController {
         if (!settings.isEmpty()) {
             out.put("settings", settings);
         }
-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number, withholding_pct, minimum_charge FROM client ORDER BY id").stream()
+        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number, withholding_pct, minimum_charge, rate_discount_pct FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -588,6 +590,7 @@ public class TestSupportController {
                     }
                     row.put("retentionPct", r.get("RETENTION_PCT"));
                     row.put("withholdingPct", r.get("WITHHOLDING_PCT"));
+                    row.put("rateDiscountPct", r.get("RATE_DISCOUNT_PCT"));
                     if (r.get("MINIMUM_CHARGE") != null) {
                         row.put("minimumCharge", r.get("MINIMUM_CHARGE"));
                     }
@@ -753,7 +756,9 @@ public class TestSupportController {
         if (line.get("unitPrice") != null || line.get("unitType") == null) {
             return new Object[] {cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"), null, false, false};
         }
-        Map<String, Object> invoice = jdbc.queryForMap("SELECT i.status, i.issue_date, c.currency FROM invoice i JOIN client c ON c.id = i.client_id WHERE i.id = ?", invoiceId);
+        Map<String, Object> invoice = jdbc.queryForMap("SELECT i.status, i.issue_date, c.currency, c.rate_discount_pct FROM invoice i JOIN client c ON c.id = i.client_id WHERE i.id = ?", invoiceId);
+        Currency currency = Currency.orUsd((String) invoice.get("CURRENCY"));
+        BigDecimal discountPct = (BigDecimal) invoice.get("RATE_DISCOUNT_PCT");
         LocalDate on = invoiceDate(invoice.get("ISSUE_DATE"));
         // A draft's line priced from the rates follows them; a sent invoice's has its price fixed.
         boolean draft = "DRAFT".equals(invoice.get("STATUS"));
@@ -762,19 +767,20 @@ public class TestSupportController {
                 + "ORDER BY r.effective_from DESC NULLS LAST LIMIT 1", invoiceId,
                 line.get("unitType").toString().trim(), on);
         if (rate.isEmpty()) {
-            PriceList.Converted listed = priceList.priceFor(line.get("unitType").toString(),
-                    Currency.orUsd((String) invoice.get("CURRENCY")), on);
+            PriceList.Converted listed = priceList.priceFor(line.get("unitType").toString(), currency, on);
             if (listed == null) {
                 throw refuse("invoices[].lineItems[].unitPrice is required: neither the client's rate card nor the price list has unitType "
                         + line.get("unitType") + " in force on the issue date");
             }
-            return new Object[] {listed.unitPrice(), listed.tiers(), draft, true};
+            return new Object[] {RateDiscount.price(listed.unitPrice(), discountPct, currency),
+                    RateDiscount.tiers(listed.tiers(), discountPct, currency), draft, true};
         }
         RateTiers tiers = RateTiers.parse((String) rate.get(0).get("TIERS"));
         if (tiers != null) {
-            return new Object[] {tiers.firstPrice(), tiers.format(), draft, true};
+            return new Object[] {RateDiscount.price(tiers.firstPrice(), discountPct, currency),
+                    RateDiscount.tiers(tiers.format(), discountPct, currency), draft, true};
         }
-        return new Object[] {rate.get(0).get("UNIT_PRICE"), null, draft, true};
+        return new Object[] {RateDiscount.price((BigDecimal) rate.get(0).get("UNIT_PRICE"), discountPct, currency), null, draft, true};
     }
 
     /** The day an invoice's rates are taken on: its issue date, or today when it has none. */

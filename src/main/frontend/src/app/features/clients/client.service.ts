@@ -29,6 +29,9 @@ export interface Client {
   // The client's own minimum charge, in its currency (no conversion), charged on its invoices instead
   // of the workspace's; null for the workspace's, 0 for never charged a minimum.
   minimumCharge: number | null;
+  // The percentage (0 to 100) taken off every price the client's lines take from its rate card or the
+  // price list, each band's price included; 0 is none. A price typed on a line is not reduced.
+  rateDiscountPct: number;
   // Days (0 to 30, a week as standard) past its due date an invoice or instalment is given before it
   // is overdue and earns late interest.
   graceDays: number;
