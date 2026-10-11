@@ -1,0 +1,85 @@
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 34b325a..97108e9 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -39,11 +39,13 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold");
+     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
+     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+     private static final String MINIMUM_CHARGE = "minimum_charge";
++
++    private static final String INTEREST_THRESHOLD = "interest_threshold";
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge");
+     private static final Set<String> INVOICE_FIELDS =
+@@ -145,6 +147,11 @@ public class TestSupportController {
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                         MINIMUM_CHARGE, minimum.toPlainString());
+             }
++            if (values.get("interestThreshold") != null) {
++                BigDecimal threshold = money(values.get("interestThreshold"), "settings.interestThreshold");
++                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
++                        INTEREST_THRESHOLD, threshold.toPlainString());
++            }
+             if (values.get("cardSurchargePct") != null) {
+                 BigDecimal rate = percent(values.get("cardSurchargePct"), "settings.cardSurchargePct");
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+@@ -487,6 +494,11 @@ public class TestSupportController {
+         if (!minimumCharge.isEmpty()) {
+             settings.put("minimumCharge", new BigDecimal(minimumCharge.get(0)));
+         }
++        List<String> interestThreshold = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
++                String.class, INTEREST_THRESHOLD);
++        if (!interestThreshold.isEmpty()) {
++            settings.put("interestThreshold", new BigDecimal(interestThreshold.get(0)));
++        }
+         Map<String, BigDecimal> regionMaxInterest = this.lateInterestRate.regionMaximums();
+         if (!regionMaxInterest.isEmpty()) {
+             settings.put("regionMaxInterest", regionMaxInterest);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 1f20d62..4c74605 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -266,6 +266,13 @@ public class Invoice {
+     @Formula("(SELECT c.grace_days FROM client c WHERE c.id = client_id)")
+     private Integer clientGraceDays;
+ 
++    /**
++     * The workspace's late-interest threshold in US dollars, as stored (the {@code interest_threshold}
++     * setting); null when none is set.
++     */
++    @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'interest_threshold')")
++    private String interestThresholdUsd;
++
+     /** The client's own annual late-interest rate, a percentage; null for the workspace's. Read from the client. */
+     @Formula("(SELECT c.interest_rate FROM client c WHERE c.id = client_id)")
+     private BigDecimal clientInterestRate;
+@@ -830,6 +837,23 @@ public class Invoice {
+         }
+         accrueInvoiceInterest(payments, taxRate, annualRate, today);
+         accrueRetentionInterest(payments, taxRate, annualRate, today);
++        if (getLateInterest().add(getLateWaived()).compareTo(interestThreshold()) < 0) {
++            this.lateInterest = BigDecimal.ZERO;
++            this.lateWaived = BigDecimal.ZERO;
++            this.retentionInterest = BigDecimal.ZERO;
++        }
++    }
++
++    /**
++     * The late interest an invoice without a plan must add up to before any of it is charged: the
++     * workspace's threshold in US dollars converted at the issue date's rate, rounded down to the step;
++     * 0 when none is set.
++     */
++    private BigDecimal interestThreshold() {
++        if (interestThresholdUsd == null) {
++            return zero();
++        }
++        return currency().divideDownToStep(new BigDecimal(interestThresholdUsd.trim()), usdPerOn(issueDate));
+     }
+ 
+     /** The late interest charged on the invoice itself, released retention left out (see {@link #accrueLateInterest}). */
