@@ -1,0 +1,341 @@
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 5a2f915..5383787 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -9,7 +9,10 @@ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
++import jakarta.persistence.EntityManager;
++import net.officefloor.hq.app.invoices.Invoice;
+ import net.officefloor.hq.app.invoices.InvoiceRepository;
++import net.officefloor.hq.app.invoices.PaymentRepository;
+ import org.springframework.context.annotation.Profile;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.jdbc.core.JdbcTemplate;
+@@ -37,7 +40,7 @@ public class TestSupportController {
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "allocations");
++    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
+ 
+@@ -45,8 +48,13 @@ public class TestSupportController {
+     private final JdbcTemplate jdbc;
+     private final InvoiceRepository invoices;
+     private final TaxRate taxRate;
++    private final PaymentRepository payments;
++    private final EntityManager entityManager;
+ 
+-    public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate) {
++    public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
++            PaymentRepository payments, EntityManager entityManager) {
++        this.payments = payments;
++        this.entityManager = entityManager;
+         this.audit = audit;
+         this.jdbc = jdbc;
+         this.invoices = invoices;
+@@ -108,6 +116,13 @@ public class TestSupportController {
+             if (!STATUSES.contains(status)) {
+                 throw refuse("unsupported value of invoices[].status: " + status);
+             }
++            if ("CREDIT_NOTE".equals(status) && row.get("creditOf") == null) {
++                throw refuse("an invoices[] row with status CREDIT_NOTE needs creditOf");
++            }
++            // A credit note that has been sent is an issued credit note.
++            if ("SENT".equals(status) && row.get("creditOf") != null) {
++                status = "CREDIT_NOTE";
++            }
+             if (row.get("clientId") == null) {
+                 throw refuse("invoices[].clientId is required");
+             }
+@@ -125,9 +140,6 @@ public class TestSupportController {
+                     percent(row.get("retentionPct"), "invoices[].retentionPct"),
+                     row.get("retentionReleasedOn") == null ? null
+                             : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"));
+-            if ("CREDIT_NOTE".equals(status) && row.get("creditOf") == null) {
+-                throw refuse("an invoices[] row with status CREDIT_NOTE needs creditOf");
+-            }
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 insert("invoice_line", line.get("id"),
+@@ -148,12 +160,13 @@ public class TestSupportController {
+             if (row.get("date") == null) {
+                 throw refuse("payments[].date is required");
+             }
+-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded"},
++            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note"},
+                     id(row.get("clientId")), cents(row.get("amount"), "payments[].amount"),
+                     date(row.get("date"), "payments[].date"),
+                     row.get("reference") == null ? null : row.get("reference").toString(),
+                     flag(row.get("reversed"), "payments[].reversed"),
+-                    money(row.get("refunded"), "payments[].refunded"));
++                    money(row.get("refunded"), "payments[].refunded"),
++                    row.get("creditNote") == null ? null : id(row.get("creditNote")));
+             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
+                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
+                 if (allocation.get("invoiceId") == null) {
+@@ -165,10 +178,25 @@ public class TestSupportController {
+                         allocation.get("date") == null ? null : date(allocation.get("date"), "payments[].allocations[].date"));
+             }
+         }
+-        // An issued credit note keeps its grand total, which comes off its original.
+-        for (Long noteId : jdbc.queryForList("SELECT id FROM invoice WHERE status = 'CREDIT_NOTE'", Long.class)) {
+-            BigDecimal total = invoices.findWithLinesById(noteId).orElseThrow().total(taxRate.percent());
+-            jdbc.update("UPDATE invoice SET credit_total = ? WHERE id = ?", total, noteId);
++        // An issued credit note keeps its grand total, which comes off what its original owes, then the
++        // retention it holds back, in the order they were issued; any rest is the client's credit.
++        BigDecimal rate = taxRate.percent();
++        for (Long noteId : jdbc.queryForList("SELECT id FROM invoice WHERE status = 'CREDIT_NOTE' ORDER BY id", Long.class)) {
++            Invoice note = invoices.findWithLinesById(noteId).orElseThrow();
++            BigDecimal total = note.total(rate);
++            BigDecimal applied = BigDecimal.ZERO;
++            BigDecimal toRetention = BigDecimal.ZERO;
++            Invoice original = invoices.findWithLinesById(note.getCreditOf()).orElse(null);
++            if (original != null) {
++                entityManager.refresh(original);
++                BigDecimal paid = payments.paidTo(List.of(original.getId())).stream()
++                        .map(r -> (BigDecimal) r[1]).findFirst().orElse(BigDecimal.ZERO);
++                BigDecimal[] taken = original.creditTaken(total, paid, rate);
++                applied = taken[0];
++                toRetention = taken[1];
++            }
++            jdbc.update("UPDATE invoice SET credit_total = ?, credit_applied = ?, credit_retention = ? WHERE id = ?",
++                    total, applied, toRetention, noteId);
+         }
+         // Keep generated ids clear of the seeded ones.
+         for (String table : List.of("client", "invoice", "invoice_line", "payment")) {
+@@ -213,7 +241,8 @@ public class TestSupportController {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+                     row.put("clientId", r.get("CLIENT_ID"));
+-                    row.put("status", r.get("STATUS"));
++                    // An issued credit note is seeded as a sent one.
++                    row.put("status", "CREDIT_NOTE".equals(r.get("STATUS")) ? "SENT" : r.get("STATUS"));
+                     row.put("issueDate", r.get("ISSUE_DATE") == null ? null : r.get("ISSUE_DATE").toString());
+                     row.put("dueDate", r.get("DUE_DATE") == null ? null : r.get("DUE_DATE").toString());
+                     row.put("discountPct", r.get("DISCOUNT_PCT"));
+@@ -249,7 +278,7 @@ public class TestSupportController {
+                             }).toList());
+                     return row;
+                 }).toList());
+-        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference, reversed, refunded FROM payment ORDER BY id")
++        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference, reversed, refunded, credit_note FROM payment ORDER BY id")
+                 .stream().map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -259,6 +288,9 @@ public class TestSupportController {
+                     row.put("reference", r.get("REFERENCE"));
+                     row.put("reversed", r.get("REVERSED"));
+                     row.put("refunded", r.get("REFUNDED"));
++                    if (r.get("CREDIT_NOTE") != null) {
++                        row.put("creditNote", r.get("CREDIT_NOTE"));
++                    }
+                     row.put("allocations", jdbc.queryForList(
+                             "SELECT invoice_id, amount, applied_date FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
+                             r.get("ID")).stream().map(a -> {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 6a3bc3b..7069b73 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -90,10 +90,25 @@ public class Invoice {
+     @Column(name = "credit_total")
+     private BigDecimal creditTotal;
+ 
+-    /** What the credit notes issued against this invoice add up to; read from them. */
+-    @Formula("(SELECT COALESCE(SUM(cn.credit_total), 0) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
++    /**
++     * What this credit note took off its original when issued (what it owed, then retention it held);
++     * null until then. Any rest of its grand total was held on the client's account as credit.
++     */
++    @Column(name = "credit_applied")
++    private BigDecimal creditApplied;
++
++    /** The part of {@link #creditApplied} that cleared retention its original held back. */
++    @Column(name = "credit_retention")
++    private BigDecimal creditRetention = BigDecimal.ZERO;
++
++    /** What the credit notes issued against this invoice took off it; read from them. */
++    @Formula("(SELECT COALESCE(SUM(cn.credit_applied), 0) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
+     private BigDecimal credited = BigDecimal.ZERO;
+ 
++    /** The part of what is credited that cleared retention held back; read from the credit notes. */
++    @Formula("(SELECT COALESCE(SUM(cn.credit_retention), 0) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
++    private BigDecimal retentionCredited = BigDecimal.ZERO;
++
+     /** How many credit notes have been issued against this invoice; read from them. */
+     @Formula("(SELECT COUNT(*) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
+     private int creditNotesIssued;
+@@ -167,9 +182,14 @@ public class Invoice {
+         return creditNotesIssued > 0;
+     }
+ 
+-    /** Issues a draft credit note on the given date, keeping its grand total at the tax rate. */
+-    public void markIssued(LocalDate issueDate, BigDecimal taxRate) {
++    /**
++     * Issues a draft credit note on the given date, keeping its grand total at the tax rate and what
++     * its original took of it (the part of that clearing held retention).
++     */
++    public void markIssued(LocalDate issueDate, BigDecimal taxRate, BigDecimal applied, BigDecimal toRetention) {
+         this.creditTotal = total(taxRate);
++        this.creditApplied = applied;
++        this.creditRetention = toRetention;
+         this.status = InvoiceStatus.CREDIT_NOTE;
+         this.issueDate = issueDate;
+     }
+@@ -286,9 +306,27 @@ public class Invoice {
+         return total(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.DOWN);
+     }
+ 
+-    /** The retention still held back at the tax rate: all of it until it is released, then nothing. */
++    /**
++     * The retention still held back at the tax rate: all of it until it is released, less what credit
++     * notes have cleared of it; then nothing.
++     */
+     public BigDecimal retentionHeld(BigDecimal taxRate) {
+-        return retentionReleasedOn == null ? retention(taxRate) : BigDecimal.ZERO.setScale(2);
++        if (retentionReleasedOn != null) {
++            return BigDecimal.ZERO.setScale(2);
++        }
++        BigDecimal cleared = retentionCredited == null ? BigDecimal.ZERO : retentionCredited;
++        return retention(taxRate).subtract(cleared).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
++    }
++
++    /**
++     * How a credit note of the amount comes off this invoice once the given amount has been paid, at
++     * the tax rate: first what it still owes, then the retention it holds back. The part taken off in
++     * all, and of that the part clearing retention; the rest is left over as credit.
++     */
++    public BigDecimal[] creditTaken(BigDecimal amount, BigDecimal paid, BigDecimal taxRate) {
++        BigDecimal toDue = amount.min(amountDue(paid, taxRate).max(BigDecimal.ZERO));
++        BigDecimal toRetention = amount.subtract(toDue).min(retentionHeld(taxRate));
++        return new BigDecimal[] { toDue.add(toRetention), toRetention };
+     }
+ 
+     /** The retention released at the tax rate: nothing until it is released, then all of it. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 049a88a..e4f4cfe 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -388,33 +388,36 @@ public class InvoiceService {
+ 
+     /**
+      * Why the draft credit note cannot be issued, or null when it can: its original must be a sent
+-     * invoice (not void) that still owes at least the credit note's grand total.
++     * invoice (not void).
+      */
+     private String creditNoteRefusal(Invoice note) {
+         Invoice original = invoices.findWithLinesById(note.getCreditOf()).orElse(null);
+         if (original == null || original.isDraft() || original.isVoid()) {
+             return "The invoice this credits is not a sent invoice, so the credit note cannot be issued.";
+         }
+-        // Read again what it has been credited: another credit note may just have been issued against it.
+-        entityManager.refresh(original);
+-        BigDecimal rate = taxRate.percent();
+-        BigDecimal due = original.amountDue(paid(List.of(original)).get(original.getId()), rate);
+-        BigDecimal total = note.total(rate);
+-        if (total.compareTo(due) > 0) {
+-            return "The credit note's total of $" + total.toPlainString() + " is more than the $"
+-                    + due.setScale(2, RoundingMode.HALF_UP).toPlainString() + " " + original.number()
+-                    + " still owes.";
+-        }
+         return null;
+     }
+ 
+-    /** Issues the draft credit note today, its grand total coming off its original, and records it in the audit. */
++    /**
++     * Issues the draft credit note today and records it in the audit: its grand total comes off what
++     * its original still owes, then the retention it holds back; any rest is held on the client's
++     * account as a credit payment dated today, also recorded in the audit.
++     */
+     private void issue(Invoice note) {
+         BigDecimal rate = taxRate.percent();
+-        note.markIssued(today.date(), rate);
++        Invoice original = invoices.findWithLinesById(note.getCreditOf()).orElseThrow();
++        // Read again what it has been credited: another credit note may just have been issued against it.
++        entityManager.refresh(original);
++        BigDecimal total = note.total(rate);
++        BigDecimal[] taken = original.creditTaken(total, paid(List.of(original)).get(original.getId()), rate);
++        note.markIssued(today.date(), rate, taken[0], taken[1]);
+         invoices.saveAndFlush(note);
+         audit.record("CREDIT_NOTE_ISSUED id=" + note.getId() + " number=" + note.number() + " invoice="
+-                + note.getCreditOf() + " total=" + note.total(rate).toPlainString());
++                + note.getCreditOf() + " total=" + total.toPlainString());
++        BigDecimal rest = total.subtract(taken[0]);
++        if (rest.signum() > 0) {
++            recordCreditHeld(payments.saveAndFlush(Payment.fromCreditNote(note, rest)));
++        }
+     }
+ 
+     /**
+@@ -834,7 +837,7 @@ public class InvoiceService {
+     /**
+      * Reverses the payment (a bounced cheque), undoing it on every invoice it was applied to, and
+      * records it in the audit; empty if no such payment. A payment already reversed, or one that has
+-     * had any of its credit refunded, is refused.
++     * had any of its credit refunded, or credit from a credit note, is refused.
+      */
+     @Transactional
+     public Optional<Payment> reversePayment(Long paymentId) {
+@@ -843,6 +846,9 @@ public class InvoiceService {
+             if (payment.isReversed()) {
+                 throw new InvoiceRejectedException("This payment has already been reversed.");
+             }
++            if (payment.getCreditNote() != null) {
++                throw new InvoiceRejectedException("This is credit from a credit note, so it cannot be reversed.");
++            }
+             if (payment.getRefunded().signum() > 0) {
+                 throw new InvoiceRejectedException("This payment has had credit refunded, so it cannot be reversed.");
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index 1f60930..fb8703e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -37,6 +37,10 @@ public class Payment {
+     /** Whether the payment has been reversed (a bounced cheque): it then no longer counts. */
+     private boolean reversed;
+ 
++    /** The credit note whose rest this payment holds as credit; null for a payment from the client. */
++    @Column(name = "credit_note")
++    private Long creditNote;
++
+     /** How much of the payment's unused credit has been refunded to the client; it is no longer credit. */
+     private BigDecimal refunded = BigDecimal.ZERO;
+ 
+@@ -87,6 +91,21 @@ public class Payment {
+         return payment;
+     }
+ 
++    /**
++     * What is left of an issued credit note once its original has taken what it can: held on the
++     * client's account as credit, dated the day the credit note was issued.
++     */
++    public static Payment fromCreditNote(Invoice note, BigDecimal amount) {
++        Payment payment = deposit(note.getClientId(), amount, note.getIssueDate());
++        payment.creditNote = note.getId();
++        return payment;
++    }
++
++    /** The credit note whose rest this payment holds as credit; null for a payment from the client. */
++    public Long getCreditNote() {
++        return creditNote;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/resources/db/migration/V21__credit_note_beyond_owed.sql b/src/main/resources/db/migration/V21__credit_note_beyond_owed.sql
+new file mode 100644
+index 0000000..d6dcc26
+--- /dev/null
++++ b/src/main/resources/db/migration/V21__credit_note_beyond_owed.sql
+@@ -0,0 +1,7 @@
++-- A credit note may be for more than its original still owes. What the original took of it is kept in
++-- credit_applied (credit_retention of that cleared retention it held back); the rest is held on the
++-- client's account as a payment naming the credit note (credit_note), which cannot be reversed.
++ALTER TABLE invoice ADD COLUMN credit_applied DECIMAL(19, 2);
++ALTER TABLE invoice ADD COLUMN credit_retention DECIMAL(19, 2) DEFAULT 0 NOT NULL;
++UPDATE invoice SET credit_applied = credit_total WHERE credit_total IS NOT NULL;
++ALTER TABLE payment ADD COLUMN credit_note BIGINT;
