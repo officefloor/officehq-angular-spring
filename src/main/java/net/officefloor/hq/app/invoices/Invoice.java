@@ -167,6 +167,13 @@ public class Invoice {
     private int creditNotesIssued;
 
     /**
+     * The credit notes issued against this invoice, as "issue date=amount taken off" joined by commas
+     * in the order they were issued; null when there are none. Read from them, for a plan's schedule.
+     */
+    @Formula("(SELECT LISTAGG(CAST(cn.issue_date AS VARCHAR) || '=' || CAST(cn.credit_applied AS VARCHAR), ',') WITHIN GROUP (ORDER BY cn.issue_date, cn.id) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
+    private String creditsIssued;
+
+    /**
      * The late interest charged so far (see {@link #accrueLateInterest}); not stored, worked out again
      * each time the invoice is read.
      */
@@ -447,6 +454,10 @@ public class Invoice {
      * all, and of that the part clearing retention; the rest is left over as credit.
      */
     public BigDecimal[] creditTaken(BigDecimal amount, BigDecimal paid, BigDecimal taxRate) {
+        if (hasPlan()) {
+            // It comes off the plan's instalments to come instead (see #schedule).
+            return new BigDecimal[] { amount, BigDecimal.ZERO };
+        }
         BigDecimal toDue = amount.min(amountDue(paid, taxRate).max(BigDecimal.ZERO));
         BigDecimal toRetention = amount.subtract(toDue).min(retentionHeld(taxRate));
         return new BigDecimal[] { toDue.add(toRetention), toRetention };
@@ -465,10 +476,13 @@ public class Invoice {
         return payableBeforeInterest(taxRate).add(getLateFee()).add(getLateInterest());
     }
 
-    /** As {@link #payable}, but without the late fee and interest charged. */
+    /**
+     * As {@link #payable}, but without the late fee and interest charged. A plan's credit notes have
+     * already come off its plan total.
+     */
     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
-        BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate);
-        return owed.subtract(getCredited()).subtract(retentionHeld(taxRate)).subtract(getEarlyDiscountTaken())
+        BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate).subtract(getCredited());
+        return owed.subtract(retentionHeld(taxRate)).subtract(getEarlyDiscountTaken())
                 .subtract(getInterestSaved());
     }
 
@@ -618,7 +632,7 @@ public class Invoice {
     /**
      * Works out the late interest each instalment of the plan has been charged by the given day, at the
      * annual rate (a percentage), from the payments (those not reversed count; what credit notes took
-     * off counts from the issue date). Payments, in the order they were made, pay each instalment's
+     * off has already come off the schedule). Payments, in the order they were made, pay each instalment's
      * interest earned so far and then the instalment itself, earliest instalment first. An instalment
      * still not paid off more than {@link #GRACE_DAYS} days after its due date earns interest by the
      * same rule as an invoice: from the end of its own grace week, compounded daily at rate / 365, on
@@ -632,9 +646,6 @@ public class Invoice {
         record Part(LocalDate on, Long paymentId, BigDecimal amount) {
         }
         List<Part> inOrder = new ArrayList<>();
-        if (getCredited().signum() > 0) {
-            inOrder.add(new Part(issueDate == null ? LocalDate.MIN : issueDate, 0L, getCredited()));
-        }
         payments.stream().filter(p -> !p.isReversed())
                 .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
                         .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
@@ -801,16 +812,71 @@ public class Invoice {
      * owed x i, rounded half up to the cent, and its principal the instalment less the interest; the
      * last instalment pays off the whole balance left plus its interest, so the schedule ends at zero.
      * Instalment k falls due k months after the issue date, on the same day (the month's last day when
-     * it is shorter).
+     * it is shorter). Each credit note issued against it, in the order they were issued, then re-works
+     * the instalments due after its issue date by the same rule: from the principal still owed before
+     * them less what the credit note took off, over as many instalments, keeping their due dates; the
+     * instalments due before then stay as they were.
      */
     public List<Instalment> schedule(BigDecimal taxRate) {
         if (!hasPlan()) {
             return List.of();
         }
+        List<LocalDate> dues = new ArrayList<>(instalments);
+        for (int k = 1; k <= instalments; k++) {
+            dues.add(issueDate == null ? null : issueDate.plusMonths(k));
+        }
+        List<Instalment> schedule = new ArrayList<>(amortise(total(taxRate), dues, 1));
+        if (creditsIssued != null && !creditsIssued.isBlank()) {
+            for (String credit : creditsIssued.split(",")) {
+                String[] parts = credit.split("=");
+                LocalDate on = LocalDate.parse(parts[0].trim());
+                int kept = keptBefore(schedule, on);
+                if (kept == schedule.size()) {
+                    continue;
+                }
+                BigDecimal principal = principalBefore(schedule, kept, taxRate)
+                        .subtract(new BigDecimal(parts[1].trim()));
+                List<Instalment> reworked = amortise(principal, dues.subList(kept, dues.size()), kept + 1);
+                schedule = new ArrayList<>(schedule.subList(0, kept));
+                schedule.addAll(reworked);
+            }
+        }
+        return schedule;
+    }
+
+    /** How many instalments of the schedule fall due on or before the day, so stay as they are. */
+    private static int keptBefore(List<Instalment> schedule, LocalDate on) {
+        int kept = 0;
+        while (kept < schedule.size() && schedule.get(kept).dueDate() != null
+                && !schedule.get(kept).dueDate().isAfter(on)) {
+            kept++;
+        }
+        return kept;
+    }
+
+    /** The principal still owed before the instalment at the index: the balance after the one before it. */
+    private BigDecimal principalBefore(List<Instalment> schedule, int index, BigDecimal taxRate) {
+        return index == 0 ? total(taxRate).setScale(scale(), RoundingMode.HALF_UP) : schedule.get(index - 1).balance();
+    }
+
+    /**
+     * The principal still owed on a sent plan before its instalments due after the given day, at the
+     * tax rate: what a credit note issued that day can take off at most; zero when none falls due after it.
+     */
+    public BigDecimal principalToCome(LocalDate on, BigDecimal taxRate) {
+        List<Instalment> schedule = schedule(taxRate);
+        int kept = keptBefore(schedule, on);
+        return kept == schedule.size() ? zero() : principalBefore(schedule, kept, taxRate);
+    }
+
+    /**
+     * An ordinary loan of the principal at the plan's rate over one instalment per due date, numbered
+     * from the given number (see {@link #schedule}).
+     */
+    private List<Instalment> amortise(BigDecimal principal, List<LocalDate> dues, int firstNumber) {
         MathContext mc = MathContext.DECIMAL128;
-        BigDecimal principal = total(taxRate);
         BigDecimal i = instalmentRate.divide(BigDecimal.valueOf(1200), mc);
-        int n = instalments;
+        int n = dues.size();
         BigDecimal payment;
         if (i.signum() == 0) {
             payment = principal.divide(BigDecimal.valueOf(n), scale(), RoundingMode.HALF_UP);
@@ -826,8 +892,7 @@ public class Invoice {
             BigDecimal paid = k == n ? balance.add(interest) : payment;
             BigDecimal repaid = paid.subtract(interest);
             balance = balance.subtract(repaid);
-            LocalDate due = issueDate == null ? null : issueDate.plusMonths(k);
-            schedule.add(new Instalment(k, due, paid, interest, repaid, balance));
+            schedule.add(new Instalment(firstNumber + k - 1, dues.get(k - 1), paid, interest, repaid, balance));
         }
         return schedule;
     }
@@ -842,14 +907,14 @@ public class Invoice {
 
     /**
      * Each instalment of the plan at the tax rate once the given amount has been paid, on the given
-     * day: payments (with what credit notes took off and anything written off) pay the instalments in
+     * day: payments (with anything written off) pay the instalments in
      * order, each its late interest and then itself, each paid off before the next. An instalment not
      * paid off more than {@link #GRACE_DAYS} days after its due date is overdue; empty when there is no
      * plan.
      */
     public List<Instalment.Progress> instalmentProgress(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
         List<Instalment.Progress> progress = new ArrayList<>();
-        BigDecimal left = paid.add(getCredited()).add(writtenOff(paid, taxRate)).add(getInterestSaved());
+        BigDecimal left = paid.add(writtenOff(paid, taxRate)).add(getInterestSaved());
         List<Instalment> schedule = schedule(taxRate);
         for (int k = 0; k < schedule.size(); k++) {
             Instalment instalment = schedule.get(k);

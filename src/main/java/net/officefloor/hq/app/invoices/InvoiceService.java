@@ -485,12 +485,28 @@ public class InvoiceService {
 
     /**
      * Why the draft credit note cannot be issued, or null when it can: its original must be a sent
-     * invoice (not void).
+     * invoice (not void). On a plan it comes off the instalments to come, so the plan must have no
+     * overdue instalment and the credit note cannot be more than the principal still owed before them.
      */
     private String creditNoteRefusal(Invoice note) {
         Invoice original = load(note.getCreditOf()).orElse(null);
         if (original == null || original.isDraft() || original.isVoid()) {
             return "The invoice this credits is not a sent invoice, so the credit note cannot be issued.";
+        }
+        if (original.hasPlan()) {
+            BigDecimal rate = taxRate.percent();
+            LocalDate on = today.date();
+            withInterest(List.of(original));
+            BigDecimal paid = paid(List.of(original)).get(original.getId());
+            if (original.instalmentProgress(paid, rate, on).stream()
+                    .anyMatch(p -> p.status() == Instalment.Status.OVERDUE)) {
+                return "The plan of the invoice this credits has an overdue instalment, so the credit note cannot be issued.";
+            }
+            BigDecimal principal = original.principalToCome(on, rate);
+            if (note.total(rate).compareTo(principal) > 0) {
+                return "The credit note cannot be more than the " + original.currency().format(principal)
+                        + " principal still owed on the plan's instalments to come.";
+            }
         }
         return null;
     }
