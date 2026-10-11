@@ -1,0 +1,330 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 80db184..208d196 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -67,6 +67,7 @@ function problemWith(line: NewLine): string {
+               <th scope="col">Unit price</th>
+               <th scope="col">Amount</th>
+               <th scope="col">Discount share</th>
++              <th scope="col">Tax</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -77,28 +78,29 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="line-unit-price">{{ money(l.unitPrice) }}</td>
+                 <td data-testid="line-amount">{{ money(l.amount) }}</td>
+                 <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
++                <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
+               </tr>
+             } @empty {
+               <tr>
+-                <td colspan="5" data-testid="line-empty">No lines yet.</td>
++                <td colspan="6" data-testid="line-empty">No lines yet.</td>
+               </tr>
+             }
+           </tbody>
+           <tfoot>
+             <tr>
+-              <th scope="row" colspan="4">Subtotal</th>
++              <th scope="row" colspan="5">Subtotal</th>
+               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="4">Discount ({{ inv.discountPct }}%)</th>
++              <th scope="row" colspan="5">Discount ({{ inv.discountPct }}%)</th>
+               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="4">Tax ({{ inv.taxRate }}%)</th>
++              <th scope="row" colspan="5">Tax ({{ inv.taxRate }}%)</th>
+               <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="4">Total</th>
++              <th scope="row" colspan="5">Total</th>
+               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
+             </tr>
+           </tfoot>
+@@ -137,6 +139,13 @@ function problemWith(line: NewLine): string {
+             formControlName="unitPrice"
+             required
+           />
++          <input
++            id="line-exempt"
++            type="checkbox"
++            data-testid="line-form-exempt"
++            formControlName="taxExempt"
++          />
++          <label for="line-exempt">Tax exempt</label>
+           <button type="submit" data-testid="line-form-submit" [disabled]="saving()">
+             Add line
+           </button>
+@@ -191,6 +200,7 @@ export class InvoicePanel {
+     description: new FormControl('', { nonNullable: true }),
+     qty: new FormControl('', { nonNullable: true }),
+     unitPrice: new FormControl('', { nonNullable: true }),
++    taxExempt: new FormControl(false, { nonNullable: true }),
+   });
+ 
+   protected readonly discountForm = new FormGroup({
+@@ -217,6 +227,7 @@ export class InvoicePanel {
+       description: raw.description.trim(),
+       qty: raw.qty.trim(),
+       unitPrice: raw.unitPrice.trim().replace(/^\$/, ''),
++      taxExempt: raw.taxExempt,
+     };
+     const problem = problemWith(line);
+     if (problem) {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index a1d7812..d138ac3 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -18,7 +18,8 @@ export interface InvoiceSummary {
+ 
+ // One line of an opened invoice. `qty` is as entered, without trailing zeros ("1.5"); money is a
+ // decimal string to the cent. `discountShare` is the line's share of the invoice discount, split in
+-// cents in proportion to the line amounts by the server; the shares add up to the discount.
++// cents in proportion to the line amounts by the server; the shares add up to the discount. A
++// `taxExempt` line (postage, say) is left out of the taxed amount.
+ export interface InvoiceLineView {
+   id: number;
+   description: string;
+@@ -26,13 +27,14 @@ export interface InvoiceLineView {
+   unitPrice: string;
+   amount: string;
+   discountShare: string;
++  taxExempt: boolean;
+ }
+ 
+ // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
+ // percentage taken off the subtotal, without trailing zeros ("12.5"); `discount` is the amount it
+ // takes off, rounded half up to the cent; `taxRate` is the workspace's tax percentage (without
+-// trailing zeros, "0" when none is set) and `tax` is that rate on the subtotal less the discount,
+-// rounded half up to the cent; `total` is the subtotal less the discount plus the tax.
++// trailing zeros, "0" when none is set) and `tax` is that rate on the taxable lines' amounts less
++// their discount shares, rounded half up to the cent; `total` is the subtotal less the discount plus the tax.
+ export interface InvoiceDetail {
+   id: number;
+   number: string;
+@@ -54,6 +56,7 @@ export interface NewLine {
+   description: string;
+   qty: string;
+   unitPrice: string;
++  taxExempt: boolean;
+ }
+ 
+ // The invoices REST API.
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 223b226..45b6d7d 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -35,7 +35,7 @@ public class TestSupportController {
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
+-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice");
++    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
+ 
+     private final Audit audit;
+@@ -116,10 +116,11 @@ public class TestSupportController {
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 insert("invoice_line", line.get("id"),
+-                        new String[] {"invoice_id", "description", "qty", "unit_price"},
++                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt"},
+                         invoiceId, text(line, "description"),
+                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
+-                        cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"));
++                        cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"),
++                        flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"));
+             }
+         }
+         // Keep generated ids clear of the seeded ones.
+@@ -165,13 +166,14 @@ public class TestSupportController {
+                     row.put("dueDate", r.get("DUE_DATE") == null ? null : r.get("DUE_DATE").toString());
+                     row.put("discountPct", r.get("DISCOUNT_PCT"));
+                     row.put("lineItems", jdbc.queryForList(
+-                            "SELECT id, description, qty, unit_price FROM invoice_line WHERE invoice_id = ? ORDER BY id",
++                            "SELECT id, description, qty, unit_price, tax_exempt FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+                                 Map<String, Object> line = new LinkedHashMap<>();
+                                 line.put("id", l.get("ID"));
+                                 line.put("description", l.get("DESCRIPTION"));
+                                 line.put("qty", l.get("QTY"));
+                                 line.put("unitPrice", l.get("UNIT_PRICE"));
++                                line.put("taxExempt", l.get("TAX_EXEMPT"));
+                                 return line;
+                             }).toList());
+                     return row;
+@@ -194,6 +196,17 @@ public class TestSupportController {
+         return jdbc.queryForObject("SELECT MAX(id) FROM " + table, Long.class);
+     }
+ 
++    /** A true/false flag; false when left out. */
++    private static boolean flag(Object value, String where) {
++        if (value == null) {
++            return false;
++        }
++        if (!(value instanceof Boolean b)) {
++            throw refuse(where + " must be true or false");
++        }
++        return b;
++    }
++
+     private static void only(Map<String, Object> row, Set<String> fields, String where) {
+         for (String field : row.keySet()) {
+             if (!fields.contains(field)) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index a97ed50..6e4861e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -172,11 +172,19 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The tax charged at the given rate (a percentage): the rate on what is left once the discount
+-     * has come off the subtotal, rounded half up to the cent.
++     * The tax charged at the given rate (a percentage): each taxable line's amount less its share of
++     * the discount, added up, and the rate charged on that, rounded half up to the cent. Tax-exempt
++     * lines are left out.
+      */
+     public BigDecimal tax(BigDecimal taxRate) {
+-        return subtotal().subtract(discount()).multiply(taxRate).divide(BigDecimal.valueOf(100))
++        List<BigDecimal> shares = discountShares();
++        BigDecimal taxable = BigDecimal.ZERO;
++        for (int i = 0; i < lines.size(); i++) {
++            if (!lines.get(i).isTaxExempt()) {
++                taxable = taxable.add(lines.get(i).amount().subtract(shares.get(i)));
++            }
++        }
++        return taxable.multiply(taxRate).divide(BigDecimal.valueOf(100))
+                 .setScale(2, RoundingMode.HALF_UP);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 9a53afd..10a84d3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -38,20 +38,21 @@ public class InvoiceController {
+     /**
+      * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
+      * money is a decimal string to the cent. {@code discountShare} is the line's share of the
+-     * invoice discount.
++     * invoice discount; {@code taxExempt} lines are left out of the taxed amount.
+      */
+     public record LineView(Long id, String description, String qty, String unitPrice, String amount,
+-            String discountShare) {
++            String discountShare, boolean taxExempt) {
+         static LineView of(InvoiceLine l, BigDecimal discountShare) {
+             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
+                     l.getUnitPrice().setScale(2).toPlainString(), l.amount().toPlainString(),
+-                    discountShare.toPlainString());
++                    discountShare.toPlainString(), l.isTaxExempt());
+         }
+     }
+ 
+     /**
+      * An opened invoice: its lines, subtotal, discount percentage (without trailing zeros, "12.5"),
+-     * the amount it takes off, the tax rate (without trailing zeros) and the tax charged, and the
++     * the amount it takes off, the tax rate (without trailing zeros) and the tax charged on the taxable
++     * lines less their discount shares, and the
+      * grand total (money as decimal strings to the cent).
+      */
+     public record InvoiceDetail(Long id, String number, Long clientId, InvoiceStatus status, LocalDate issueDate,
+@@ -78,7 +79,10 @@ public class InvoiceController {
+             BigDecimal discountPct) {
+     }
+ 
+-    /** A line to add: a description, a quantity above zero and a unit price of at least $0.01. */
++    /**
++     * A line to add: a description, a quantity above zero and a unit price of at least $0.01, and
++     * whether it is tax exempt (taxable when left out).
++     */
+     public record NewLine(
+             @NotBlank(message = "Enter a description.")
+             @Size(max = 255, message = "The description must be at most 255 characters.")
+@@ -90,7 +94,8 @@ public class InvoiceController {
+             @NotNull(message = "Enter a unit price.")
+             @DecimalMin(value = "0.01", message = "The unit price must be at least $0.01.")
+             @Digits(integer = 17, fraction = 2, message = "The unit price can have at most two decimals.")
+-            BigDecimal unitPrice) {
++            BigDecimal unitPrice,
++            Boolean taxExempt) {
+     }
+ 
+     private final InvoiceService invoices;
+@@ -141,7 +146,8 @@ public class InvoiceController {
+     @PostMapping("/api/invoices/{id}/lines")
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
+-        return invoices.addLine(id, body.description().trim(), body.qty(), body.unitPrice())
++        return invoices.addLine(id, body.description().trim(), body.qty(), body.unitPrice(),
++                Boolean.TRUE.equals(body.taxExempt()))
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index ce52a03..f2f768d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -25,13 +25,18 @@ public class InvoiceLine {
+     @Column(name = "unit_price")
+     private BigDecimal unitPrice;
+ 
++    /** Whether the line is left out of the taxed amount, e.g. postage. */
++    @Column(name = "tax_exempt")
++    private boolean taxExempt;
++
+     protected InvoiceLine() {
+     }
+ 
+-    public InvoiceLine(String description, BigDecimal qty, BigDecimal unitPrice) {
++    public InvoiceLine(String description, BigDecimal qty, BigDecimal unitPrice, boolean taxExempt) {
+         this.description = description;
+         this.qty = qty;
+         this.unitPrice = unitPrice;
++        this.taxExempt = taxExempt;
+     }
+ 
+     public Long getId() {
+@@ -50,6 +55,10 @@ public class InvoiceLine {
+         return unitPrice;
+     }
+ 
++    public boolean isTaxExempt() {
++        return taxExempt;
++    }
++
+     /** Quantity times unit price, rounded half up to the cent. */
+     public BigDecimal amount() {
+         return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index c542b16..ae0382b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -61,13 +61,14 @@ public class InvoiceService {
+      * a sent invoice refuses it.
+      */
+     @Transactional
+-    public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice) {
++    public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice,
++            boolean taxExempt) {
+         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+         found.ifPresent(invoice -> {
+             if (!invoice.isDraft()) {
+                 throw new InvoiceRejectedException("Only a draft invoice can take new lines.");
+             }
+-            invoice.addLine(new InvoiceLine(description, qty, unitPrice));
++            invoice.addLine(new InvoiceLine(description, qty, unitPrice, taxExempt));
+             invoices.saveAndFlush(invoice);
+         });
+         return found;
+diff --git a/src/main/resources/db/migration/V4__line_tax_exempt.sql b/src/main/resources/db/migration/V4__line_tax_exempt.sql
+new file mode 100644
+index 0000000..c95079e
+--- /dev/null
++++ b/src/main/resources/db/migration/V4__line_tax_exempt.sql
+@@ -0,0 +1,2 @@
++-- A tax-exempt line (postage, say) is left out of the taxed amount; lines are taxable by default.
++ALTER TABLE invoice_line ADD COLUMN tax_exempt BOOLEAN DEFAULT FALSE NOT NULL;
