@@ -1,0 +1,102 @@
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index f512d8b..061785e 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -40,13 +40,15 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "withholdingThreshold");
+     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
+     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+     private static final String MINIMUM_CHARGE = "minimum_charge";
+ 
+     private static final String INTEREST_THRESHOLD = "interest_threshold";
++    /** The setting holding the workspace's withholding threshold in US dollars (see Invoice#withholding). */
++    private static final String WITHHOLDING_THRESHOLD = "withholding_threshold";
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil");
+     private static final Set<String> INVOICE_FIELDS =
+@@ -159,6 +161,11 @@ public class TestSupportController {
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                         INTEREST_THRESHOLD, threshold.toPlainString());
+             }
++            if (values.get("withholdingThreshold") != null) {
++                BigDecimal threshold = money(values.get("withholdingThreshold"), "settings.withholdingThreshold");
++                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
++                        WITHHOLDING_THRESHOLD, threshold.toPlainString());
++            }
+             if (values.get("cardSurchargePct") != null) {
+                 BigDecimal rate = percent(values.get("cardSurchargePct"), "settings.cardSurchargePct");
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+@@ -536,6 +543,11 @@ public class TestSupportController {
+         if (!interestThreshold.isEmpty()) {
+             settings.put("interestThreshold", new BigDecimal(interestThreshold.get(0)));
+         }
++        List<String> withholdingThreshold = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
++                String.class, WITHHOLDING_THRESHOLD);
++        if (!withholdingThreshold.isEmpty()) {
++            settings.put("withholdingThreshold", new BigDecimal(withholdingThreshold.get(0)));
++        }
+         Map<String, BigDecimal> regionMaxInterest = this.lateInterestRate.regionMaximums();
+         if (!regionMaxInterest.isEmpty()) {
+             settings.put("regionMaxInterest", regionMaxInterest);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 74a5266..e353f3d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -305,6 +305,13 @@ public class Invoice {
+     @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'interest_threshold')")
+     private String interestThresholdUsd;
+ 
++    /**
++     * The workspace's withholding threshold in US dollars, as stored (the {@code withholding_threshold}
++     * setting); null when none is set.
++     */
++    @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'withholding_threshold')")
++    private String withholdingThresholdUsd;
++
+     /** The client's own annual late-interest rate, a percentage; null for the workspace's. Read from the client. */
+     @Formula("(SELECT c.interest_rate FROM client c WHERE c.id = client_id)")
+     private BigDecimal clientInterestRate;
+@@ -807,13 +814,18 @@ public class Invoice {
+     /**
+      * The withholding: the client's withholding percentage of the amount before tax, rounded down to
+      * the cent. The client pays it to its tax office instead, so it is never owed. Nothing for a credit
+-     * note, nor for a reverse-charged invoice: the client pays it all.
++     * note, nor for a reverse-charged invoice, nor for one whose amount before tax is under the
++     * workspace's withholding threshold: the client pays it all.
+      */
+     public BigDecimal withholding(BigDecimal taxRate) {
+         if (isCreditNote() || isReverseCharge() || withholdingPct == null || withholdingPct.signum() <= 0) {
+             return zero();
+         }
+-        return beforeTax(taxRate).multiply(withholdingPct).divide(BigDecimal.valueOf(100))
++        BigDecimal beforeTax = beforeTax(taxRate);
++        if (beforeTax.compareTo(withholdingThreshold()) < 0) {
++            return zero();
++        }
++        return beforeTax.multiply(withholdingPct).divide(BigDecimal.valueOf(100))
+                 .setScale(scale(), RoundingMode.DOWN);
+     }
+ 
+@@ -902,6 +914,17 @@ public class Invoice {
+         return currency().divideDownToStep(new BigDecimal(interestThresholdUsd.trim()), usdPerOn(issueDate));
+     }
+ 
++    /**
++     * The amount before tax an invoice must reach before anything is withheld: the workspace's threshold
++     * in US dollars converted at the issue date's rate, rounded down to the step; 0 when none is set.
++     */
++    private BigDecimal withholdingThreshold() {
++        if (withholdingThresholdUsd == null) {
++            return zero();
++        }
++        return currency().divideDownToStep(new BigDecimal(withholdingThresholdUsd.trim()), usdPerOn(issueDate));
++    }
++
+     /** The late interest charged on the invoice itself, released retention left out (see {@link #accrueLateInterest}). */
+     private void accrueInvoiceInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+             LocalDate today) {
