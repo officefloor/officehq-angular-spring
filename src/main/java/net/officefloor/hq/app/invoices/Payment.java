@@ -205,6 +205,21 @@ public class Payment {
         allocations.add(new PaymentAllocation(invoiceId, part, on));
     }
 
+    /**
+     * Whether every part of this payment that goes to the invoice is credit used on it (applied on its
+     * own day), none of it recorded against it.
+     */
+    public boolean onlyCreditUsedOn(Long invoiceId) {
+        return allocations.stream().filter(a -> a.getInvoiceId().equals(invoiceId)).allMatch(a -> a.getDate() != null);
+    }
+
+    /** Takes back every part of this payment applied to the invoice, as unused credit again; how much that was. */
+    public BigDecimal returnCredit(Long invoiceId) {
+        BigDecimal returned = amountTo(invoiceId);
+        allocations.removeIf(a -> a.getInvoiceId().equals(invoiceId));
+        return returned;
+    }
+
     /** How much of this payment goes to the invoice. */
     public BigDecimal amountTo(Long invoiceId) {
         return allocations.stream().filter(a -> a.getInvoiceId().equals(invoiceId))

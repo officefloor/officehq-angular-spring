@@ -658,8 +658,10 @@ public class InvoiceService {
     }
 
     /**
-     * Voids a sent invoice with no payments, and records it in the audit; empty if no such invoice. A
-     * draft, an invoice already void, or one with any payment is refused.
+     * Voids a sent invoice paid nothing but credit used on it when it was sent, and records it in the
+     * audit; that credit goes back on the client's account, unused again, each payment's part recorded
+     * in the audit. Empty if no such invoice. A draft, an invoice already void, or one with a payment
+     * recorded against it is refused.
      */
     @Transactional
     public Optional<Invoice> voidInvoice(Long invoiceId) {
@@ -677,11 +679,18 @@ public class InvoiceService {
             if (invoice.hasCreditNotesIssued()) {
                 throw new InvoiceRejectedException("An invoice with an issued credit note cannot be voided.");
             }
-            if (!payments.findForInvoice(invoice.getId()).isEmpty()) {
-                throw new InvoiceRejectedException("An invoice with payments cannot be voided.");
+            List<Payment> paidBy = payments.findForInvoice(invoice.getId());
+            if (paidBy.stream().anyMatch(payment -> !payment.onlyCreditUsedOn(invoice.getId()))) {
+                throw new InvoiceRejectedException("An invoice with a payment recorded against it cannot be voided.");
             }
             invoice.markVoid();
             invoices.saveAndFlush(invoice);
+            for (Payment payment : paidBy) {
+                BigDecimal returned = payment.returnCredit(invoice.getId());
+                payments.saveAndFlush(payment);
+                audit.record("CREDIT_RETURNED payment=" + payment.getId() + " amount="
+                        + returned.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
+            }
             audit.record("INVOICE_VOIDED id=" + invoice.getId() + " number=" + invoice.number());
         });
         return found;

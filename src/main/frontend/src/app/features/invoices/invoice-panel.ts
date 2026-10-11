@@ -160,8 +160,9 @@ function problemWith(line: NewLine): string {
 // The panel shows the invoice's RF payment reference; a payment may quote one, which must pass the
 // ISO 11649 check and be this invoice's. When parts of a payment are filled in on the list, the
 // payment is spread over those invoices instead; each payment shows how much of it went here.
-// A sent invoice with no payments can be voided; the server refuses to void a draft or one with
-// payments, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
+// A sent invoice paid only by credit used when it was sent can be voided (the credit goes back to the
+// client); the server refuses to void a draft or one with a recorded
+// payment, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
 // cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
 // be duplicated into a new draft for the same client, which then opens. A draft's due date can be set
 // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
