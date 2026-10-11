@@ -1947,7 +1947,7 @@ public class Invoice {
      */
     private List<BigDecimal> exactLineTaxes(BigDecimal taxRate) {
         List<BigDecimal> shares = discountShares();
-        List<BigDecimal> rates = lineRates(taxRate);
+        List<BigDecimal> rates = lineRates(taxRate, true);
         List<BigDecimal> taxes = new ArrayList<>(lines.size() + 1);
         for (int i = 0; i < lines.size(); i++) {
             taxes.add(lines.get(i).amount(scale()).subtract(shares.get(i)).multiply(rates.get(i)).movePointLeft(2));
@@ -1959,24 +1959,26 @@ public class Invoice {
     /**
      * The rate (a percentage) each line is taxed at, in the order of the lines, then the rate of the
      * surcharge and minimum charge: the line's own rate, otherwise the client's (zero for a tax-exempt
-     * client); zero for a tax-exempt line and on every line of a reverse-charged invoice.
+     * client); zero for a tax-exempt line, and on every line of a reverse-charged invoice when the rates
+     * are those charged rather than those the tax is taken out of tax-inclusive prices at.
      */
-    private List<BigDecimal> lineRates(BigDecimal taxRate) {
+    private List<BigDecimal> lineRates(BigDecimal taxRate, boolean charged) {
+        boolean reverseCharged = charged && isReverseCharge();
         BigDecimal clientRate = clientTaxExempt ? BigDecimal.ZERO : clientTaxRate(taxRate);
         List<BigDecimal> rates = new ArrayList<>(lines.size() + 1);
         for (InvoiceLine line : lines) {
-            rates.add(isReverseCharge() || line.isTaxExempt() ? BigDecimal.ZERO : line.taxRate(clientRate));
+            rates.add(reverseCharged || line.isTaxExempt() ? BigDecimal.ZERO : line.taxRate(clientRate));
         }
-        rates.add(isReverseCharge() ? BigDecimal.ZERO : clientRate);
+        rates.add(reverseCharged ? BigDecimal.ZERO : clientRate);
         return rates;
     }
 
     /**
      * The lines (by index, the surcharge and minimum charge last) grouped by the rate they are taxed at,
-     * the lower rate first.
+     * the lower rate first; the rates charged, or those tax is taken out of tax-inclusive prices at.
      */
-    private Map<BigDecimal, List<Integer>> byRate(BigDecimal taxRate) {
-        List<BigDecimal> rates = lineRates(taxRate);
+    private Map<BigDecimal, List<Integer>> byRate(BigDecimal taxRate, boolean charged) {
+        List<BigDecimal> rates = lineRates(taxRate, charged);
         Map<BigDecimal, List<Integer>> groups = new TreeMap<>();
         for (int i = 0; i < rates.size(); i++) {
             groups.computeIfAbsent(rates.get(i), r -> new ArrayList<>()).add(i);
@@ -1995,11 +1997,11 @@ public class Invoice {
      */
     public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
         if (clientPricesIncludeTax) {
-            return inclusiveLineTaxes(taxRate);
+            return isReverseCharge() ? lines.stream().map(l -> zero()).toList() : inclusiveLineTaxes(taxRate);
         }
         List<BigDecimal> exact = exactLineTaxes(taxRate);
         BigInteger[] shares = new BigInteger[exact.size()];
-        for (List<Integer> group : byRate(taxRate).values()) {
+        for (List<Integer> group : byRate(taxRate, true).values()) {
             share(exact, group, shares);
         }
         List<BigDecimal> result = new ArrayList<>(lines.size());
@@ -2083,14 +2085,22 @@ public class Invoice {
      */
     public BigDecimal tax(BigDecimal taxRate) {
         if (clientPricesIncludeTax) {
-            return inclusiveTax(taxRate);
+            return isReverseCharge() ? zero() : inclusiveTax(taxRate);
         }
         List<BigDecimal> exact = exactLineTaxes(taxRate);
         BigDecimal tax = zero();
-        for (List<Integer> group : byRate(taxRate).values()) {
+        for (List<Integer> group : byRate(taxRate, true).values()) {
             tax = tax.add(roundTax(group.stream().map(exact::get).toList()));
         }
         return tax;
+    }
+
+    /**
+     * Each line's tax taken out of tax-inclusive prices, in the order of the lines; none when the prices
+     * do not include tax. A reverse-charged invoice has it taken out as usual, though it is not charged.
+     */
+    public List<BigDecimal> lineTaxesInside(BigDecimal taxRate) {
+        return clientPricesIncludeTax ? inclusiveLineTaxes(taxRate) : lines.stream().map(l -> zero()).toList();
     }
 
     /** Whether the invoice's client is quoted prices that include tax. */
@@ -2135,7 +2145,7 @@ public class Invoice {
     private BigDecimal inclusiveTax(BigDecimal taxRate) {
         List<BigDecimal> amounts = inclusiveAmounts();
         BigDecimal tax = zero();
-        for (Map.Entry<BigDecimal, List<Integer>> group : byRate(taxRate).entrySet()) {
+        for (Map.Entry<BigDecimal, List<Integer>> group : byRate(taxRate, false).entrySet()) {
             tax = tax.add(inclusiveRateTax(amounts, group.getKey(), group.getValue()));
         }
         return tax;
@@ -2155,7 +2165,7 @@ public class Invoice {
             taxes.add(zero());
         }
         BigDecimal cent = BigDecimal.ONE.movePointLeft(scale());
-        for (Map.Entry<BigDecimal, List<Integer>> group : byRate(taxRate).entrySet()) {
+        for (Map.Entry<BigDecimal, List<Integer>> group : byRate(taxRate, false).entrySet()) {
             BigDecimal rate = group.getKey();
             if (rate.signum() == 0) {
                 continue;
@@ -2213,19 +2223,23 @@ public class Invoice {
 
     /**
      * The amount before tax: the subtotal less the discount plus the surcharge and the minimum charge, less the tax inside
-     * it when the client's prices include tax.
+     * it when the client's prices include tax (taken out even when reverse charged).
      */
     public BigDecimal beforeTax(BigDecimal taxRate) {
         BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
-        return clientPricesIncludeTax ? amount.subtract(tax(taxRate)) : amount;
+        return clientPricesIncludeTax ? amount.subtract(inclusiveTax(taxRate)) : amount;
     }
 
     /**
      * The grand total: the subtotal less the discount plus the surcharge and the minimum charge, plus tax at the given
-     * rate — or, when the client's prices include tax, that amount, which already holds it.
+     * rate — or, when the client's prices include tax, that amount, which already holds it; a reverse-charged
+     * client whose prices include tax pays only the amount before tax.
      */
     public BigDecimal total(BigDecimal taxRate) {
         BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
-        return clientPricesIncludeTax ? amount : amount.add(tax(taxRate));
+        if (clientPricesIncludeTax) {
+            return isReverseCharge() ? beforeTax(taxRate) : amount;
+        }
+        return amount.add(tax(taxRate));
     }
 }

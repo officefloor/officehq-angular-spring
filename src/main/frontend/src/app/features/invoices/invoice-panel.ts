@@ -357,7 +357,7 @@ function problemWith(line: NewLine): string {
             </tr>
             <tr>
               <th scope="row" colspan="10">
-                @if (inv.pricesIncludeTax) {
+                @if (inv.pricesIncludeTax && !inv.reverseCharge) {
                   Tax included (lines at their own rate, otherwise {{ inv.taxRate }}%)
                 } @else {
                   Tax (lines at their own rate, otherwise {{ inv.taxRate }}%)

@@ -157,9 +157,10 @@ public class InvoiceController {
             LocalDate paidOn = i.paidOn(payments, taxRate);
             List<BigDecimal> shares = i.discountShares();
             List<BigDecimal> taxes = i.lineTaxes(taxRate);
+            List<BigDecimal> inside = i.lineTaxesInside(taxRate);
             List<LineView> lines = IntStream.range(0, shares.size())
                     .mapToObj(n -> LineView.of(i.getLines().get(n), i.scale(), shares.get(n), taxes.get(n),
-                            i.isPricesIncludeTax() ? taxes.get(n) : BigDecimal.ZERO)).toList();
+                            inside.get(n))).toList();
             return new InvoiceDetail(i.getId(), i.number(),
                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
                     i.statusWhenPaid(paid, paidOn, taxRate, today), i.getIssueDate(), i.getDueDate(),
