@@ -346,8 +346,8 @@ export class InvoiceService {
 
   // Refunds the client's unused credit, the oldest payment's first; refused (409) when dated after
   // today or before a payment it would come from, or more than the client's credit. Answers the
-  // client's invoices.
-  refundCredit(clientId: number, refund: { amount: string; date: string }): Observable<InvoiceSummary[]> {
+  // client's invoices. The amount is in the refund's currency, converted by the server into the client's.
+  refundCredit(clientId: number, refund: { amount: string; currency: Currency; date: string }): Observable<InvoiceSummary[]> {
     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/refunds`, refund);
   }
 

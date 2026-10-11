@@ -626,19 +626,26 @@ public class InvoiceService {
 
     /**
      * Refunds the amount of the client's unused credit on the date, never a deposit held for one of its
-     * drafts: the oldest payment's credit first
+     * drafts. The amount is in the currency refunded in (null for the client's own) and comes off the
+     * credit converted into the client's currency through US dollars at the rates on the date, rounded
+     * to their currency's step: the oldest payment's credit first
      * (lower id first on the same date), then the next, each part recorded in the audit; empty if no
      * such client. The amount has already been checked; a date after today or before a payment it
      * would come from, or an amount more than the client's credit, is refused.
      */
     @Transactional
-    public Optional<Long> refundCredit(Long clientId, BigDecimal amount, LocalDate date) {
+    public Optional<Long> refundCredit(Long clientId, BigDecimal refundAmount, Currency refundIn, LocalDate date) {
         Optional<Client> client = clients.findById(clientId);
         if (client.isEmpty()) {
             return Optional.empty();
         }
         Currency currency = client.get().getCurrency();
-        requireWhole(currency, amount, "The refund");
+        Currency refundCurrency = refundIn == null ? currency : refundIn;
+        requireWhole(refundCurrency, refundAmount, "The refund");
+        BigDecimal amount = exchangeRates.convert(refundAmount, refundCurrency, currency, date);
+        if (amount.signum() <= 0) {
+            throw new InvoiceRejectedException("The refund is worth nothing once converted into " + currency.name() + ".");
+        }
         LocalDate now = today.date();
         if (date.isAfter(now)) {
             throw new InvoiceRejectedException("The refund date cannot be after today (" + now + ").");

@@ -254,12 +254,17 @@ public class InvoiceController {
             String reference) {
     }
 
-    /** A refund of unused credit: an amount more than zero with at most two decimals, and the date it was refunded. */
+    /**
+     * A refund of unused credit: an amount more than zero with at most two decimals, the currency it is
+     * refunded in, and the date it was refunded.
+     */
     public record NewRefund(
             @NotNull(message = "Enter an amount.")
             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
             @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
             BigDecimal amount,
+            // The currency it is refunded in; the client's own when left out.
+            Currency currency,
             @NotNull(message = "Enter the date it was refunded.")
             LocalDate date) {
     }
@@ -594,7 +599,7 @@ public class InvoiceController {
     @PostMapping("/api/clients/{clientId}/refunds")
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> refundCredit(@PathVariable Long clientId, @Valid @RequestBody NewRefund body) {
-        invoices.refundCredit(clientId, body.amount(), body.date())
+        invoices.refundCredit(clientId, body.amount(), body.currency(), body.date())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
         return forClient(clientId);
     }
