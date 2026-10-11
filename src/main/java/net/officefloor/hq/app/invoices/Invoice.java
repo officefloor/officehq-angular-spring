@@ -891,10 +891,10 @@ public class Invoice {
     /**
      * The plan's schedule at the tax rate, an ordinary loan of the grand total; empty when there is no
      * plan. With the monthly rate i (the annual rate / 12 / 100) the instalment is P x i / (1 - (1 +
-     * i)^-n), or P / n at 0%, rounded half up to the cent. Each month's interest is the balance still
+     * i)^-n), or P / n at 0%, rounded up to the next whole unit of the currency. Each month's interest is the balance still
      * owed x i, rounded half up to the cent, and its principal the instalment less the interest; the
-     * last instalment pays off the whole balance left plus its interest, so the schedule ends at zero.
-     * Instalment k falls due k months after the issue date, on the same day (the month's last day when
+     * last instalment (or any earlier one the instalment would overpay) pays off the whole balance left
+     * plus its interest, so the schedule ends at zero. Instalment k falls due k months after the issue date, on the same day (the month's last day when
      * it is shorter). Each credit note issued against it, in the order they were issued, then re-works
      * the instalments due after its issue date by the same rule: from the principal still owed before
      * them less what the credit note took off, over as many instalments, keeping their due dates; the
@@ -962,17 +962,18 @@ public class Invoice {
         int n = dues.size();
         BigDecimal payment;
         if (i.signum() == 0) {
-            payment = principal.divide(BigDecimal.valueOf(n), scale(), RoundingMode.HALF_UP);
+            payment = principal.divide(BigDecimal.valueOf(n), mc);
         } else {
             BigDecimal growth = BigDecimal.ONE.add(i).pow(n, mc);
-            payment = principal.multiply(i).multiply(growth)
-                    .divide(growth.subtract(BigDecimal.ONE), mc).setScale(scale(), RoundingMode.HALF_UP);
+            payment = principal.multiply(i).multiply(growth).divide(growth.subtract(BigDecimal.ONE), mc);
         }
+        payment = payment.setScale(0, RoundingMode.CEILING).setScale(scale());
         List<Instalment> schedule = new ArrayList<>(n);
         BigDecimal balance = principal.setScale(scale(), RoundingMode.HALF_UP);
         for (int k = 1; k <= n; k++) {
             BigDecimal interest = balance.multiply(i).setScale(scale(), RoundingMode.HALF_UP);
-            BigDecimal paid = k == n ? balance.add(interest) : payment;
+            BigDecimal owed = balance.add(interest);
+            BigDecimal paid = k == n || payment.compareTo(owed) > 0 ? owed : payment;
             BigDecimal repaid = paid.subtract(interest);
             balance = balance.subtract(repaid);
             schedule.add(new Instalment(firstNumber + k - 1, dues.get(k - 1), paid, interest, repaid, balance));
