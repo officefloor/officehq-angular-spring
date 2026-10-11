@@ -28,14 +28,19 @@ public class Client {
     @Column(name = "discount_pct")
     private BigDecimal discountPct = BigDecimal.ZERO;
 
+    /** Whether the client is tax exempt (a charity, say): its invoices charge no tax on any line. */
+    @Column(name = "tax_exempt")
+    private boolean taxExempt;
+
     protected Client() {
     }
 
-    public Client(String name, String email, Integer termsDays, BigDecimal discountPct) {
+    public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt) {
         this.name = name;
         this.email = email;
         this.termsDays = termsDays;
         this.discountPct = discountPct == null ? BigDecimal.ZERO : discountPct;
+        this.taxExempt = taxExempt;
     }
 
     public Long getId() {
@@ -56,5 +61,9 @@ public class Client {
 
     public BigDecimal getDiscountPct() {
         return discountPct;
+    }
+
+    public boolean isTaxExempt() {
+        return taxExempt;
     }
 }

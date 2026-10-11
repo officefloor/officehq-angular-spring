@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Formula;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
@@ -65,6 +66,10 @@ public class Invoice {
     @Column(name = "discount_reason")
     private String discountReason;
 
+    /** Whether the invoice's client is tax exempt, so no line is taxed; read from the client. */
+    @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
+    private boolean clientTaxExempt;
+
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
@@ -74,9 +79,10 @@ public class Invoice {
     }
 
     /** A new, empty draft for a client, issued and due on the given dates. */
-    public static Invoice draft(Long clientId, LocalDate issueDate, LocalDate dueDate) {
+    public static Invoice draft(Long clientId, boolean clientTaxExempt, LocalDate issueDate, LocalDate dueDate) {
         Invoice invoice = new Invoice();
         invoice.clientId = clientId;
+        invoice.clientTaxExempt = clientTaxExempt;
         invoice.status = InvoiceStatus.DRAFT;
         invoice.issueDate = issueDate;
         invoice.dueDate = dueDate;
@@ -88,7 +94,7 @@ public class Invoice {
      * discount, issued and due on the given dates. Payments stay with this invoice.
      */
     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
-        Invoice copy = draft(clientId, issueDate, dueDate);
+        Invoice copy = draft(clientId, clientTaxExempt, issueDate, dueDate);
         copy.discountPct = discountPct;
         copy.discountAmount = discountAmount;
         copy.discountCap = discountCap;
@@ -454,14 +460,14 @@ public class Invoice {
     /**
      * Each line's tax, in the order of the lines: the line's own rate (a percentage), or the given
      * workspace rate when it has none, on the line's amount less its share of the discount, rounded
-     * half up to the cent. Tax-exempt lines have no tax.
+     * half up to the cent. Tax-exempt lines, and every line of a tax-exempt client, have no tax.
      */
     public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
         List<BigDecimal> shares = discountShares();
         List<BigDecimal> taxes = new ArrayList<>(lines.size());
         for (int i = 0; i < lines.size(); i++) {
             InvoiceLine line = lines.get(i);
-            taxes.add(line.isTaxExempt() ? BigDecimal.ZERO.setScale(2)
+            taxes.add(clientTaxExempt || line.isTaxExempt() ? BigDecimal.ZERO.setScale(2)
                     : line.amount().subtract(shares.get(i)).multiply(line.taxRate(taxRate)).divide(BigDecimal.valueOf(100))
                             .setScale(2, RoundingMode.HALF_UP));
         }

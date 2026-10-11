@@ -116,6 +116,13 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
           step="0.01"
           formControlName="discountPct"
         />
+        <input
+          id="client-tax-exempt"
+          data-testid="client-form-tax-exempt"
+          type="checkbox"
+          formControlName="taxExempt"
+        />
+        <label for="client-tax-exempt">Tax exempt (no tax on any of their invoices)</label>
         <button type="submit" data-testid="client-form-submit" [disabled]="saving()">
           Add client
         </button>
@@ -165,6 +172,7 @@ export class Clients {
     }),
     terms: new FormControl<number | null>(null),
     discountPct: new FormControl<number | null>(null),
+    taxExempt: new FormControl(false, { nonNullable: true }),
   });
 
   constructor() {
@@ -190,7 +198,8 @@ export class Clients {
     const termsDays = terms === null || (terms as unknown) === '' ? null : Number(terms);
     const discount = this.form.controls.discountPct.value;
     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
-    this.form.setValue({ name, email, terms: termsDays, discountPct });
+    const taxExempt = this.form.controls.taxExempt.value;
+    this.form.setValue({ name, email, terms: termsDays, discountPct, taxExempt });
     const problem = this.problemWith(name, email, termsDays, discountPct);
     if (problem) {
       this.form.markAllAsTouched();
@@ -199,7 +208,7 @@ export class Clients {
     }
     this.saving.set(true);
     this.error.set('');
-    this.service.add({ name, email, termsDays, discountPct: discountPct ?? 0 }).subscribe({
+    this.service.add({ name, email, termsDays, discountPct: discountPct ?? 0, taxExempt }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created].sort(byName));
         this.form.reset();

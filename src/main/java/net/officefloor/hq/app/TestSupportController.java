@@ -32,7 +32,7 @@ public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
@@ -92,9 +92,10 @@ public class TestSupportController {
         }
         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
             only(row, CLIENT_FIELDS, "clients[]");
-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct"},
+            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt"},
                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
-                    percent(row.get("discountPct"), "clients[].discountPct"));
+                    percent(row.get("discountPct"), "clients[].discountPct"),
+                    flag(row.get("taxExempt"), "clients[].taxExempt"));
         }
         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
             only(row, INVOICE_FIELDS, "invoices[]");
@@ -174,7 +175,7 @@ public class TestSupportController {
         if (!taxRate.isEmpty()) {
             out.put("settings", Map.of("taxRate", new BigDecimal(taxRate.get(0))));
         }
-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct FROM client ORDER BY id").stream()
+        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -184,6 +185,7 @@ public class TestSupportController {
                         row.put("termsDays", r.get("TERMS_DAYS"));
                     }
                     row.put("discountPct", r.get("DISCOUNT_PCT"));
+                    row.put("taxExempt", r.get("TAX_EXEMPT"));
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(

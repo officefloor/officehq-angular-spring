@@ -10,6 +10,8 @@ export interface Client {
   termsDays: number | null;
   // The standard percentage discount new invoices for the client start with; 0 is none.
   discountPct: number;
+  // Whether the client is tax exempt (a charity, say): its invoices charge no tax on any line.
+  taxExempt: boolean;
 }
 
 export type NewClient = Omit<Client, 'id'>;
