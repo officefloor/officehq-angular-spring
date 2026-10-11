@@ -111,7 +111,8 @@ function problemWith(line: NewLine): string {
 // ISO 11649 check and be this invoice's. When parts of a payment are filled in on the list, the
 // payment is spread over those invoices instead; each payment shows how much of it went here.
 // A sent invoice with no payments can be voided; the server refuses to void a draft or one with
-// payments, and refuses any payment or change to a void invoice.
+// payments, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
+// cheque): it is undone on every invoice it was applied to and never counts again.
 @Component({
   selector: 'app-invoice-panel',
   imports: [ReactiveFormsModule, PaymentForm],
@@ -189,6 +190,7 @@ function problemWith(line: NewLine): string {
                 <th scope="col">Amount</th>
                 <th scope="col">To this invoice</th>
                 <th scope="col">Reference</th>
+                <th scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -198,24 +200,38 @@ function problemWith(line: NewLine): string {
                   <td data-testid="payment-amount">{{ money(p.amount) }}</td>
                   <td data-testid="payment-allocated">{{ money(p.allocated) }}</td>
                   <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
+                  <td>
+                    <button
+                      type="button"
+                      data-testid="payment-reverse"
+                      [disabled]="reversing()"
+                      [attr.aria-label]="'Reverse payment of ' + money(p.amount) + ' on ' + p.date"
+                      (click)="reversePayment(inv.id, inv.clientId, p.id)"
+                    >
+                      Reverse
+                    </button>
+                  </td>
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="4" data-testid="payment-empty">No payments yet.</td>
+                  <td colspan="5" data-testid="payment-empty">No payments yet.</td>
                 </tr>
               }
             </tbody>
             <tfoot>
               <tr>
-                <th scope="row" colspan="3">Paid</th>
+                <th scope="row" colspan="4">Paid</th>
                 <td data-testid="invoice-paid">{{ money(inv.paid) }}</td>
               </tr>
               <tr>
-                <th scope="row" colspan="3">Amount due</th>
+                <th scope="row" colspan="4">Amount due</th>
                 <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
               </tr>
             </tfoot>
           </table>
+          @if (reverseError()) {
+            <p role="alert" data-testid="payment-reverse-error">{{ reverseError() }}</p>
+          }
         }
 
         @if (inv.status !== 'PAID') {
@@ -350,6 +366,8 @@ export class InvoicePanel {
   protected readonly sendError = signal('');
   protected readonly voiding = signal(false);
   protected readonly voidError = signal('');
+  protected readonly reversing = signal(false);
+  protected readonly reverseError = signal('');
   protected readonly statusLabel = statusLabel;
   protected readonly money = money;
 
@@ -377,6 +395,7 @@ export class InvoicePanel {
       this.discountError.set('');
       this.sendError.set('');
       this.voidError.set('');
+      this.reverseError.set('');
       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
       onCleanup(() => sub.unsubscribe());
     });
@@ -498,6 +517,27 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The invoice could not be voided.',
         );
         this.voiding.set(false);
+      },
+    });
+  }
+
+  // A payment was reversed: show this invoice again, and the client's other invoices it was applied to.
+  protected reversePayment(invoiceId: number, clientId: number, paymentId: number): void {
+    this.reversing.set(true);
+    this.reverseError.set('');
+    this.service.reversePayment(invoiceId, paymentId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.service.forClient(clientId).subscribe((list) => this.split.emit(list));
+        this.reversing.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.reverseError.set(
+          typeof detail === 'string' && detail ? detail : 'The payment could not be reversed.',
+        );
+        this.reversing.set(false);
       },
     });
   }

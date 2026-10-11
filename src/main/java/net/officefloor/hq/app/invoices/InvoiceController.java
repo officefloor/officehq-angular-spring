@@ -333,4 +333,13 @@ public class InvoiceController {
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
+
+    /** Reverses a payment on every invoice it was applied to; answers the invoice it was reversed from. */
+    @PostMapping("/api/invoices/{id}/payments/{paymentId}/reverse")
+    public InvoiceDetail reversePayment(@PathVariable Long id, @PathVariable Long paymentId) {
+        invoices.reversePayment(paymentId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such payment."));
+        return invoices.find(id).map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
 }

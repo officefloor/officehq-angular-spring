@@ -34,6 +34,9 @@ public class Payment {
     /** The payment reference the client quoted, or null when none was. */
     private String reference;
 
+    /** Whether the payment has been reversed (a bounced cheque): it then no longer counts. */
+    private boolean reversed;
+
     @ElementCollection
     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
     private List<PaymentAllocation> allocations = new ArrayList<>();
@@ -85,6 +88,15 @@ public class Payment {
 
     public String getReference() {
         return reference;
+    }
+
+    public boolean isReversed() {
+        return reversed;
+    }
+
+    /** Reverses the payment: it no longer counts on any invoice it was applied to. */
+    public void reverse() {
+        reversed = true;
     }
 
     public List<PaymentAllocation> getAllocations() {

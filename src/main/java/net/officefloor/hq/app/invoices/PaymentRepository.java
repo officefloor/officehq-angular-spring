@@ -8,11 +8,11 @@ import org.springframework.data.repository.query.Param;
 
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
-    /** The payments with a part allocated to the invoice, oldest first. */
-    @Query("SELECT DISTINCT p FROM Payment p LEFT JOIN FETCH p.allocations WHERE p.id IN (SELECT q.id FROM Payment q JOIN q.allocations a WHERE a.invoiceId = :invoiceId) ORDER BY p.date, p.id")
+    /** The payments not reversed with a part allocated to the invoice, oldest first. */
+    @Query("SELECT DISTINCT p FROM Payment p LEFT JOIN FETCH p.allocations WHERE p.reversed = false AND p.id IN (SELECT q.id FROM Payment q JOIN q.allocations a WHERE a.invoiceId = :invoiceId) ORDER BY p.date, p.id")
     List<Payment> findForInvoice(@Param("invoiceId") Long invoiceId);
 
-    /** For each of the invoices that has been paid something, its id and the amount paid to it. */
-    @Query("SELECT a.invoiceId, SUM(a.amount) FROM Payment p JOIN p.allocations a WHERE a.invoiceId IN :invoiceIds GROUP BY a.invoiceId")
+    /** For each of the invoices that has been paid something, its id and the amount paid to it by payments not reversed. */
+    @Query("SELECT a.invoiceId, SUM(a.amount) FROM Payment p JOIN p.allocations a WHERE p.reversed = false AND a.invoiceId IN :invoiceIds GROUP BY a.invoiceId")
     List<Object[]> paidTo(@Param("invoiceIds") Collection<Long> invoiceIds);
 }

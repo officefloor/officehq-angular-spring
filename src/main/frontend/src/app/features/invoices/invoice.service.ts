@@ -187,4 +187,10 @@ export class InvoiceService {
   recordSplitPayment(clientId: number, payment: NewSplitPayment): Observable<InvoiceSummary[]> {
     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment);
   }
+
+  // Reverses a payment (a bounced cheque) on every invoice it was applied to; refused (409) when it
+  // has already been reversed. Answers the opened invoice with its payments and new status.
+  reversePayment(invoiceId: number, paymentId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments/${paymentId}/reverse`, null);
+  }
 }

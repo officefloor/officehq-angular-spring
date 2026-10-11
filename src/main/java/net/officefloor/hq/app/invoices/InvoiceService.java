@@ -353,4 +353,23 @@ public class InvoiceService {
         }
         return payment;
     }
+
+    /**
+     * Reverses the payment (a bounced cheque), undoing it on every invoice it was applied to, and
+     * records it in the audit; empty if no such payment. A payment already reversed is refused.
+     */
+    @Transactional
+    public Optional<Payment> reversePayment(Long paymentId) {
+        Optional<Payment> found = payments.findById(paymentId);
+        found.ifPresent(payment -> {
+            if (payment.isReversed()) {
+                throw new InvoiceRejectedException("This payment has already been reversed.");
+            }
+            payment.reverse();
+            payments.saveAndFlush(payment);
+            audit.record("PAYMENT_REVERSED id=" + payment.getId() + " amount="
+                    + payment.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        });
+        return found;
+    }
 }
