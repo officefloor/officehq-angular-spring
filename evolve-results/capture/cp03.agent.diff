@@ -1,0 +1,700 @@
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 709f94e..c3bc957 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -1,6 +1,7 @@
+-import { Component, inject, signal } from '@angular/core';
++import { Component, computed, inject, signal } from '@angular/core';
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
++import { ClientInvoices } from '../invoices/client-invoices';
+ import { Client, ClientService, byName } from './client.service';
+ 
+ // A proper email address: a mailbox, an @, and a domain with at least one dot — name@company.com,
+@@ -8,18 +9,50 @@ import { Client, ClientService, byName } from './client.service';
+ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+ 
+ // The workspace's clients: listed A to Z by name (ignoring capitals), with a form to add one.
++// Clicking a client lists that client's invoices beside the clients.
+ @Component({
+   selector: 'app-clients',
+-  imports: [ReactiveFormsModule],
++  imports: [ReactiveFormsModule, ClientInvoices],
++  styles: `
++    :host {
++      display: flex;
++      flex-wrap: wrap;
++      gap: 2rem;
++      align-items: flex-start;
++    }
++    .client {
++      display: flex;
++      gap: 1rem;
++      width: 100%;
++      text-align: left;
++      font: inherit;
++      color: inherit;
++      background: none;
++      border: 1px solid transparent;
++      padding: 0.25rem 0.5rem;
++      cursor: pointer;
++    }
++    .client[aria-pressed='true'] {
++      border-color: currentColor;
++      font-weight: bold;
++    }
++  `,
+   template: `
+     <section aria-labelledby="clients-heading">
+       <h2 id="clients-heading">Clients</h2>
+ 
+       <ul data-testid="client-list">
+         @for (c of clients(); track c.id) {
+-          <li [attr.data-testid]="'client-row-' + c.id">
+-            <span data-testid="client-name">{{ c.name }}</span>
+-            <span data-testid="client-email">{{ c.email }}</span>
++          <li [attr.data-testid]="'client-row-' + c.id" (click)="selectedId.set(c.id)">
++            <button
++              type="button"
++              class="client"
++              [attr.aria-pressed]="selectedId() === c.id"
++              (click)="$event.stopPropagation(); selectedId.set(c.id)"
++            >
++              <span data-testid="client-name">{{ c.name }}</span>
++              <span data-testid="client-email">{{ c.email }}</span>
++            </button>
+           </li>
+         } @empty {
+           <li data-testid="home-empty">No clients yet.</li>
+@@ -45,6 +78,10 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+         }
+       </form>
+     </section>
++
++    @if (selected(); as client) {
++      <app-client-invoices [clientId]="client.id" [clientName]="client.name" />
++    }
+   `,
+ })
+ export class Clients {
+@@ -53,6 +90,10 @@ export class Clients {
+   protected readonly clients = signal<Client[]>([]);
+   protected readonly saving = signal(false);
+   protected readonly error = signal('');
++  protected readonly selectedId = signal<number | null>(null);
++  protected readonly selected = computed(
++    () => this.clients().find((c) => c.id === this.selectedId()) ?? null,
++  );
+ 
+   protected readonly form = new FormGroup({
+     name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+new file mode 100644
+index 0000000..ef9b03b
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -0,0 +1,65 @@
++import { Component, effect, inject, input, signal } from '@angular/core';
++import { InvoiceService, InvoiceStatus, InvoiceSummary } from './invoice.service';
++
++const STATUS_LABEL: Record<InvoiceStatus, string> = { DRAFT: 'Draft', SENT: 'Sent' };
++const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
++
++// One client's invoices, each with its status, total and due date.
++@Component({
++  selector: 'app-client-invoices',
++  template: `
++    <section aria-labelledby="invoices-heading">
++      <h2 id="invoices-heading">Invoices for {{ clientName() }}</h2>
++      <table data-testid="invoice-list">
++        <thead>
++          <tr>
++            <th scope="col">Invoice</th>
++            <th scope="col">Status</th>
++            <th scope="col">Total</th>
++            <th scope="col">Due</th>
++          </tr>
++        </thead>
++        <tbody>
++          @for (i of invoices(); track i.id) {
++            <tr [attr.data-testid]="'invoice-row-' + i.id">
++              <td>#{{ i.id }}</td>
++              <td data-testid="invoice-status">{{ statusLabel(i.status) }}</td>
++              <td data-testid="invoice-total">{{ money(i.total) }}</td>
++              <td data-testid="invoice-due">{{ i.dueDate }}</td>
++            </tr>
++          } @empty {
++            <tr>
++              <td colspan="4" data-testid="invoice-empty">No invoices yet.</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    </section>
++  `,
++})
++export class ClientInvoices {
++  private readonly service = inject(InvoiceService);
++
++  readonly clientId = input.required<number>();
++  readonly clientName = input('');
++
++  protected readonly invoices = signal<InvoiceSummary[]>([]);
++
++  constructor() {
++    effect((onCleanup) => {
++      const id = this.clientId();
++      this.invoices.set([]);
++      const sub = this.service.forClient(id).subscribe((list) => this.invoices.set(list));
++      onCleanup(() => sub.unsubscribe());
++    });
++  }
++
++  protected statusLabel(status: InvoiceStatus): string {
++    return STATUS_LABEL[status];
++  }
++
++  // The total is already to the cent, so the number shown is exact.
++  protected money(total: string): string {
++    return MONEY.format(Number(total));
++  }
++}
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+new file mode 100644
+index 0000000..3cdb90e
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -0,0 +1,25 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++export type InvoiceStatus = 'DRAFT' | 'SENT';
++
++// An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
++// server: every line's quantity times unit price added up exactly, then rounded once, half up.
++export interface InvoiceSummary {
++  id: number;
++  status: InvoiceStatus;
++  total: string;
++  issueDate: string | null;
++  dueDate: string | null;
++}
++
++// The invoices REST API.
++@Injectable({ providedIn: 'root' })
++export class InvoiceService {
++  private readonly http = inject(HttpClient);
++
++  forClient(clientId: number): Observable<InvoiceSummary[]> {
++    return this.http.get<InvoiceSummary[]>(`/api/clients/${clientId}/invoices`);
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 96ec543..efe1866 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -1,6 +1,10 @@
+ package net.officefloor.hq.app;
+ 
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
+ import java.util.ArrayList;
++import java.util.Collections;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+@@ -26,7 +30,12 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
++    private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "clients", "invoices");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
++    private static final Set<String> INVOICE_FIELDS =
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "lineItems");
++    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice");
++    private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
+ 
+     private final Audit audit;
+     private final JdbcTemplate jdbc;
+@@ -41,8 +50,11 @@ public class TestSupportController {
+     @Transactional
+     public void reset() {
+         audit.clear();
+-        jdbc.execute("DELETE FROM client");
+-        jdbc.execute("ALTER TABLE client ALTER COLUMN id RESTART WITH 1");
++        jdbc.execute("DELETE FROM app_setting");
++        for (String table : List.of("invoice_line", "invoice", "client")) {
++            jdbc.execute("DELETE FROM " + table);
++            jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH 1");
++        }
+     }
+ 
+     /**
+@@ -53,28 +65,53 @@ public class TestSupportController {
+     @Transactional
+     public void seed(@RequestBody Map<String, Object> fixture) {
+         for (String key : fixture.keySet()) {
+-            if (!key.equals("clients")) {
++            if (!FIXTURE_KEYS.contains(key)) {
+                 throw refuse("unsupported fixture key: " + key);
+             }
+         }
++        if (fixture.get("asOf") != null) {
++            LocalDate asOf = date(fixture.get("asOf"), "asOf");
++            jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", Today.AS_OF, asOf.toString());
++        }
+         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
+-            for (String field : row.keySet()) {
+-                if (!CLIENT_FIELDS.contains(field)) {
+-                    throw refuse("unsupported field: clients[]." + field);
+-                }
+-            }
++            only(row, CLIENT_FIELDS, "clients[]");
+             Object id = row.get("id");
+             if (id == null) {
+                 jdbc.update("INSERT INTO client (name, email) VALUES (?, ?)",
+                         text(row, "name"), text(row, "email"));
+             } else {
+                 jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
+-                        ((Number) id).longValue(), text(row, "name"), text(row, "email"));
++                        id(id), text(row, "name"), text(row, "email"));
++            }
++        }
++        for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
++            only(row, INVOICE_FIELDS, "invoices[]");
++            String status = row.get("status") == null ? "DRAFT" : row.get("status").toString();
++            if (!STATUSES.contains(status)) {
++                throw refuse("unsupported value of invoices[].status: " + status);
++            }
++            if (row.get("clientId") == null) {
++                throw refuse("invoices[].clientId is required");
++            }
++            Long invoiceId = insert("invoice", row.get("id"),
++                    new String[] {"client_id", "status", "issue_date", "due_date"},
++                    id(row.get("clientId")), status,
++                    row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
++                    row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"));
++            for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
++                only(line, LINE_FIELDS, "invoices[].lineItems[]");
++                insert("invoice_line", line.get("id"),
++                        new String[] {"invoice_id", "description", "qty", "unit_price"},
++                        invoiceId, text(line, "description"),
++                        cents(line.get("qty"), "invoices[].lineItems[].qty"),
++                        cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"));
+             }
+         }
+         // Keep generated ids clear of the seeded ones.
+-        Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM client", Long.class);
+-        jdbc.execute("ALTER TABLE client ALTER COLUMN id RESTART WITH " + next);
++        for (String table : List.of("client", "invoice", "invoice_line")) {
++            Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM " + table, Long.class);
++            jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH " + next);
++        }
+     }
+ 
+     /**
+@@ -84,6 +121,11 @@ public class TestSupportController {
+     @GetMapping("/fixture")
+     public Map<String, Object> fixture() {
+         Map<String, Object> out = new LinkedHashMap<>();
++        List<String> asOf = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class,
++                Today.AS_OF);
++        if (!asOf.isEmpty()) {
++            out.put("asOf", asOf.get(0));
++        }
+         out.put("clients", jdbc.queryForList("SELECT id, name, email FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+@@ -92,9 +134,89 @@ public class TestSupportController {
+                     row.put("email", r.get("EMAIL"));
+                     return row;
+                 }).toList());
++        out.put("invoices", jdbc.queryForList(
++                "SELECT id, client_id, status, issue_date, due_date FROM invoice ORDER BY id").stream()
++                .map(r -> {
++                    Map<String, Object> row = new LinkedHashMap<>();
++                    row.put("id", r.get("ID"));
++                    row.put("clientId", r.get("CLIENT_ID"));
++                    row.put("status", r.get("STATUS"));
++                    row.put("issueDate", r.get("ISSUE_DATE") == null ? null : r.get("ISSUE_DATE").toString());
++                    row.put("dueDate", r.get("DUE_DATE") == null ? null : r.get("DUE_DATE").toString());
++                    row.put("lineItems", jdbc.queryForList(
++                            "SELECT id, description, qty, unit_price FROM invoice_line WHERE invoice_id = ? ORDER BY id",
++                            r.get("ID")).stream().map(l -> {
++                                Map<String, Object> line = new LinkedHashMap<>();
++                                line.put("id", l.get("ID"));
++                                line.put("description", l.get("DESCRIPTION"));
++                                line.put("qty", l.get("QTY"));
++                                line.put("unitPrice", l.get("UNIT_PRICE"));
++                                return line;
++                            }).toList());
++                    return row;
++                }).toList());
+         return out;
+     }
+ 
++    /** Insert a row with the given id, or a generated one when none is given; returns the id. */
++    private Long insert(String table, Object id, String[] columns, Object... values) {
++        String cols = String.join(", ", columns);
++        String marks = String.join(", ", Collections.nCopies(columns.length, "?"));
++        if (id != null) {
++            Object[] args = new Object[values.length + 1];
++            args[0] = id(id);
++            System.arraycopy(values, 0, args, 1, values.length);
++            jdbc.update("INSERT INTO " + table + " (id, " + cols + ") VALUES (?, " + marks + ")", args);
++            return id(id);
++        }
++        jdbc.update("INSERT INTO " + table + " (" + cols + ") VALUES (" + marks + ")", values);
++        return jdbc.queryForObject("SELECT MAX(id) FROM " + table, Long.class);
++    }
++
++    private static void only(Map<String, Object> row, Set<String> fields, String where) {
++        for (String field : row.keySet()) {
++            if (!fields.contains(field)) {
++                throw refuse("unsupported field: " + where + "." + field);
++            }
++        }
++    }
++
++    private static Long id(Object value) {
++        if (value instanceof Number n) {
++            return n.longValue();
++        }
++        try {
++            return Long.valueOf(value.toString());
++        } catch (NumberFormatException e) {
++            throw refuse("not an id: " + value);
++        }
++    }
++
++    private static LocalDate date(Object value, String field) {
++        try {
++            return LocalDate.parse(value.toString());
++        } catch (DateTimeParseException e) {
++            throw refuse(field + " must be a yyyy-mm-dd date, not " + value);
++        }
++    }
++
++    /** A number stored to the cent; refuses a value it could only store by rounding. */
++    private static BigDecimal cents(Object value, String field) {
++        if (value == null) {
++            throw refuse(field + " is required");
++        }
++        BigDecimal number;
++        try {
++            number = new BigDecimal(value.toString());
++        } catch (NumberFormatException e) {
++            throw refuse(field + " must be a number, not " + value);
++        }
++        if (number.stripTrailingZeros().scale() > 2) {
++            throw refuse(field + " can have at most two decimals, not " + value);
++        }
++        return number;
++    }
++
+     @SuppressWarnings("unchecked")
+     private static List<Map<String, Object>> rows(Object value, String key) {
+         if (value == null) {
+diff --git a/src/main/java/net/officefloor/hq/app/Today.java b/src/main/java/net/officefloor/hq/app/Today.java
+new file mode 100644
+index 0000000..0cd19c7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/Today.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app;
++
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++
++/**
++ * The workspace's "today": the stored {@code as_of} setting when there is one (a test's fixed
++ * date), otherwise the real date. Everything date-dependent asks this instead of the system clock.
++ */
++@Service
++public class Today {
++
++    static final String AS_OF = "as_of";
++
++    private final JdbcTemplate jdbc;
++
++    public Today(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    public LocalDate date() {
++        List<String> asOf = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
++                String.class, AS_OF);
++        return asOf.isEmpty() ? LocalDate.now() : LocalDate.parse(asOf.get(0));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+new file mode 100644
+index 0000000..3ea3e25
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -0,0 +1,82 @@
++package net.officefloor.hq.app.invoices;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.EnumType;
++import jakarta.persistence.Enumerated;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.OneToMany;
++import jakarta.persistence.OrderBy;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
++
++/** An invoice raised for a client, made of lines. */
++@Entity
++@Table(name = "invoice")
++public class Invoice {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "client_id")
++    private Long clientId;
++
++    @Enumerated(EnumType.STRING)
++    private InvoiceStatus status;
++
++    @Column(name = "issue_date")
++    private LocalDate issueDate;
++
++    @Column(name = "due_date")
++    private LocalDate dueDate;
++
++    @OneToMany
++    @JoinColumn(name = "invoice_id")
++    @OrderBy("id")
++    private List<InvoiceLine> lines = new ArrayList<>();
++
++    protected Invoice() {
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public InvoiceStatus getStatus() {
++        return status;
++    }
++
++    public LocalDate getIssueDate() {
++        return issueDate;
++    }
++
++    public LocalDate getDueDate() {
++        return dueDate;
++    }
++
++    public List<InvoiceLine> getLines() {
++        return lines;
++    }
++
++    /**
++     * Every line's quantity times unit price added up exactly, then rounded once, half up, to the
++     * cent — so rounding never builds up line by line.
++     */
++    public BigDecimal total() {
++        return lines.stream().map(InvoiceLine::amount)
++                .reduce(BigDecimal.ZERO, BigDecimal::add)
++                .setScale(2, RoundingMode.HALF_UP);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+new file mode 100644
+index 0000000..359d573
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app.invoices;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++public class InvoiceController {
++
++    /** An invoice as listed: its total is a decimal string to the cent, e.g. "25.25". */
++    public record InvoiceSummary(Long id, InvoiceStatus status, String total, LocalDate issueDate,
++            LocalDate dueDate) {
++        static InvoiceSummary of(Invoice i) {
++            BigDecimal total = i.total();
++            return new InvoiceSummary(i.getId(), i.getStatus(), total.toPlainString(), i.getIssueDate(),
++                    i.getDueDate());
++        }
++    }
++
++    private final InvoiceService invoices;
++
++    public InvoiceController(InvoiceService invoices) {
++        this.invoices = invoices;
++    }
++
++    @GetMapping("/api/clients/{clientId}/invoices")
++    public List<InvoiceSummary> forClient(@PathVariable Long clientId) {
++        return invoices.forClient(clientId).stream().map(InvoiceSummary::of).toList();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+new file mode 100644
+index 0000000..ccc0edf
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -0,0 +1,50 @@
++package net.officefloor.hq.app.invoices;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++
++/** One line of an invoice: a quantity (up to two decimals) times a unit price. */
++@Entity
++@Table(name = "invoice_line")
++public class InvoiceLine {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String description;
++
++    private BigDecimal qty;
++
++    @Column(name = "unit_price")
++    private BigDecimal unitPrice;
++
++    protected InvoiceLine() {
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getDescription() {
++        return description;
++    }
++
++    public BigDecimal getQty() {
++        return qty;
++    }
++
++    public BigDecimal getUnitPrice() {
++        return unitPrice;
++    }
++
++    /** Quantity times unit price, exactly — not rounded. */
++    public BigDecimal amount() {
++        return qty.multiply(unitPrice);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java
+new file mode 100644
+index 0000000..0498312
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.invoices;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.EntityGraph;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
++
++    @EntityGraph(attributePaths = "lines")
++    List<Invoice> findByClientIdOrderByIdAsc(Long clientId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+new file mode 100644
+index 0000000..a6d47de
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.invoices;
++
++import java.util.List;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Lists a client's invoices. */
++@Service
++public class InvoiceService {
++
++    private final InvoiceRepository invoices;
++
++    public InvoiceService(InvoiceRepository invoices) {
++        this.invoices = invoices;
++    }
++
++    @Transactional(readOnly = true)
++    public List<Invoice> forClient(Long clientId) {
++        return invoices.findByClientIdOrderByIdAsc(clientId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+new file mode 100644
+index 0000000..8f4b024
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.invoices;
++
++/** Where an invoice is in its life: still being written, or sent to the client. */
++public enum InvoiceStatus {
++    DRAFT, SENT
++}
+diff --git a/src/main/resources/db/migration/V2__invoices.sql b/src/main/resources/db/migration/V2__invoices.sql
+new file mode 100644
+index 0000000..0130962
+--- /dev/null
++++ b/src/main/resources/db/migration/V2__invoices.sql
+@@ -0,0 +1,22 @@
++-- Workspace settings, one value per name (for example the test's "today", as_of).
++CREATE TABLE app_setting (
++    name  VARCHAR(64)  PRIMARY KEY,
++    setting_value VARCHAR(255) NOT NULL
++);
++
++CREATE TABLE invoice (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    client_id  BIGINT      NOT NULL REFERENCES client (id),
++    status     VARCHAR(16) NOT NULL DEFAULT 'DRAFT',
++    issue_date DATE,
++    due_date   DATE
++);
++
++-- A line is a quantity (up to two decimals, e.g. 1.25 hours) times a unit price.
++CREATE TABLE invoice_line (
++    id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    invoice_id  BIGINT         NOT NULL REFERENCES invoice (id) ON DELETE CASCADE,
++    description VARCHAR(255)   NOT NULL DEFAULT '',
++    qty         DECIMAL(12, 2) NOT NULL,
++    unit_price  DECIMAL(19, 2) NOT NULL
++);

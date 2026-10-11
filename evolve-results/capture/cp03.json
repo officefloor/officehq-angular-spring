@@ -1,0 +1,134 @@
+{
+  "checkpoint": 3,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "60a0e172a480a4ec3b53df5bc1692c14ea7afe7b"
+  },
+  "checkpoint_id": "cp03_client_invoices",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "When I click a client, list that client's invoices beside the clients, each with its status\n(Draft or Sent), its total and its due date. An invoice is made of lines, each a quantity\ntimes a unit price, and quantities can have up to two decimals (1.25 hours, say). Work the\ntotal out by adding up every line's quantity times unit price exactly, then round once, half\nup, to the cent.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for this implementation's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen I click a client, list that client's invoices beside the clients, each with its status\n(Draft or Sent), its total and its due date. An invoice is made of lines, each a quantity\ntimes a unit price, and quantities can have up to two decimals (1.25 hours, say). Work the\ntotal out by adding up every line's quantity times unit price exactly, then round once, half\nup, to the cent.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3cad7a23457067f55c9b2585b9e80ed76a94d947",
+  "reset_sha": "",
+  "preagent_sha": "d8cae9be0182f38148cc1b2a785e17f9cb44a45f",
+  "prev_sha": "d8cae9be0182f38148cc1b2a785e17f9cb44a45f",
+  "base_sha": "60a0e172a480a4ec3b53df5bc1692c14ea7afe7b",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8041908000000002,
+    "input_tokens": 32,
+    "output_tokens": 14189,
+    "cache_read_tokens": 667414,
+    "cache_creation_tokens": 48350,
+    "num_turns": 16,
+    "duration_ms": 249836,
+    "duration_api_ms": 119211,
+    "model": "claude-opus-5-5",
+    "session_id": "b09638d9-33ff-444a-b83a-474ef2b0ed09",
+    "stop_reason": "success",
+    "result_text": "Clicking a client now lists that client's invoices next to the client list, each showing its status (Draft or Sent), its total and its due date. `bin/e2e` passes both tests, and the data from the earlier checkpoints still seeds and reads back correctly.\n\n**How the total is worked out:** each line's quantity times unit price is calculated exactly, the lines are added up, and the sum is rounded once, half up, to the cent. In the fractional test, two lines of 1.25 \u00d7 10.10 come to $25.25; rounding each line first would have given $25.26. This is done on the server in `Invoice.total()`, and the page only formats the result as dollars.\n\n**What changed:**\n- **Stored data:** a new migration, `V2__invoices.sql`, adds tables for invoices and their lines, plus a small settings table. A quantity is stored to two decimals.\n- **Server:** a new `invoices` package with a read endpoint, `GET /api/clients/{id}/invoices`.\n- **Front end:** a new `ClientInvoices` component. Each client row in `clients.ts` now holds a button you can click or reach by keyboard, and the selected client is highlighted. The existing `client-row-*`, `client-name` and `client-email` test ids are unchanged.\n- **Test endpoints:** seeding now accepts `asOf`, `invoices` and their `lineItems`. Reading back returns them in the same shape, and a reset empties all of it. Any field the app can't store is refused with a 400 that names it; that includes a quantity or price with more than two decimals, which would otherwise be silently rounded.\n\n**Choices worth checking:**\n- I added a small `Today` service that uses `asOf` as today's date when a test sets one. Nothing uses it yet, but date-based features like overdue can build on it.\n- When seeded, an invoice with no status becomes Draft.\n- Totals are shown in US dollars with thousands separators, so larger amounts look like \"$1,234.50\".",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8041908000000002,
+        "num_turns": 16,
+        "duration_ms": 249836,
+        "duration_api_ms": 119211,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp03.agent.jsonl",
+  "agent_diff_file": "cp03.agent.diff",
+  "build_log_file": "cp03.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 7,
+    "results": {
+      "cp01_workspace_clients.spec.ts::lists clients by name ignoring capitals": true,
+      "cp01_workspace_clients.spec.ts::adds a client in its place in the list": true,
+      "cp02_client_validation.spec.ts::refuses a client without a name or with a bad email": true,
+      "cp02_client_validation.spec.ts::refuses an email another client already has": true,
+      "cp02_client_validation.spec.ts::accepts a proper new client": true,
+      "cp03_client_invoices.spec.ts::lists only the selected client's invoices": true,
+      "cp03_client_invoices.spec.ts::totals an invoice from its fractional-quantity lines": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_workspace_clients.spec.ts::lists clients by name ignoring capitals",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 502,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_workspace_clients.spec.ts::adds a client in its place in the list",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 599,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_validation.spec.ts::refuses a client without a name or with a bad email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 401,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_validation.spec.ts::refuses an email another client already has",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 195,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_validation.spec.ts::accepts a proper new client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 318,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_client_invoices.spec.ts::lists only the selected client's invoices",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 486,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_client_invoices.spec.ts::totals an invoice from its fractional-quantity lines",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 294,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 5,
+      "failures": []
+    }
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
