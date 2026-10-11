@@ -53,8 +53,9 @@ export interface InvoicePaymentView {
 
 // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
 // percentage taken off the subtotal, without trailing zeros ("12.5"), and `discountAmount` the fixed
-// amount taken off instead ("0.00" when the discount is a percentage); `discount` is the amount it
-// takes off, rounded half up to the cent; `taxRate` is the workspace's tax percentage (without
+// amount taken off instead ("0.00" when the discount is a percentage); `discountCap` is the most a
+// percentage takes off (null when uncapped); `discount` is the amount it takes off, rounded half up
+// to the cent and capped; `taxRate` is the workspace's tax percentage (without
 // trailing zeros, "0" when none is set) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
 // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
 // `amountDue` is the total less that. `reference` is its ISO 11649 RF payment reference, made from
@@ -71,6 +72,7 @@ export interface InvoiceDetail {
   subtotal: string;
   discountPct: string;
   discountAmount: string;
+  discountCap: string | null;
   discount: string;
   taxRate: string;
   tax: string;
@@ -109,8 +111,9 @@ export interface NewLine {
   discountPct?: string;
 }
 
-// A discount to give: either a percentage or a fixed amount, as entered.
-export type NewDiscount = { discountPct: string } | { discountAmount: string };
+// A discount to give: either a percentage or a fixed amount, as entered, with an optional cap on
+// what a percentage takes off.
+export type NewDiscount = ({ discountPct: string } | { discountAmount: string }) & { discountCap?: string };
 
 // What a client still owes across its sent invoices (drafts do not count), after discounts, tax and
 // payments, and how much of that is overdue; decimal strings to the cent, worked out by the server.

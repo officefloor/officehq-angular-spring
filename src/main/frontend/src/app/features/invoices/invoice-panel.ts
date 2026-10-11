@@ -41,8 +41,25 @@ function problemWithDiscountAmount(amount: string): string {
   return '';
 }
 
-// Either a percentage or a fixed amount, not both: the one given replaces the other.
-function problemWithDiscountForm(pct: string, amount: string): string {
+// A cap on a percentage discount: money, not negative and to the cent, e.g. 25 or 12.50.
+function problemWithDiscountCap(cap: string): string {
+  if (!/^-?\d+(\.\d+)?$/.test(cap)) {
+    return 'The discount cap must be a number, like 25 or 12.50.';
+  }
+  if (Number(cap) < 0) {
+    return 'The discount cap cannot be negative.';
+  }
+  if (!TWO_DECIMALS.test(cap)) {
+    return 'The discount cap can have at most two decimals.';
+  }
+  return '';
+}
+
+// Either a percentage or a fixed amount, not both: the one given replaces the other. A cap is optional.
+function problemWithDiscountForm(pct: string, amount: string, cap: string): string {
+  if (cap && problemWithDiscountCap(cap)) {
+    return problemWithDiscountCap(cap);
+  }
   if (!pct && !amount) {
     return 'Enter a discount percentage or a discount amount.';
   }
@@ -147,7 +164,8 @@ function problemWith(line: NewLine): string {
                 @if (+inv.discountAmount > 0) {
                   Discount (fixed)
                 } @else {
-                  Discount ({{ inv.discountPct }}%)
+                  Discount ({{ inv.discountPct }}%@if (inv.discountCap !== null) {, max
+                    {{ money(inv.discountCap) }}})
                 }
               </th>
               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
@@ -294,6 +312,13 @@ function problemWith(line: NewLine): string {
             inputmode="decimal"
             formControlName="amount"
           />
+          <label for="discount-cap">capped at ($, optional)</label>
+          <input
+            id="discount-cap"
+            data-testid="discount-form-cap"
+            inputmode="decimal"
+            formControlName="cap"
+          />
           <button type="submit" data-testid="discount-form-submit" [disabled]="savingDiscount()">
             Apply discount
           </button>
@@ -339,6 +364,7 @@ export class InvoicePanel {
   protected readonly discountForm = new FormGroup({
     pct: new FormControl('', { nonNullable: true }),
     amount: new FormControl('', { nonNullable: true }),
+    cap: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -397,7 +423,8 @@ export class InvoicePanel {
     const raw = this.discountForm.getRawValue();
     const pct = raw.pct.trim().replace(/%$/, '').trim();
     const amount = raw.amount.trim().replace(/^\$/, '').trim();
-    const problem = problemWithDiscountForm(pct, amount);
+    const cap = raw.cap.trim().replace(/^\$/, '').trim();
+    const problem = problemWithDiscountForm(pct, amount, cap);
     if (problem) {
       this.discountForm.markAllAsTouched();
       this.discountError.set(problem);
@@ -406,6 +433,9 @@ export class InvoicePanel {
     this.savingDiscount.set(true);
     this.discountError.set('');
     const discount: NewDiscount = pct ? { discountPct: pct } : { discountAmount: amount };
+    if (cap) {
+      discount.discountCap = cap;
+    }
     this.service.setDiscount(invoiceId, discount).subscribe({
       next: (detail) => {
         this.invoice.set(detail);

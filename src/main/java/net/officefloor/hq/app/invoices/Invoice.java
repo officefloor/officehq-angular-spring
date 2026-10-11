@@ -47,6 +47,9 @@ public class Invoice {
     @Column(name = "discount_amount")
     private BigDecimal discountAmount = BigDecimal.ZERO;
 
+    @Column(name = "discount_cap")
+    private BigDecimal discountCap;
+
     @OneToMany(cascade = CascadeType.ALL)
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
@@ -95,10 +98,20 @@ public class Invoice {
         return discountAmount;
     }
 
+    /** The most a percentage discount takes off, to the cent; null when there is no cap. */
+    public BigDecimal getDiscountCap() {
+        return discountCap;
+    }
+
     /** Sets the percentage taken off the subtotal, clearing any fixed amount; it has already been checked. */
     public void setDiscountPct(BigDecimal discountPct) {
         this.discountPct = discountPct;
         this.discountAmount = BigDecimal.ZERO;
+    }
+
+    /** Sets the most a percentage discount takes off, or null for no cap; it has already been checked as money. */
+    public void setDiscountCap(BigDecimal discountCap) {
+        this.discountCap = discountCap;
     }
 
     /**
@@ -185,14 +198,15 @@ public class Invoice {
     /**
      * The amount taken off: the fixed amount when there is one (never more than the subtotal, should
      * lines have been changed since), otherwise the discount percentage of the subtotal, rounded half
-     * up to the cent.
+     * up to the cent and never more than the cap when there is one.
      */
     public BigDecimal discount() {
         if (discountAmount.signum() > 0) {
             return discountAmount.min(subtotal()).setScale(2, RoundingMode.HALF_UP);
         }
-        return subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100))
+        BigDecimal pct = subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100))
                 .setScale(2, RoundingMode.HALF_UP);
+        return discountCap == null ? pct : pct.min(discountCap.setScale(2, RoundingMode.HALF_UP));
     }
 
     /**
