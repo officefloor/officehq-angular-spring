@@ -8,6 +8,8 @@ export type InvoiceStatus = 'DRAFT' | 'SENT';
 // server: each line's quantity times unit price rounded half up to the cent, then added up.
 export interface InvoiceSummary {
   id: number;
+  // INV-, the id padded to six digits, then a Luhn check digit, e.g. INV-0000075.
+  number: string;
   status: InvoiceStatus;
   total: string;
   issueDate: string | null;
@@ -27,6 +29,7 @@ export interface InvoiceLineView {
 // An opened invoice with its lines and totals, all worked out by the server.
 export interface InvoiceDetail {
   id: number;
+  number: string;
   clientId: number;
   status: InvoiceStatus;
   issueDate: string | null;
@@ -59,6 +62,11 @@ export class InvoiceService {
 
   open(id: number): Observable<InvoiceDetail> {
     return this.http.get<InvoiceDetail>(`/api/invoices/${id}`);
+  }
+
+  // Opens the invoice with a typed number; refused (400) when its check digit does not match.
+  openByNumber(number: string): Observable<InvoiceDetail> {
+    return this.http.get<InvoiceDetail>(`/api/invoices/by-number/${encodeURIComponent(number)}`);
   }
 
   // Adds a line to a draft invoice; answers the invoice with its new lines and totals.

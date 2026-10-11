@@ -22,11 +22,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class InvoiceController {
 
     /** An invoice as listed: its total is a decimal string to the cent, e.g. "25.25". */
-    public record InvoiceSummary(Long id, InvoiceStatus status, String total, LocalDate issueDate,
-            LocalDate dueDate) {
+    public record InvoiceSummary(Long id, String number, InvoiceStatus status, String total,
+            LocalDate issueDate, LocalDate dueDate) {
         static InvoiceSummary of(Invoice i) {
             BigDecimal total = i.total();
-            return new InvoiceSummary(i.getId(), i.getStatus(), total.toPlainString(), i.getIssueDate(),
+            return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.getStatus(), total.toPlainString(), i.getIssueDate(),
                     i.getDueDate());
         }
     }
@@ -43,11 +43,11 @@ public class InvoiceController {
     }
 
     /** An opened invoice: its lines, subtotal and grand total (money as decimal strings to the cent). */
-    public record InvoiceDetail(Long id, Long clientId, InvoiceStatus status, LocalDate issueDate,
+    public record InvoiceDetail(Long id, String number, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String total) {
         static InvoiceDetail of(Invoice i) {
             String total = i.total().toPlainString();
-            return new InvoiceDetail(i.getId(), i.getClientId(), i.getStatus(), i.getIssueDate(), i.getDueDate(),
+            return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()), i.getClientId(), i.getStatus(), i.getIssueDate(), i.getDueDate(),
                     i.getLines().stream().map(LineView::of).toList(), total, total);
         }
     }
@@ -89,6 +89,16 @@ public class InvoiceController {
     public InvoiceDetail open(@PathVariable Long id) {
         return invoices.find(id).map(InvoiceDetail::of)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** Opens the invoice with a typed number; a number whose check digit is wrong is refused. */
+    @GetMapping("/api/invoices/by-number/{number}")
+    public InvoiceDetail openByNumber(@PathVariable String number) {
+        Long id = InvoiceNumber.idOf(number).orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.BAD_REQUEST, number.trim() + " is mistyped: check the invoice number."));
+        return invoices.find(id).map(InvoiceDetail::of)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "There is no invoice " + number.trim() + "."));
     }
 
     @PostMapping("/api/invoices/{id}/lines")

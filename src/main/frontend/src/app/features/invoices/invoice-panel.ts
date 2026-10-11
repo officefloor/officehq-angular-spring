@@ -36,7 +36,9 @@ function problemWith(line: NewLine): string {
   imports: [ReactiveFormsModule],
   template: `
     <section data-testid="invoice-panel" aria-labelledby="invoice-panel-heading">
-      <h2 id="invoice-panel-heading">Invoice #{{ invoiceId() }}</h2>
+      <h2 id="invoice-panel-heading">
+        Invoice <span data-testid="invoice-panel-number">{{ invoice()?.number }}</span>
+      </h2>
       @if (invoice(); as inv) {
         <p>Status: <span data-testid="invoice-panel-status">{{ statusLabel(inv.status) }}</span></p>
         <table>

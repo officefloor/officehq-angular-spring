@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ClientInvoices } from '../invoices/client-invoices';
+import { InvoiceService } from '../invoices/invoice.service';
 import { Client, ClientService, byName } from './client.service';
 
 // A proper email address: a mailbox, an @, and a domain with at least one dot — name@company.com,
@@ -9,7 +10,8 @@ import { Client, ClientService, byName } from './client.service';
 const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
 
 // The workspace's clients: listed A to Z by name (ignoring capitals), with a form to add one.
-// Clicking a client lists that client's invoices beside the clients.
+// Clicking a client lists that client's invoices beside the clients. Typing an invoice number into
+// the lookup box selects its client and opens the invoice; a mistyped number opens nothing.
 @Component({
   selector: 'app-clients',
   imports: [ReactiveFormsModule, ClientInvoices],
@@ -39,16 +41,33 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
   `,
   template: `
     <section aria-labelledby="clients-heading">
+      <form [formGroup]="lookup" (ngSubmit)="findInvoice()" aria-label="Open an invoice" novalidate>
+        <label for="invoice-lookup">Invoice number</label>
+        <input
+          id="invoice-lookup"
+          data-testid="invoice-lookup-input"
+          formControlName="number"
+          placeholder="INV-0000075"
+          required
+        />
+        <button type="submit" data-testid="invoice-lookup-submit" [disabled]="looking()">
+          Open invoice
+        </button>
+        @if (lookupError()) {
+          <p role="alert" data-testid="invoice-lookup-error">{{ lookupError() }}</p>
+        }
+      </form>
+
       <h2 id="clients-heading">Clients</h2>
 
       <ul data-testid="client-list">
         @for (c of clients(); track c.id) {
-          <li [attr.data-testid]="'client-row-' + c.id" (click)="selectedId.set(c.id)">
+          <li [attr.data-testid]="'client-row-' + c.id" (click)="selectClient(c.id)">
             <button
               type="button"
               class="client"
               [attr.aria-pressed]="selectedId() === c.id"
-              (click)="$event.stopPropagation(); selectedId.set(c.id)"
+              (click)="$event.stopPropagation(); selectClient(c.id)"
             >
               <span data-testid="client-name">{{ c.name }}</span>
               <span data-testid="client-email">{{ c.email }}</span>
@@ -80,12 +99,17 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
     </section>
 
     @if (selected(); as client) {
-      <app-client-invoices [clientId]="client.id" [clientName]="client.name" />
+      <app-client-invoices
+        [clientId]="client.id"
+        [clientName]="client.name"
+        [openInvoice]="openInvoice()"
+      />
     }
   `,
 })
 export class Clients {
   private readonly service = inject(ClientService);
+  private readonly invoiceService = inject(InvoiceService);
 
   protected readonly clients = signal<Client[]>([]);
   protected readonly saving = signal(false);
@@ -94,6 +118,13 @@ export class Clients {
   protected readonly selected = computed(
     () => this.clients().find((c) => c.id === this.selectedId()) ?? null,
   );
+
+  protected readonly looking = signal(false);
+  protected readonly lookupError = signal('');
+  protected readonly openInvoice = signal<{ id: number; clientId: number } | null>(null);
+  protected readonly lookup = new FormGroup({
+    number: new FormControl('', { nonNullable: true }),
+  });
 
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
@@ -131,6 +162,37 @@ export class Clients {
           typeof detail === 'string' && detail ? detail : 'The client could not be added.',
         );
         this.saving.set(false);
+      },
+    });
+  }
+
+  protected selectClient(id: number): void {
+    this.openInvoice.set(null);
+    this.selectedId.set(id);
+  }
+
+  // Opens the invoice with the typed number and selects its client. The server checks the number's
+  // check digit and refuses a mistyped one.
+  protected findInvoice(): void {
+    const number = this.lookup.controls.number.value.trim();
+    if (!number) {
+      this.lookupError.set('Enter an invoice number, like INV-0000075.');
+      return;
+    }
+    this.looking.set(true);
+    this.lookupError.set('');
+    this.invoiceService.openByNumber(number).subscribe({
+      next: (found) => {
+        this.selectedId.set(found.clientId);
+        this.openInvoice.set({ id: found.id, clientId: found.clientId });
+        this.looking.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.lookupError.set(
+          typeof detail === 'string' && detail ? detail : 'The invoice could not be opened.',
+        );
+        this.looking.set(false);
       },
     });
   }

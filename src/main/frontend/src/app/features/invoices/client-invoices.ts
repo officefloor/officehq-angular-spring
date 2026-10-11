@@ -1,10 +1,11 @@
-import { Component, effect, inject, input, signal } from '@angular/core';
+import { Component, effect, inject, input, signal, untracked } from '@angular/core';
 import { InvoiceDetail, InvoiceService, InvoiceSummary } from './invoice.service';
 import { InvoicePanel } from './invoice-panel';
 import { money, statusLabel } from './invoice-format';
 
 // One client's invoices, each with its status, total, issue and due dates. Clicking an invoice
 // opens it in the invoice panel beside the list; New invoice starts an empty draft and opens it.
+// An invoice looked up by its number is opened as soon as its client's invoices are shown.
 @Component({
   selector: 'app-client-invoices',
   imports: [InvoicePanel],
@@ -57,7 +58,7 @@ import { money, statusLabel } from './invoice-format';
                   class="open"
                   (click)="$event.stopPropagation(); selectedId.set(i.id)"
                 >
-                  #{{ i.id }}
+                  <span data-testid="invoice-number">{{ i.number }}</span>
                 </button>
               </td>
               <td data-testid="invoice-status">{{ statusLabel(i.status) }}</td>
@@ -84,6 +85,9 @@ export class ClientInvoices {
 
   readonly clientId = input.required<number>();
   readonly clientName = input('');
+  // An invoice to open, looked up by number; a new object for each lookup, so the same invoice
+  // can be opened again.
+  readonly openInvoice = input<{ id: number; clientId: number } | null>(null);
 
   protected readonly invoices = signal<InvoiceSummary[]>([]);
   protected readonly selectedId = signal<number | null>(null);
@@ -95,9 +99,16 @@ export class ClientInvoices {
     effect((onCleanup) => {
       const id = this.clientId();
       this.invoices.set([]);
-      this.selectedId.set(null);
+      const open = untracked(this.openInvoice);
+      this.selectedId.set(open?.clientId === id ? open.id : null);
       const sub = this.service.forClient(id).subscribe((list) => this.invoices.set(list));
       onCleanup(() => sub.unsubscribe());
+    });
+    effect(() => {
+      const open = this.openInvoice();
+      if (open && open.clientId === untracked(this.clientId)) {
+        this.selectedId.set(open.id);
+      }
     });
   }
 

@@ -7,6 +7,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Turns a refused invoice change into a problem response whose detail says what is wrong. */
 @RestControllerAdvice(assignableTypes = InvoiceController.class)
@@ -30,6 +31,11 @@ public class InvoiceErrors {
     public ProblemDetail unreadable(HttpMessageNotReadableException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
                 "Enter the quantity and unit price as numbers, like 1.5 and 12.35.");
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ProblemDetail status(ResponseStatusException e) {
+        return ProblemDetail.forStatusAndDetail(e.getStatusCode(), e.getReason());
     }
 
     @ExceptionHandler(InvoiceRejectedException.class)
