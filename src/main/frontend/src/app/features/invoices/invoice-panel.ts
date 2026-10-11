@@ -441,6 +441,11 @@ function problemWith(line: NewLine): string {
             </tbody>
             <tfoot>
               <tr>
+                <th scope="row" colspan="5">Plan fee</th>
+                <td data-testid="invoice-plan-fee">{{ amount(inv.planFee) }}</td>
+                <td colspan="5"></td>
+              </tr>
+              <tr>
                 <th scope="row" colspan="5">Plan total</th>
                 <td data-testid="invoice-plan-total">{{ amount(inv.planTotal ?? '0') }}</td>
                 <td colspan="5"></td>

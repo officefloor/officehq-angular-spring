@@ -123,7 +123,8 @@ public class InvoiceController {
      * {@code retentionDueDate} the day all that is released falls due. {@code instalments} is how many
      * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
      * (without trailing zeros), after a down payment of {@code planDownPct} percent of the grand total
-     * (without trailing zeros; instalment 0 when not 0); {@code schedule} lists them and {@code planTotal} is what they add up to
+     * (without trailing zeros; instalment 0 when not 0), with the {@code planFee} charged when it was set up added to
+     * what is spread over the instalments; {@code schedule} lists them and {@code planTotal} is what they add up to
      * (null without a plan), from which what is paid comes off for the amount due. {@code listedDueDate}
      * is the due date as listed: for a plan, its next unpaid instalment's. {@code currency} is the
      * currency its client is billed in, which every amount is in (whole yen for a yen client).
@@ -151,7 +152,7 @@ public class InvoiceController {
             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, String net, boolean pricesIncludeTax, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
             String credited, Long creditOf, String listedTotal, String retentionPct, String retentionCap, String retention,
             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
-            String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+            String instalmentRate, String planDownPct, String planFee, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
@@ -184,7 +185,7 @@ public class InvoiceController {
                     i.retention(taxRate).toPlainString(),
                     i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate(),
                     i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
-                    i.getPlanDownPct().stripTrailingZeros().toPlainString(),
+                    i.getPlanDownPct().stripTrailingZeros().toPlainString(), i.getPlanFee().toPlainString(),
                     i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
                     i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate),
                     i.currency(), i.getEarlyDiscountTaken().toPlainString(),

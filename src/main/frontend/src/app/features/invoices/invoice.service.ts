@@ -165,6 +165,9 @@ export interface InvoiceDetail {
   // The plan's down payment, a percentage of the grand total without trailing zeros ("0" when none);
   // when there is one it is instalment 0 of the schedule, due on the issue date with no interest.
   planDownPct: string;
+  // The plan fee charged when the plan was set up ("0.00" when none), added to what is spread over
+  // the instalments after any down payment, so it earns their interest and counts in the plan total.
+  planFee: string;
   schedule: InstalmentView[];
   planTotal: string | null;
   // The due date as listed (yyyy-mm-dd): for a plan, its next unpaid instalment's due date.

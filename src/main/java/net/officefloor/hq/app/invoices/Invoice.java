@@ -152,6 +152,13 @@ public class Invoice {
     private BigDecimal planDownPct = BigDecimal.ZERO;
 
     /**
+     * The plan fee charged when the plan was set up, in the invoice's currency: added to what is spread
+     * over the instalments, after any down payment; 0 when there is none.
+     */
+    @Column(name = "plan_fee")
+    private BigDecimal planFee = BigDecimal.ZERO;
+
+    /**
      * The number of the instalment the client skipped: it pays only its interest and the instalments
      * after it are worked out again (see {@link #schedule}); null when none was.
      */
@@ -306,6 +313,13 @@ public class Invoice {
     private String interestThresholdUsd;
 
     /**
+     * The workspace's plan fee in US dollars, as stored (the {@code plan_fee} setting); null when none
+     * is set.
+     */
+    @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'plan_fee')")
+    private String planFeeUsd;
+
+    /**
      * The workspace's withholding threshold in US dollars, as stored (the {@code withholding_threshold}
      * setting); null when none is set.
      */
@@ -452,6 +466,7 @@ public class Invoice {
         copy.instalments = instalments;
         copy.instalmentRate = instalmentRate;
         copy.planDownPct = planDownPct;
+        copy.planFee = planFee;
         lines.forEach(line -> copy.addLine(line.copy()));
         return copy;
     }
@@ -1327,15 +1342,23 @@ public class Invoice {
         return planDownPct;
     }
 
+    /** The plan fee charged when the plan was set up, in the invoice's currency; 0 when there is none. */
+    public BigDecimal getPlanFee() {
+        return planFee.setScale(scale(), RoundingMode.HALF_UP);
+    }
+
     /**
      * Spreads the invoice over the number of monthly instalments at the annual rate, after a down
-     * payment of the percentage of the grand total; all have already been checked.
+     * payment of the percentage of the grand total; all have already been checked. Charges the
+     * workspace's plan fee: its US dollars converted at the issue date's rate, rounded down to the step.
      */
     public void setPlan(int instalments, BigDecimal instalmentRate, BigDecimal planDownPct) {
         this.instalments = instalments;
         this.instalmentRate = instalmentRate;
         this.skippedInstalment = null;
         this.planDownPct = planDownPct;
+        this.planFee = planFeeUsd == null ? zero()
+                : currency().divideDownToStep(new BigDecimal(planFeeUsd.trim()), usdPerOn(issueDate));
     }
 
     /**
@@ -1361,7 +1384,8 @@ public class Invoice {
      * last instalment (or any earlier one the instalment would overpay) pays off the whole balance left
      * plus its interest, so the schedule ends at zero. A plan with a down payment starts with it as
      * instalment 0, due on the issue date with no interest, and the instalments are worked out on what
-     * is left. Instalment k falls due k months after the issue date, on the same day (the month's last day when
+     * is left. The plan fee is added to what is spread over the instalments (after any down payment), so
+     * earns their interest. Instalment k falls due k months after the issue date, on the same day (the month's last day when
      * it is shorter). Each credit note issued against it, in the order they were issued, then re-works
      * the instalments due after its issue date by the same rule: from the principal still owed before
      * them less what the credit note took off, over as many instalments, keeping their due dates; the
@@ -1382,6 +1406,7 @@ public class Invoice {
             dues.add(issueDate);
             schedule.add(new Instalment(0, issueDate, down, zero(), down, principal));
         }
+        principal = principal.add(getPlanFee());
         int downs = dues.size();
         for (int k = 1; k <= instalments; k++) {
             dues.add(issueDate == null ? null : issueDate.plusMonths(k));
@@ -1418,7 +1443,8 @@ public class Invoice {
 
     /** The principal still owed before the instalment at the index: the balance after the one before it. */
     private BigDecimal principalBefore(List<Instalment> schedule, int index, BigDecimal taxRate) {
-        return index == 0 ? owedTotal(taxRate).setScale(scale(), RoundingMode.HALF_UP) : schedule.get(index - 1).balance();
+        return index == 0 ? owedTotal(taxRate).setScale(scale(), RoundingMode.HALF_UP).add(getPlanFee())
+                : schedule.get(index - 1).balance();
     }
 
     /**
