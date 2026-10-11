@@ -100,6 +100,10 @@ public class Invoice {
     @Column(name = "interest_waived_on")
     private LocalDate interestWaivedOn;
 
+    /** The day the invoice was written off as a bad debt; null when it was not. */
+    @Column(name = "written_off_on")
+    private LocalDate writtenOffOn;
+
     /** How many monthly instalments the invoice is spread over; null when it has no plan. */
     @Column(name = "instalments")
     private Integer instalments;
@@ -508,6 +512,24 @@ public class Invoice {
         this.interestWaivedOn = on;
     }
 
+    /** The day the invoice was written off as a bad debt; null when it was not. */
+    public LocalDate getWrittenOffOn() {
+        return writtenOffOn;
+    }
+
+    /** Whether the invoice was written off as a bad debt: it then owes nothing and takes no payments. */
+    public boolean isWrittenOff() {
+        return writtenOffOn != null;
+    }
+
+    /**
+     * Writes the invoice off as a bad debt on the given day: everything still owed on it then, late
+     * charges and retention included, is written off, and it stops earning interest.
+     */
+    public void writeOff(LocalDate on) {
+        this.writtenOffOn = on;
+    }
+
     /** Releases the retention on the given day, so it is added to the amount due. */
     public void releaseRetention(LocalDate on) {
         this.retentionReleasedOn = on;
@@ -529,9 +551,14 @@ public class Invoice {
 
     /**
      * The retention still held back at the tax rate: all of it until it is released, less what credit
-     * notes have cleared of it; then nothing.
+     * notes have cleared of it; then nothing. Nothing once the invoice is written off.
      */
     public BigDecimal retentionHeld(BigDecimal taxRate) {
+        return isWrittenOff() ? zero() : retentionKept(taxRate);
+    }
+
+    /** As {@link #retentionHeld}, but still what was held back when the invoice was written off. */
+    private BigDecimal retentionKept(BigDecimal taxRate) {
         if (retentionReleasedOn != null) {
             return zero();
         }
@@ -550,7 +577,7 @@ public class Invoice {
             return new BigDecimal[] { amount, BigDecimal.ZERO };
         }
         BigDecimal toDue = amount.min(amountDue(paid, taxRate).max(BigDecimal.ZERO));
-        BigDecimal toRetention = amount.subtract(toDue).min(retentionHeld(taxRate));
+        BigDecimal toRetention = amount.subtract(toDue).min(retentionKept(taxRate));
         return new BigDecimal[] { toDue.add(toRetention), toRetention };
     }
 
@@ -573,7 +600,7 @@ public class Invoice {
      */
     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
         BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate).subtract(getCredited());
-        return owed.subtract(retentionHeld(taxRate)).subtract(getEarlyDiscountTaken())
+        return owed.subtract(retentionKept(taxRate)).subtract(getEarlyDiscountTaken())
                 .subtract(getInterestSaved());
     }
 
@@ -620,10 +647,12 @@ public class Invoice {
      * instalment by instalment (see {@link #accrueInstalmentInterest}), and no late fee. On the day the
      * charges were waived (after the day's payments), the fee and interest still unpaid are written off
      * (kept as what was waived) and that day ends a period: interest starts again from it on what is
-     * still owed, and no new fee is charged.
+     * still owed, and no new fee is charged. A written-off invoice is charged only up to the day it was
+     * written off.
      */
     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
-            BigDecimal lateFeeUsd, LocalDate today) {
+            BigDecimal lateFeeUsd, LocalDate asOf) {
+        LocalDate today = writtenOffOn != null && writtenOffOn.isBefore(asOf) ? writtenOffOn : asOf;
         this.lateInterest = BigDecimal.ZERO;
         this.lateFee = BigDecimal.ZERO;
         this.lateWaived = BigDecimal.ZERO;
@@ -1188,6 +1217,9 @@ public class Invoice {
         if (status != InvoiceStatus.SENT) {
             return status;
         }
+        if (isWrittenOff()) {
+            return InvoiceStatus.WRITTEN_OFF;
+        }
         BigDecimal amountDue = amountDue(paid, taxRate);
         boolean due = amountDue.signum() > 0;
         BigDecimal retentionDue = amountDue.min(retentionReleased(taxRate)).max(BigDecimal.ZERO);
@@ -1225,7 +1257,7 @@ public class Invoice {
      */
     public LocalDate paidOn(List<Payment> payments, BigDecimal taxRate) {
         BigDecimal total = payable(taxRate);
-        if (status != InvoiceStatus.SENT || total.signum() <= 0 || retentionHeld(taxRate).signum() > 0) {
+        if (status != InvoiceStatus.SENT || isWrittenOff() || total.signum() <= 0 || retentionHeld(taxRate).signum() > 0) {
             return null;
         }
         record Part(LocalDate on, Long paymentId, BigDecimal amount) {
@@ -1247,10 +1279,11 @@ public class Invoice {
     /**
      * What is still due once the given amount has been paid: the grand total less it, less what credit
      * notes have credited, less the retention still held, less anything written off — so nothing once
-     * payments leave less than {@link #WRITE_OFF_LIMIT}. A credit note itself has nothing due.
+     * payments leave less than {@link #WRITE_OFF_LIMIT}. A credit note itself, and a written-off
+     * invoice, have nothing due.
      */
     public BigDecimal amountDue(BigDecimal paid, BigDecimal taxRate) {
-        if (isCreditNote()) {
+        if (isCreditNote() || isWrittenOff()) {
             return zero();
         }
         return payable(taxRate).subtract(paid).subtract(writtenOff(paid, taxRate));
@@ -1258,9 +1291,14 @@ public class Invoice {
 
     /**
      * What is written off once the given amount has been paid: when payments leave less than
-     * {@link #WRITE_OFF_LIMIT} still due, all of what is left; otherwise nothing.
+     * {@link #WRITE_OFF_LIMIT} still due, all of what is left; otherwise nothing. Once the invoice is
+     * written off as a bad debt, everything it still owed then, late charges and retention included.
      */
     public BigDecimal writtenOff(BigDecimal paid, BigDecimal taxRate) {
+        if (isWrittenOff() && !isCreditNote()) {
+            return payable(taxRate).add(retentionKept(taxRate)).subtract(paid).max(BigDecimal.ZERO)
+                    .setScale(scale(), RoundingMode.HALF_UP);
+        }
         BigDecimal left = payable(taxRate).subtract(paid);
         return !isCreditNote() && paid.signum() > 0 && left.signum() > 0 && isSmallEnoughToWriteOff(left)
                 ? left.setScale(scale(), RoundingMode.HALF_UP)

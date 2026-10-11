@@ -11,7 +11,8 @@ import { Currency } from './invoice-format';
 // and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
 // A credit note is a DRAFT until it is issued, then CREDIT_NOTE for good; a sent invoice whose issued
 // credit notes leave nothing due, with nothing paid, is CREDITED. A sent invoice with nothing due
-// but retention still held back is RETENTION_HELD instead of PAID.
+// but retention still held back is RETENTION_HELD instead of PAID. A sent invoice written off as a bad
+// debt is WRITTEN_OFF for good: it owes nothing, earns no more interest and takes no payments.
 export type InvoiceStatus =
   | 'DRAFT'
   | 'SENT'
@@ -22,7 +23,8 @@ export type InvoiceStatus =
   | 'VOID'
   | 'CREDIT_NOTE'
   | 'CREDITED'
-  | 'RETENTION_HELD';
+  | 'RETENTION_HELD'
+  | 'WRITTEN_OFF';
 
 // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
 // server: the grand total — the lines' subtotal less any discount plus tax.
@@ -158,6 +160,9 @@ export interface InvoiceDetail {
   // For a client billed in another currency, the exchange difference in US dollars of the payments
   // applied to it (negative for a loss); null for a dollar invoice.
   fxDifference: string | null;
+  // The day (yyyy-mm-dd) it was written off as a bad debt, null when it was not; everything it still
+  // owed then, late charges and retention included, is in `writtenOff`.
+  writtenOffOn: string | null;
 }
 
 // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
@@ -290,6 +295,12 @@ export class InvoiceService {
   // while anything else is due or when there is nothing to release.
   releaseRetention(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, null);
+  }
+
+  // Writes off everything still owed on a sent invoice as a bad debt. Refused (409) on a draft, a void
+  // invoice or one with nothing owed.
+  writeOff(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/write-off`, null);
   }
 
   // Waives the late fee and late interest still unpaid on an overdue invoice; interest starts again

@@ -123,6 +123,8 @@ public class InvoiceController {
      * of instalments not yet due that paying it off early dropped (0 when none was). {@code fxDifference}
      * is, for a client billed in another currency, the exchange difference in US dollars of the payments
      * applied to it (see {@link Invoice#fxDifference(List)}); null for a dollar invoice.
+     * {@code writtenOffOn} is the day it was written off as a bad debt (null when it was not); everything
+     * it still owed then is in {@code writtenOff}, and nothing is due.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
@@ -131,7 +133,7 @@ public class InvoiceController {
             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
-            String payoff, String interestSaved, String fxDifference) {
+            String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -167,7 +169,8 @@ public class InvoiceController {
                     i.getLateWaived().toPlainString(),
                     Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
                     i.getInterestSaved().toPlainString(),
-                    i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString());
+                    i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
+                    i.getWrittenOffOn());
         }
     }
 
@@ -488,6 +491,14 @@ public class InvoiceController {
     @PostMapping("/api/invoices/{id}/release-retention")
     public InvoiceDetail releaseRetention(@PathVariable Long id) {
         return invoices.releaseRetention(id)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** Writes off everything still owed on a sent invoice as a bad debt. */
+    @PostMapping("/api/invoices/{id}/write-off")
+    public InvoiceDetail writeOff(@PathVariable Long id) {
+        return invoices.writeOff(id)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

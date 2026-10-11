@@ -154,6 +154,9 @@ public class InvoiceService {
             if (original.isVoid()) {
                 throw new InvoiceRejectedException("A void invoice cannot be credited.");
             }
+            if (original.isWrittenOff()) {
+                throw new InvoiceRejectedException("A written-off invoice cannot be credited.");
+            }
             return invoices.saveAndFlush(original.creditNote(today.date()));
         });
     }
@@ -370,6 +373,9 @@ public class InvoiceService {
             if (invoice.isDraft() || invoice.isVoid() || invoice.isCreditNote()) {
                 throw new InvoiceRejectedException("Retention can only be released on a sent invoice.");
             }
+            if (invoice.isWrittenOff()) {
+                throw new InvoiceRejectedException("The retention was written off with the invoice.");
+            }
             BigDecimal rate = taxRate.percent();
             BigDecimal held = invoice.retentionHeld(rate);
             if (held.signum() <= 0) {
@@ -396,6 +402,9 @@ public class InvoiceService {
     public Optional<Invoice> waiveInterest(Long invoiceId) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
+            if (invoice.isWrittenOff()) {
+                throw new InvoiceRejectedException("The late charges were written off with the invoice.");
+            }
             BigDecimal before = invoice.getLateWaived();
             invoice.waiveInterest(today.date());
             withInterest(List.of(invoice));
@@ -405,6 +414,42 @@ public class InvoiceService {
             }
             invoices.saveAndFlush(invoice);
             audit.record("INTEREST_WAIVED id=" + invoice.getId() + " amount=" + waived.toPlainString());
+        });
+        return found;
+    }
+
+    /**
+     * Writes off a sent invoice that still has something owed as a bad debt today: everything still
+     * owed on it, late charges and retention included, and records what was written off in the audit;
+     * empty if no such invoice. It then owes nothing, earns no more interest and takes no payments. A
+     * draft, a void invoice, a credit note, one already written off or one with nothing owed is refused.
+     */
+    @Transactional
+    public Optional<Invoice> writeOff(Long invoiceId) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (invoice.isDraft()) {
+                throw new InvoiceRejectedException("A draft cannot be written off; only a sent invoice can.");
+            }
+            if (invoice.isVoid()) {
+                throw new InvoiceRejectedException("A void invoice cannot be written off.");
+            }
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note cannot be written off.");
+            }
+            if (invoice.isWrittenOff()) {
+                throw new InvoiceRejectedException("This invoice has already been written off.");
+            }
+            BigDecimal rate = taxRate.percent();
+            BigDecimal paid = paid(List.of(invoice)).get(invoice.getId());
+            if (invoice.amountDue(paid, rate).add(invoice.retentionHeld(rate)).signum() <= 0) {
+                throw new InvoiceRejectedException("There is nothing owed on this invoice to write off.");
+            }
+            invoice.writeOff(today.date());
+            withInterest(List.of(invoice));
+            BigDecimal amount = invoice.writtenOff(paid, rate);
+            invoices.saveAndFlush(invoice);
+            audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + amount.toPlainString());
         });
         return found;
     }
@@ -423,6 +468,9 @@ public class InvoiceService {
         }
         if (invoice.isCreditNote()) {
             throw new InvoiceRejectedException("An issued credit note cannot be changed.");
+        }
+        if (invoice.isWrittenOff()) {
+            throw new InvoiceRejectedException("A written-off invoice cannot be changed.");
         }
         if (invoice.hasCreditNotesIssued()) {
             throw new InvoiceRejectedException("An invoice with an issued credit note cannot be changed.");
@@ -731,6 +779,9 @@ public class InvoiceService {
             if (invoice.isCreditNote()) {
                 throw new InvoiceRejectedException("An issued credit note cannot be voided.");
             }
+            if (invoice.isWrittenOff()) {
+                throw new InvoiceRejectedException("A written-off invoice cannot be voided.");
+            }
             if (invoice.hasCreditNotesIssued()) {
                 throw new InvoiceRejectedException("An invoice with an issued credit note cannot be voided.");
             }
@@ -809,6 +860,9 @@ public class InvoiceService {
             }
             if (invoice.isCreditNote()) {
                 throw new InvoiceRejectedException("A credit note takes no payments.");
+            }
+            if (invoice.isWrittenOff()) {
+                throw new InvoiceRejectedException("A written-off invoice takes no more payments.");
             }
             BigDecimal amount = converted(paidAmount, paidIn, invoice.currency(), date);
             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());

@@ -11,6 +11,7 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   CREDIT_NOTE: 'Credit note',
   CREDITED: 'Credited',
   RETENTION_HELD: 'Retention held',
+  WRITTEN_OFF: 'Written off',
 };
 const INSTALMENT_STATUS_LABEL: Record<InstalmentStatus, string> = {
   PAID: 'Paid',

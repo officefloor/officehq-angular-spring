@@ -448,7 +448,9 @@ function problemWith(line: NewLine): string {
               </tr>
             }
             <tr>
-              <th scope="row" colspan="4">Written off (worth under $1.00 left)</th>
+              <th scope="row" colspan="4">
+                {{ inv.writtenOffOn === null ? 'Written off (worth under $1.00 left)' : 'Written off as a bad debt' }}
+              </th>
               <td data-testid="invoice-written-off">{{ amount(inv.writtenOff) }}</td>
             </tr>
           </tfoot>
@@ -534,7 +536,7 @@ function problemWith(line: NewLine): string {
           <p role="alert" data-testid="invoice-release-error">{{ releaseError() }}</p>
         }
 
-        @if (inv.creditOf === null && inv.status !== 'DRAFT' && inv.status !== 'VOID') {
+        @if (inv.creditOf === null && inv.status !== 'DRAFT' && inv.status !== 'VOID' && inv.status !== 'WRITTEN_OFF') {
           <button
             type="button"
             data-testid="invoice-waive"
@@ -546,6 +548,15 @@ function problemWith(line: NewLine): string {
         }
         @if (waiveError()) {
           <p role="alert" data-testid="invoice-waive-error">{{ waiveError() }}</p>
+        }
+
+        @if (inv.creditOf === null && inv.status !== 'WRITTEN_OFF') {
+          <button type="button" data-testid="invoice-write-off" [disabled]="writingOff()" (click)="writeOff(inv.id)">
+            Write off
+          </button>
+        }
+        @if (writeOffError()) {
+          <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
         }
 
         @if (inv.status === 'DRAFT') {
@@ -722,6 +733,8 @@ export class InvoicePanel {
   protected readonly releaseError = signal('');
   protected readonly waiving = signal(false);
   protected readonly waiveError = signal('');
+  protected readonly writingOff = signal(false);
+  protected readonly writeOffError = signal('');
   protected readonly sending = signal(false);
   protected readonly sendError = signal('');
   protected readonly duplicating = signal(false);
@@ -794,6 +807,7 @@ export class InvoicePanel {
       this.planError.set('');
       this.releaseError.set('');
       this.waiveError.set('');
+      this.writeOffError.set('');
       this.sendError.set('');
       this.voidError.set('');
       this.duplicateError.set('');
@@ -1061,6 +1075,25 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The late charges could not be waived.',
         );
         this.waiving.set(false);
+      },
+    });
+  }
+
+  protected writeOff(invoiceId: number): void {
+    this.writingOff.set(true);
+    this.writeOffError.set('');
+    this.service.writeOff(invoiceId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.writingOff.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.writeOffError.set(
+          typeof detail === 'string' && detail ? detail : 'The invoice could not be written off.',
+        );
+        this.writingOff.set(false);
       },
     });
   }

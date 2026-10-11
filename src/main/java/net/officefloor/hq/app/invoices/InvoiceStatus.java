@@ -15,7 +15,9 @@ package net.officefloor.hq.app.invoices;
  * credit notes and is never stored.
  * A sent invoice with retention still held back and nothing else due shows retention held instead of
  * paid; that follows from its retention and payments and is never stored.
+ * A sent invoice written off as a bad debt is written off for good: it owes nothing, earns no more
+ * interest and takes no payments; that follows from the day it was written off.
  */
 public enum InvoiceStatus {
-    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, RETENTION_HELD
+    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, RETENTION_HELD, WRITTEN_OFF
 }
