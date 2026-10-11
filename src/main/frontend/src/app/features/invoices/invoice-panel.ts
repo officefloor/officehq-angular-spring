@@ -412,6 +412,12 @@ function problemWith(line: NewLine): string {
                 <td data-testid="invoice-interest-saved">{{ amount(inv.interestSaved) }}</td>
               </tr>
             }
+            @if (inv.fxDifference !== null) {
+              <tr>
+                <th scope="row" colspan="4">Exchange difference (US dollars)</th>
+                <td data-testid="invoice-fx-difference">{{ money(inv.fxDifference) }}</td>
+              </tr>
+            }
             <tr>
               <th scope="row" colspan="4">Written off (worth under $1.00 left)</th>
               <td data-testid="invoice-written-off">{{ amount(inv.writtenOff) }}</td>

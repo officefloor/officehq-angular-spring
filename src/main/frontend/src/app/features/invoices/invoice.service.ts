@@ -150,6 +150,9 @@ export interface InvoiceDetail {
   // of instalments not yet due that paying it off early dropped ("0.00" when none was).
   payoff: string | null;
   interestSaved: string;
+  // For a client billed in another currency, the exchange difference in US dollars of the payments
+  // applied to it (negative for a loss); null for a dollar invoice.
+  fxDifference: string | null;
 }
 
 // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,

@@ -119,7 +119,9 @@ public class InvoiceController {
      * charged on it (0 when none), both part of the amount due; {@code lateWaived} is the late fee and
      * interest written off by waiving them (0 when none was). {@code payoff} is what would pay off its
      * plan today (null without a plan or once it is paid off), and {@code interestSaved} the interest
-     * of instalments not yet due that paying it off early dropped (0 when none was).
+     * of instalments not yet due that paying it off early dropped (0 when none was). {@code fxDifference}
+     * is, for a client billed in another currency, the exchange difference in US dollars of the payments
+     * applied to it (see {@link Invoice#fxDifference(List)}); null for a dollar invoice.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
@@ -128,7 +130,7 @@ public class InvoiceController {
             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
             String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
-            String payoff, String interestSaved) {
+            String payoff, String interestSaved, String fxDifference) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -160,7 +162,8 @@ public class InvoiceController {
                     i.getLateInterest().toPlainString(), i.getLateFee().toPlainString(),
                     i.getLateWaived().toPlainString(),
                     Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
-                    i.getInterestSaved().toPlainString());
+                    i.getInterestSaved().toPlainString(),
+                    i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString());
         }
     }
 

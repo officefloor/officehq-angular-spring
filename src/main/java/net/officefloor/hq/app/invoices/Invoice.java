@@ -318,6 +318,27 @@ public class Invoice {
         return left.multiply(usdPerOn(on)).compareTo(WRITE_OFF_LIMIT) < 0;
     }
 
+    /**
+     * The exchange difference in US dollars of an amount applied to the invoice and paid on the date:
+     * its dollar value at the rate on the date less its dollar value at the rate on the issue date, each
+     * rounded half up to the cent (a loss is negative). Nothing for a dollar invoice.
+     */
+    public BigDecimal fxDifference(BigDecimal applied, LocalDate paidOn) {
+        BigDecimal paid = applied.multiply(usdPerOn(paidOn)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal issued = applied.multiply(usdPerOn(issueDate)).setScale(2, RoundingMode.HALF_UP);
+        return paid.subtract(issued);
+    }
+
+    /**
+     * The exchange difference in US dollars of every payment (not reversed) applied to the invoice
+     * (see {@link #fxDifference(BigDecimal, LocalDate)}), added up.
+     */
+    public BigDecimal fxDifference(List<Payment> payments) {
+        return payments.stream().filter(p -> !p.isReversed())
+                .map(p -> fxDifference(p.amountTo(id), p.getDate()))
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    }
+
     /** Whether this is a credit note against another invoice. */
     public boolean isCreditNote() {
         return creditOf != null;

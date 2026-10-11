@@ -851,6 +851,10 @@ public class InvoiceService {
                     .paidIn(paidIn, paidAmount, invoice.currency()));
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
                     + applied.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
+            if (invoice.currency() != Currency.USD) {
+                audit.record("FX_DIFFERENCE id=" + invoice.getId() + " payment=" + payment.getId() + " amount="
+                        + invoice.fxDifference(applied, date).toPlainString());
+            }
             if (early.signum() > 0) {
                 invoices.saveAndFlush(invoice);
                 audit.record("EARLY_DISCOUNT id=" + invoice.getId() + " amount=" + early.toPlainString());
@@ -1116,6 +1120,12 @@ public class InvoiceService {
         for (PaymentAllocation part : parts) {
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + part.getInvoiceId() + " amount="
                     + part.getAmount().setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+        }
+        if (currency != Currency.USD) {
+            for (Invoice invoice : spreadOver) {
+                audit.record("FX_DIFFERENCE id=" + invoice.getId() + " payment=" + payment.getId() + " amount="
+                        + invoice.fxDifference(payment.amountTo(invoice.getId()), date).toPlainString());
+            }
         }
         spreadOver.forEach(this::recordWriteOff);
         recordCreditHeld(payment);
