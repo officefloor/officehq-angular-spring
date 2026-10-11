@@ -1,0 +1,336 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index a3e0ba9..127325b 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -13,6 +13,9 @@ export interface Client {
+   discountPct: number;
+   // Whether the client is tax exempt (a charity, say): its invoices charge no tax on any line.
+   taxExempt: boolean;
++  // The last issue date (yyyy-mm-dd) a tax exemption covers: invoices issued after it are taxed as
++  // usual; null when the exemption does not end. Only an exempt client has one.
++  taxExemptUntil: string | null;
+   // Whether the client is quoted prices that include tax: the tax is taken out of its invoice amounts.
+   pricesIncludeTax: boolean;
+   // The currency the client is billed in: everything on its invoices is in it.
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 61afda2..bc9405c 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -247,6 +247,13 @@ function validTaxNumber(taxNumber: string): boolean {
+           formControlName="taxExempt"
+         />
+         <label for="client-tax-exempt">Tax exempt (no tax on any of their invoices)</label>
++        <label for="client-exempt-until">Exempt until (last issue date covered; blank for no end)</label>
++        <input
++          id="client-exempt-until"
++          data-testid="client-form-exempt-until"
++          type="date"
++          formControlName="exemptUntil"
++        />
+         <input
+           id="client-prices-include-tax"
+           data-testid="client-form-prices-include-tax"
+@@ -319,6 +326,7 @@ export class Clients {
+     earlyPct: new FormControl<number | null>(null),
+     earlyDays: new FormControl<number | null>(null),
+     taxExempt: new FormControl(false, { nonNullable: true }),
++    exemptUntil: new FormControl('', { nonNullable: true }),
+     pricesIncludeTax: new FormControl(false, { nonNullable: true }),
+     currency: new FormControl<Currency>('USD', { nonNullable: true }),
+   });
+@@ -361,6 +369,7 @@ export class Clients {
+     const region = this.form.controls.region.value.trim();
+     const taxNumber = this.form.controls.taxNumber.value.replace(/ /g, '');
+     const taxExempt = this.form.controls.taxExempt.value;
++    const exemptUntil = this.form.controls.exemptUntil.value;
+     const pricesIncludeTax = this.form.controls.pricesIncludeTax.value;
+     const currency = this.form.controls.currency.value;
+     const early = this.form.controls.earlyPct.value;
+@@ -383,10 +392,13 @@ export class Clients {
+       earlyPct: earlyPayPct,
+       earlyDays: earlyPayDays,
+       taxExempt,
++      exemptUntil,
+       pricesIncludeTax,
+       currency,
+     });
+-    const problem = this.problemWith(
++    const problem = exemptUntil && !taxExempt
++      ? 'Only a tax-exempt client can have an exemption end date: tick tax exempt or clear the date.'
++      : this.problemWith(
+       name,
+       email,
+       termsDays,
+@@ -414,6 +426,7 @@ export class Clients {
+       termsDays,
+       discountPct: discountPct ?? 0,
+       taxExempt,
++      taxExemptUntil: exemptUntil || null,
+       pricesIncludeTax,
+       currency,
+       earlyPayPct: earlyPayPct ?? 0,
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 19783de..1b854c4 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -48,7 +48,7 @@ public class TestSupportController {
+ 
+     private static final String INTEREST_THRESHOLD = "interest_threshold";
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime");
+@@ -295,7 +295,7 @@ public class TestSupportController {
+             if (Currency.of(currency) == null) {
+                 throw refuse("unsupported value of clients[].currency: " + currency);
+             }
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct", "minimum_charge", "rate_discount_pct"},
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct", "minimum_charge", "rate_discount_pct", "tax_exempt_until"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+                     percent(row.get("discountPct"), "clients[].discountPct"),
+                     flag(row.get("taxExempt"), "clients[].taxExempt"),
+@@ -309,7 +309,8 @@ public class TestSupportController {
+                     row.get("taxNumber") == null ? null : row.get("taxNumber").toString(),
+                     percent(row.get("withholdingPct"), "clients[].withholdingPct"),
+                     row.get("minimumCharge") == null ? null : money(row.get("minimumCharge"), "clients[].minimumCharge"),
+-                    percent(row.get("rateDiscountPct"), "clients[].rateDiscountPct"));
++                    percent(row.get("rateDiscountPct"), "clients[].rateDiscountPct"),
++                    row.get("taxExemptUntil") == null ? null : date(row.get("taxExemptUntil"), "clients[].taxExemptUntil"));
+             Long clientId = id(row.get("id") == null
+                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
+             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
+@@ -571,7 +572,7 @@ public class TestSupportController {
+         if (!settings.isEmpty()) {
+             out.put("settings", settings);
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number, withholding_pct, minimum_charge, rate_discount_pct FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number, withholding_pct, minimum_charge, rate_discount_pct, tax_exempt_until FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -591,6 +592,9 @@ public class TestSupportController {
+                     row.put("retentionPct", r.get("RETENTION_PCT"));
+                     row.put("withholdingPct", r.get("WITHHOLDING_PCT"));
+                     row.put("rateDiscountPct", r.get("RATE_DISCOUNT_PCT"));
++                    if (r.get("TAX_EXEMPT_UNTIL") != null) {
++                        row.put("taxExemptUntil", r.get("TAX_EXEMPT_UNTIL").toString());
++                    }
+                     if (r.get("MINIMUM_CHARGE") != null) {
+                         row.put("minimumCharge", r.get("MINIMUM_CHARGE"));
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index a7d728d..e9dc7c8 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -43,6 +43,13 @@ public class Client {
+     @Column(name = "tax_exempt")
+     private boolean taxExempt;
+ 
++    /**
++     * The last issue date the client's tax exemption covers: its invoices issued after it are taxed as
++     * usual; null when the exemption does not end, and always for a client that is not exempt.
++     */
++    @Column(name = "tax_exempt_until")
++    private LocalDate taxExemptUntil;
++
+     /** Whether the client is quoted prices that include tax: the tax is taken out of its invoice amounts. */
+     @Column(name = "prices_include_tax")
+     private boolean pricesIncludeTax;
+@@ -131,8 +138,9 @@ public class Client {
+     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
+             Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge,
+-            BigDecimal rateDiscountPct) {
++            BigDecimal rateDiscountPct, LocalDate taxExemptUntil) {
+         this.name = name;
++        this.taxExemptUntil = taxExemptUntil;
+         this.email = email;
+         this.termsDays = termsDays;
+         this.discountPct = discountPct == null ? BigDecimal.ZERO : discountPct;
+@@ -175,6 +183,10 @@ public class Client {
+         return taxExempt;
+     }
+ 
++    public LocalDate getTaxExemptUntil() {
++        return taxExemptUntil;
++    }
++
+     public boolean isPricesIncludeTax() {
+         return pricesIncludeTax;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 1f333b4..1c8f109 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -29,13 +29,14 @@ public class ClientController {
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+             BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
+-            List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct) {
++            List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
++            LocalDate taxExemptUntil) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
+                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
+-                    c.getRateDiscountPct());
++                    c.getRateDiscountPct(), c.getTaxExemptUntil());
+         }
+     }
+ 
+@@ -112,7 +113,14 @@ public class ClientController {
+             @DecimalMin(value = "0", message = "The rate discount must be from 0 to 100 percent.")
+             @DecimalMax(value = "100", message = "The rate discount must be from 0 to 100 percent.")
+             @Digits(integer = 3, fraction = 2, message = "The rate discount can have at most two decimals.")
+-            BigDecimal rateDiscountPct) {
++            BigDecimal rateDiscountPct,
++            /** The last issue date the tax exemption covers; it does not end when left out. Only for an exempt client. */
++            LocalDate taxExemptUntil) {
++
++        @AssertTrue(message = "Only a tax-exempt client can have an exemption end date: tick tax exempt or clear the date.")
++        public boolean isTaxExemptUntilExempt() {
++            return taxExemptUntil == null || Boolean.TRUE.equals(taxExempt);
++        }
+ 
+         @AssertTrue(message = "Enter a tax number of two letters then ten digits whose last two digits check the first eight, or leave it blank.")
+         public boolean isTaxNumberValid() {
+@@ -148,6 +156,6 @@ public class ClientController {
+         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
+                 body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge(),
+-                body.rateDiscountPct()));
++                body.rateDiscountPct(), body.taxExemptUntil()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 0fe5b3e..cd73f7e 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.clients;
+ 
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import java.util.Comparator;
+ import java.util.List;
+ import org.springframework.stereotype.Service;
+@@ -33,12 +34,12 @@ public class ClientService {
+     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays,
+             BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge,
+-            BigDecimal rateDiscountPct) {
++            BigDecimal rateDiscountPct, LocalDate taxExemptUntil) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+         return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, pricesIncludeTax, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays, interestRate,
+-                region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber), withholdingPct, minimumCharge, rateDiscountPct));
++                region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber), withholdingPct, minimumCharge, rateDiscountPct, taxExemptUntil));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 545b9ca..5e518fe 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -155,6 +155,10 @@ public class Invoice {
+     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
+     private boolean clientTaxExempt;
+ 
++    /** The last issue date the client's tax exemption covers; null when it does not end. Read from the client. */
++    @Formula("(SELECT c.tax_exempt_until FROM client c WHERE c.id = client_id)")
++    private LocalDate clientTaxExemptUntil;
++
+     /**
+      * Whether the invoice's client is quoted prices that include tax, so the line amounts, discount and
+      * grand total include it and the tax is taken out of them; read from the client.
+@@ -393,11 +397,12 @@ public class Invoice {
+     }
+ 
+     /** A new, empty draft for a client, issued and due on the given dates. */
+-    public static Invoice draft(Long clientId, boolean clientTaxExempt, boolean clientPricesIncludeTax, String regionTaxRate,
++    public static Invoice draft(Long clientId, boolean clientTaxExempt, LocalDate clientTaxExemptUntil, boolean clientPricesIncludeTax, String regionTaxRate,
+             String regionRateChanges, String outOfRegionTaxNumber, Currency currency, LocalDate issueDate, LocalDate dueDate) {
+         Invoice invoice = new Invoice();
+         invoice.clientId = clientId;
+         invoice.clientTaxExempt = clientTaxExempt;
++        invoice.clientTaxExemptUntil = clientTaxExemptUntil;
+         invoice.clientPricesIncludeTax = clientPricesIncludeTax;
+         invoice.regionTaxRate = regionTaxRate;
+         invoice.regionRateChanges = regionRateChanges;
+@@ -414,7 +419,7 @@ public class Invoice {
+      * discount, issued and due on the given dates. Payments stay with this invoice.
+      */
+     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
+-        Invoice copy = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, dueDate);
++        Invoice copy = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+         copy.discountPct = discountPct;
+         copy.discountAmount = discountAmount;
+         copy.discountCap = discountCap;
+@@ -434,7 +439,7 @@ public class Invoice {
+      * discount, taxed as the original's lines are.
+      */
+     public Invoice creditNote(LocalDate issueDate) {
+-        Invoice note = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, null);
++        Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, null);
+         note.creditOf = id;
+         note.creditedIssueDate = this.issueDate;
+         return note;
+@@ -1984,6 +1989,18 @@ public class Invoice {
+         return taxes;
+     }
+ 
++    /**
++     * Whether the client's tax exemption covers the invoice: the client is exempt and the invoice (a credit
++     * note's original) was issued on or before the exemption's end date, when it has one.
++     */
++    private boolean isClientExempt() {
++        if (!clientTaxExempt) {
++            return false;
++        }
++        LocalDate on = creditOf != null ? creditedIssueDate : issueDate;
++        return clientTaxExemptUntil == null || on == null || !on.isAfter(clientTaxExemptUntil);
++    }
++
+     /**
+      * The rate (a percentage) each line is taxed at, in the order of the lines, then the rate of the
+      * surcharge and minimum charge: the line's own rate, otherwise its unit type's rate on the client's rate
+@@ -1992,10 +2009,11 @@ public class Invoice {
+      */
+     private List<BigDecimal> lineRates(BigDecimal taxRate, boolean charged) {
+         boolean reverseCharged = charged && isReverseCharge();
+-        BigDecimal clientRate = clientTaxExempt ? BigDecimal.ZERO : clientTaxRate(taxRate);
++        boolean exempt = isClientExempt();
++        BigDecimal clientRate = exempt ? BigDecimal.ZERO : clientTaxRate(taxRate);
+         List<BigDecimal> rates = new ArrayList<>(lines.size() + 1);
+         for (InvoiceLine line : lines) {
+-            BigDecimal cardRate = clientTaxExempt ? null : cardTaxRate(line.getUnitType());
++            BigDecimal cardRate = exempt ? null : cardTaxRate(line.getUnitType());
+             rates.add(reverseCharged || line.isTaxExempt() ? BigDecimal.ZERO
+                     : line.taxRate(cardRate == null ? clientRate : cardRate));
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index c64ffaa..3690380 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -121,7 +121,7 @@ public class InvoiceService {
+     public Optional<Invoice> newDraft(Long clientId) {
+         return clients.findById(clientId).map(client -> {
+             LocalDate issued = today.date();
+-            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), client.isPricesIncludeTax(), taxRate.forRegion(client.getRegion()),
++            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), client.getTaxExemptUntil(), client.isPricesIncludeTax(), taxRate.forRegion(client.getRegion()),
+                     taxRate.changesFor(client.getRegion()),
+                     outOfHomeRegion(client) ? client.getTaxNumber() : null, client.getCurrency(), issued, dueDateFor(clientId, issued));
+             draft.setDiscountPct(client.getDiscountPct());
+diff --git a/src/main/resources/db/migration/V61__client_tax_exempt_until.sql b/src/main/resources/db/migration/V61__client_tax_exempt_until.sql
+new file mode 100644
+index 0000000..d8695b3
+--- /dev/null
++++ b/src/main/resources/db/migration/V61__client_tax_exempt_until.sql
+@@ -0,0 +1,3 @@
++-- The last issue date a tax-exempt client's exemption covers: invoices issued after it are taxed as usual;
++-- null for an exemption that does not end.
++ALTER TABLE client ADD COLUMN tax_exempt_until DATE;
