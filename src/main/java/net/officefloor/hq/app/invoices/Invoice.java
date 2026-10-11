@@ -133,6 +133,13 @@ public class Invoice {
     @Column(name = "plan_down_pct")
     private BigDecimal planDownPct = BigDecimal.ZERO;
 
+    /**
+     * The number of the instalment the client skipped: it pays only its interest and the instalments
+     * after it are worked out again (see {@link #schedule}); null when none was.
+     */
+    @Column(name = "skipped_instalment")
+    private Integer skippedInstalment;
+
     /** Whether the invoice's client is tax exempt, so no line is taxed; read from the client. */
     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
     private boolean clientTaxExempt;
@@ -1131,6 +1138,16 @@ public class Invoice {
         return payoff;
     }
 
+    /** The number of the instalment the client skipped; null when none was. */
+    public Integer getSkippedInstalment() {
+        return skippedInstalment;
+    }
+
+    /** Skips the instalment with the given number: it pays only its interest (see {@link #schedule}). */
+    public void skipInstalment(int number) {
+        this.skippedInstalment = number;
+    }
+
     /** Whether the invoice is spread over monthly instalments. */
     public boolean hasPlan() {
         return instalments != null;
@@ -1158,6 +1175,7 @@ public class Invoice {
     public void setPlan(int instalments, BigDecimal instalmentRate, BigDecimal planDownPct) {
         this.instalments = instalments;
         this.instalmentRate = instalmentRate;
+        this.skippedInstalment = null;
         this.planDownPct = planDownPct;
     }
 
@@ -1188,7 +1206,9 @@ public class Invoice {
      * it is shorter). Each credit note issued against it, in the order they were issued, then re-works
      * the instalments due after its issue date by the same rule: from the principal still owed before
      * them less what the credit note took off, over as many instalments, keeping their due dates; the
-     * instalments due before then stay as they were.
+     * instalments due before then stay as they were. A skipped instalment (never the last) pays only its
+     * interest, leaving the balance as it was, and the instalments after it are worked out again by the
+     * same rule from that balance over the instalments left, keeping their due dates.
      */
     public List<Instalment> schedule(BigDecimal taxRate) {
         if (!hasPlan()) {
@@ -1207,7 +1227,7 @@ public class Invoice {
         for (int k = 1; k <= instalments; k++) {
             dues.add(issueDate == null ? null : issueDate.plusMonths(k));
         }
-        schedule.addAll(amortise(principal, dues.subList(downs, dues.size()), 1));
+        schedule.addAll(amortiseSkipping(principal, dues.subList(downs, dues.size()), 1));
         if (creditsIssued != null && !creditsIssued.isBlank()) {
             for (String credit : creditsIssued.split(",")) {
                 String[] parts = credit.split("=");
@@ -1218,7 +1238,7 @@ public class Invoice {
                 }
                 BigDecimal left = principalBefore(schedule, kept, taxRate)
                         .subtract(new BigDecimal(parts[1].trim()));
-                List<Instalment> reworked = amortise(left, dues.subList(kept, dues.size()),
+                List<Instalment> reworked = amortiseSkipping(left, dues.subList(kept, dues.size()),
                         schedule.get(kept).number());
                 schedule = new ArrayList<>(schedule.subList(0, kept));
                 schedule.addAll(reworked);
@@ -1250,6 +1270,26 @@ public class Invoice {
         List<Instalment> schedule = schedule(taxRate);
         int kept = Math.max(keptBefore(schedule, on), planDownPct.signum() > 0 ? 1 : 0);
         return kept == schedule.size() ? zero() : principalBefore(schedule, kept, taxRate);
+    }
+
+    /**
+     * {@link #amortise} the principal, then, when the skipped instalment is among them and not the last,
+     * make it pay only its interest and work out the instalments after it again (see {@link #schedule}).
+     */
+    private List<Instalment> amortiseSkipping(BigDecimal principal, List<LocalDate> dues, int firstNumber) {
+        List<Instalment> schedule = amortise(principal, dues, firstNumber);
+        int index = skippedInstalment == null ? -1 : skippedInstalment - firstNumber;
+        if (index < 0 || index >= schedule.size() - 1) {
+            return schedule;
+        }
+        BigDecimal balance = index == 0 ? principal.setScale(scale(), RoundingMode.HALF_UP)
+                : schedule.get(index - 1).balance();
+        BigDecimal interest = balance.multiply(instalmentRate.divide(BigDecimal.valueOf(1200), MathContext.DECIMAL128))
+                .setScale(scale(), RoundingMode.HALF_UP);
+        List<Instalment> skipped = new ArrayList<>(schedule.subList(0, index));
+        skipped.add(new Instalment(skippedInstalment, dues.get(index), interest, interest, zero(), balance));
+        skipped.addAll(amortise(balance, dues.subList(index + 1, dues.size()), skippedInstalment + 1));
+        return skipped;
     }
 
     /**

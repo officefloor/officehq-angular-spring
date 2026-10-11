@@ -464,6 +464,48 @@ public class InvoiceService {
     }
 
     /**
+     * Skips an instalment of a sent invoice's plan: it pays only its interest, and the instalments after
+     * it are worked out again on the balance still owed (see {@link Invoice#schedule}); records it in the
+     * audit; empty if no such invoice. An instalment that is overdue, paid (even in part) or the last is
+     * refused, as is skipping a second one.
+     */
+    @Transactional
+    public Optional<Invoice> skipInstalment(Long invoiceId, int number) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (!invoice.hasPlan() || invoice.isDraft() || invoice.isVoid() || invoice.isCreditNote()
+                    || invoice.isWrittenOff()) {
+                throw new InvoiceRejectedException("Only an instalment of a sent plan can be skipped.");
+            }
+            BigDecimal rate = taxRate.percent();
+            BigDecimal paid = paid(List.of(invoice)).get(invoice.getId());
+            List<Instalment.Progress> progress = invoice.instalmentProgress(paid, rate, today.date());
+            Instalment.Progress instalment = progress.stream().filter(p -> p.instalment().number() == number)
+                    .findFirst().orElseThrow(() -> new InvoiceRejectedException("There is no such instalment to skip."));
+            if (number < 1) {
+                throw new InvoiceRejectedException("The down payment cannot be skipped.");
+            }
+            if (instalment == progress.get(progress.size() - 1)) {
+                throw new InvoiceRejectedException("The last instalment cannot be skipped.");
+            }
+            if (instalment.status() == Instalment.Status.OVERDUE) {
+                throw new InvoiceRejectedException("An overdue instalment cannot be skipped.");
+            }
+            if (instalment.paid().signum() > 0) {
+                throw new InvoiceRejectedException("An instalment already paid cannot be skipped.");
+            }
+            if (invoice.getSkippedInstalment() != null) {
+                throw new InvoiceRejectedException("This plan has already skipped an instalment.");
+            }
+            invoice.skipInstalment(number);
+            invoices.saveAndFlush(invoice);
+            withInterest(List.of(invoice));
+            audit.record("INSTALMENT_SKIPPED id=" + invoice.getId() + " instalment=" + number);
+        });
+        return found;
+    }
+
+    /**
      * Writes off a sent invoice that still has something owed as a bad debt today: everything still
      * owed on it, late charges and retention included, and records what was written off in the audit;
      * empty if no such invoice. It then owes nothing, earns no more interest and takes no payments. A

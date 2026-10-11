@@ -314,6 +314,12 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/waive-interest`, null);
   }
 
+  // Skips an instalment of a sent plan: it pays only its interest and the instalments after it are
+  // worked out again. Refused (409) for an overdue, paid or last instalment.
+  skipInstalment(invoiceId: number, instalment: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/instalments/${instalment}/skip`, null);
+  }
+
   // Sends a draft invoice, issuing it today and due on the client's terms, or keeping a due date set
   // by hand; refused (409) when it has no lines or a due date set by hand is before today.
   send(invoiceId: number): Observable<InvoiceDetail> {

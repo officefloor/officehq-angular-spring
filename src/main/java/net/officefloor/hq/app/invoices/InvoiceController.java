@@ -527,6 +527,14 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 
+    /** Skips an instalment of a sent invoice's plan, re-working the instalments after it. */
+    @PostMapping("/api/invoices/{id}/instalments/{number}/skip")
+    public InvoiceDetail skipInstalment(@PathVariable Long id, @PathVariable int number) {
+        return invoices.skipInstalment(id, number)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
     @PutMapping("/api/invoices/{id}/due-date")
     public InvoiceDetail setDueDate(@PathVariable Long id, @Valid @RequestBody NewDueDate body) {
         return invoices.setDueDate(id, body.dueDate())

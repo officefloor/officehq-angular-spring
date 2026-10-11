@@ -358,6 +358,7 @@ function problemWith(line: NewLine): string {
                 <th scope="col">Late fee</th>
                 <th scope="col">Late interest</th>
                 <th scope="col">Status</th>
+                <th scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -373,6 +374,19 @@ function problemWith(line: NewLine): string {
                   <td data-testid="instalment-late-fee">{{ amount(s.lateFee) }}</td>
                   <td data-testid="instalment-late-interest">{{ amount(s.lateInterest) }}</td>
                   <td data-testid="instalment-status">{{ instalmentStatusLabel(s.status) }}</td>
+                  <td>
+                    @if (s.number > 0 && inv.status !== 'DRAFT' && inv.status !== 'VOID') {
+                      <button
+                        type="button"
+                        data-testid="instalment-skip"
+                        [disabled]="skipping()"
+                        [attr.aria-label]="'Skip instalment ' + s.number"
+                        (click)="skipInstalment(inv.id, s.number)"
+                      >
+                        Skip
+                      </button>
+                    }
+                  </td>
                 </tr>
               }
             </tbody>
@@ -380,10 +394,13 @@ function problemWith(line: NewLine): string {
               <tr>
                 <th scope="row" colspan="5">Plan total</th>
                 <td data-testid="invoice-plan-total">{{ amount(inv.planTotal ?? '0') }}</td>
-                <td colspan="4"></td>
+                <td colspan="5"></td>
               </tr>
             </tfoot>
           </table>
+          @if (skipError()) {
+            <p role="alert" data-testid="instalment-skip-error">{{ skipError() }}</p>
+          }
         }
 
         <table aria-label="Payments">
@@ -773,6 +790,8 @@ export class InvoicePanel {
   protected readonly releasing = signal(false);
   protected readonly releaseError = signal('');
   protected readonly waiving = signal(false);
+  protected readonly skipping = signal(false);
+  protected readonly skipError = signal('');
   protected readonly waiveError = signal('');
   protected readonly writingOff = signal(false);
   protected readonly writeOffError = signal('');
@@ -853,6 +872,7 @@ export class InvoicePanel {
       this.releaseForm.reset();
       this.releaseError.set('');
       this.waiveError.set('');
+      this.skipError.set('');
       this.writeOffError.set('');
       this.sendError.set('');
       this.voidError.set('');
@@ -1129,6 +1149,25 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The late charges could not be waived.',
         );
         this.waiving.set(false);
+      },
+    });
+  }
+
+  protected skipInstalment(invoiceId: number, instalment: number): void {
+    this.skipping.set(true);
+    this.skipError.set('');
+    this.service.skipInstalment(invoiceId, instalment).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.skipping.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.skipError.set(
+          typeof detail === 'string' && detail ? detail : 'The instalment could not be skipped.',
+        );
+        this.skipping.set(false);
       },
     });
   }

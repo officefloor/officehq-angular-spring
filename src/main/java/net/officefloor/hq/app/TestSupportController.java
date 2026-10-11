@@ -41,7 +41,7 @@ public class TestSupportController {
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "lineItems");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
@@ -194,7 +194,7 @@ public class TestSupportController {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
@@ -216,7 +216,8 @@ public class TestSupportController {
                     row.get("interestWaivedOn") == null ? null
                             : date(row.get("interestWaivedOn"), "invoices[].interestWaivedOn"),
                     row.get("writtenOffOn") == null ? null
-                            : date(row.get("writtenOffOn"), "invoices[].writtenOffOn"));
+                            : date(row.get("writtenOffOn"), "invoices[].writtenOffOn"),
+                    skippedInstalment(row.get("skippedInstalment"), "invoices[].skippedInstalment"));
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 insert("invoice_line", line.get("id"),
@@ -365,7 +366,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -401,6 +402,9 @@ public class TestSupportController {
                     }
                     row.put("instalmentRate", r.get("INSTALMENT_RATE"));
                     row.put("planDownPct", r.get("PLAN_DOWN_PCT"));
+                    if (r.get("SKIPPED_INSTALMENT") != null) {
+                        row.put("skippedInstalment", r.get("SKIPPED_INSTALMENT"));
+                    }
                     if (r.get("CREDIT_OF") != null) {
                         row.put("creditOf", r.get("CREDIT_OF"));
                     }
@@ -525,6 +529,22 @@ public class TestSupportController {
                         + ", not " + value);
             }
             return count;
+        } catch (NumberFormatException | ArithmeticException e) {
+            throw refuse(field + " must be a whole number, not " + value);
+        }
+    }
+
+    /** The number of a plan's skipped instalment, from 1; null (none skipped) when left out. */
+    private static Integer skippedInstalment(Object value, String field) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            int number = new BigDecimal(value.toString()).intValueExact();
+            if (number < 1 || number > Invoice.MAX_INSTALMENTS) {
+                throw refuse(field + " must be from 1 to " + Invoice.MAX_INSTALMENTS + ", not " + value);
+            }
+            return number;
         } catch (NumberFormatException | ArithmeticException e) {
             throw refuse(field + " must be a whole number, not " + value);
         }
