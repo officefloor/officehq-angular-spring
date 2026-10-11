@@ -1,0 +1,312 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index 241ed96..fe14577 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -124,10 +124,20 @@ export class ClientInvoices {
+     });
+   }
+ 
+-  // An invoice changed in the panel: show its new total in the list.
++  // An invoice changed in the panel: show its new status, dates and total in the list.
+   protected totalChanged(detail: InvoiceDetail): void {
+     this.invoices.update((list) =>
+-      list.map((i) => (i.id === detail.id ? { ...i, total: detail.total } : i)),
++      list.map((i) =>
++        i.id === detail.id
++          ? {
++              ...i,
++              status: detail.status,
++              issueDate: detail.issueDate,
++              dueDate: detail.dueDate,
++              total: detail.total,
++            }
++          : i,
++      ),
+     );
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index e33fa7f..319277e 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -48,7 +48,7 @@ function problemWith(line: NewLine): string {
+ }
+ 
+ // One opened invoice: its status, its lines and its totals. A draft takes new lines and a
+-// percentage discount.
++// percentage discount, and can be sent; once sent, the server refuses further changes.
+ @Component({
+   selector: 'app-invoice-panel',
+   imports: [ReactiveFormsModule],
+@@ -103,60 +103,67 @@ function problemWith(line: NewLine): string {
+         </table>
+ 
+         @if (inv.status === 'DRAFT') {
+-          <form [formGroup]="form" (ngSubmit)="addLine(inv.id)" aria-label="Add a line" novalidate>
+-            <label for="line-description">Description</label>
+-            <input
+-              id="line-description"
+-              data-testid="line-form-description"
+-              formControlName="description"
+-              required
+-            />
+-            <label for="line-qty">Quantity</label>
+-            <input
+-              id="line-qty"
+-              data-testid="line-form-qty"
+-              inputmode="decimal"
+-              formControlName="qty"
+-              required
+-            />
+-            <label for="line-unit-price">Unit price ($)</label>
+-            <input
+-              id="line-unit-price"
+-              data-testid="line-form-unit-price"
+-              inputmode="decimal"
+-              formControlName="unitPrice"
+-              required
+-            />
+-            <button type="submit" data-testid="line-form-submit" [disabled]="saving()">
+-              Add line
+-            </button>
+-            @if (error()) {
+-              <p role="alert" data-testid="line-form-error">{{ error() }}</p>
+-            }
+-          </form>
+-
+-          <form
+-            [formGroup]="discountForm"
+-            (ngSubmit)="setDiscount(inv.id)"
+-            aria-label="Discount"
+-            novalidate
+-          >
+-            <label for="discount-pct">Discount (%)</label>
+-            <input
+-              id="discount-pct"
+-              data-testid="discount-form-pct"
+-              inputmode="decimal"
+-              formControlName="pct"
+-              required
+-            />
+-            <button type="submit" data-testid="discount-form-submit" [disabled]="savingDiscount()">
+-              Apply discount
+-            </button>
+-            @if (discountError()) {
+-              <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
+-            }
+-          </form>
++          <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv.id)">
++            Send invoice
++          </button>
++          @if (sendError()) {
++            <p role="alert" data-testid="invoice-send-error">{{ sendError() }}</p>
++          }
+         }
++
++        <form [formGroup]="form" (ngSubmit)="addLine(inv.id)" aria-label="Add a line" novalidate>
++          <label for="line-description">Description</label>
++          <input
++            id="line-description"
++            data-testid="line-form-description"
++            formControlName="description"
++            required
++          />
++          <label for="line-qty">Quantity</label>
++          <input
++            id="line-qty"
++            data-testid="line-form-qty"
++            inputmode="decimal"
++            formControlName="qty"
++            required
++          />
++          <label for="line-unit-price">Unit price ($)</label>
++          <input
++            id="line-unit-price"
++            data-testid="line-form-unit-price"
++            inputmode="decimal"
++            formControlName="unitPrice"
++            required
++          />
++          <button type="submit" data-testid="line-form-submit" [disabled]="saving()">
++            Add line
++          </button>
++          @if (error()) {
++            <p role="alert" data-testid="line-form-error">{{ error() }}</p>
++          }
++        </form>
++
++        <form
++          [formGroup]="discountForm"
++          (ngSubmit)="setDiscount(inv.id)"
++          aria-label="Discount"
++          novalidate
++        >
++          <label for="discount-pct">Discount (%)</label>
++          <input
++            id="discount-pct"
++            data-testid="discount-form-pct"
++            inputmode="decimal"
++            formControlName="pct"
++            required
++          />
++          <button type="submit" data-testid="discount-form-submit" [disabled]="savingDiscount()">
++            Apply discount
++          </button>
++          @if (discountError()) {
++            <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
++          }
++        </form>
+       }
+     </section>
+   `,
+@@ -173,6 +180,8 @@ export class InvoicePanel {
+   protected readonly error = signal('');
+   protected readonly savingDiscount = signal(false);
+   protected readonly discountError = signal('');
++  protected readonly sending = signal(false);
++  protected readonly sendError = signal('');
+   protected readonly statusLabel = statusLabel;
+   protected readonly money = money;
+ 
+@@ -194,6 +203,7 @@ export class InvoicePanel {
+       this.error.set('');
+       this.discountForm.reset();
+       this.discountError.set('');
++      this.sendError.set('');
+       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
+       onCleanup(() => sub.unsubscribe());
+     });
+@@ -257,4 +267,23 @@ export class InvoicePanel {
+       },
+     });
+   }
++
++  protected send(invoiceId: number): void {
++    this.sending.set(true);
++    this.sendError.set('');
++    this.service.send(invoiceId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.sending.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.sendError.set(
++          typeof detail === 'string' && detail ? detail : 'The invoice could not be sent.',
++        );
++        this.sending.set(false);
++      },
++    });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 4e91690..dc9af9c 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -87,4 +87,9 @@ export class InvoiceService {
+   setDiscount(invoiceId: number, discountPct: string): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/discount`, { discountPct });
+   }
++
++  // Sends a draft invoice, keeping its issue and due dates; refused (409) when it has no lines.
++  send(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/send`, null);
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 42b457f..b8fc664 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -99,6 +99,11 @@ public class Invoice {
+         return status == InvoiceStatus.DRAFT;
+     }
+ 
++    /** Marks the invoice sent; its issue and due dates stay as they are. */
++    public void markSent() {
++        this.status = InvoiceStatus.SENT;
++    }
++
+     /** Adds a line to the end of the invoice. */
+     public void addLine(InvoiceLine line) {
+         lines.add(line);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 9767ec4..969d88e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -145,4 +145,11 @@ public class InvoiceController {
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
++
++    @PostMapping("/api/invoices/{id}/send")
++    public InvoiceDetail send(@PathVariable Long id) {
++        return invoices.send(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 0302427..c542b16 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -4,23 +4,30 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Optional;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.TaxRate;
+ import net.officefloor.hq.app.Today;
+ import net.officefloor.hq.app.clients.ClientRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** Lists a client's invoices, opens one, starts new drafts, adds lines to them and gives them a discount. */
++/** Lists a client's invoices, opens one, starts new drafts, adds lines to them, gives them a discount and sends them. */
+ @Service
+ public class InvoiceService {
+ 
+     private final InvoiceRepository invoices;
+     private final ClientRepository clients;
+     private final Today today;
++    private final TaxRate taxRate;
++    private final Audit audit;
+ 
+-    public InvoiceService(InvoiceRepository invoices, ClientRepository clients, Today today) {
++    public InvoiceService(InvoiceRepository invoices, ClientRepository clients, Today today, TaxRate taxRate,
++            Audit audit) {
+         this.invoices = invoices;
+         this.clients = clients;
+         this.today = today;
++        this.taxRate = taxRate;
++        this.audit = audit;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -82,4 +89,26 @@ public class InvoiceService {
+         });
+         return found;
+     }
++
++    /**
++     * Sends a draft invoice, keeping its issue and due dates, and records it in the audit; empty if
++     * no such invoice. An invoice already sent, or with no lines, is refused.
++     */
++    @Transactional
++    public Optional<Invoice> send(Long invoiceId) {
++        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        found.ifPresent(invoice -> {
++            if (!invoice.isDraft()) {
++                throw new InvoiceRejectedException("This invoice has already been sent.");
++            }
++            if (invoice.getLines().isEmpty()) {
++                throw new InvoiceRejectedException("Add at least one line before sending the invoice.");
++            }
++            invoice.markSent();
++            invoices.saveAndFlush(invoice);
++            audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
++                    + " total=" + invoice.total(taxRate.percent()).toPlainString());
++        });
++        return found;
++    }
+ }
