@@ -47,6 +47,12 @@ public class InvoiceService {
         return invoices.findByClientIdOrderByIdAsc(clientId);
     }
 
+    /** Every invoice of every client, with its lines. */
+    @Transactional(readOnly = true)
+    public List<Invoice> all() {
+        return invoices.findAllByOrderByIdAsc();
+    }
+
     @Transactional(readOnly = true)
     public Optional<Invoice> find(Long id) {
         return invoices.findWithLinesById(id);

@@ -106,6 +106,14 @@ export interface NewLine {
   discountPct?: string;
 }
 
+// What a client still owes across its sent invoices (drafts do not count), after discounts, tax and
+// payments, and how much of that is overdue; decimal strings to the cent, worked out by the server.
+export interface ClientBalance {
+  clientId: number;
+  balance: string;
+  overdue: string;
+}
+
 // The invoices REST API.
 @Injectable({ providedIn: 'root' })
 export class InvoiceService {
@@ -113,6 +121,11 @@ export class InvoiceService {
 
   forClient(clientId: number): Observable<InvoiceSummary[]> {
     return this.http.get<InvoiceSummary[]>(`/api/clients/${clientId}/invoices`);
+  }
+
+  // The balance of each client with a sent invoice; a client not listed owes nothing.
+  balances(): Observable<ClientBalance[]> {
+    return this.http.get<ClientBalance[]>('/api/clients/balances');
   }
 
   // Starts an empty draft for the client, issued today and due on the last day of the following month.

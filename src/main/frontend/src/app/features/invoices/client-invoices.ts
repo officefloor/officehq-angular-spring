@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { InvoiceDetail, InvoiceService, InvoiceSummary, NewAllocation } from './invoice.service';
 import { PaymentForm } from './payment-form';
 import { InvoicePanel } from './invoice-panel';
@@ -120,6 +120,9 @@ export class ClientInvoices {
   // can be opened again.
   readonly openInvoice = input<{ id: number; clientId: number } | null>(null);
 
+  // An invoice of the client was changed or paid, so what the client owes may have changed.
+  readonly changed = output<void>();
+
   protected readonly invoices = signal<InvoiceSummary[]>([]);
   protected readonly selectedId = signal<number | null>(null);
   protected readonly creating = signal(false);
@@ -172,6 +175,7 @@ export class ClientInvoices {
   protected splitRecorded(list: InvoiceSummary[]): void {
     this.invoices.set(list);
     this.allocated.set({});
+    this.changed.emit();
   }
 
   // An invoice changed in the panel: show its new status, dates and total in the list.
@@ -189,5 +193,6 @@ export class ClientInvoices {
           : i,
       ),
     );
+    this.changed.emit();
   }
 }

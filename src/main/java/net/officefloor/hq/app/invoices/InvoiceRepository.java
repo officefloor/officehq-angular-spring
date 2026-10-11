@@ -11,5 +11,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     List<Invoice> findByClientIdOrderByIdAsc(Long clientId);
 
     @EntityGraph(attributePaths = "lines")
+    List<Invoice> findAllByOrderByIdAsc();
+
+    @EntityGraph(attributePaths = "lines")
     Optional<Invoice> findWithLinesById(Long id);
 }

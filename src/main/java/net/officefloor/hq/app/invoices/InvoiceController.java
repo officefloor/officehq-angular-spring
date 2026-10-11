@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.IntStream;
 import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
@@ -38,6 +39,13 @@ public class InvoiceController {
             return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.statusWhenPaid(paid, taxRate, today),
                     total.toPlainString(), i.getIssueDate(), i.getDueDate());
         }
+    }
+
+    /**
+     * What a client still owes across its sent invoices (drafts do not count), after discounts, tax
+     * and payments, and how much of that is overdue; decimal strings to the cent.
+     */
+    public record ClientBalance(Long clientId, String balance, String overdue) {
     }
 
     /**
@@ -197,6 +205,27 @@ public class InvoiceController {
         Map<Long, BigDecimal> paid = invoices.paid(list);
         LocalDate on = today.date();
         return list.stream().map(i -> InvoiceSummary.of(i, rate, paid.get(i.getId()), on)).toList();
+    }
+
+    /** The balance of each client that has a sent invoice; a client not listed owes nothing. */
+    @GetMapping("/api/clients/balances")
+    public List<ClientBalance> balances() {
+        BigDecimal rate = taxRate.percent();
+        List<Invoice> sent = invoices.all().stream().filter(i -> !i.isDraft()).toList();
+        Map<Long, BigDecimal> paid = invoices.paid(sent);
+        LocalDate on = today.date();
+        Map<Long, BigDecimal[]> owed = new TreeMap<>();
+        for (Invoice i : sent) {
+            BigDecimal due = i.amountDue(paid.get(i.getId()), rate);
+            BigDecimal[] sums = owed.computeIfAbsent(i.getClientId(),
+                    k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) });
+            sums[0] = sums[0].add(due);
+            if (i.statusWhenPaid(paid.get(i.getId()), rate, on) == InvoiceStatus.OVERDUE) {
+                sums[1] = sums[1].add(due);
+            }
+        }
+        return owed.entrySet().stream().map(e -> new ClientBalance(e.getKey(),
+                e.getValue()[0].toPlainString(), e.getValue()[1].toPlainString())).toList();
     }
 
     @PostMapping("/api/clients/{clientId}/invoices")

@@ -2,7 +2,8 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ClientInvoices } from '../invoices/client-invoices';
-import { InvoiceService } from '../invoices/invoice.service';
+import { money } from '../invoices/invoice-format';
+import { ClientBalance, InvoiceService } from '../invoices/invoice.service';
 import { Client, ClientService, byName } from './client.service';
 
 // A proper email address: a mailbox, an @, and a domain with at least one dot — name@company.com,
@@ -71,6 +72,10 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
             >
               <span data-testid="client-name">{{ c.name }}</span>
               <span data-testid="client-email">{{ c.email }}</span>
+              <span>
+                Owes <span data-testid="client-balance">{{ money(balanceOf(c.id).balance) }}</span>,
+                overdue <span data-testid="client-overdue">{{ money(balanceOf(c.id).overdue) }}</span>
+              </span>
             </button>
           </li>
         } @empty {
@@ -103,6 +108,7 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
         [clientId]="client.id"
         [clientName]="client.name"
         [openInvoice]="openInvoice()"
+        (changed)="loadBalances()"
       />
     }
   `,
@@ -112,6 +118,9 @@ export class Clients {
   private readonly invoiceService = inject(InvoiceService);
 
   protected readonly clients = signal<Client[]>([]);
+  // What each client owes, by client id; a client not listed owes nothing.
+  protected readonly balances = signal<Map<number, ClientBalance>>(new Map());
+  protected readonly money = money;
   protected readonly saving = signal(false);
   protected readonly error = signal('');
   protected readonly selectedId = signal<number | null>(null);
@@ -136,6 +145,18 @@ export class Clients {
 
   constructor() {
     this.service.list().subscribe((list) => this.clients.set(list));
+    this.loadBalances();
+  }
+
+  protected balanceOf(clientId: number): ClientBalance {
+    return this.balances().get(clientId) ?? { clientId, balance: '0', overdue: '0' };
+  }
+
+  // Fetches what every client owes again, after a payment or other change to an invoice.
+  protected loadBalances(): void {
+    this.invoiceService
+      .balances()
+      .subscribe((list) => this.balances.set(new Map(list.map((b) => [b.clientId, b]))));
   }
 
   protected add(): void {
