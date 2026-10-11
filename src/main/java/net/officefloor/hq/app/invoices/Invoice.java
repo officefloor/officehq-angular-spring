@@ -99,8 +99,16 @@ public class Invoice {
     @Column(name = "retention_cap")
     private BigDecimal retentionCap;
 
+    /** The day of the latest release of retention; null while none has been released. */
     @Column(name = "retention_released_on")
     private LocalDate retentionReleasedOn;
+
+    /**
+     * How much of the retention has been released in all; null with a release day means everything
+     * that was held was released (a release recorded before part of it could be).
+     */
+    @Column(name = "retention_released_amount")
+    private BigDecimal retentionReleasedAmount;
 
     /** The day the late fee and interest still unpaid were last waived; null when never. */
     @Column(name = "interest_waived_on")
@@ -506,12 +514,12 @@ public class Invoice {
         this.retentionCap = retentionCap;
     }
 
-    /** The day the retention was released; null while it is still held. */
+    /** The day of the latest release of retention; null while none has been released. */
     public LocalDate getRetentionReleasedOn() {
         return retentionReleasedOn;
     }
 
-    /** The day released retention falls due, {@link #RETENTION_DUE_DAYS} after its release; null while held. */
+    /** The day released retention falls due, {@link #RETENTION_DUE_DAYS} after the latest release; null while none is released. */
     public LocalDate retentionDueDate() {
         return retentionReleasedOn == null ? null : retentionReleasedOn.plusDays(RETENTION_DUE_DAYS);
     }
@@ -544,8 +552,13 @@ public class Invoice {
         this.writtenOffOn = on;
     }
 
-    /** Releases the retention on the given day, so it is added to the amount due. */
-    public void releaseRetention(LocalDate on) {
+    /**
+     * Releases the given amount of the retention held on the given day, so it is added to the amount
+     * due; it has already been checked against what is held.
+     */
+    public void releaseRetention(LocalDate on, BigDecimal amount) {
+        BigDecimal before = retentionReleasedAmount == null ? BigDecimal.ZERO : retentionReleasedAmount;
+        this.retentionReleasedAmount = before.add(amount);
         this.retentionReleasedOn = on;
     }
 
@@ -564,8 +577,8 @@ public class Invoice {
     }
 
     /**
-     * The retention still held back at the tax rate: all of it until it is released, less what credit
-     * notes have cleared of it; then nothing. Nothing once the invoice is written off.
+     * The retention still held back at the tax rate: all of it less what has been released and what
+     * credit notes have cleared of it. Nothing once the invoice is written off.
      */
     public BigDecimal retentionHeld(BigDecimal taxRate) {
         return isWrittenOff() ? zero() : retentionKept(taxRate);
@@ -573,11 +586,13 @@ public class Invoice {
 
     /** As {@link #retentionHeld}, but still what was held back when the invoice was written off. */
     private BigDecimal retentionKept(BigDecimal taxRate) {
-        if (retentionReleasedOn != null) {
+        if (retentionReleasedOn != null && retentionReleasedAmount == null) {
             return zero();
         }
         BigDecimal cleared = retentionCredited == null ? BigDecimal.ZERO : retentionCredited;
-        return retention(taxRate).subtract(cleared).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
+        BigDecimal released = retentionReleasedAmount == null ? BigDecimal.ZERO : retentionReleasedAmount;
+        return retention(taxRate).subtract(cleared).subtract(released).max(BigDecimal.ZERO)
+                .setScale(scale(), RoundingMode.HALF_UP);
     }
 
     /**
@@ -595,9 +610,16 @@ public class Invoice {
         return new BigDecimal[] { toDue.add(toRetention), toRetention };
     }
 
-    /** The retention released at the tax rate: nothing until it is released, then all of it. */
+    /**
+     * The retention released at the tax rate: nothing until some is released, then what was released
+     * (all of it for a release recorded without an amount).
+     */
     public BigDecimal retentionReleased(BigDecimal taxRate) {
-        return retentionReleasedOn == null ? zero() : retention(taxRate);
+        if (retentionReleasedOn == null) {
+            return zero();
+        }
+        return retentionReleasedAmount == null ? retention(taxRate)
+                : retentionReleasedAmount.setScale(scale(), RoundingMode.HALF_UP);
     }
 
     /**

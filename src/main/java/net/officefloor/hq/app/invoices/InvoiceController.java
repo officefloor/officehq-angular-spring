@@ -108,8 +108,8 @@ public class InvoiceController {
      * (null for an ordinary invoice) and {@code listedTotal} the total as listed, negative for a credit note.
      * {@code retentionPct} (without trailing zeros) is the share of the amount before tax (subtotal less discount) held back as
      * {@code retention}, rounded down to the cent and never more than {@code retentionCap} (null for no cap); {@code retentionHeld} is what is still held back (not
-     * part of the amount due), {@code retentionReleasedOn} the day it was released (null while held) and
-     * {@code retentionDueDate} the day released retention falls due. {@code instalments} is how many
+     * part of the amount due), {@code retentionReleasedOn} the day of the latest release (null while none is released) and
+     * {@code retentionDueDate} the day all that is released falls due. {@code instalments} is how many
      * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
      * (without trailing zeros), after a down payment of {@code planDownPct} percent of the grand total
      * (without trailing zeros; instalment 0 when not 0); {@code schedule} lists them and {@code planTotal} is what they add up to
@@ -294,6 +294,16 @@ public class InvoiceController {
             @DecimalMin(value = "0", message = "The retention cap cannot be negative.")
             @Digits(integer = 10, fraction = 2, message = "The retention cap can have at most two decimals.")
             BigDecimal retentionCap) {
+    }
+
+    /**
+     * How much of the retention held to release: more than zero with at most two decimals; null
+     * releases all that is still held.
+     */
+    public record NewRelease(
+            @DecimalMin(value = "0", inclusive = false, message = "The amount to release must be more than zero.")
+            @Digits(integer = 17, fraction = 2, message = "The amount to release can have at most two decimals.")
+            BigDecimal amount) {
     }
 
     /**
@@ -489,10 +499,14 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 
-    /** Releases the retention held back on a sent invoice once nothing else is due. */
+    /**
+     * Releases the given amount of the retention held back on a sent invoice (all that is still held
+     * without one) once nothing else is due.
+     */
     @PostMapping("/api/invoices/{id}/release-retention")
-    public InvoiceDetail releaseRetention(@PathVariable Long id) {
-        return invoices.releaseRetention(id)
+    public InvoiceDetail releaseRetention(@PathVariable Long id,
+            @Valid @RequestBody(required = false) NewRelease body) {
+        return invoices.releaseRetention(id, body == null ? null : body.amount())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

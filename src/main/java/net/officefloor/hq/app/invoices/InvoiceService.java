@@ -386,12 +386,15 @@ public class InvoiceService {
     }
 
     /**
-     * Releases the retention held back on a sent invoice today, adding it to the amount due (falling
-     * due {@link Invoice#RETENTION_DUE_DAYS} days later), and records it in the audit; empty if no such
-     * invoice. Refused while anything else is still due, or when there is no retention held to release.
+     * Releases the given amount of the retention held back on a sent invoice today (all that is still
+     * held when it is null), adding it to the amount due (all that is released falling due
+     * {@link Invoice#RETENTION_DUE_DAYS} days after the latest release), and records the amount
+     * released in the audit; empty if no such invoice. Refused while anything other than retention
+     * already released is still due, when there is no retention held to release, or when the amount is
+     * more than is held.
      */
     @Transactional
-    public Optional<Invoice> releaseRetention(Long invoiceId) {
+    public Optional<Invoice> releaseRetention(Long invoiceId, BigDecimal amount) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isDraft() || invoice.isVoid() || invoice.isCreditNote()) {
@@ -405,14 +408,27 @@ public class InvoiceService {
             if (held.signum() <= 0) {
                 throw new InvoiceRejectedException("There is no retention held to release.");
             }
-            BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), rate);
-            if (due.signum() > 0) {
-                throw new InvoiceRejectedException("The retention can only be released once nothing else is due; "
-                        + invoice.currency().format(due) + " is still due.");
+            BigDecimal release = amount == null ? held
+                    : amount.setScale(invoice.currency().scale(), RoundingMode.HALF_UP);
+            if (amount != null) {
+                requireWhole(invoice.currency(), amount, "The amount to release");
+                if (amount.signum() <= 0) {
+                    throw new InvoiceRejectedException("The amount to release must be more than zero.");
+                }
+                if (amount.compareTo(held) > 0) {
+                    throw new InvoiceRejectedException("The amount to release cannot be more than the "
+                            + invoice.currency().format(held) + " still held.");
+                }
             }
-            invoice.releaseRetention(today.date());
+            BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), rate);
+            BigDecimal elseDue = due.subtract(due.min(invoice.retentionReleased(rate)).max(BigDecimal.ZERO));
+            if (elseDue.signum() > 0) {
+                throw new InvoiceRejectedException("The retention can only be released once nothing else is due; "
+                        + invoice.currency().format(elseDue) + " is still due.");
+            }
+            invoice.releaseRetention(today.date(), release);
             invoices.saveAndFlush(invoice);
-            audit.record("RETENTION_RELEASED id=" + invoice.getId() + " amount=" + held.toPlainString());
+            audit.record("RETENTION_RELEASED id=" + invoice.getId() + " amount=" + release.toPlainString());
         });
         return found;
     }

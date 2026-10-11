@@ -128,7 +128,8 @@ export interface InvoiceDetail {
   retentionCap: string | null;
   retention: string;
   retentionHeld: string;
-  // The day (yyyy-mm-dd) the retention was released, and the day it then falls due; null while held.
+  // The day (yyyy-mm-dd) of the latest release of retention, and the day what was released falls due;
+  // null while none has been released.
   retentionReleasedOn: string | null;
   retentionDueDate: string | null;
   // How many monthly instalments it is spread over (null without a plan), at the annual
@@ -293,10 +294,11 @@ export class InvoiceService {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/plan`, { instalments, instalmentRate, planDownPct });
   }
 
-  // Releases the retention held back on a sent invoice, adding it to the amount due; refused (409)
-  // while anything else is due or when there is nothing to release.
-  releaseRetention(invoiceId: number): Observable<InvoiceDetail> {
-    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, null);
+  // Releases an amount of the retention held back on a sent invoice (all still held when left out),
+  // adding it to the amount due; refused (400) for an amount of zero or less or with more than two
+  // decimals, or (409) more than is held, while anything else is due or when there is nothing to release.
+  releaseRetention(invoiceId: number, amount?: string): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, { amount });
   }
 
   // Writes off everything still owed on a sent invoice as a bad debt. Refused (409) on a draft, a void

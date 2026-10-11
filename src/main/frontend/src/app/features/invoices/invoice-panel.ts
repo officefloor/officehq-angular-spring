@@ -102,6 +102,23 @@ function problemWithRetentionCap(cap: string): string {
   return '';
 }
 
+// An amount of retention to release: money, more than zero and to the cent, and no more than is held.
+function problemWithRelease(amount: string, held: string): string {
+  if (!/^-?\d+(\.\d+)?$/.test(amount)) {
+    return 'The amount to release must be a number, like 500 or 250.50.';
+  }
+  if (Number(amount) <= 0) {
+    return 'The amount to release must be more than zero.';
+  }
+  if (!TWO_DECIMALS.test(amount)) {
+    return 'The amount to release can have at most two decimals.';
+  }
+  if (Number(amount) > Number(held)) {
+    return 'The amount to release cannot be more than is still held.';
+  }
+  return '';
+}
+
 // A cap on everything taken off, line discounts included: money, not negative and to the cent, e.g. 25 or 12.50.
 function problemWithDiscountCap(cap: string): string {
   if (!/^-?\d+(\.\d+)?$/.test(cap)) {
@@ -193,7 +210,8 @@ function problemWith(line: NewLine): string {
 // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
 // server refuses to send it once that date is past. A draft can hold back retention, a percentage of
 // the amount before tax, the subtotal less the discount (0 to 20); while held it is not part of the amount due, and once nothing else is due
-// it can be released on the sent invoice, falling due 30 days later. A draft without retention can
+// it can be released on the sent invoice, all of it or an amount of what is still held, all that is
+// released falling due 30 days after the latest release. A draft without retention can
 // instead be spread over 2 to 24 monthly instalments at an annual interest rate (0 to 30); the server
 // works out the schedule from the grand total, dated from the issue date (and again when it is sent),
 // and the amount due is then the plan total less what is paid.
@@ -310,10 +328,16 @@ function problemWith(line: NewLine): string {
               <th scope="row" colspan="8">
                 Retention ({{ inv.retentionPct }}%@if (inv.retentionCap !== null) {, max
                   {{ amount(inv.retentionCap) }}}@if (inv.retentionReleasedOn) {, released
-                  {{ inv.retentionReleasedOn }}, due {{ inv.retentionDueDate }}} @else if (+inv.retention > 0) {, held back})
+                  {{ inv.retentionReleasedOn }}, due {{ inv.retentionDueDate }}}@if (+inv.retentionHeld > 0) {, held back})
               </th>
               <td data-testid="invoice-retention">{{ amount(inv.retention) }}</td>
             </tr>
+            @if (+inv.retention > 0) {
+              <tr>
+                <th scope="row" colspan="8">Retention still held</th>
+                <td data-testid="invoice-retention-held">{{ amount(inv.retentionHeld) }}</td>
+              </tr>
+            }
           </tfoot>
         </table>
 
@@ -534,14 +558,18 @@ function problemWith(line: NewLine): string {
           inv.status !== 'VOID' &&
           +inv.retentionHeld > 0
         ) {
-          <button
-            type="button"
-            data-testid="invoice-release-retention"
-            [disabled]="releasing()"
-            (click)="releaseRetention(inv.id)"
-          >
-            Release retention
-          </button>
+          <form [formGroup]="releaseForm" (ngSubmit)="releaseRetention(inv.id, inv.retentionHeld)" aria-label="Release retention" novalidate>
+            <label for="retention-release-amount">Amount to release ({{ symbol() }}, empty for all still held)</label>
+            <input
+              id="retention-release-amount"
+              data-testid="retention-release-amount"
+              inputmode="decimal"
+              formControlName="amount"
+            />
+            <button type="submit" data-testid="invoice-release-retention" [disabled]="releasing()">
+              Release retention
+            </button>
+          </form>
         }
         @if (releaseError()) {
           <p role="alert" data-testid="invoice-release-error">{{ releaseError() }}</p>
@@ -790,6 +818,10 @@ export class InvoicePanel {
     cap: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly releaseForm = new FormGroup({
+    amount: new FormControl('', { nonNullable: true }),
+  });
+
   protected readonly planForm = new FormGroup({
     count: new FormControl('', { nonNullable: true }),
     rate: new FormControl('', { nonNullable: true }),
@@ -816,6 +848,7 @@ export class InvoicePanel {
       this.retentionError.set('');
       this.planForm.reset();
       this.planError.set('');
+      this.releaseForm.reset();
       this.releaseError.set('');
       this.waiveError.set('');
       this.writeOffError.set('');
@@ -1052,12 +1085,20 @@ export class InvoicePanel {
     });
   }
 
-  protected releaseRetention(invoiceId: number): void {
+  protected releaseRetention(invoiceId: number, held: string): void {
+    const amount = this.releaseForm.getRawValue().amount.trim();
+    const problem = amount ? problemWithRelease(amount, held) : '';
+    if (problem) {
+      this.releaseForm.markAllAsTouched();
+      this.releaseError.set(problem);
+      return;
+    }
     this.releasing.set(true);
     this.releaseError.set('');
-    this.service.releaseRetention(invoiceId).subscribe({
+    this.service.releaseRetention(invoiceId, amount || undefined).subscribe({
       next: (detail) => {
         this.invoice.set(detail);
+        this.releaseForm.reset();
         this.changed.emit(detail);
         this.releasing.set(false);
       },
