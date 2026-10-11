@@ -138,6 +138,7 @@ function problemWithCash(payment: NewPayment, invoiceOpen: boolean, clientCurren
       <select id="payment-method" data-testid="payment-form-method" formControlName="method">
         <option value="BANK">Bank transfer</option>
         <option value="CASH">Cash (to the nearest 0.05)</option>
+        <option value="CARD">Card (the card surcharge is taken out of it)</option>
       </select>
       <label for="payment-amount">Amount ({{ symbolOf(paidIn()) }})</label>
       <input
@@ -309,6 +310,7 @@ export class PaymentForm {
         currency: payment.currency,
         date: payment.date,
         reference: payment.reference || undefined,
+        method: payment.method,
       })
       .subscribe({
         next: (list) => {

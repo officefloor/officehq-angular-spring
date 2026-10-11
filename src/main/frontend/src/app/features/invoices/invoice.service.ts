@@ -76,7 +76,8 @@ export interface InvoiceLineView {
 // this invoice, decimal strings to the cent; the date it was paid (yyyy-mm-dd) and the RF reference it
 // quoted in groups of four (null when none).
 // A payment to an opened invoice: `amount` is in the `currency` it was paid in, `allocated` (the
-// part applied to this invoice) in the client's currency.
+// part applied to this invoice) in the client's currency. `surcharge` is the part of the amount that
+// was the card surcharge, in the client's currency ("0.00" unless paid by card).
 export interface InvoicePaymentView {
   id: number;
   amount: string;
@@ -84,6 +85,8 @@ export interface InvoicePaymentView {
   allocated: string;
   date: string;
   reference: string | null;
+  method: PaymentMethod;
+  surcharge: string;
 }
 
 // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
@@ -217,7 +220,7 @@ export interface InstalmentView {
 // RF reference the client quoted ('' when none), checked again by the server.
 // `currency` is the currency it was paid in; the server converts it into the client's currency.
 // How a payment was made: a bank transfer, or cash counted out in coins (0.05, or whole yen).
-export type PaymentMethod = 'BANK' | 'CASH';
+export type PaymentMethod = 'BANK' | 'CASH' | 'CARD';
 
 export interface NewPayment {
   amount: string;
@@ -421,7 +424,13 @@ export class InvoiceService {
   // client's invoices.
   recordDeposit(
     clientId: number,
-    deposit: { amount: string; currency: Currency; date: string; reference?: string },
+    deposit: {
+      amount: string;
+      currency: Currency;
+      date: string;
+      reference?: string;
+      method?: PaymentMethod;
+    },
   ): Observable<InvoiceSummary[]> {
     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/deposits`, deposit);
   }

@@ -62,14 +62,16 @@ public class InvoiceController {
     /**
      * A payment made to an opened invoice: the whole amount paid in the {@code currency} it was paid in,
      * how much of it went to this invoice (to the cent) in the client's currency, its date and the
-     * reference it quoted in groups of four (null when none).
+     * reference it quoted in groups of four (null when none). {@code surcharge} is the part of it that
+     * was the card surcharge, in the client's currency ("0.00" unless paid by card).
      */
     public record PaymentView(Long id, String amount, Currency currency, String allocated, LocalDate date,
-            String reference) {
+            String reference, PaymentMethod method, String surcharge) {
         static PaymentView of(Payment p, Long invoiceId, Currency clientCurrency) {
             return new PaymentView(p.getId(), p.paidAmount().setScale(2).toPlainString(),
                     p.paidCurrency(clientCurrency), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
-                    p.getReference() == null ? null : PaymentReference.grouped(p.getReference()));
+                    p.getReference() == null ? null : PaymentReference.grouped(p.getReference()), p.getMethod(),
+                    p.getSurcharge().setScale(2).toPlainString());
         }
     }
 
@@ -634,7 +636,8 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
         refuseCashWithoutInvoice(body.method());
-        invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()));
+        invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()),
+                body.method());
         return forClient(clientId);
     }
 
@@ -705,7 +708,8 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> recordDeposit(@PathVariable Long clientId, @Valid @RequestBody NewDeposit body) {
         refuseCashWithoutInvoice(body.method());
-        invoices.recordDeposit(clientId, body.amount(), body.currency(), body.date(), reference(body.reference()))
+        invoices.recordDeposit(clientId, body.amount(), body.currency(), body.date(), reference(body.reference()),
+                body.method())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
         return forClient(clientId);
     }

@@ -451,6 +451,7 @@ function problemWith(line: NewLine): string {
             <tr>
               <th scope="col">Paid on</th>
               <th scope="col">Amount</th>
+              <th scope="col">Card surcharge</th>
               <th scope="col">To this invoice</th>
               <th scope="col">Reference</th>
               <th scope="col">Actions</th>
@@ -461,6 +462,7 @@ function problemWith(line: NewLine): string {
               <tr [attr.data-testid]="'payment-row-' + p.id">
                 <td data-testid="payment-date">{{ p.date }}</td>
                 <td data-testid="payment-amount">{{ money(p.amount, p.currency) }}</td>
+                <td data-testid="payment-surcharge">{{ amount(p.surcharge) }}</td>
                 <td data-testid="payment-allocated">{{ amount(p.allocated) }}</td>
                 <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
                 <td>
@@ -477,85 +479,85 @@ function problemWith(line: NewLine): string {
               </tr>
             } @empty {
               <tr>
-                <td colspan="5" data-testid="payment-empty">No payments yet.</td>
+                <td colspan="6" data-testid="payment-empty">No payments yet.</td>
               </tr>
             }
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row" colspan="4">Paid</th>
+              <th scope="row" colspan="5">Paid</th>
               <td data-testid="invoice-paid">{{ amount(inv.paid) }}</td>
             </tr>
             @if (inv.creditOf === null) {
               <tr>
-                <th scope="row" colspan="4">Credited</th>
+                <th scope="row" colspan="5">Credited</th>
                 <td data-testid="invoice-credited">{{ amount(inv.credited) }}</td>
               </tr>
             }
             @if (inv.creditOf === null) {
               <tr>
-                <th scope="row" colspan="4">Early-payment discount</th>
+                <th scope="row" colspan="5">Early-payment discount</th>
                 <td data-testid="invoice-early-discount">{{ amount(inv.earlyDiscount) }}</td>
               </tr>
             }
             @if (inv.creditOf === null) {
               <tr>
-                <th scope="row" colspan="4">Late fee</th>
+                <th scope="row" colspan="5">Late fee</th>
                 <td data-testid="invoice-late-fee">{{ amount(inv.lateFee) }}</td>
               </tr>
             }
             @if (inv.creditOf === null) {
               <tr>
-                <th scope="row" colspan="4">Late interest</th>
+                <th scope="row" colspan="5">Late interest</th>
                 <td data-testid="invoice-interest">{{ amount(inv.lateInterest) }}</td>
               </tr>
             }
             @if (inv.creditOf === null) {
               <tr>
-                <th scope="row" colspan="4">Late charges waived</th>
+                <th scope="row" colspan="5">Late charges waived</th>
                 <td data-testid="invoice-waived">{{ amount(inv.lateWaived) }}</td>
               </tr>
             }
             <tr>
-              <th scope="row" colspan="4">Amount due</th>
+              <th scope="row" colspan="5">Amount due</th>
               <td data-testid="invoice-amount-due">{{ amount(inv.amountDue) }}</td>
             </tr>
             @if (inv.creditOf === null) {
               <tr>
-                <th scope="row" colspan="4">Amount due in cash (to the nearest coin)</th>
+                <th scope="row" colspan="5">Amount due in cash (to the nearest coin)</th>
                 <td data-testid="invoice-cash-due">{{ amount(inv.cashDue) }}</td>
               </tr>
               <tr>
-                <th scope="row" colspan="4">Cash rounding</th>
+                <th scope="row" colspan="5">Cash rounding</th>
                 <td data-testid="invoice-cash-rounding">{{ amount(inv.cashRounding) }}</td>
               </tr>
             }
             @if (inv.settleAmount !== null) {
               <tr>
-                <th scope="row" colspan="4">Settles it if paid now (early-payment discount)</th>
+                <th scope="row" colspan="5">Settles it if paid now (early-payment discount)</th>
                 <td data-testid="invoice-settle-amount">{{ amount(inv.settleAmount) }}</td>
               </tr>
             }
             @if (inv.payoff !== null) {
               <tr>
-                <th scope="row" colspan="4">Pays off the plan if paid now</th>
+                <th scope="row" colspan="5">Pays off the plan if paid now</th>
                 <td data-testid="invoice-payoff">{{ amount(inv.payoff) }}</td>
               </tr>
             }
             @if (inv.instalments !== null) {
               <tr>
-                <th scope="row" colspan="4">Interest saved by paying off early</th>
+                <th scope="row" colspan="5">Interest saved by paying off early</th>
                 <td data-testid="invoice-interest-saved">{{ amount(inv.interestSaved) }}</td>
               </tr>
             }
             @if (inv.fxDifference !== null) {
               <tr>
-                <th scope="row" colspan="4">Exchange difference (US dollars)</th>
+                <th scope="row" colspan="5">Exchange difference (US dollars)</th>
                 <td data-testid="invoice-fx-difference">{{ money(inv.fxDifference) }}</td>
               </tr>
             }
             <tr>
-              <th scope="row" colspan="4">
+              <th scope="row" colspan="5">
                 {{ inv.writtenOffOn === null ? 'Written off (small balance left)' : 'Written off as a bad debt' }}
               </th>
               <td data-testid="invoice-written-off">{{ amount(inv.writtenOff) }}</td>

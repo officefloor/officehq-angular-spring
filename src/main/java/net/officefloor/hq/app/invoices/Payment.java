@@ -59,6 +59,9 @@ public class Payment {
     @Enumerated(EnumType.STRING)
     private PaymentMethod method = PaymentMethod.BANK;
 
+    /** The part of the amount that is the card surcharge of a card payment: it pays nothing; 0 otherwise. */
+    private BigDecimal surcharge = BigDecimal.ZERO;
+
     @ElementCollection
     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
     private List<PaymentAllocation> allocations = new ArrayList<>();
@@ -143,6 +146,17 @@ public class Payment {
         return this;
     }
 
+    /** Notes the part of the amount that is the card surcharge (null for none). */
+    public Payment surcharged(BigDecimal surcharge) {
+        this.surcharge = surcharge == null ? BigDecimal.ZERO : surcharge;
+        return this;
+    }
+
+    /** The part of the amount that is the card surcharge; 0 for a payment not made by card. */
+    public BigDecimal getSurcharge() {
+        return surcharge == null ? BigDecimal.ZERO : surcharge;
+    }
+
     public PaymentMethod getMethod() {
         return method;
     }
@@ -205,14 +219,14 @@ public class Payment {
     }
 
     /**
-     * The part of this payment applied to no invoice and not refunded: credit on the client's account;
-     * none once reversed.
+     * The part of this payment applied to no invoice, not refunded and not its card surcharge: credit
+     * on the client's account; none once reversed.
      */
     public BigDecimal credit() {
         if (reversed) {
             return BigDecimal.ZERO;
         }
-        return amount.subtract(refunded).subtract(allocations.stream().map(PaymentAllocation::getAmount)
+        return amount.subtract(getSurcharge()).subtract(refunded).subtract(allocations.stream().map(PaymentAllocation::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
     }
 

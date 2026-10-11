@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.CardSurcharge;
 import net.officefloor.hq.app.ExchangeRates;
 import net.officefloor.hq.app.LateFee;
 import net.officefloor.hq.app.LateInterestRate;
@@ -45,10 +46,12 @@ public class InvoiceService {
     private final ExchangeRates exchangeRates;
     private final LateInterestRate lateInterestRate;
     private final LateFee lateFee;
+    private final CardSurcharge cardSurcharge;
 
     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
-            LateInterestRate lateInterestRate, LateFee lateFee) {
+            LateInterestRate lateInterestRate, LateFee lateFee, CardSurcharge cardSurcharge) {
+        this.cardSurcharge = cardSurcharge;
         this.lateInterestRate = lateInterestRate;
         this.lateFee = lateFee;
         this.exchangeRates = exchangeRates;
@@ -833,7 +836,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Payment> recordDeposit(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
-            String reference) {
+            String reference, PaymentMethod method) {
         Optional<Client> client = clients.findById(clientId);
         if (client.isEmpty()) {
             return Optional.empty();
@@ -848,10 +851,12 @@ public class InvoiceService {
         if (date.isAfter(now)) {
             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
         }
+        BigDecimal surcharge = surchargeOf(amount, currency, method);
         Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date, reference)
-                .paidIn(paidIn, paidAmount, currency));
+                .paidIn(paidIn, paidAmount, currency).by(method).surcharged(surcharge));
+        recordSurcharge(payment, currency);
         audit.record("DEPOSIT_RECORDED id=" + payment.getId() + " client=" + clientId + " amount="
-                + amount.setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+                + amount.subtract(surcharge).setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
         return Optional.of(payment);
     }
 
@@ -1049,7 +1054,10 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("Cash must be counted out in "
                         + invoice.currency().format(invoice.currency().cashStep()) + " coins.");
             }
-            BigDecimal amount = converted(paidAmount, paidIn, invoice.currency(), date);
+            BigDecimal received = converted(paidAmount, paidIn, invoice.currency(), date);
+            // Only what is left once the card surcharge is taken out pays the invoice.
+            BigDecimal surcharge = surchargeOf(received, invoice.currency(), method);
+            BigDecimal amount = received.subtract(surcharge);
             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
             if (due.signum() <= 0) {
@@ -1101,8 +1109,9 @@ public class InvoiceService {
                 invoice.roundForCash(rounding);
                 invoices.saveAndFlush(invoice);
             }
-            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, applied, date, reference)
-                    .paidIn(paidIn, paidAmount, invoice.currency()).by(method));
+            Payment payment = payments.saveAndFlush(Payment.against(invoice, received, applied, date, reference)
+                    .paidIn(paidIn, paidAmount, invoice.currency()).by(method).surcharged(surcharge));
+            recordSurcharge(payment, invoice.currency());
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
                     + applied.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
             if (rounding.signum() != 0) {
@@ -1146,9 +1155,12 @@ public class InvoiceService {
      */
     @Transactional
     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
-            List<QuotedReference> references) {
+            List<QuotedReference> references, PaymentMethod method) {
         Currency currency = currencyOf(clientId);
-        BigDecimal amount = converted(paidAmount, paidIn, currency, date);
+        BigDecimal received = converted(paidAmount, paidIn, currency, date);
+        // Only what is left once the card surcharge is taken out pays invoices or is held as credit.
+        BigDecimal surcharge = surchargeOf(received, currency, method);
+        BigDecimal amount = received.subtract(surcharge);
         List<Invoice> ofClient = loadForClient(clientId);
         List<Invoice> candidates = ofClient;
         List<PaymentAllocation> parts = new ArrayList<>();
@@ -1212,7 +1224,7 @@ public class InvoiceService {
                     : "Those invoices have already been paid.");
         }
         String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
-        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts);
+        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, method, surcharge);
     }
 
     /**
@@ -1310,7 +1322,8 @@ public class InvoiceService {
      * already been checked; it must be the reference of one of the invoices.
      */
     private Payment recordSpread(Long clientId, BigDecimal amount, BigDecimal paidAmount, Currency paidIn,
-            LocalDate date, String reference, List<PaymentAllocation> parts) {
+            LocalDate date, String reference, List<PaymentAllocation> parts, PaymentMethod method,
+            BigDecimal surcharge) {
         if (parts.isEmpty()) {
             throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
         }
@@ -1373,8 +1386,9 @@ public class InvoiceService {
             throw new InvoiceRejectedException(PaymentReference.grouped(reference)
                     + " is not the reference of any of the invoices being paid.");
         }
-        Payment payment = payments.saveAndFlush(Payment.split(clientId, amount, date, reference, parts)
-                .paidIn(paidIn, paidAmount, currency));
+        Payment payment = payments.saveAndFlush(Payment.split(clientId, amount.add(surcharge), date, reference, parts)
+                .paidIn(paidIn, paidAmount, currency).by(method).surcharged(surcharge));
+        recordSurcharge(payment, currency);
         for (PaymentAllocation part : parts) {
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + part.getInvoiceId() + " amount="
                     + part.getAmount().setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
@@ -1479,6 +1493,19 @@ public class InvoiceService {
             compact = InvoiceNumber.idOf(compact).map(PaymentReference::of).orElse(compact);
         }
         return drafts.get(compact);
+    }
+
+    /** The card surcharge in the amount received by the method (null for a bank transfer): 0 unless by card. */
+    private BigDecimal surchargeOf(BigDecimal received, Currency currency, PaymentMethod method) {
+        return method == PaymentMethod.CARD ? cardSurcharge.of(received, currency.scale()) : BigDecimal.ZERO;
+    }
+
+    /** Records in the audit the card surcharge a payment just recorded carried, if any. */
+    private void recordSurcharge(Payment payment, Currency currency) {
+        if (payment.getSurcharge().signum() > 0) {
+            audit.record("CARD_SURCHARGE payment=" + payment.getId() + " amount="
+                    + payment.getSurcharge().setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+        }
     }
 
     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
