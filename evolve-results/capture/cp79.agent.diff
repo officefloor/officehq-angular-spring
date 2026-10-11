@@ -1,0 +1,167 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 79bd4e0..bcd3b5f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -346,8 +346,8 @@ export class InvoiceService {
+ 
+   // Refunds the client's unused credit, the oldest payment's first; refused (409) when dated after
+   // today or before a payment it would come from, or more than the client's credit. Answers the
+-  // client's invoices.
+-  refundCredit(clientId: number, refund: { amount: string; date: string }): Observable<InvoiceSummary[]> {
++  // client's invoices. The amount is in the refund's currency, converted by the server into the client's.
++  refundCredit(clientId: number, refund: { amount: string; currency: Currency; date: string }): Observable<InvoiceSummary[]> {
+     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/refunds`, refund);
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/refund-form.ts b/src/main/frontend/src/app/features/invoices/refund-form.ts
+index b6cff84..de8a723 100644
+--- a/src/main/frontend/src/app/features/invoices/refund-form.ts
++++ b/src/main/frontend/src/app/features/invoices/refund-form.ts
+@@ -1,18 +1,28 @@
+-import { Component, inject, input, output, signal } from '@angular/core';
++import { Component, effect, inject, input, output, signal } from '@angular/core';
++import { toSignal } from '@angular/core/rxjs-interop';
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { InvoiceService, InvoiceSummary } from './invoice.service';
+-import { Currency, TWO_DECIMALS, symbolOf } from './invoice-format';
++import { CURRENCIES, Currency, TWO_DECIMALS, symbolOf } from './invoice-format';
+ 
+ // Refunds the client's unused credit: an amount more than zero with at most two decimals, and the
+-// date it was refunded. It comes out of the oldest payment's credit first; the server refuses a
+-// date after today or before a payment it would come from, or more than the client's credit.
++// date it was refunded, in the currency picked (the client's own by default). An amount in another
++// currency is converted by the server into the client's through US dollars at the rates on the refund
++// date, rounded to their currency's step. It comes out of the oldest payment's credit first; the
++// server refuses a date after today or before a payment it would come from, or more than the client's
++// credit once converted.
+ @Component({
+   selector: 'app-refund-form',
+   imports: [ReactiveFormsModule],
+   template: `
+     <form [formGroup]="form" (ngSubmit)="refund()" aria-label="Refund unused credit" novalidate>
+-      <label for="refund-amount">Refund ({{ symbolOf(currency()) }})</label>
++      <label for="refund-currency">Refund in</label>
++      <select id="refund-currency" data-testid="refund-form-currency" formControlName="currency">
++        @for (c of currencies; track c) {
++          <option [value]="c">{{ c }}</option>
++        }
++      </select>
++      <label for="refund-amount">Refund ({{ symbolOf(refundIn()) }})</label>
+       <input
+         id="refund-amount"
+         data-testid="refund-form-amount"
+@@ -33,9 +43,10 @@ export class RefundForm {
+   private readonly service = inject(InvoiceService);
+ 
+   readonly clientId = input.required<number>();
+-  // The currency the client is billed in, which the refund is in.
++  // The currency the client is billed in: the refund's by default.
+   readonly currency = input<Currency>('USD');
+   protected readonly symbolOf = symbolOf;
++  protected readonly currencies = CURRENCIES;
+   // The client's invoices after a refund.
+   readonly refunded = output<InvoiceSummary[]>();
+ 
+@@ -45,11 +56,22 @@ export class RefundForm {
+   protected readonly form = new FormGroup({
+     amount: new FormControl('', { nonNullable: true }),
+     date: new FormControl('', { nonNullable: true }),
++    currency: new FormControl<Currency>('USD', { nonNullable: true }),
+   });
++  // The currency picked to refund in, as a signal for the amount's label.
++  protected readonly refundIn = toSignal(this.form.controls.currency.valueChanges, {
++    initialValue: this.form.controls.currency.value,
++  });
++
++  constructor() {
++    // Each new client starts with its own currency picked.
++    effect(() => this.form.controls.currency.setValue(this.currency()));
++  }
+ 
+   protected refund(): void {
+     const raw = this.form.getRawValue();
+     const amount = raw.amount.trim().replace(/^\$/, '');
++    const currency = raw.currency;
+     const date = raw.date.trim();
+     const problems: string[] = [];
+     if (!amount) {
+@@ -69,9 +91,10 @@ export class RefundForm {
+     }
+     this.saving.set(true);
+     this.error.set('');
+-    this.service.refundCredit(this.clientId(), { amount, date }).subscribe({
++    this.service.refundCredit(this.clientId(), { amount, currency, date }).subscribe({
+       next: (list) => {
+-        this.form.reset();
++        // The currency and date stay picked for a further refund.
++        this.form.controls.amount.reset();
+         this.saving.set(false);
+         this.refunded.emit(list);
+       },
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 353429f..9240bfa 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -254,12 +254,17 @@ public class InvoiceController {
+             String reference) {
+     }
+ 
+-    /** A refund of unused credit: an amount more than zero with at most two decimals, and the date it was refunded. */
++    /**
++     * A refund of unused credit: an amount more than zero with at most two decimals, the currency it is
++     * refunded in, and the date it was refunded.
++     */
+     public record NewRefund(
+             @NotNull(message = "Enter an amount.")
+             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
+             @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
+             BigDecimal amount,
++            // The currency it is refunded in; the client's own when left out.
++            Currency currency,
+             @NotNull(message = "Enter the date it was refunded.")
+             LocalDate date) {
+     }
+@@ -594,7 +599,7 @@ public class InvoiceController {
+     @PostMapping("/api/clients/{clientId}/refunds")
+     @ResponseStatus(HttpStatus.CREATED)
+     public List<InvoiceSummary> refundCredit(@PathVariable Long clientId, @Valid @RequestBody NewRefund body) {
+-        invoices.refundCredit(clientId, body.amount(), body.date())
++        invoices.refundCredit(clientId, body.amount(), body.currency(), body.date())
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+         return forClient(clientId);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 98786ad..a9df92e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -626,19 +626,26 @@ public class InvoiceService {
+ 
+     /**
+      * Refunds the amount of the client's unused credit on the date, never a deposit held for one of its
+-     * drafts: the oldest payment's credit first
++     * drafts. The amount is in the currency refunded in (null for the client's own) and comes off the
++     * credit converted into the client's currency through US dollars at the rates on the date, rounded
++     * to their currency's step: the oldest payment's credit first
+      * (lower id first on the same date), then the next, each part recorded in the audit; empty if no
+      * such client. The amount has already been checked; a date after today or before a payment it
+      * would come from, or an amount more than the client's credit, is refused.
+      */
+     @Transactional
+-    public Optional<Long> refundCredit(Long clientId, BigDecimal amount, LocalDate date) {
++    public Optional<Long> refundCredit(Long clientId, BigDecimal refundAmount, Currency refundIn, LocalDate date) {
+         Optional<Client> client = clients.findById(clientId);
+         if (client.isEmpty()) {
+             return Optional.empty();
+         }
+         Currency currency = client.get().getCurrency();
+-        requireWhole(currency, amount, "The refund");
++        Currency refundCurrency = refundIn == null ? currency : refundIn;
++        requireWhole(refundCurrency, refundAmount, "The refund");
++        BigDecimal amount = exchangeRates.convert(refundAmount, refundCurrency, currency, date);
++        if (amount.signum() <= 0) {
++            throw new InvoiceRejectedException("The refund is worth nothing once converted into " + currency.name() + ".");
++        }
+         LocalDate now = today.date();
+         if (date.isAfter(now)) {
+             throw new InvoiceRejectedException("The refund date cannot be after today (" + now + ").");
