@@ -43,6 +43,13 @@ public class Client {
     @Column(name = "tax_exempt")
     private boolean taxExempt;
 
+    /**
+     * The last issue date the client's tax exemption covers: its invoices issued after it are taxed as
+     * usual; null when the exemption does not end, and always for a client that is not exempt.
+     */
+    @Column(name = "tax_exempt_until")
+    private LocalDate taxExemptUntil;
+
     /** Whether the client is quoted prices that include tax: the tax is taken out of its invoice amounts. */
     @Column(name = "prices_include_tax")
     private boolean pricesIncludeTax;
@@ -131,8 +138,9 @@ public class Client {
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
             Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge,
-            BigDecimal rateDiscountPct) {
+            BigDecimal rateDiscountPct, LocalDate taxExemptUntil) {
         this.name = name;
+        this.taxExemptUntil = taxExemptUntil;
         this.email = email;
         this.termsDays = termsDays;
         this.discountPct = discountPct == null ? BigDecimal.ZERO : discountPct;
@@ -173,6 +181,10 @@ public class Client {
 
     public boolean isTaxExempt() {
         return taxExempt;
+    }
+
+    public LocalDate getTaxExemptUntil() {
+        return taxExemptUntil;
     }
 
     public boolean isPricesIncludeTax() {

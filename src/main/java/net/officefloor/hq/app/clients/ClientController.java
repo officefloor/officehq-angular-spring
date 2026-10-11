@@ -29,13 +29,14 @@ public class ClientController {
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
-            List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct) {
+            List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
+            LocalDate taxExemptUntil) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
-                    c.getRateDiscountPct());
+                    c.getRateDiscountPct(), c.getTaxExemptUntil());
         }
     }
 
@@ -112,7 +113,14 @@ public class ClientController {
             @DecimalMin(value = "0", message = "The rate discount must be from 0 to 100 percent.")
             @DecimalMax(value = "100", message = "The rate discount must be from 0 to 100 percent.")
             @Digits(integer = 3, fraction = 2, message = "The rate discount can have at most two decimals.")
-            BigDecimal rateDiscountPct) {
+            BigDecimal rateDiscountPct,
+            /** The last issue date the tax exemption covers; it does not end when left out. Only for an exempt client. */
+            LocalDate taxExemptUntil) {
+
+        @AssertTrue(message = "Only a tax-exempt client can have an exemption end date: tick tax exempt or clear the date.")
+        public boolean isTaxExemptUntilExempt() {
+            return taxExemptUntil == null || Boolean.TRUE.equals(taxExempt);
+        }
 
         @AssertTrue(message = "Enter a tax number of two letters then ten digits whose last two digits check the first eight, or leave it blank.")
         public boolean isTaxNumberValid() {
@@ -148,6 +156,6 @@ public class ClientController {
         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
                 body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge(),
-                body.rateDiscountPct()));
+                body.rateDiscountPct(), body.taxExemptUntil()));
     }
 }

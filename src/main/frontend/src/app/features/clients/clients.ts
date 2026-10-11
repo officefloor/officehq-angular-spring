@@ -247,6 +247,13 @@ function validTaxNumber(taxNumber: string): boolean {
           formControlName="taxExempt"
         />
         <label for="client-tax-exempt">Tax exempt (no tax on any of their invoices)</label>
+        <label for="client-exempt-until">Exempt until (last issue date covered; blank for no end)</label>
+        <input
+          id="client-exempt-until"
+          data-testid="client-form-exempt-until"
+          type="date"
+          formControlName="exemptUntil"
+        />
         <input
           id="client-prices-include-tax"
           data-testid="client-form-prices-include-tax"
@@ -319,6 +326,7 @@ export class Clients {
     earlyPct: new FormControl<number | null>(null),
     earlyDays: new FormControl<number | null>(null),
     taxExempt: new FormControl(false, { nonNullable: true }),
+    exemptUntil: new FormControl('', { nonNullable: true }),
     pricesIncludeTax: new FormControl(false, { nonNullable: true }),
     currency: new FormControl<Currency>('USD', { nonNullable: true }),
   });
@@ -361,6 +369,7 @@ export class Clients {
     const region = this.form.controls.region.value.trim();
     const taxNumber = this.form.controls.taxNumber.value.replace(/ /g, '');
     const taxExempt = this.form.controls.taxExempt.value;
+    const exemptUntil = this.form.controls.exemptUntil.value;
     const pricesIncludeTax = this.form.controls.pricesIncludeTax.value;
     const currency = this.form.controls.currency.value;
     const early = this.form.controls.earlyPct.value;
@@ -383,10 +392,13 @@ export class Clients {
       earlyPct: earlyPayPct,
       earlyDays: earlyPayDays,
       taxExempt,
+      exemptUntil,
       pricesIncludeTax,
       currency,
     });
-    const problem = this.problemWith(
+    const problem = exemptUntil && !taxExempt
+      ? 'Only a tax-exempt client can have an exemption end date: tick tax exempt or clear the date.'
+      : this.problemWith(
       name,
       email,
       termsDays,
@@ -414,6 +426,7 @@ export class Clients {
       termsDays,
       discountPct: discountPct ?? 0,
       taxExempt,
+      taxExemptUntil: exemptUntil || null,
       pricesIncludeTax,
       currency,
       earlyPayPct: earlyPayPct ?? 0,

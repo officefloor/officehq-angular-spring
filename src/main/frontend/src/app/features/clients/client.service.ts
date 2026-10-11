@@ -13,6 +13,9 @@ export interface Client {
   discountPct: number;
   // Whether the client is tax exempt (a charity, say): its invoices charge no tax on any line.
   taxExempt: boolean;
+  // The last issue date (yyyy-mm-dd) a tax exemption covers: invoices issued after it are taxed as
+  // usual; null when the exemption does not end. Only an exempt client has one.
+  taxExemptUntil: string | null;
   // Whether the client is quoted prices that include tax: the tax is taken out of its invoice amounts.
   pricesIncludeTax: boolean;
   // The currency the client is billed in: everything on its invoices is in it.

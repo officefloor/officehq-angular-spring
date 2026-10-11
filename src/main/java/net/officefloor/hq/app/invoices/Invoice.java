@@ -155,6 +155,10 @@ public class Invoice {
     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
     private boolean clientTaxExempt;
 
+    /** The last issue date the client's tax exemption covers; null when it does not end. Read from the client. */
+    @Formula("(SELECT c.tax_exempt_until FROM client c WHERE c.id = client_id)")
+    private LocalDate clientTaxExemptUntil;
+
     /**
      * Whether the invoice's client is quoted prices that include tax, so the line amounts, discount and
      * grand total include it and the tax is taken out of them; read from the client.
@@ -393,11 +397,12 @@ public class Invoice {
     }
 
     /** A new, empty draft for a client, issued and due on the given dates. */
-    public static Invoice draft(Long clientId, boolean clientTaxExempt, boolean clientPricesIncludeTax, String regionTaxRate,
+    public static Invoice draft(Long clientId, boolean clientTaxExempt, LocalDate clientTaxExemptUntil, boolean clientPricesIncludeTax, String regionTaxRate,
             String regionRateChanges, String outOfRegionTaxNumber, Currency currency, LocalDate issueDate, LocalDate dueDate) {
         Invoice invoice = new Invoice();
         invoice.clientId = clientId;
         invoice.clientTaxExempt = clientTaxExempt;
+        invoice.clientTaxExemptUntil = clientTaxExemptUntil;
         invoice.clientPricesIncludeTax = clientPricesIncludeTax;
         invoice.regionTaxRate = regionTaxRate;
         invoice.regionRateChanges = regionRateChanges;
@@ -414,7 +419,7 @@ public class Invoice {
      * discount, issued and due on the given dates. Payments stay with this invoice.
      */
     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
-        Invoice copy = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+        Invoice copy = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, dueDate);
         copy.discountPct = discountPct;
         copy.discountAmount = discountAmount;
         copy.discountCap = discountCap;
@@ -434,7 +439,7 @@ public class Invoice {
      * discount, taxed as the original's lines are.
      */
     public Invoice creditNote(LocalDate issueDate) {
-        Invoice note = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, null);
+        Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, null);
         note.creditOf = id;
         note.creditedIssueDate = this.issueDate;
         return note;
@@ -1985,6 +1990,18 @@ public class Invoice {
     }
 
     /**
+     * Whether the client's tax exemption covers the invoice: the client is exempt and the invoice (a credit
+     * note's original) was issued on or before the exemption's end date, when it has one.
+     */
+    private boolean isClientExempt() {
+        if (!clientTaxExempt) {
+            return false;
+        }
+        LocalDate on = creditOf != null ? creditedIssueDate : issueDate;
+        return clientTaxExemptUntil == null || on == null || !on.isAfter(clientTaxExemptUntil);
+    }
+
+    /**
      * The rate (a percentage) each line is taxed at, in the order of the lines, then the rate of the
      * surcharge and minimum charge: the line's own rate, otherwise its unit type's rate on the client's rate
      * card, otherwise the client's (zero for a tax-exempt client, whose card rates are not charged either); zero for a tax-exempt line, and on every line of a reverse-charged invoice when the rates
@@ -1992,10 +2009,11 @@ public class Invoice {
      */
     private List<BigDecimal> lineRates(BigDecimal taxRate, boolean charged) {
         boolean reverseCharged = charged && isReverseCharge();
-        BigDecimal clientRate = clientTaxExempt ? BigDecimal.ZERO : clientTaxRate(taxRate);
+        boolean exempt = isClientExempt();
+        BigDecimal clientRate = exempt ? BigDecimal.ZERO : clientTaxRate(taxRate);
         List<BigDecimal> rates = new ArrayList<>(lines.size() + 1);
         for (InvoiceLine line : lines) {
-            BigDecimal cardRate = clientTaxExempt ? null : cardTaxRate(line.getUnitType());
+            BigDecimal cardRate = exempt ? null : cardTaxRate(line.getUnitType());
             rates.add(reverseCharged || line.isTaxExempt() ? BigDecimal.ZERO
                     : line.taxRate(cardRate == null ? clientRate : cardRate));
         }
