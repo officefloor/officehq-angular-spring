@@ -41,10 +41,13 @@ public enum Currency {
         return this == JPY ? BigDecimal.ONE : new BigDecimal("0.05");
     }
 
-    /** The amount rounded half up to the nearest {@link #cashStep()}: what it comes to in cash. */
+    /**
+     * The amount rounded down to the {@link #cashStep()} below: what it comes to in cash, always in the
+     * client's favour.
+     */
     public BigDecimal toCash(BigDecimal amount) {
         BigDecimal step = cashStep();
-        return amount.divide(step, 0, RoundingMode.HALF_UP).multiply(step).setScale(scale);
+        return amount.divide(step, 0, RoundingMode.FLOOR).multiply(step).setScale(scale);
     }
 
     /** Whether the amount can be counted out in cash: a whole number of {@link #cashStep()}s. */

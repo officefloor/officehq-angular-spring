@@ -532,7 +532,7 @@ function problemWith(line: NewLine): string {
             </tr>
             @if (inv.creditOf === null) {
               <tr>
-                <th scope="row" colspan="5">Amount due in cash (to the nearest coin)</th>
+                <th scope="row" colspan="5">Amount due in cash (rounded down to the coin below)</th>
                 <td data-testid="invoice-cash-due">{{ amount(inv.cashDue) }}</td>
               </tr>
               <tr>

@@ -1237,7 +1237,7 @@ public class Invoice {
         this.cashRounding = getCashRounding().add(rounding);
     }
 
-    /** What is due once the given amount has been paid, in cash: rounded half up to the nearest coin. */
+    /** What is due once the given amount has been paid, in cash: rounded down to the coin below. */
     public BigDecimal cashDue(BigDecimal paid, BigDecimal taxRate) {
         return currency().toCash(amountDue(paid, taxRate));
     }

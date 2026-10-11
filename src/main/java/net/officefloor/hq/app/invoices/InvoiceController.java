@@ -135,7 +135,7 @@ public class InvoiceController {
      * {@code writtenOffOn} is the day it was written off as a bad debt (null when it was not); everything
      * it still owed then is in {@code writtenOff}, and nothing is due. {@code net} is the amount before tax; when
      * {@code pricesIncludeTax} the tax is inside the subtotal less the discount, which is then the grand total.
-     * {@code cashDue} is the amount due rounded half up to the nearest cash coin (0.05, or whole yen) and
+     * {@code cashDue} is the amount due rounded down to the cash coin below (0.05, or whole yen) and
      * {@code cashRounding} the difference (signed): once settled in cash, the cash rounding it was settled with.
      * {@code surchargePct} (without trailing zeros) is the rush surcharge percentage and {@code surcharge} that share of
      * the subtotal less the discount, rounded down to the cent; it counts towards the {@code minimumCharge}.

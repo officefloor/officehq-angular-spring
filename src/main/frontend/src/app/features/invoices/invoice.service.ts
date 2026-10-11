@@ -198,7 +198,7 @@ export interface InvoiceDetail {
   // What the client withholds for its tax office: its withholding percentage of the amount before tax,
   // rounded down to the cent ("0.00" when none). Never owed, so left out of the amount due.
   withholding: string;
-  // The amount due rounded half up to the nearest cash coin (0.05, or whole yen), and the difference
+  // The amount due rounded down to the cash coin below (0.05, or whole yen), and the difference
   // that makes (signed); once settled in cash, the cash rounding it was settled with.
   cashDue: string;
   cashRounding: string;
