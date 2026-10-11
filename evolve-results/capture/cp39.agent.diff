@@ -1,0 +1,253 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-format.ts b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+index 46b001c..cc9c04d 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-format.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+@@ -5,6 +5,7 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
+   SENT: 'Sent',
+   PART_PAID: 'Part paid',
+   PAID: 'Paid',
++  PAID_LATE: 'Paid late',
+   OVERDUE: 'Overdue',
+   VOID: 'Void',
+ };
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 87eb0a5..6361c48 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -134,6 +134,9 @@ function problemWith(line: NewLine): string {
+       </h2>
+       @if (invoice(); as inv) {
+         <p>Status: <span data-testid="invoice-panel-status">{{ statusLabel(inv.status) }}</span></p>
++        @if (inv.paidDate) {
++          <p>Paid on: <span data-testid="invoice-paid-date">{{ inv.paidDate }}</span></p>
++        }
+         <p>Payment reference: <span data-testid="invoice-reference">{{ inv.reference }}</span></p>
+         <table>
+           <thead>
+@@ -257,7 +260,7 @@ function problemWith(line: NewLine): string {
+           <p role="alert" data-testid="payment-reverse-error">{{ reverseError() }}</p>
+         }
+ 
+-        @if (inv.status !== 'PAID') {
++        @if (inv.status !== 'PAID' && inv.status !== 'PAID_LATE') {
+           <app-payment-form
+             [clientId]="inv.clientId"
+             [invoiceId]="inv.id"
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index e07488d..2b8d40b 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -3,10 +3,11 @@ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ 
+ // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
+-// nothing is due; it is OVERDUE while something is still due after its due date, part paid or not.
++// nothing is due, or PAID_LATE when the payment that cleared it (payments in date order) came after
++// its due date; it is OVERDUE while something is still due after its due date, part paid or not.
+ // The server works this out from its payments and today's date. A VOID invoice was voided while sent
+ // and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
+-export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID' | 'OVERDUE' | 'VOID';
++export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID' | 'PAID_LATE' | 'OVERDUE' | 'VOID';
+ 
+ // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
+ // server: the grand total — the lines' subtotal less any discount plus tax.
+@@ -82,6 +83,8 @@ export interface InvoiceDetail {
+   payments: InvoicePaymentView[];
+   paid: string;
+   amountDue: string;
++  // The date (yyyy-mm-dd) of the payment that cleared it, payments in date order; null while not fully paid.
++  paidDate: string | null;
+ }
+ 
+ // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 50a1410..169df71 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -176,6 +176,14 @@ public class Invoice {
+      * tax rate: a sent invoice with something still due after its due date is overdue, part paid or not.
+      */
+     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
++        return statusWhenPaid(paid, null, taxRate, today);
++    }
++
++    /**
++     * As {@link #statusWhenPaid(BigDecimal, BigDecimal, LocalDate)}, but a fully paid invoice whose
++     * paid date (null when not known) is after its due date is paid late.
++     */
++    public InvoiceStatus statusWhenPaid(BigDecimal paid, LocalDate paidOn, BigDecimal taxRate, LocalDate today) {
+         if (status != InvoiceStatus.SENT) {
+             return status;
+         }
+@@ -186,7 +194,32 @@ public class Invoice {
+         if (paid.signum() <= 0) {
+             return status;
+         }
+-        return due ? InvoiceStatus.PART_PAID : InvoiceStatus.PAID;
++        if (due) {
++            return InvoiceStatus.PART_PAID;
++        }
++        return paidOn != null && dueDate != null && paidOn.isAfter(dueDate) ? InvoiceStatus.PAID_LATE
++                : InvoiceStatus.PAID;
++    }
++
++    /**
++     * The date the invoice was fully paid: the date of the payment that cleared its grand total at the
++     * tax rate, taking the payments (not reversed) in date order; null while something is still due.
++     */
++    public LocalDate paidOn(List<Payment> payments, BigDecimal taxRate) {
++        BigDecimal total = total(taxRate);
++        if (status != InvoiceStatus.SENT || total.signum() <= 0) {
++            return null;
++        }
++        List<Payment> inOrder = payments.stream().filter(p -> !p.isReversed())
++                .sorted(Comparator.comparing(Payment::getDate).thenComparing(Payment::getId)).toList();
++        BigDecimal sum = BigDecimal.ZERO;
++        for (Payment p : inOrder) {
++            sum = sum.add(p.amountTo(id));
++            if (sum.compareTo(total) >= 0) {
++                return p.getDate();
++            }
++        }
++        return null;
+     }
+ 
+     /** What is still due once the given amount has been paid: the grand total less it. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 75aa72f..4e46ea1 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -36,9 +36,9 @@ public class InvoiceController {
+      */
+     public record InvoiceSummary(Long id, String number, InvoiceStatus status, String total,
+             LocalDate issueDate, LocalDate dueDate) {
+-        static InvoiceSummary of(Invoice i, BigDecimal taxRate, BigDecimal paid, LocalDate today) {
++        static InvoiceSummary of(Invoice i, BigDecimal taxRate, BigDecimal paid, LocalDate paidOn, LocalDate today) {
+             BigDecimal total = i.total(taxRate);
+-            return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.statusWhenPaid(paid, taxRate, today),
++            return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.statusWhenPaid(paid, paidOn, taxRate, today),
+                     total.toPlainString(), i.getIssueDate(), i.getDueDate());
+         }
+     }
+@@ -88,21 +88,23 @@ public class InvoiceController {
+      * the amount it takes off, the tax rate (without trailing zeros) and the tax charged, the sum of the
+      * line taxes, and the grand total; the payments made to it, what they add up to and what is still due (money as
+      * decimal strings to the cent). Its status follows what has been paid. {@code reference} is its
+-     * RF payment reference in groups of four.
++     * RF payment reference in groups of four. {@code paidDate} is the date of the payment that cleared
++     * it, payments taken in date order; null while it is not fully paid.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+-            String discountCap, String discount, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue) {
++            String discountCap, String discount, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, LocalDate paidDate) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
++            LocalDate paidOn = i.paidOn(payments, taxRate);
+             List<BigDecimal> shares = i.discountShares();
+             List<BigDecimal> taxes = i.lineTaxes(taxRate);
+             List<LineView> lines = IntStream.range(0, shares.size())
+                     .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n), taxes.get(n))).toList();
+             return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()),
+                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
+-                    i.statusWhenPaid(paid, taxRate, today), i.getIssueDate(), i.getDueDate(),
++                    i.statusWhenPaid(paid, paidOn, taxRate, today), i.getIssueDate(), i.getDueDate(),
+                     lines, i.subtotal().toPlainString(),
+                     i.getDiscountPct().stripTrailingZeros().toPlainString(),
+                     i.getDiscountAmount().setScale(2).toPlainString(),
+@@ -111,7 +113,7 @@ public class InvoiceController {
+                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
+                     i.total(taxRate).toPlainString(),
+                     payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
+-                    i.amountDue(paid, taxRate).toPlainString());
++                    i.amountDue(paid, taxRate).toPlainString(), paidOn);
+         }
+     }
+ 
+@@ -217,7 +219,8 @@ public class InvoiceController {
+     }
+ 
+     private InvoiceSummary summary(Invoice i) {
+-        return InvoiceSummary.of(i, taxRate.percent(), invoices.paid(List.of(i)).get(i.getId()), today.date());
++        return InvoiceSummary.of(i, taxRate.percent(), invoices.paid(List.of(i)).get(i.getId()),
++                invoices.paidOn(List.of(i)).get(i.getId()), today.date());
+     }
+ 
+     private InvoiceDetail detail(Invoice i) {
+@@ -229,8 +232,9 @@ public class InvoiceController {
+         BigDecimal rate = taxRate.percent();
+         List<Invoice> list = invoices.forClient(clientId);
+         Map<Long, BigDecimal> paid = invoices.paid(list);
++        Map<Long, LocalDate> paidOn = invoices.paidOn(list);
+         LocalDate on = today.date();
+-        return list.stream().map(i -> InvoiceSummary.of(i, rate, paid.get(i.getId()), on)).toList();
++        return list.stream().map(i -> InvoiceSummary.of(i, rate, paid.get(i.getId()), paidOn.get(i.getId()), on)).toList();
+     }
+ 
+     /** The balance of each client that has a sent invoice; a client not listed owes nothing. Void invoices do not count. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 40f5dfc..c7a7cab 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -262,6 +262,24 @@ public class InvoiceService {
+         return payments.findForInvoice(invoiceId);
+     }
+ 
++    /** The date each fully paid invoice was paid (see {@link Invoice#paidOn}); an invoice not fully paid is left out. */
++    @Transactional(readOnly = true)
++    public Map<Long, LocalDate> paidOn(List<Invoice> list) {
++        Map<Long, LocalDate> paidOn = new HashMap<>();
++        if (list.isEmpty()) {
++            return paidOn;
++        }
++        List<Payment> found = payments.findForInvoices(list.stream().map(Invoice::getId).toList());
++        BigDecimal rate = taxRate.percent();
++        for (Invoice i : list) {
++            LocalDate on = i.paidOn(found, rate);
++            if (on != null) {
++                paidOn.put(i.getId(), on);
++            }
++        }
++        return paidOn;
++    }
++
+     /** What has been paid to each of the invoices; an invoice paid nothing is paid zero. */
+     @Transactional(readOnly = true)
+     public Map<Long, BigDecimal> paid(List<Invoice> list) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index 8018ba2..5491d65 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -2,12 +2,13 @@ package net.officefloor.hq.app.invoices;
+ 
+ /**
+  * Where an invoice is in its life: still being written, or sent to the client. A sent invoice is
+- * part paid while some of it has been paid and some is still due, and paid once nothing is due;
+- * those two follow from its payments and are never stored. A sent invoice with something still due
++ * part paid while some of it has been paid and some is still due, and paid once nothing is due, or
++ * paid late when the payment that cleared it (taking payments in date order) came after its due date;
++ * those follow from its payments and are never stored. A sent invoice with something still due
+  * after its due date is overdue, part paid or not; that follows from the date and is never stored.
+  * A sent invoice with no payments can be voided: it is then void for good, owes nothing and takes no
+  * payments or changes.
+  */
+ public enum InvoiceStatus {
+-    DRAFT, SENT, PART_PAID, PAID, OVERDUE, VOID
++    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java
+index 7d58307..c1613a7 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java
+@@ -12,6 +12,10 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
+     @Query("SELECT DISTINCT p FROM Payment p LEFT JOIN FETCH p.allocations WHERE p.reversed = false AND p.id IN (SELECT q.id FROM Payment q JOIN q.allocations a WHERE a.invoiceId = :invoiceId) ORDER BY p.date, p.id")
+     List<Payment> findForInvoice(@Param("invoiceId") Long invoiceId);
+ 
++    /** The payments not reversed with a part allocated to any of the invoices, oldest first. */
++    @Query("SELECT DISTINCT p FROM Payment p LEFT JOIN FETCH p.allocations WHERE p.reversed = false AND p.id IN (SELECT q.id FROM Payment q JOIN q.allocations a WHERE a.invoiceId IN :invoiceIds) ORDER BY p.date, p.id")
++    List<Payment> findForInvoices(@Param("invoiceIds") Collection<Long> invoiceIds);
++
+     /** For each of the invoices that has been paid something, its id and the amount paid to it by payments not reversed. */
+     @Query("SELECT a.invoiceId, SUM(a.amount) FROM Payment p JOIN p.allocations a WHERE p.reversed = false AND a.invoiceId IN :invoiceIds GROUP BY a.invoiceId")
+     List<Object[]> paidTo(@Param("invoiceIds") Collection<Long> invoiceIds);
