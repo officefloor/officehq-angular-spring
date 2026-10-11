@@ -1,0 +1,181 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 319277e..80db184 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -66,6 +66,7 @@ function problemWith(line: NewLine): string {
+               <th scope="col">Qty</th>
+               <th scope="col">Unit price</th>
+               <th scope="col">Amount</th>
++              <th scope="col">Discount share</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -75,28 +76,29 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="line-qty">{{ l.qty }}</td>
+                 <td data-testid="line-unit-price">{{ money(l.unitPrice) }}</td>
+                 <td data-testid="line-amount">{{ money(l.amount) }}</td>
++                <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
+               </tr>
+             } @empty {
+               <tr>
+-                <td colspan="4" data-testid="line-empty">No lines yet.</td>
++                <td colspan="5" data-testid="line-empty">No lines yet.</td>
+               </tr>
+             }
+           </tbody>
+           <tfoot>
+             <tr>
+-              <th scope="row" colspan="3">Subtotal</th>
++              <th scope="row" colspan="4">Subtotal</th>
+               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="3">Discount ({{ inv.discountPct }}%)</th>
++              <th scope="row" colspan="4">Discount ({{ inv.discountPct }}%)</th>
+               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="3">Tax ({{ inv.taxRate }}%)</th>
++              <th scope="row" colspan="4">Tax ({{ inv.taxRate }}%)</th>
+               <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="3">Total</th>
++              <th scope="row" colspan="4">Total</th>
+               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
+             </tr>
+           </tfoot>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 7c9a8de..a1d7812 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -17,13 +17,15 @@ export interface InvoiceSummary {
+ }
+ 
+ // One line of an opened invoice. `qty` is as entered, without trailing zeros ("1.5"); money is a
+-// decimal string to the cent.
++// decimal string to the cent. `discountShare` is the line's share of the invoice discount, split in
++// cents in proportion to the line amounts by the server; the shares add up to the discount.
+ export interface InvoiceLineView {
+   id: number;
+   description: string;
+   qty: string;
+   unitPrice: string;
+   amount: string;
++  discountShare: string;
+ }
+ 
+ // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 8e67ea0..a97ed50 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -13,9 +13,11 @@ import jakarta.persistence.OneToMany;
+ import jakarta.persistence.OrderBy;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
++import java.math.BigInteger;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.Comparator;
+ import java.util.List;
+ 
+ /** An invoice raised for a client, made of lines. */
+@@ -124,6 +126,51 @@ public class Invoice {
+                 .setScale(2, RoundingMode.HALF_UP);
+     }
+ 
++    /**
++     * Each line's share of the discount, in the order of the lines. The discount's cents are split in
++     * proportion to the line amounts: each line first gets the whole cents of its exact share
++     * (rounded down), then the cents left over go one each to the lines with the largest leftover
++     * fractions, equal fractions going to the lower line id. The shares add up to the discount.
++     */
++    public List<BigDecimal> discountShares() {
++        BigInteger discountCents = discount().movePointRight(2).toBigIntegerExact();
++        BigInteger subtotalCents = subtotal().movePointRight(2).toBigIntegerExact();
++        int n = lines.size();
++        BigInteger[] shares = new BigInteger[n];
++        BigInteger[] leftovers = new BigInteger[n];
++        BigInteger given = BigInteger.ZERO;
++        for (int i = 0; i < n; i++) {
++            if (subtotalCents.signum() == 0) {
++                shares[i] = BigInteger.ZERO;
++                leftovers[i] = BigInteger.ZERO;
++            } else {
++                // The exact share is discount * amount / subtotal; all fractions share the subtotal
++                // as denominator, so the remainders compare as the fractions do.
++                BigInteger[] qr = discountCents.multiply(lines.get(i).amount().movePointRight(2).toBigIntegerExact())
++                        .divideAndRemainder(subtotalCents);
++                shares[i] = qr[0];
++                leftovers[i] = qr[1];
++            }
++            given = given.add(shares[i]);
++        }
++        List<Integer> order = new ArrayList<>();
++        for (int i = 0; i < n; i++) {
++            order.add(i);
++        }
++        order.sort(Comparator.<Integer, BigInteger>comparing(i -> leftovers[i]).reversed()
++                .thenComparing(i -> lines.get(i).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
++        int left = discountCents.subtract(given).intValueExact();
++        for (int k = 0; k < left; k++) {
++            int i = order.get(k);
++            shares[i] = shares[i].add(BigInteger.ONE);
++        }
++        List<BigDecimal> result = new ArrayList<>(n);
++        for (BigInteger share : shares) {
++            result.add(new BigDecimal(share, 2));
++        }
++        return result;
++    }
++
+     /**
+      * The tax charged at the given rate (a percentage): the rate on what is left once the discount
+      * has come off the subtotal, rounded half up to the cent.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 969d88e..9a53afd 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.stream.IntStream;
+ import net.officefloor.hq.app.TaxRate;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -36,12 +37,15 @@ public class InvoiceController {
+ 
+     /**
+      * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
+-     * money is a decimal string to the cent.
++     * money is a decimal string to the cent. {@code discountShare} is the line's share of the
++     * invoice discount.
+      */
+-    public record LineView(Long id, String description, String qty, String unitPrice, String amount) {
+-        static LineView of(InvoiceLine l) {
++    public record LineView(Long id, String description, String qty, String unitPrice, String amount,
++            String discountShare) {
++        static LineView of(InvoiceLine l, BigDecimal discountShare) {
+             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
+-                    l.getUnitPrice().setScale(2).toPlainString(), l.amount().toPlainString());
++                    l.getUnitPrice().setScale(2).toPlainString(), l.amount().toPlainString(),
++                    discountShare.toPlainString());
+         }
+     }
+ 
+@@ -54,8 +58,11 @@ public class InvoiceController {
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discount,
+             String taxRate, String tax, String total) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate) {
++            List<BigDecimal> shares = i.discountShares();
++            List<LineView> lines = IntStream.range(0, shares.size())
++                    .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n))).toList();
+             return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()), i.getClientId(), i.getStatus(), i.getIssueDate(), i.getDueDate(),
+-                    i.getLines().stream().map(LineView::of).toList(), i.subtotal().toPlainString(),
++                    lines, i.subtotal().toPlainString(),
+                     i.getDiscountPct().stripTrailingZeros().toPlainString(), i.discount().toPlainString(),
+                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
+                     i.total(taxRate).toPlainString());
