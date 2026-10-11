@@ -1,0 +1,209 @@
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 423667c..d0b4270 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -300,7 +300,7 @@ public class TestSupportController {
+             Long clientId = id(row.get("id") == null
+                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
+             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
+-                only(rate, Set.of("unitType", "unitPrice", "tiers", "increment", "minUnits"), "clients[].rates[]");
++                only(rate, Set.of("unitType", "unitPrice", "tiers", "increment", "minUnits", "taxRate"), "clients[].rates[]");
+                 if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
+                     throw refuse("clients[].rates[].unitType is required");
+                 }
+@@ -318,10 +318,11 @@ public class TestSupportController {
+                 if (minUnits != null && minUnits.signum() <= 0) {
+                     throw refuse("clients[].rates[].minUnits must be more than zero, not " + rate.get("minUnits"));
+                 }
+-                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price, tiers, increment, min_units) VALUES (?, ?, ?, ?, ?, ?)", clientId,
++                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price, tiers, increment, min_units, tax_rate) VALUES (?, ?, ?, ?, ?, ?, ?)", clientId,
+                         rate.get("unitType").toString(),
+                         tiers != null ? null : cents(rate.get("unitPrice"), "clients[].rates[].unitPrice"),
+-                        tiers == null ? null : tiers.format(), increment, minUnits);
++                        tiers == null ? null : tiers.format(), increment, minUnits,
++                        rate.get("taxRate") == null ? null : percent(rate.get("taxRate"), "clients[].rates[].taxRate"));
+             }
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+@@ -582,7 +583,7 @@ public class TestSupportController {
+                         row.put("taxNumber", r.get("TAX_NUMBER"));
+                     }
+                     List<Map<String, Object>> rateCard = jdbc.queryForList(
+-                            "SELECT unit_type, unit_price, tiers, increment, min_units FROM client_rate WHERE client_id = ? ORDER BY unit_type",
++                            "SELECT unit_type, unit_price, tiers, increment, min_units, tax_rate FROM client_rate WHERE client_id = ? ORDER BY unit_type",
+                             r.get("ID")).stream().map(c -> {
+                                 Map<String, Object> entry = rate((String) c.get("UNIT_TYPE"), (BigDecimal) c.get("UNIT_PRICE"),
+                                         RateTiers.parse((String) c.get("TIERS")));
+@@ -592,6 +593,9 @@ public class TestSupportController {
+                                 if (c.get("MIN_UNITS") != null) {
+                                     entry.put("minUnits", c.get("MIN_UNITS"));
+                                 }
++                                if (c.get("TAX_RATE") != null) {
++                                    entry.put("taxRate", c.get("TAX_RATE"));
++                                }
+                                 return entry;
+                             }).toList();
+                     if (!rateCard.isEmpty()) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 166893e..97692a5 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -43,10 +43,11 @@ public class ClientController {
+     }
+ 
+     /** A rate card entry: its single unit price, or else its tiers (null when it has a single price). */
+-    public record RateView(BigDecimal unitPrice, List<RateTiers.Band> tiers, BigDecimal increment, BigDecimal minUnits) {
++    public record RateView(BigDecimal unitPrice, List<RateTiers.Band> tiers, BigDecimal increment, BigDecimal minUnits,
++            BigDecimal taxRate) {
+         static RateView of(ClientRate r) {
+             RateTiers tiers = r.tiers();
+-            return new RateView(r.getUnitPrice(), tiers == null ? null : tiers.bands(), r.getIncrement(), r.getMinUnits());
++            return new RateView(r.getUnitPrice(), tiers == null ? null : tiers.bands(), r.getIncrement(), r.getMinUnits(), r.getTaxRate());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientRate.java b/src/main/java/net/officefloor/hq/app/clients/ClientRate.java
+index 9269ecb..eea0b33 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientRate.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientRate.java
+@@ -24,6 +24,13 @@ public class ClientRate {
+     @Column(name = "min_units")
+     private BigDecimal minUnits;
+ 
++    /**
++     * The unit type's own tax percentage, charged on its lines instead of the client's regional or workspace
++     * rate unless a line has a rate of its own; null for none.
++     */
++    @Column(name = "tax_rate")
++    private BigDecimal taxRate;
++
+     protected ClientRate() {
+     }
+ 
+@@ -34,6 +41,12 @@ public class ClientRate {
+         this.minUnits = minUnits;
+     }
+ 
++    /** A single unit price, billed in the given increment and minimum units and taxed at the given rate (null for none). */
++    public ClientRate(BigDecimal unitPrice, BigDecimal increment, BigDecimal minUnits, BigDecimal taxRate) {
++        this(unitPrice, increment, minUnits);
++        this.taxRate = taxRate;
++    }
++
+     public BigDecimal getUnitPrice() {
+         return unitPrice;
+     }
+@@ -46,6 +59,11 @@ public class ClientRate {
+         return minUnits;
+     }
+ 
++    /** The unit type's own tax percentage; null for none. */
++    public BigDecimal getTaxRate() {
++        return taxRate;
++    }
++
+     /** The tiers; null for a single unit price. */
+     public RateTiers tiers() {
+         return RateTiers.parse(tiers);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 4cfd970..0915bc6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -176,6 +176,13 @@ public class Invoice {
+     @Formula("(SELECT LISTAGG(CAST(t.from_date AS VARCHAR) || '=' || CAST(t.rate AS VARCHAR), ',') WITHIN GROUP (ORDER BY t.from_date, t.id) FROM tax_rate_change t, client c WHERE c.id = client_id AND t.region = c.region)")
+     private String regionRateChanges;
+ 
++    /**
++     * The tax rates of the client's rate card entries that have one, as "unit type" and rate separated by
++     * CHAR(31), entries separated by CHAR(30); null when none has. Read from the client's rate card.
++     */
++    @Formula("(SELECT LISTAGG(r.unit_type || CHAR(31) || CAST(r.tax_rate AS VARCHAR), CHAR(30)) WITHIN GROUP (ORDER BY r.unit_type) FROM client_rate r WHERE r.client_id = client_id AND r.tax_rate IS NOT NULL)")
++    private String cardTaxRates;
++
+     /** The issue date of the invoice this credit note credits; null for an ordinary invoice. */
+     @Formula("(SELECT o.issue_date FROM invoice o WHERE o.id = credit_of)")
+     private LocalDate creditedIssueDate;
+@@ -2003,7 +2010,7 @@ public class Invoice {
+ 
+     /**
+      * Each line's exact tax, in the order of the lines: the line's own rate (a percentage), or when it
+-     * has none the client's regional rate, or the given workspace rate when that has none either, on the line's amount less its share of the discount,
++     * has none its unit type's rate on the client's rate card, or else the client's regional rate, or the given workspace rate when that has none either, on the line's amount less its share of the discount,
+      * unrounded. Tax-exempt lines, and every line of a reverse-charged invoice, have no tax. A tax-exempt
+      * client is exempt from the general rate only (regional or workspace): its lines with their own rate are still taxed at it.
+      * The exact tax of the surcharge and minimum charge at the client's rate follows, as one more line.
+@@ -2021,8 +2028,8 @@ public class Invoice {
+ 
+     /**
+      * The rate (a percentage) each line is taxed at, in the order of the lines, then the rate of the
+-     * surcharge and minimum charge: the line's own rate, otherwise the client's (zero for a tax-exempt
+-     * client); zero for a tax-exempt line, and on every line of a reverse-charged invoice when the rates
++     * surcharge and minimum charge: the line's own rate, otherwise its unit type's rate on the client's rate
++     * card, otherwise the client's (zero for a tax-exempt client, whose card rates are not charged either); zero for a tax-exempt line, and on every line of a reverse-charged invoice when the rates
+      * are those charged rather than those the tax is taken out of tax-inclusive prices at.
+      */
+     private List<BigDecimal> lineRates(BigDecimal taxRate, boolean charged) {
+@@ -2030,12 +2037,31 @@ public class Invoice {
+         BigDecimal clientRate = clientTaxExempt ? BigDecimal.ZERO : clientTaxRate(taxRate);
+         List<BigDecimal> rates = new ArrayList<>(lines.size() + 1);
+         for (InvoiceLine line : lines) {
+-            rates.add(reverseCharged || line.isTaxExempt() ? BigDecimal.ZERO : line.taxRate(clientRate));
++            BigDecimal cardRate = clientTaxExempt ? null : cardTaxRate(line.getUnitType());
++            rates.add(reverseCharged || line.isTaxExempt() ? BigDecimal.ZERO
++                    : line.taxRate(cardRate == null ? clientRate : cardRate));
+         }
+         rates.add(reverseCharged ? BigDecimal.ZERO : clientRate);
+         return rates;
+     }
+ 
++    /**
++     * The tax rate of the client's rate card entry for the unit type (matched ignoring case and surrounding
++     * spaces); null when the unit type is not on the card or its entry has no tax rate.
++     */
++    private BigDecimal cardTaxRate(String unitType) {
++        if (unitType == null || cardTaxRates == null) {
++            return null;
++        }
++        for (String entry : cardTaxRates.split("\u001e")) {
++            int at = entry.lastIndexOf('\u001f');
++            if (at >= 0 && entry.substring(0, at).equalsIgnoreCase(unitType.trim())) {
++                return new BigDecimal(entry.substring(at + 1).trim());
++            }
++        }
++        return null;
++    }
++
+     /**
+      * The lines (by index, the surcharge and minimum charge last) grouped by the rate they are taxed at,
+      * the lower rate first; the rates charged, or those tax is taken out of tax-inclusive prices at.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 43223c6..4d9b173 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -585,7 +585,7 @@ public class InvoiceService {
+ 
+     /**
+      * Puts a single price for the unit type on the client's rate card, adding it or replacing its price
+-     * (its increment and minimum units are kept); empty if no such client. The price has already been
++     * (its increment, minimum units and tax rate are kept); empty if no such client. The price has already been
+      * checked. The lines of the client's drafts priced from the card in that unit type are repriced
+      * straight away; sent invoices keep the prices they were sent with.
+      */
+@@ -598,7 +598,7 @@ public class InvoiceService {
+             ClientRate old = client.getRates().get(key);
+             requireWhole(client.getCurrency(), unitPrice, "The price");
+             client.getRates().put(key, new ClientRate(unitPrice, old == null ? null : old.getIncrement(),
+-                    old == null ? null : old.getMinUnits()));
++                    old == null ? null : old.getMinUnits(), old == null ? null : old.getTaxRate()));
+             clients.saveAndFlush(client);
+             for (Invoice invoice : invoices.findByClientIdOrderByIdAsc(clientId)) {
+                 if (!invoice.isDraft()) {
+diff --git a/src/main/resources/db/migration/V55__rate_tax_rate.sql b/src/main/resources/db/migration/V55__rate_tax_rate.sql
+new file mode 100644
+index 0000000..7d6fd6d
+--- /dev/null
++++ b/src/main/resources/db/migration/V55__rate_tax_rate.sql
+@@ -0,0 +1,3 @@
++-- A rate card entry's own tax percentage: lines of its unit type without a rate of their own are taxed at it
++-- instead of the client's regional or workspace rate; NULL for none.
++ALTER TABLE client_rate ADD COLUMN tax_rate DECIMAL(5, 2);
