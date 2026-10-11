@@ -1,0 +1,426 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 9408f59..c8d6536 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -27,6 +27,9 @@ export interface Client {
+   // The client's own annual late-interest rate (0 to 30 percent) charged instead of the workspace's;
+   // null for the workspace's, 0 for never charged late interest.
+   interestRate: number | null;
++  // The region the client is in (a state, say): its invoices are taxed at the region's rate from the
++  // workspace's regional rates when one is listed; null for no region.
++  region: string | null;
+ }
+ 
+ export type NewClient = Omit<Client, 'id'>;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 126b0c9..8fd5aad 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -152,6 +152,14 @@ const STANDARD_GRACE_DAYS = 7;
+           step="0.01"
+           formControlName="interestRate"
+         />
++        <label for="client-region">Region (optional, taxed at its rate if the workspace lists one)</label>
++        <input
++          id="client-region"
++          data-testid="client-form-region"
++          type="text"
++          maxlength="64"
++          formControlName="region"
++        />
+         <label for="client-early-pct">Early-payment discount % (optional)</label>
+         <input
+           id="client-early-pct"
+@@ -244,6 +252,7 @@ export class Clients {
+     retentionPct: new FormControl<number | null>(null),
+     graceDays: new FormControl<number | null>(null),
+     interestRate: new FormControl<number | null>(null),
++    region: new FormControl('', { nonNullable: true }),
+     earlyPct: new FormControl<number | null>(null),
+     earlyDays: new FormControl<number | null>(null),
+     taxExempt: new FormControl(false, { nonNullable: true }),
+@@ -279,6 +288,7 @@ export class Clients {
+     const graceDays = grace === null || (grace as unknown) === '' ? null : Number(grace);
+     const interest = this.form.controls.interestRate.value;
+     const interestRate = interest === null || (interest as unknown) === '' ? null : Number(interest);
++    const region = this.form.controls.region.value.trim();
+     const taxExempt = this.form.controls.taxExempt.value;
+     const currency = this.form.controls.currency.value;
+     const early = this.form.controls.earlyPct.value;
+@@ -293,6 +303,7 @@ export class Clients {
+       retentionPct,
+       graceDays,
+       interestRate,
++      region,
+       earlyPct: earlyPayPct,
+       earlyDays: earlyPayDays,
+       taxExempt,
+@@ -328,6 +339,7 @@ export class Clients {
+       retentionPct: retentionPct ?? 0,
+       graceDays: graceDays ?? STANDARD_GRACE_DAYS,
+       interestRate,
++      region: region || null,
+     };
+     this.service.add(client).subscribe({
+       next: (created) => {
+diff --git a/src/main/java/net/officefloor/hq/app/TaxRate.java b/src/main/java/net/officefloor/hq/app/TaxRate.java
+index 8d3f4cf..bee3556 100644
+--- a/src/main/java/net/officefloor/hq/app/TaxRate.java
++++ b/src/main/java/net/officefloor/hq/app/TaxRate.java
+@@ -2,18 +2,24 @@ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
+ import java.util.List;
++import java.util.Map;
++import java.util.TreeMap;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+ 
+ /**
+  * The workspace's tax rate: the stored {@code tax_rate} setting, a percentage such as 10. With no
+- * rate set there is no tax, so the rate is 0.
++ * rate set there is no tax, so the rate is 0. A region can have its own rate, the
++ * {@code region_tax_rate_<region>} setting, charged to the region's clients instead.
+  */
+ @Service
+ public class TaxRate {
+ 
+     static final String TAX_RATE = "tax_rate";
+ 
++    /** The prefix of the setting holding a region's rate, followed by the region (region_tax_rate_NY). */
++    public static final String REGION_TAX_RATE = "region_tax_rate_";
++
+     private final JdbcTemplate jdbc;
+ 
+     public TaxRate(JdbcTemplate jdbc) {
+@@ -25,4 +31,22 @@ public class TaxRate {
+                 String.class, TAX_RATE);
+         return rate.isEmpty() ? BigDecimal.ZERO : new BigDecimal(rate.get(0));
+     }
++
++    /** The region's own rate, as stored; null when the client has no region or the region has none listed. */
++    public String forRegion(String region) {
++        if (region == null) {
++            return null;
++        }
++        return jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class,
++                REGION_TAX_RATE + region).stream().findFirst().orElse(null);
++    }
++
++    /** Every region's own rate, by region. */
++    public Map<String, BigDecimal> regions() {
++        Map<String, BigDecimal> rates = new TreeMap<>();
++        jdbc.queryForList("SELECT name, setting_value FROM app_setting WHERE name LIKE ? ORDER BY name", REGION_TAX_RATE + "%")
++                .forEach(r -> rates.put(((String) r.get("NAME")).substring(REGION_TAX_RATE.length()),
++                        new BigDecimal((String) r.get("SETTING_VALUE"))));
++        return rates;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 5c47e09..38f1068 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -37,9 +37,9 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates");
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine");
+@@ -140,6 +140,28 @@ public class TestSupportController {
+                             ExchangeRates.USD_PER + code, usdPer.toPlainString());
+                 }
+             }
++            if (values.get("regionTaxRates") != null) {
++                if (!(values.get("regionTaxRates") instanceof Map<?, ?> rates)) {
++                    throw refuse("settings.regionTaxRates must be an object of percentages by region");
++                }
++                for (Map.Entry<?, ?> e : rates.entrySet()) {
++                    String region = e.getKey().toString();
++                    if (region.isBlank() || e.getValue() == null) {
++                        throw refuse("settings.regionTaxRates needs a region and a rate, not " + region + ": " + e.getValue());
++                    }
++                    BigDecimal rate;
++                    try {
++                        rate = new BigDecimal(String.valueOf(e.getValue()));
++                    } catch (NumberFormatException ex) {
++                        throw refuse("settings.regionTaxRates." + region + " must be a number, not " + e.getValue());
++                    }
++                    if (rate.signum() < 0 || rate.compareTo(BigDecimal.valueOf(100)) > 0) {
++                        throw refuse("settings.regionTaxRates." + region + " must be from 0 to 100, not " + e.getValue());
++                    }
++                    jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
++                            TaxRate.REGION_TAX_RATE + region, rate.toPlainString());
++                }
++            }
+             for (Map<String, Object> rate : rows(values.get("fxRates"), "settings.fxRates")) {
+                 only(rate, FX_RATE_FIELDS, "settings.fxRates[]");
+                 if (rate.get("from") == null || rate.get("currency") == null || rate.get("usdPer") == null) {
+@@ -167,7 +189,7 @@ public class TestSupportController {
+             if (Currency.of(currency) == null) {
+                 throw refuse("unsupported value of clients[].currency: " + currency);
+             }
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate"},
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+                     percent(row.get("discountPct"), "clients[].discountPct"),
+                     flag(row.get("taxExempt"), "clients[].taxExempt"), currency,
+@@ -175,7 +197,8 @@ public class TestSupportController {
+                     days(row.get("earlyPayDays"), "clients[].earlyPayDays"),
+                     percent(row.get("retentionPct"), "clients[].retentionPct"),
+                     graceDays(row.get("graceDays"), "clients[].graceDays"),
+-                    interestRate(row.get("interestRate"), "clients[].interestRate"));
++                    interestRate(row.get("interestRate"), "clients[].interestRate"),
++                    row.get("region") == null ? null : row.get("region").toString());
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+             only(row, INVOICE_FIELDS, "invoices[]");
+@@ -325,6 +348,10 @@ public class TestSupportController {
+         if (!lateFee.isEmpty()) {
+             settings.put("lateFee", new BigDecimal(lateFee.get(0)));
+         }
++        Map<String, BigDecimal> regionTaxRates = this.taxRate.regions();
++        if (!regionTaxRates.isEmpty()) {
++            settings.put("regionTaxRates", regionTaxRates);
++        }
+         Map<String, BigDecimal> rates = exchangeRates.all();
+         if (!rates.isEmpty()) {
+             settings.put("usdPer", rates);
+@@ -342,7 +369,7 @@ public class TestSupportController {
+         if (!settings.isEmpty()) {
+             out.put("settings", settings);
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -363,6 +390,9 @@ public class TestSupportController {
+                     if (r.get("INTEREST_RATE") != null) {
+                         row.put("interestRate", r.get("INTEREST_RATE"));
+                     }
++                    if (r.get("REGION") != null) {
++                        row.put("region", r.get("REGION"));
++                    }
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index ac7d603..4336fcc 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -65,6 +65,12 @@ public class Client {
+     @Column(name = "interest_rate")
+     private BigDecimal interestRate;
+ 
++    /**
++     * The region the client is in (a state, say): its invoices are taxed at the region's rate from the
++     * workspace's regional rates when one is listed; null for no region.
++     */
++    private String region;
++
+     /** The highest late-interest rate a client can be given, as a percentage. */
+     public static final int MAX_INTEREST_RATE = 30;
+ 
+@@ -76,7 +82,7 @@ public class Client {
+ 
+     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
+-            Integer graceDays, BigDecimal interestRate) {
++            Integer graceDays, BigDecimal interestRate, String region) {
+         this.name = name;
+         this.email = email;
+         this.termsDays = termsDays;
+@@ -88,6 +94,7 @@ public class Client {
+         this.retentionPct = retentionPct == null ? BigDecimal.ZERO : retentionPct;
+         this.graceDays = graceDays == null ? Invoice.GRACE_DAYS : graceDays;
+         this.interestRate = interestRate;
++        this.region = region;
+     }
+ 
+     public Long getId() {
+@@ -137,4 +144,8 @@ public class Client {
+     public BigDecimal getInterestRate() {
+         return interestRate;
+     }
++
++    public String getRegion() {
++        return region;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 3954ee0..596d2fa 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -27,11 +27,11 @@ public class ClientController {
+ 
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+             boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+-            BigDecimal retentionPct, int graceDays, BigDecimal interestRate) {
++            BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+                     c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+-                    c.getRetentionPct(), c.getGraceDays(), c.getInterestRate());
++                    c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion());
+         }
+     }
+ 
+@@ -75,7 +75,10 @@ public class ClientController {
+             @DecimalMin(value = "0", message = "The interest rate must be from 0 to 30 percent.")
+             @DecimalMax(value = "30", message = "The interest rate must be from 0 to 30 percent.")
+             @Digits(integer = 2, fraction = 2, message = "The interest rate can have at most two decimals.")
+-            BigDecimal interestRate) {
++            BigDecimal interestRate,
++            /** The region the client is in; none when left out or blank. */
++            @Size(max = 64, message = "The region must be at most 64 characters.")
++            String region) {
+ 
+         @AssertTrue(message = "Enter both the early-payment discount and its number of days, or neither.")
+         public boolean isEarlyPayComplete() {
+@@ -105,6 +108,6 @@ public class ClientController {
+     public ClientView add(@Valid @RequestBody NewClient body) {
+         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+                 Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
+-                body.retentionPct(), body.graceDays(), body.interestRate()));
++                body.retentionPct(), body.graceDays(), body.interestRate(), body.region()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index b592407..e91b454 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -32,11 +32,12 @@ public class ClientService {
+     @Transactional
+     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays,
+-            BigDecimal interestRate) {
++            BigDecimal interestRate, String region) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+-        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays, interestRate));
++        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays, interestRate,
++                region == null || region.isBlank() ? null : region.trim()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index a986895..63e507f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -144,6 +144,13 @@ public class Invoice {
+     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
+     private boolean clientTaxExempt;
+ 
++    /**
++     * The tax percentage of the client's region, from the workspace's regional rates, charged instead
++     * of the workspace rate; read from them, null when the client has no region or it has no rate.
++     */
++    @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_tax_rate_' || c.region)")
++    private String regionTaxRate;
++
+     /** The id of the invoice this credit note credits; null for an ordinary invoice. */
+     @Column(name = "credit_of")
+     private Long creditOf;
+@@ -289,11 +296,12 @@ public class Invoice {
+     }
+ 
+     /** A new, empty draft for a client, issued and due on the given dates. */
+-    public static Invoice draft(Long clientId, boolean clientTaxExempt, Currency currency, LocalDate issueDate,
+-            LocalDate dueDate) {
++    public static Invoice draft(Long clientId, boolean clientTaxExempt, String regionTaxRate, Currency currency,
++            LocalDate issueDate, LocalDate dueDate) {
+         Invoice invoice = new Invoice();
+         invoice.clientId = clientId;
+         invoice.clientTaxExempt = clientTaxExempt;
++        invoice.regionTaxRate = regionTaxRate;
+         invoice.clientCurrency = currency.name();
+         invoice.status = InvoiceStatus.DRAFT;
+         invoice.issueDate = issueDate;
+@@ -306,7 +314,7 @@ public class Invoice {
+      * discount, issued and due on the given dates. Payments stay with this invoice.
+      */
+     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
+-        Invoice copy = draft(clientId, clientTaxExempt, currency(), issueDate, dueDate);
++        Invoice copy = draft(clientId, clientTaxExempt, regionTaxRate, currency(), issueDate, dueDate);
+         copy.discountPct = discountPct;
+         copy.discountAmount = discountAmount;
+         copy.discountCap = discountCap;
+@@ -325,7 +333,7 @@ public class Invoice {
+      * discount, taxed as the original's lines are.
+      */
+     public Invoice creditNote(LocalDate issueDate) {
+-        Invoice note = draft(clientId, clientTaxExempt, currency(), issueDate, null);
++        Invoice note = draft(clientId, clientTaxExempt, regionTaxRate, currency(), issueDate, null);
+         note.creditOf = id;
+         return note;
+     }
+@@ -1761,18 +1769,24 @@ public class Invoice {
+         return result;
+     }
+ 
++    /** The rate lines without their own are taxed at: the client's regional rate, or the given workspace rate when it has none. */
++    public BigDecimal clientTaxRate(BigDecimal workspaceRate) {
++        return regionTaxRate == null ? workspaceRate : new BigDecimal(regionTaxRate.trim());
++    }
++
+     /**
+-     * Each line's exact tax, in the order of the lines: the line's own rate (a percentage), or the
+-     * given workspace rate when it has none, on the line's amount less its share of the discount,
++     * Each line's exact tax, in the order of the lines: the line's own rate (a percentage), or when it
++     * has none the client's regional rate, or the given workspace rate when that has none either, on the line's amount less its share of the discount,
+      * unrounded. Tax-exempt lines, and every line of a tax-exempt client, have no tax.
+      */
+     private List<BigDecimal> exactLineTaxes(BigDecimal taxRate) {
+         List<BigDecimal> shares = discountShares();
++        BigDecimal clientRate = clientTaxRate(taxRate);
+         List<BigDecimal> taxes = new ArrayList<>(lines.size());
+         for (int i = 0; i < lines.size(); i++) {
+             InvoiceLine line = lines.get(i);
+             taxes.add(clientTaxExempt || line.isTaxExempt() ? BigDecimal.ZERO
+-                    : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(taxRate)).movePointLeft(2));
++                    : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(clientRate)).movePointLeft(2));
+         }
+         return taxes;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index f22172a..595f2c8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -152,7 +152,7 @@ public class InvoiceController {
+                     i.getDiscountAmount().setScale(2).toPlainString(),
+                     i.getDiscountCap() == null ? null : i.getDiscountCap().setScale(2).toPlainString(),
+                     i.discount().toPlainString(), i.getDiscountReason(),
+-                    taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
++                    i.clientTaxRate(taxRate).stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
+                     i.total(taxRate).toPlainString(),
+                     payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency())).toList(), paid.toPlainString(),
+                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index f050530..dfecbc8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -112,7 +112,7 @@ public class InvoiceService {
+     public Optional<Invoice> newDraft(Long clientId) {
+         return clients.findById(clientId).map(client -> {
+             LocalDate issued = today.date();
+-            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), client.getCurrency(), issued, dueDateFor(clientId, issued));
++            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), taxRate.forRegion(client.getRegion()), client.getCurrency(), issued, dueDateFor(clientId, issued));
+             draft.setDiscountPct(client.getDiscountPct());
+             draft.setRetentionPct(client.getRetentionPct());
+             return invoices.save(draft);
+diff --git a/src/main/resources/db/migration/V38__client_region.sql b/src/main/resources/db/migration/V38__client_region.sql
+new file mode 100644
+index 0000000..83b5c2d
+--- /dev/null
++++ b/src/main/resources/db/migration/V38__client_region.sql
+@@ -0,0 +1,3 @@
++-- The region a client is in (a state, say): its invoices are taxed at the region's rate from the
++-- workspace's regional rates (region_tax_rate_<region> settings); null is no region.
++ALTER TABLE client ADD COLUMN region VARCHAR(64);
