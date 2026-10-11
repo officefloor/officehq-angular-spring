@@ -190,20 +190,25 @@ public class Invoice {
     }
 
     /**
-     * The tax charged at the given rate (a percentage): each taxable line's amount less its share of
-     * the discount, added up, and the rate charged on that, rounded half up to the cent. Tax-exempt
-     * lines are left out.
+     * Each line's tax at the given rate (a percentage), in the order of the lines: the rate on the
+     * line's amount less its share of the discount, rounded half up to the cent. Tax-exempt lines
+     * have no tax.
      */
-    public BigDecimal tax(BigDecimal taxRate) {
+    public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
         List<BigDecimal> shares = discountShares();
-        BigDecimal taxable = BigDecimal.ZERO;
+        List<BigDecimal> taxes = new ArrayList<>(lines.size());
         for (int i = 0; i < lines.size(); i++) {
-            if (!lines.get(i).isTaxExempt()) {
-                taxable = taxable.add(lines.get(i).amount().subtract(shares.get(i)));
-            }
+            InvoiceLine line = lines.get(i);
+            taxes.add(line.isTaxExempt() ? BigDecimal.ZERO.setScale(2)
+                    : line.amount().subtract(shares.get(i)).multiply(taxRate).divide(BigDecimal.valueOf(100))
+                            .setScale(2, RoundingMode.HALF_UP));
         }
-        return taxable.multiply(taxRate).divide(BigDecimal.valueOf(100))
-                .setScale(2, RoundingMode.HALF_UP);
+        return taxes;
+    }
+
+    /** The tax charged at the given rate (a percentage): the sum of the line taxes. */
+    public BigDecimal tax(BigDecimal taxRate) {
+        return lineTaxes(taxRate).stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /** The grand total: the subtotal less the discount, plus tax at the given rate. */

@@ -20,8 +20,9 @@ export interface InvoiceSummary {
 
 // One line of an opened invoice. `qty` is as entered, without trailing zeros ("1.5"); money is a
 // decimal string to the cent. `discountShare` is the line's share of the invoice discount, split in
-// cents in proportion to the line amounts by the server; the shares add up to the discount. A
-// `taxExempt` line (postage, say) is left out of the taxed amount. `discountPct` is the line's own
+// cents in proportion to the line amounts by the server; the shares add up to the discount. `tax` is
+// the tax rate on the amount less that share, rounded half up to the cent; a `taxExempt` line
+// (postage, say) has none. `discountPct` is the line's own
 // discount (without trailing zeros), `discount` what it takes off quantity x unit price, and
 // `amount` is after it.
 export interface InvoiceLineView {
@@ -33,6 +34,7 @@ export interface InvoiceLineView {
   discount: string;
   amount: string;
   discountShare: string;
+  tax: string;
   taxExempt: boolean;
 }
 
@@ -48,8 +50,7 @@ export interface InvoicePaymentView {
 // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
 // percentage taken off the subtotal, without trailing zeros ("12.5"); `discount` is the amount it
 // takes off, rounded half up to the cent; `taxRate` is the workspace's tax percentage (without
-// trailing zeros, "0" when none is set) and `tax` is that rate on the taxable lines' amounts less
-// their discount shares, rounded half up to the cent; `total` is the subtotal less the discount plus the tax.
+// trailing zeros, "0" when none is set) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
 // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
 // `amountDue` is the total less that. `reference` is its ISO 11649 RF payment reference, made from
 // the seven digits of its number, in groups of four (RF16 0000 075).

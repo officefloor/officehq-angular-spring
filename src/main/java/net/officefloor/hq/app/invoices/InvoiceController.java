@@ -53,25 +53,26 @@ public class InvoiceController {
     /**
      * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
      * money is a decimal string to the cent. {@code discountShare} is the line's share of the
-     * invoice discount; {@code taxExempt} lines are left out of the taxed amount. {@code discountPct}
+     * invoice discount; {@code tax} is the line's tax, the rate on its amount less that share, and
+     * {@code taxExempt} lines have none. {@code discountPct}
      * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
      * {@code amount} is after it.
      */
     public record LineView(Long id, String description, String qty, String unitPrice, String discountPct,
-            String discount, String amount, String discountShare, boolean taxExempt) {
-        static LineView of(InvoiceLine l, BigDecimal discountShare) {
+            String discount, String amount, String discountShare, String tax, boolean taxExempt) {
+        static LineView of(InvoiceLine l, BigDecimal discountShare, BigDecimal tax) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
                     l.getUnitPrice().setScale(2).toPlainString(),
                     l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount().toPlainString(),
-                    l.amount().toPlainString(), discountShare.toPlainString(), l.isTaxExempt());
+                    l.amount().toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
+                    l.isTaxExempt());
         }
     }
 
     /**
      * An opened invoice: its lines, subtotal, discount percentage (without trailing zeros, "12.5"),
-     * the amount it takes off, the tax rate (without trailing zeros) and the tax charged on the taxable
-     * lines less their discount shares, and the
-     * grand total; the payments made to it, what they add up to and what is still due (money as
+     * the amount it takes off, the tax rate (without trailing zeros) and the tax charged, the sum of the
+     * line taxes, and the grand total; the payments made to it, what they add up to and what is still due (money as
      * decimal strings to the cent). Its status follows what has been paid. {@code reference} is its
      * RF payment reference in groups of four.
      */
@@ -82,8 +83,9 @@ public class InvoiceController {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
             List<BigDecimal> shares = i.discountShares();
+            List<BigDecimal> taxes = i.lineTaxes(taxRate);
             List<LineView> lines = IntStream.range(0, shares.size())
-                    .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n))).toList();
+                    .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n), taxes.get(n))).toList();
             return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()),
                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
                     i.statusWhenPaid(paid, taxRate), i.getIssueDate(), i.getDueDate(),

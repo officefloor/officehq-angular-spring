@@ -92,7 +92,7 @@ function problemWith(line: NewLine): string {
 }
 
 // One opened invoice: its status, its lines and its totals. A line may carry its own percentage
-// discount, shown on the line, with its amount after it. A draft takes new lines and a
+// discount, shown on the line, with its amount after it, and its own tax. A draft takes new lines and a
 // percentage discount, and can be sent; a change to a sent invoice with no payments puts it back to
 // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
 // until nothing is due; the panel lists them with what has been paid and what is still due. The
@@ -119,6 +119,7 @@ function problemWith(line: NewLine): string {
               <th scope="col">Line discount</th>
               <th scope="col">Amount</th>
               <th scope="col">Discount share</th>
+              <th scope="col">Tax status</th>
               <th scope="col">Tax</th>
             </tr>
           </thead>
@@ -132,28 +133,29 @@ function problemWith(line: NewLine): string {
                 <td data-testid="line-amount">{{ money(l.amount) }}</td>
                 <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
+                <td data-testid="line-tax">{{ money(l.tax) }}</td>
               </tr>
             } @empty {
               <tr>
-                <td colspan="7" data-testid="line-empty">No lines yet.</td>
+                <td colspan="8" data-testid="line-empty">No lines yet.</td>
               </tr>
             }
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row" colspan="6">Subtotal</th>
+              <th scope="row" colspan="7">Subtotal</th>
               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="6">Discount ({{ inv.discountPct }}%)</th>
+              <th scope="row" colspan="7">Discount ({{ inv.discountPct }}%)</th>
               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="6">Tax ({{ inv.taxRate }}%)</th>
+              <th scope="row" colspan="7">Tax ({{ inv.taxRate }}%)</th>
               <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="6">Total</th>
+              <th scope="row" colspan="7">Total</th>
               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
             </tr>
           </tfoot>
