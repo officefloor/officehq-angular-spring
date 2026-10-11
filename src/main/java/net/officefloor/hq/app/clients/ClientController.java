@@ -30,12 +30,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClientController {
 
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
-            boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+            boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
             Map<String, RateView> rates) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
-                    c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+                    c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
                     new TreeMap<>(c.getRates().entrySet().stream().collect(Collectors.toMap(
                             Map.Entry::getKey, e -> RateView.of(e.getValue())))));
@@ -68,6 +68,8 @@ public class ClientController {
             BigDecimal discountPct,
             /** Whether the client is tax exempt; taxed when left out. */
             Boolean taxExempt,
+            /** Whether the client is quoted prices that include tax; prices exclude it when left out. */
+            Boolean pricesIncludeTax,
             /** The currency the client is billed in; US dollars when left out. */
             @Pattern(regexp = "USD|EUR|GBP|JPY|CHF", message = "The currency must be USD, EUR, GBP, JPY or CHF.")
             String currency,
@@ -129,7 +131,7 @@ public class ClientController {
     @ResponseStatus(HttpStatus.CREATED)
     public ClientView add(@Valid @RequestBody NewClient body) {
         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
-                Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
+                Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
                 body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber()));
     }
 }

@@ -213,6 +213,13 @@ function validTaxNumber(taxNumber: string): boolean {
           formControlName="taxExempt"
         />
         <label for="client-tax-exempt">Tax exempt (no tax on any of their invoices)</label>
+        <input
+          id="client-prices-include-tax"
+          data-testid="client-form-prices-include-tax"
+          type="checkbox"
+          formControlName="pricesIncludeTax"
+        />
+        <label for="client-prices-include-tax">Prices include tax</label>
         <button type="submit" data-testid="client-form-submit" [disabled]="saving()">
           Add client
         </button>
@@ -275,6 +282,7 @@ export class Clients {
     earlyPct: new FormControl<number | null>(null),
     earlyDays: new FormControl<number | null>(null),
     taxExempt: new FormControl(false, { nonNullable: true }),
+    pricesIncludeTax: new FormControl(false, { nonNullable: true }),
     currency: new FormControl<Currency>('USD', { nonNullable: true }),
   });
 
@@ -310,6 +318,7 @@ export class Clients {
     const region = this.form.controls.region.value.trim();
     const taxNumber = this.form.controls.taxNumber.value.replace(/ /g, '');
     const taxExempt = this.form.controls.taxExempt.value;
+    const pricesIncludeTax = this.form.controls.pricesIncludeTax.value;
     const currency = this.form.controls.currency.value;
     const early = this.form.controls.earlyPct.value;
     const earlyPayPct = early === null || (early as unknown) === '' ? null : Number(early);
@@ -328,6 +337,7 @@ export class Clients {
       earlyPct: earlyPayPct,
       earlyDays: earlyPayDays,
       taxExempt,
+      pricesIncludeTax,
       currency,
     });
     const problem = this.problemWith(
@@ -355,6 +365,7 @@ export class Clients {
       termsDays,
       discountPct: discountPct ?? 0,
       taxExempt,
+      pricesIncludeTax,
       currency,
       earlyPayPct: earlyPayPct ?? 0,
       earlyPayDays,

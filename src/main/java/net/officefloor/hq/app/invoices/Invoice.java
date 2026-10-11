@@ -146,6 +146,13 @@ public class Invoice {
     private boolean clientTaxExempt;
 
     /**
+     * Whether the invoice's client is quoted prices that include tax, so the line amounts, discount and
+     * grand total include it and the tax is taken out of them; read from the client.
+     */
+    @Formula("(SELECT c.prices_include_tax FROM client c WHERE c.id = client_id)")
+    private boolean clientPricesIncludeTax;
+
+    /**
      * The tax percentage of the client's region, from the workspace's regional rates, charged instead
      * of the workspace rate; read from them, null when the client has no region or it has no rate.
      */
@@ -306,11 +313,12 @@ public class Invoice {
     }
 
     /** A new, empty draft for a client, issued and due on the given dates. */
-    public static Invoice draft(Long clientId, boolean clientTaxExempt, String regionTaxRate, String outOfRegionTaxNumber,
-            Currency currency, LocalDate issueDate, LocalDate dueDate) {
+    public static Invoice draft(Long clientId, boolean clientTaxExempt, boolean clientPricesIncludeTax, String regionTaxRate,
+            String outOfRegionTaxNumber, Currency currency, LocalDate issueDate, LocalDate dueDate) {
         Invoice invoice = new Invoice();
         invoice.clientId = clientId;
         invoice.clientTaxExempt = clientTaxExempt;
+        invoice.clientPricesIncludeTax = clientPricesIncludeTax;
         invoice.regionTaxRate = regionTaxRate;
         invoice.outOfRegionTaxNumber = outOfRegionTaxNumber;
         invoice.clientCurrency = currency.name();
@@ -325,7 +333,7 @@ public class Invoice {
      * discount, issued and due on the given dates. Payments stay with this invoice.
      */
     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
-        Invoice copy = draft(clientId, clientTaxExempt, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+        Invoice copy = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, dueDate);
         copy.discountPct = discountPct;
         copy.discountAmount = discountAmount;
         copy.discountCap = discountCap;
@@ -344,7 +352,7 @@ public class Invoice {
      * discount, taxed as the original's lines are.
      */
     public Invoice creditNote(LocalDate issueDate) {
-        Invoice note = draft(clientId, clientTaxExempt, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, null);
+        Invoice note = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, null);
         note.creditOf = id;
         return note;
     }
@@ -620,7 +628,7 @@ public class Invoice {
         if (isCreditNote()) {
             return zero();
         }
-        BigDecimal retention = subtotal().subtract(discount()).multiply(retentionPct).divide(BigDecimal.valueOf(100))
+        BigDecimal retention = beforeTax(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100))
                 .setScale(scale(), RoundingMode.DOWN);
         return retentionCap == null ? retention : retention.min(retentionCap.setScale(scale(), RoundingMode.DOWN));
     }
@@ -1116,7 +1124,7 @@ public class Invoice {
                 || earlyPayPct == null || earlyPayPct.signum() <= 0) {
             return zero();
         }
-        return subtotal().subtract(discount()).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+        return beforeTax(taxRate).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
     }
 
     /**
@@ -1820,6 +1828,9 @@ public class Invoice {
      * to the invoice tax.
      */
     public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
+        if (clientPricesIncludeTax) {
+            return inclusiveLineTaxes(taxRate);
+        }
         List<BigDecimal> exact = exactLineTaxes(taxRate);
         int n = lines.size();
         BigInteger taxCents = roundTax(exact).movePointRight(scale()).toBigIntegerExact();
@@ -1888,11 +1899,93 @@ public class Invoice {
      * once, half up to the cent. It is what the line taxes add up to.
      */
     public BigDecimal tax(BigDecimal taxRate) {
-        return roundTax(exactLineTaxes(taxRate));
+        return clientPricesIncludeTax ? inclusiveTax(taxRate) : roundTax(exactLineTaxes(taxRate));
     }
 
-    /** The grand total: the subtotal less the discount, plus tax at the given rate. */
+    /** Whether the invoice's client is quoted prices that include tax. */
+    public boolean isPricesIncludeTax() {
+        return clientPricesIncludeTax;
+    }
+
+    /**
+     * Whether the line at the given index carries tax: not when it is tax exempt, nor on any line of a
+     * tax-exempt client or a reverse-charged invoice.
+     */
+    private boolean isTaxed(int i) {
+        return !clientTaxExempt && !isReverseCharge() && !lines.get(i).isTaxExempt();
+    }
+
+    /** The divisor that takes tax at the client's rate out of a tax-inclusive amount: 1 plus the rate. */
+    private BigDecimal inclusiveDivisor(BigDecimal taxRate) {
+        return BigDecimal.ONE.add(clientTaxRate(taxRate).movePointLeft(2));
+    }
+
+    /**
+     * The tax inside tax-inclusive prices: the total of the taxed lines' amounts after their discount
+     * shares, less that total divided by 1 plus the client's rate, rounded once, half up to the cent.
+     */
+    private BigDecimal inclusiveTax(BigDecimal taxRate) {
+        List<BigDecimal> shares = discountShares();
+        BigDecimal taxed = zero();
+        for (int i = 0; i < lines.size(); i++) {
+            if (isTaxed(i)) {
+                taxed = taxed.add(lines.get(i).amount(scale()).subtract(shares.get(i)));
+            }
+        }
+        return taxed.subtract(taxed.divide(inclusiveDivisor(taxRate), scale(), RoundingMode.HALF_UP));
+    }
+
+    /**
+     * Each line's tax inside tax-inclusive prices, in the order of the lines: the line's amount after
+     * its discount share, less that divided by 1 plus the client's rate rounded half up to the cent;
+     * exempt lines have none. The cents by which they miss the invoice tax go (or come off) one at a
+     * time to the taxed lines with the largest amounts, the earlier line on a tie.
+     */
+    private List<BigDecimal> inclusiveLineTaxes(BigDecimal taxRate) {
+        List<BigDecimal> shares = discountShares();
+        BigDecimal divisor = inclusiveDivisor(taxRate);
+        int n = lines.size();
+        List<BigDecimal> taxes = new ArrayList<>(n);
+        List<BigDecimal> amounts = new ArrayList<>(n);
+        List<Integer> order = new ArrayList<>();
+        BigDecimal given = zero();
+        for (int i = 0; i < n; i++) {
+            BigDecimal amount = lines.get(i).amount(scale()).subtract(shares.get(i));
+            amounts.add(amount);
+            BigDecimal tax = zero();
+            if (isTaxed(i)) {
+                tax = amount.subtract(amount.divide(divisor, scale(), RoundingMode.HALF_UP));
+                order.add(i);
+            }
+            taxes.add(tax);
+            given = given.add(tax);
+        }
+        order.sort(Comparator.<Integer, BigDecimal>comparing(amounts::get).reversed().thenComparing(i -> i));
+        BigDecimal cent = BigDecimal.ONE.movePointLeft(scale());
+        int missing = inclusiveTax(taxRate).subtract(given).movePointRight(scale()).intValueExact();
+        BigDecimal step = missing < 0 ? cent.negate() : cent;
+        for (int k = 0; k < Math.abs(missing) && !order.isEmpty(); k++) {
+            int i = order.get(k % order.size());
+            taxes.set(i, taxes.get(i).add(step));
+        }
+        return taxes;
+    }
+
+    /**
+     * The amount before tax: the subtotal less the discount, less the tax inside it when the client's
+     * prices include tax.
+     */
+    public BigDecimal beforeTax(BigDecimal taxRate) {
+        BigDecimal amount = subtotal().subtract(discount());
+        return clientPricesIncludeTax ? amount.subtract(tax(taxRate)) : amount;
+    }
+
+    /**
+     * The grand total: the subtotal less the discount, plus tax at the given rate — or, when the
+     * client's prices include tax, the subtotal less the discount, which already holds it.
+     */
     public BigDecimal total(BigDecimal taxRate) {
-        return subtotal().subtract(discount()).add(tax(taxRate));
+        BigDecimal amount = subtotal().subtract(discount());
+        return clientPricesIncludeTax ? amount : amount.add(tax(taxRate));
     }
 }

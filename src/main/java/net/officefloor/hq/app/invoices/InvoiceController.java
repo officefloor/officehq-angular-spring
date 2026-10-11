@@ -77,20 +77,22 @@ public class InvoiceController {
      * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
      * money is a decimal string to the cent. {@code unitType} is null when the line has none. {@code discountShare} is the line's share of the
      * invoice discount; {@code tax} is the line's tax, the rate on its amount less that share, and
-     * {@code taxExempt} lines have none. {@code taxRate} (without trailing zeros) is the line's own
+     * {@code taxExempt} lines have none. {@code net} is the line before tax: its amount less that share, less
+     * the tax inside it when the client's prices include tax. {@code taxRate} (without trailing zeros) is the line's own
      * tax rate, null when it uses the workspace rate. {@code discountPct}
      * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
      * {@code amount} is after it. {@code creditOfLine} is the id of the line a credit note's line credits, null when none.
      * {@code tiered} lines are priced in progressive tiers from the rate card; their {@code unitPrice} is the first band's.
      */
     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
-            String discount, String amount, String discountShare, String tax, boolean taxExempt, String taxRate,
+            String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,
             Long creditOfLine, boolean tiered) {
-        static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax) {
+        static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
                     l.getUnitType(), l.getUnitPrice().setScale(2).toPlainString(),
                     l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount(scale).toPlainString(),
                     l.amount(scale).toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
+                    l.amount(scale).subtract(discountShare).subtract(includedTax).toPlainString(),
                     l.isTaxExempt(),
                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
                     l.getCreditOfLine(), l.isTiered());
@@ -127,11 +129,12 @@ public class InvoiceController {
      * is, for a client billed in another currency, the exchange difference in US dollars of the payments
      * applied to it (see {@link Invoice#fxDifference(List)}); null for a dollar invoice.
      * {@code writtenOffOn} is the day it was written off as a bad debt (null when it was not); everything
-     * it still owed then is in {@code writtenOff}, and nothing is due.
+     * it still owed then is in {@code writtenOff}, and nothing is due. {@code net} is the amount before tax; when
+     * {@code pricesIncludeTax} the tax is inside the subtotal less the discount, which is then the grand total.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
-            String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
+            String discountCap, String discount, String discountReason, String taxRate, String tax, String total, String net, boolean pricesIncludeTax, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
             String credited, Long creditOf, String listedTotal, String retentionPct, String retentionCap, String retention,
             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
@@ -144,7 +147,8 @@ public class InvoiceController {
             List<BigDecimal> shares = i.discountShares();
             List<BigDecimal> taxes = i.lineTaxes(taxRate);
             List<LineView> lines = IntStream.range(0, shares.size())
-                    .mapToObj(n -> LineView.of(i.getLines().get(n), i.scale(), shares.get(n), taxes.get(n))).toList();
+                    .mapToObj(n -> LineView.of(i.getLines().get(n), i.scale(), shares.get(n), taxes.get(n),
+                            i.isPricesIncludeTax() ? taxes.get(n) : BigDecimal.ZERO)).toList();
             return new InvoiceDetail(i.getId(), i.number(),
                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
                     i.statusWhenPaid(paid, paidOn, taxRate, today), i.getIssueDate(), i.getDueDate(),
@@ -154,7 +158,7 @@ public class InvoiceController {
                     i.getDiscountCap() == null ? null : i.getDiscountCap().setScale(2).toPlainString(),
                     i.discount().toPlainString(), i.getDiscountReason(),
                     i.clientTaxRate(taxRate).stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
-                    i.total(taxRate).toPlainString(),
+                    i.total(taxRate).toPlainString(), i.beforeTax(taxRate).toPlainString(), i.isPricesIncludeTax(),
                     payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency())).toList(), paid.toPlainString(),
                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
                     i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),

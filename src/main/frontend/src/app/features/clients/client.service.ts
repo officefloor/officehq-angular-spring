@@ -13,6 +13,8 @@ export interface Client {
   discountPct: number;
   // Whether the client is tax exempt (a charity, say): its invoices charge no tax on any line.
   taxExempt: boolean;
+  // Whether the client is quoted prices that include tax: the tax is taken out of its invoice amounts.
+  pricesIncludeTax: boolean;
   // The currency the client is billed in: everything on its invoices is in it.
   currency: Currency;
   // An early-payment discount: the percentage of the amount before tax (0 is none) taken off an invoice

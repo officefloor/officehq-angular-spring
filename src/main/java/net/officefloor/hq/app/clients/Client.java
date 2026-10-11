@@ -42,6 +42,10 @@ public class Client {
     @Column(name = "tax_exempt")
     private boolean taxExempt;
 
+    /** Whether the client is quoted prices that include tax: the tax is taken out of its invoice amounts. */
+    @Column(name = "prices_include_tax")
+    private boolean pricesIncludeTax;
+
     /** The currency the client is billed in: everything on its invoices is in it. */
     @Enumerated(EnumType.STRING)
     private Currency currency = Currency.USD;
@@ -101,13 +105,14 @@ public class Client {
     }
 
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
-            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
+            boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
             Integer graceDays, BigDecimal interestRate, String region, String taxNumber) {
         this.name = name;
         this.email = email;
         this.termsDays = termsDays;
         this.discountPct = discountPct == null ? BigDecimal.ZERO : discountPct;
         this.taxExempt = taxExempt;
+        this.pricesIncludeTax = pricesIncludeTax;
         this.currency = currency == null ? Currency.USD : currency;
         this.earlyPayPct = earlyPayPct == null ? BigDecimal.ZERO : earlyPayPct;
         this.earlyPayDays = earlyPayDays;
@@ -140,6 +145,10 @@ public class Client {
 
     public boolean isTaxExempt() {
         return taxExempt;
+    }
+
+    public boolean isPricesIncludeTax() {
+        return pricesIncludeTax;
     }
 
     public Currency getCurrency() {

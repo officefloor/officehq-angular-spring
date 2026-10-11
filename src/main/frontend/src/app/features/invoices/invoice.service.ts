@@ -60,6 +60,9 @@ export interface InvoiceLineView {
   amount: string;
   discountShare: string;
   tax: string;
+  // The line's amount before tax: its amount less its discount share, less the tax inside it when the
+  // client's prices include tax.
+  net: string;
   taxExempt: boolean;
   taxRate: string | null;
   // The id of the invoice line a credit note's line credits; null when none.
@@ -111,6 +114,11 @@ export interface InvoiceDetail {
   taxRate: string;
   tax: string;
   total: string;
+  // The amount before tax: the subtotal less the discount, less the tax inside it when the client's
+  // prices include tax (then `total` is the subtotal less the discount, and `tax` is inside it).
+  net: string;
+  // Whether the client is quoted prices that include tax: every taxable line is taxed at `taxRate`.
+  pricesIncludeTax: boolean;
   payments: InvoicePaymentView[];
   paid: string;
   amountDue: string;
