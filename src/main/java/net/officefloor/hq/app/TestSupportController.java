@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import jakarta.persistence.EntityManager;
+import net.officefloor.hq.app.clients.Client;
 import net.officefloor.hq.app.clients.Currency;
 import net.officefloor.hq.app.invoices.Invoice;
 import net.officefloor.hq.app.invoices.InvoiceRepository;
@@ -38,7 +39,7 @@ public class TestSupportController {
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee");
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "interestWaivedOn", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
@@ -166,13 +167,14 @@ public class TestSupportController {
             if (Currency.of(currency) == null) {
                 throw refuse("unsupported value of clients[].currency: " + currency);
             }
-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct"},
+            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days"},
                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
                     percent(row.get("discountPct"), "clients[].discountPct"),
                     flag(row.get("taxExempt"), "clients[].taxExempt"), currency,
                     percent(row.get("earlyPayPct"), "clients[].earlyPayPct"),
                     days(row.get("earlyPayDays"), "clients[].earlyPayDays"),
-                    percent(row.get("retentionPct"), "clients[].retentionPct"));
+                    percent(row.get("retentionPct"), "clients[].retentionPct"),
+                    graceDays(row.get("graceDays"), "clients[].graceDays"));
         }
         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
             only(row, INVOICE_FIELDS, "invoices[]");
@@ -331,7 +333,7 @@ public class TestSupportController {
         if (!settings.isEmpty()) {
             out.put("settings", settings);
         }
-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct FROM client ORDER BY id").stream()
+        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -348,6 +350,7 @@ public class TestSupportController {
                         row.put("earlyPayDays", r.get("EARLY_PAY_DAYS"));
                     }
                     row.put("retentionPct", r.get("RETENTION_PCT"));
+                    row.put("graceDays", r.get("GRACE_DAYS"));
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
@@ -460,6 +463,18 @@ public class TestSupportController {
         } catch (NumberFormatException | ArithmeticException e) {
             throw refuse(field + " must be a whole number of days, not " + value);
         }
+    }
+
+    /** A grace period of 0 to 30 whole days; the standard week when left out. */
+    private static int graceDays(Object value, String field) {
+        Integer days = days(value, field);
+        if (days == null) {
+            return Invoice.GRACE_DAYS;
+        }
+        if (days > Client.MAX_GRACE_DAYS) {
+            throw refuse(field + " must be from 0 to " + Client.MAX_GRACE_DAYS + " days, not " + value);
+        }
+        return days;
     }
 
     /** A whole number of instalments from 2 to 24; null (no plan) when left out. */

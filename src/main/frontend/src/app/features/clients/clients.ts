@@ -9,6 +9,8 @@ import { Client, ClientService, byName } from './client.service';
 // A proper email address: a mailbox, an @, and a domain with at least one dot — name@company.com,
 // not name@company (a typo). The same rule the server applies.
 const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+// The grace period, in days past the due date, a client is given when none is set: a week.
+const STANDARD_GRACE_DAYS = 7;
 
 // The workspace's clients: listed A to Z by name (ignoring capitals), with a form to add one.
 // Clicking a client lists that client's invoices beside the clients. Typing an invoice number into
@@ -128,6 +130,17 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
           step="0.01"
           formControlName="retentionPct"
         />
+        <label for="client-grace">Grace period in days, 0 to 30 (optional, a week if left out)</label>
+        <input
+          id="client-grace"
+          data-testid="client-form-grace-days"
+          type="number"
+          inputmode="numeric"
+          min="0"
+          max="30"
+          step="1"
+          formControlName="graceDays"
+        />
         <label for="client-early-pct">Early-payment discount % (optional)</label>
         <input
           id="client-early-pct"
@@ -218,6 +231,7 @@ export class Clients {
     terms: new FormControl<number | null>(null),
     discountPct: new FormControl<number | null>(null),
     retentionPct: new FormControl<number | null>(null),
+    graceDays: new FormControl<number | null>(null),
     earlyPct: new FormControl<number | null>(null),
     earlyDays: new FormControl<number | null>(null),
     taxExempt: new FormControl(false, { nonNullable: true }),
@@ -249,6 +263,8 @@ export class Clients {
     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
     const retention = this.form.controls.retentionPct.value;
     const retentionPct = retention === null || (retention as unknown) === '' ? null : Number(retention);
+    const grace = this.form.controls.graceDays.value;
+    const graceDays = grace === null || (grace as unknown) === '' ? null : Number(grace);
     const taxExempt = this.form.controls.taxExempt.value;
     const currency = this.form.controls.currency.value;
     const early = this.form.controls.earlyPct.value;
@@ -261,12 +277,22 @@ export class Clients {
       terms: termsDays,
       discountPct,
       retentionPct,
+      graceDays,
       earlyPct: earlyPayPct,
       earlyDays: earlyPayDays,
       taxExempt,
       currency,
     });
-    const problem = this.problemWith(name, email, termsDays, discountPct, retentionPct, earlyPayPct, earlyPayDays);
+    const problem = this.problemWith(
+      name,
+      email,
+      termsDays,
+      discountPct,
+      retentionPct,
+      graceDays,
+      earlyPayPct,
+      earlyPayDays,
+    );
     if (problem) {
       this.form.markAllAsTouched();
       this.error.set(problem);
@@ -284,6 +310,7 @@ export class Clients {
       earlyPayPct: earlyPayPct ?? 0,
       earlyPayDays,
       retentionPct: retentionPct ?? 0,
+      graceDays: graceDays ?? STANDARD_GRACE_DAYS,
     };
     this.service.add(client).subscribe({
       next: (created) => {
@@ -341,6 +368,7 @@ export class Clients {
     termsDays: number | null,
     discountPct: number | null,
     retentionPct: number | null,
+    graceDays: number | null,
     earlyPayPct: number | null,
     earlyPayDays: number | null,
   ): string {
@@ -371,6 +399,9 @@ export class Clients {
       } else if (Math.abs(Math.round(retentionPct * 100) - retentionPct * 100) > 1e-6) {
         problems.push('The standard retention can have at most two decimals.');
       }
+    }
+    if (graceDays !== null && !(Number.isInteger(graceDays) && graceDays >= 0 && graceDays <= 30)) {
+      problems.push('The grace period must be from 0 to 30 days.');
     }
     if (earlyPayPct !== null) {
       if (!(Number.isFinite(earlyPayPct) && earlyPayPct >= 0 && earlyPayPct <= 100)) {

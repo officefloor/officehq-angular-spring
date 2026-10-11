@@ -139,6 +139,10 @@ public class Invoice {
     @Formula("(SELECT c.early_pay_days FROM client c WHERE c.id = client_id)")
     private Integer earlyPayDays;
 
+    /** The client's grace period in days; read from the client. */
+    @Formula("(SELECT c.grace_days FROM client c WHERE c.id = client_id)")
+    private Integer clientGraceDays;
+
     /** The early discount the invoice was settled with; 0 when none was taken. */
     @Column(name = "early_discount")
     private BigDecimal earlyDiscount = BigDecimal.ZERO;
@@ -557,13 +561,13 @@ public class Invoice {
      * Works out the late fee and late interest charged by the given day, at the late fee (in US
      * dollars) and annual rate (a percentage), from the payments (those not reversed count), and keeps
      * them as part of what is payable. The fee is charged once, on the day the invoice becomes overdue
-     * ({@link #GRACE_DAYS} days after its due date), when something is still owed then; it earns no
+     * ({@link #graceDays()} days after its due date), when something is still owed then; it earns no
      * interest, and a payment from then on pays it first. A sent invoice not
-     * spread over instalments, with something still owed more than {@link #GRACE_DAYS} days after its
-     * due date, earns interest from the end of its grace week ({@link #GRACE_DAYS} days after its due
+     * spread over instalments, with something still owed more than {@link #graceDays()} days after its
+     * due date, earns interest from the end of its grace period ({@link #graceDays()} days after its due
      * date), compounded daily at rate / 365: a balance B owing for
      * d days earns B x ((1 + rate / 100 / 365)^d - 1), rounded half up to the cent. Each payment after
-     * the grace week ends a period; every period earns interest on what the invoice still owed during it
+     * the grace period ends a period; every period earns interest on what the invoice still owed during it
      * (earlier interest, the fee and retention left out), and a payment pays the fee, then the interest
      * earned so far, then the invoice. An invoice spread over instalments instead earns interest
      * instalment by instalment (see {@link #accrueInstalmentInterest}), and no late fee. On the day the
@@ -582,11 +586,11 @@ public class Invoice {
             return;
         }
         if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || dueDate == null
-                || !today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
+                || !today.isAfter(dueDate.plusDays(graceDays()))) {
             return;
         }
         boolean earnsInterest = annualRate != null && annualRate.signum() > 0;
-        BigDecimal fee = lateFeeUsd == null || lateFeeUsd.signum() <= 0 ? zero() : lateFeeIn(lateFeeUsd, dueDate.plusDays(GRACE_DAYS + 1));
+        BigDecimal fee = lateFeeUsd == null || lateFeeUsd.signum() <= 0 ? zero() : lateFeeIn(lateFeeUsd, dueDate.plusDays(graceDays() + 1));
         if (!earnsInterest && fee.signum() <= 0) {
             return;
         }
@@ -598,7 +602,7 @@ public class Invoice {
                 .filter(p -> !p.on().isAfter(today))
                 .sorted(Comparator.comparing(Part::on).thenComparing(Part::paymentId)).toList();
         BigDecimal owed = payableBeforeInterest(taxRate).subtract(retentionReleased(taxRate));
-        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(dueDate.plusDays(GRACE_DAYS)))
+        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(dueDate.plusDays(graceDays())))
                 .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (owed.subtract(paidInGrace).signum() <= 0) {
             return;
@@ -606,12 +610,12 @@ public class Invoice {
         BigDecimal daily = earnsInterest
                 ? BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36500), MathContext.DECIMAL128))
                 : null;
-        LocalDate overdueOn = dueDate.plusDays(GRACE_DAYS + 1);
+        LocalDate overdueOn = dueDate.plusDays(graceDays() + 1);
         BigDecimal charged = BigDecimal.ZERO;
         BigDecimal unpaidInterest = BigDecimal.ZERO;
         BigDecimal unpaidFee = BigDecimal.ZERO;
         boolean feeCharged = false;
-        LocalDate from = dueDate.plusDays(GRACE_DAYS);
+        LocalDate from = dueDate.plusDays(graceDays());
         LocalDate waiveOn = interestWaivedOn != null && !interestWaivedOn.isBefore(overdueOn)
                 && !interestWaivedOn.isAfter(today) ? interestWaivedOn : null;
         BigDecimal feeWaived = BigDecimal.ZERO;
@@ -674,9 +678,9 @@ public class Invoice {
      * annual rate (a percentage), from the payments (those not reversed count; what credit notes took
      * off has already come off the schedule). Payments, in the order they were made, pay each instalment's
      * interest earned so far and then the instalment itself, earliest instalment first. An instalment
-     * still not paid off more than {@link #GRACE_DAYS} days after its due date earns interest by the
-     * same rule as an invoice: from the end of its own grace week, compounded daily at rate / 365, on
-     * what is still unpaid of it, with each payment after its grace week ending a period.
+     * still not paid off more than {@link #graceDays()} days after its due date earns interest by the
+     * same rule as an invoice: from the end of its own grace period, compounded daily at rate / 365, on
+     * what is still unpaid of it, with each payment after its grace period ending a period.
      */
     private void accrueInstalmentInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
             LocalDate today) {
@@ -704,10 +708,10 @@ public class Invoice {
             LocalDate due = instalment.dueDate();
             BigDecimal owed = instalment.payment();
             boolean late = false;
-            if (due != null && today.isAfter(due.plusDays(GRACE_DAYS))) {
+            if (due != null && today.isAfter(due.plusDays(graceDays()))) {
                 BigDecimal paidInGrace = BigDecimal.ZERO;
                 for (int j = 0; j < left.length; j++) {
-                    if (!inOrder.get(j).on().isAfter(due.plusDays(GRACE_DAYS))) {
+                    if (!inOrder.get(j).on().isAfter(due.plusDays(graceDays()))) {
                         paidInGrace = paidInGrace.add(left[j]);
                     }
                 }
@@ -715,7 +719,7 @@ public class Invoice {
             }
             BigDecimal charged = BigDecimal.ZERO;
             BigDecimal unpaidInterest = BigDecimal.ZERO;
-            LocalDate from = due == null ? null : due.plusDays(GRACE_DAYS);
+            LocalDate from = due == null ? null : due.plusDays(graceDays());
             for (int j = 0; j < left.length; j++) {
                 Part part = inOrder.get(j);
                 if (late && part.on().isAfter(from) && owed.signum() > 0) {
@@ -949,7 +953,7 @@ public class Invoice {
      * Each instalment of the plan at the tax rate once the given amount has been paid, on the given
      * day: payments (with anything written off) pay the instalments in
      * order, each its late interest and then itself, each paid off before the next. An instalment not
-     * paid off more than {@link #GRACE_DAYS} days after its due date is overdue; empty when there is no
+     * paid off more than {@link #graceDays()} days after its due date is overdue; empty when there is no
      * plan.
      */
     public List<Instalment.Progress> instalmentProgress(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
@@ -968,7 +972,7 @@ public class Invoice {
             Instalment.Status status;
             if (unpaid.signum() <= 0 && interestUnpaid.signum() <= 0) {
                 status = Instalment.Status.PAID;
-            } else if (instalment.dueDate() != null && today.isAfter(instalment.dueDate().plusDays(GRACE_DAYS))) {
+            } else if (instalment.dueDate() != null && today.isAfter(instalment.dueDate().plusDays(graceDays()))) {
                 status = Instalment.Status.OVERDUE;
             } else if (part.signum() > 0) {
                 status = Instalment.Status.PART_PAID;
@@ -1082,12 +1086,17 @@ public class Invoice {
         this.status = InvoiceStatus.DRAFT;
     }
 
-    /** Days past its due date an invoice is given before it becomes overdue: a week's grace. */
+    /** The standard days past its due date an invoice is given before it becomes overdue: a week's grace. */
     public static final int GRACE_DAYS = 7;
+
+    /** Days past its due date this invoice is given before it becomes overdue: its client's grace period. */
+    public int graceDays() {
+        return clientGraceDays == null ? GRACE_DAYS : clientGraceDays;
+    }
 
     /**
      * The status on the given day once the given amount has been paid against the grand total at the
-     * tax rate: a sent invoice with something still due more than {@link #GRACE_DAYS} days after its
+     * tax rate: a sent invoice with something still due more than {@link #graceDays()} days after its
      * due date is overdue, part paid or not. Held retention is never due, so never makes it overdue;
      * released retention is due {@link #RETENTION_DUE_DAYS} days after its release, and payments go to
      * the rest of the invoice before it. An invoice spread over instalments is instead overdue when any
@@ -1114,10 +1123,10 @@ public class Invoice {
                     .anyMatch(p -> p.status() == Instalment.Status.OVERDUE)) {
                 return InvoiceStatus.OVERDUE;
             }
-        } else if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
+        } else if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(graceDays()))) {
             return InvoiceStatus.OVERDUE;
         }
-        if (retentionDue.signum() > 0 && today.isAfter(retentionDueDate().plusDays(GRACE_DAYS))) {
+        if (retentionDue.signum() > 0 && today.isAfter(retentionDueDate().plusDays(graceDays()))) {
             return InvoiceStatus.OVERDUE;
         }
         if (!due && retentionHeld(taxRate).signum() > 0) {

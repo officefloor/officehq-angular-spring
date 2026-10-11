@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import net.officefloor.hq.app.invoices.Invoice;
 
 /** A client invoices are raised for. */
 @Entity
@@ -50,11 +51,22 @@ public class Client {
     @Column(name = "retention_pct")
     private BigDecimal retentionPct = BigDecimal.ZERO;
 
+    /**
+     * Days past its due date an invoice or instalment for this client is given before it is overdue,
+     * earns late interest and is charged the late fee: 0 to {@link #MAX_GRACE_DAYS}, a week as standard.
+     */
+    @Column(name = "grace_days")
+    private int graceDays = Invoice.GRACE_DAYS;
+
+    /** The longest grace period a client can be given, in days. */
+    public static final int MAX_GRACE_DAYS = 30;
+
     protected Client() {
     }
 
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
-            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct) {
+            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
+            Integer graceDays) {
         this.name = name;
         this.email = email;
         this.termsDays = termsDays;
@@ -64,6 +76,7 @@ public class Client {
         this.earlyPayPct = earlyPayPct == null ? BigDecimal.ZERO : earlyPayPct;
         this.earlyPayDays = earlyPayDays;
         this.retentionPct = retentionPct == null ? BigDecimal.ZERO : retentionPct;
+        this.graceDays = graceDays == null ? Invoice.GRACE_DAYS : graceDays;
     }
 
     public Long getId() {
@@ -104,5 +117,9 @@ public class Client {
 
     public BigDecimal getRetentionPct() {
         return retentionPct;
+    }
+
+    public int getGraceDays() {
+        return graceDays;
     }
 }

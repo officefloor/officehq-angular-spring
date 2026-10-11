@@ -5,8 +5,8 @@ import { Currency } from './invoice-format';
 
 // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
 // nothing is due, or PAID_LATE when the payment that cleared it (payments in date order) came after
-// its due date; it is OVERDUE while something is still due more than 7 days (a week's grace) after
-// its due date, part paid or not.
+// its due date; it is OVERDUE while something is still due more than its client's grace period
+// (graceDays, a week unless set otherwise) after its due date, part paid or not.
 // The server works this out from its payments and today's date. A VOID invoice was voided while sent
 // and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
 // A credit note is a DRAFT until it is issued, then CREDIT_NOTE for good; a sent invoice whose issued
