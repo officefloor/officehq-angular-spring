@@ -1,0 +1,223 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 6db38ad..302f484 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -401,6 +401,18 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="invoice-settle-amount">{{ amount(inv.settleAmount) }}</td>
+               </tr>
+             }
++            @if (inv.payoff !== null) {
++              <tr>
++                <th scope="row" colspan="4">Pays off the plan if paid now</th>
++                <td data-testid="invoice-payoff">{{ amount(inv.payoff) }}</td>
++              </tr>
++            }
++            @if (inv.instalments !== null) {
++              <tr>
++                <th scope="row" colspan="4">Interest saved by paying off early</th>
++                <td data-testid="invoice-interest-saved">{{ amount(inv.interestSaved) }}</td>
++              </tr>
++            }
+             <tr>
+               <th scope="row" colspan="4">Written off (worth under $1.00 left)</th>
+               <td data-testid="invoice-written-off">{{ amount(inv.writtenOff) }}</td>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index d9b8d01..d2460b8 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -146,6 +146,10 @@ export interface InvoiceDetail {
+   lateFee: string;
+   // The late fee and interest written off by waiving them ("0.00" when none were).
+   lateWaived: string;
++  // What would pay off its plan today (null without a plan or once it is paid off), and the interest
++  // of instalments not yet due that paying it off early dropped ("0.00" when none was).
++  payoff: string | null;
++  interestSaved: string;
+ }
+ 
+ // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index c3a8733..d761fdb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -132,6 +132,13 @@ public class Invoice {
+     @Column(name = "early_discount")
+     private BigDecimal earlyDiscount = BigDecimal.ZERO;
+ 
++    /**
++     * The interest of the instalments not yet due that was dropped when the plan was paid off early;
++     * 0 when it was not.
++     */
++    @Column(name = "interest_saved")
++    private BigDecimal interestSaved = BigDecimal.ZERO;
++
+     /** An issued credit note's grand total, kept when it is issued; null until then. */
+     @Column(name = "credit_total")
+     private BigDecimal creditTotal;
+@@ -461,7 +468,8 @@ public class Invoice {
+     /** As {@link #payable}, but without the late fee and interest charged. */
+     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
+         BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate);
+-        return owed.subtract(getCredited()).subtract(retentionHeld(taxRate)).subtract(getEarlyDiscountTaken());
++        return owed.subtract(getCredited()).subtract(retentionHeld(taxRate)).subtract(getEarlyDiscountTaken())
++                .subtract(getInterestSaved());
+     }
+ 
+     /** The late interest charged, to the cent; 0 when none is. */
+@@ -633,6 +641,10 @@ public class Invoice {
+                 .filter(p -> !p.on().isAfter(today))
+                 .forEach(inOrder::add);
+         inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
++        if (getInterestSaved().signum() > 0 && !inOrder.isEmpty()) {
++            // The interest dropped by paying the plan off counts as paid with the payment that settled it.
++            inOrder.add(new Part(inOrder.get(inOrder.size() - 1).on(), Long.MAX_VALUE, getInterestSaved()));
++        }
+         BigDecimal[] left = inOrder.stream().map(Part::amount).toArray(BigDecimal[]::new);
+         BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36500), MathContext.DECIMAL128));
+         List<BigDecimal> charges = new ArrayList<>();
+@@ -730,6 +742,37 @@ public class Invoice {
+         this.earlyDiscount = amount;
+     }
+ 
++    /** The interest dropped when the plan was paid off early, to the cent; 0 when it was not. */
++    public BigDecimal getInterestSaved() {
++        return (interestSaved == null ? BigDecimal.ZERO : interestSaved).setScale(scale(), RoundingMode.HALF_UP);
++    }
++
++    /** Settles the plan early, dropping the given interest (0 to clear it again). */
++    public void saveInterest(BigDecimal amount) {
++        this.interestSaved = amount;
++    }
++
++    /**
++     * What would pay off a sent plan not yet paid off on the given day, once the given amount has been
++     * paid, at the tax rate: the principal still owed on all its instalments, plus what is unpaid of
++     * the interest of the instalments already due (due on or before the day) and any late interest.
++     * Within an instalment what is paid goes to its interest first. Null without a plan, or when
++     * nothing is due.
++     */
++    public BigDecimal payoff(BigDecimal paid, BigDecimal taxRate, LocalDate on) {
++        if (!hasPlan() || status != InvoiceStatus.SENT || isCreditNote() || getInterestSaved().signum() > 0
++                || amountDue(paid, taxRate).signum() <= 0) {
++            return null;
++        }
++        BigDecimal payoff = zero();
++        for (Instalment.Progress p : instalmentProgress(paid, taxRate, on)) {
++            LocalDate due = p.instalment().dueDate();
++            BigDecimal unpaid = due == null || !due.isAfter(on) ? p.unpaid() : p.unpaid().min(p.instalment().principal());
++            payoff = payoff.add(unpaid).add(p.interestUnpaid());
++        }
++        return payoff;
++    }
++
+     /** Whether the invoice is spread over monthly instalments. */
+     public boolean hasPlan() {
+         return instalments != null;
+@@ -806,7 +849,7 @@ public class Invoice {
+      */
+     public List<Instalment.Progress> instalmentProgress(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
+         List<Instalment.Progress> progress = new ArrayList<>();
+-        BigDecimal left = paid.add(getCredited()).add(writtenOff(paid, taxRate));
++        BigDecimal left = paid.add(getCredited()).add(writtenOff(paid, taxRate)).add(getInterestSaved());
+         List<Instalment> schedule = schedule(taxRate);
+         for (int k = 0; k < schedule.size(); k++) {
+             Instalment instalment = schedule.get(k);
+@@ -981,7 +1024,8 @@ public class Invoice {
+         if (due) {
+             return InvoiceStatus.PART_PAID;
+         }
+-        return paidOn != null && dueDate != null && paidOn.isAfter(dueDate) ? InvoiceStatus.PAID_LATE
++        LocalDate finalDue = hasPlan() ? schedule(taxRate).get(instalments - 1).dueDate() : dueDate;
++        return paidOn != null && finalDue != null && paidOn.isAfter(finalDue) ? InvoiceStatus.PAID_LATE
+                 : InvoiceStatus.PAID;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 33edd9e..bf97773 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -117,7 +117,9 @@ public class InvoiceController {
+      * {@code settleAmount} what would settle it today while its early-payment window is open (null otherwise).
+      * {@code lateInterest} is the late interest charged on it so far, and {@code lateFee} the late fee
+      * charged on it (0 when none), both part of the amount due; {@code lateWaived} is the late fee and
+-     * interest written off by waiving them (0 when none was).
++     * interest written off by waiving them (0 when none was). {@code payoff} is what would pay off its
++     * plan today (null without a plan or once it is paid off), and {@code interestSaved} the interest
++     * of instalments not yet due that paying it off early dropped (0 when none was).
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -125,7 +127,8 @@ public class InvoiceController {
+             String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
+             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+             String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+-            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived) {
++            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
++            String payoff, String interestSaved) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -155,7 +158,9 @@ public class InvoiceController {
+                     i.currency(), i.getEarlyDiscountTaken().toPlainString(),
+                     Optional.ofNullable(i.settleAmount(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
+                     i.getLateInterest().toPlainString(), i.getLateFee().toPlainString(),
+-                    i.getLateWaived().toPlainString());
++                    i.getLateWaived().toPlainString(),
++                    Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
++                    i.getInterestSaved().toPlainString());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index d423652..a3a7dc2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -791,6 +791,13 @@ public class InvoiceService {
+                 invoice.takeEarlyDiscount(early);
+                 due = settle;
+             }
++            BigDecimal saved = BigDecimal.ZERO;
++            BigDecimal payoff = date.isAfter(now) ? null : invoice.payoff(paidSoFar, taxRate.percent(), now);
++            if (payoff != null && amount.compareTo(payoff) >= 0) {
++                saved = due.subtract(payoff).max(BigDecimal.ZERO);
++                invoice.saveInterest(saved);
++                due = payoff;
++            }
+             BigDecimal applied = amount.min(due);
+             if (invoice.hasPlan() && invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
+                 throw new InvoiceRejectedException("A payment must be at least the "
+@@ -822,6 +829,10 @@ public class InvoiceService {
+                 invoices.saveAndFlush(invoice);
+                 audit.record("EARLY_DISCOUNT id=" + invoice.getId() + " amount=" + early.toPlainString());
+             }
++            if (payoff != null && amount.compareTo(payoff) >= 0) {
++                invoices.saveAndFlush(invoice);
++                audit.record("PLAN_SETTLED id=" + invoice.getId() + " saved=" + saved.toPlainString());
++            }
+             recordWriteOff(invoice);
+             recordCreditHeld(payment);
+         });
+@@ -1106,10 +1117,12 @@ public class InvoiceService {
+             }
+             payment.reverse();
+             payments.saveAndFlush(payment);
+-            // An invoice the payment settled early is no longer paid off, so its early discount lapses.
++            // An invoice the payment settled early is no longer paid off, so its early discount or the
++            // interest its plan's payoff dropped lapses.
+             payment.getAllocations().forEach(a -> load(a.getInvoiceId()).ifPresent(invoice -> {
+-                if (invoice.getEarlyDiscountTaken().signum() > 0) {
++                if (invoice.getEarlyDiscountTaken().signum() > 0 || invoice.getInterestSaved().signum() > 0) {
+                     invoice.takeEarlyDiscount(BigDecimal.ZERO);
++                    invoice.saveInterest(BigDecimal.ZERO);
+                     invoices.saveAndFlush(invoice);
+                 }
+             }));
+diff --git a/src/main/resources/db/migration/V27__invoice_interest_saved.sql b/src/main/resources/db/migration/V27__invoice_interest_saved.sql
+new file mode 100644
+index 0000000..e1318b3
+--- /dev/null
++++ b/src/main/resources/db/migration/V27__invoice_interest_saved.sql
+@@ -0,0 +1,3 @@
++-- The interest of the instalments not yet due that was dropped when a plan was paid off early; 0 when
++-- it was not.
++ALTER TABLE invoice ADD COLUMN interest_saved DECIMAL(19, 2) DEFAULT 0 NOT NULL;
