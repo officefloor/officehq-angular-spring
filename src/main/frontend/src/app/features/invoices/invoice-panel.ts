@@ -31,8 +31,8 @@ function problemWithPayment(payment: NewPayment): string {
     problems.push('Enter an amount.');
   } else if (!TWO_DECIMALS.test(payment.amount)) {
     problems.push('The amount must be a number with at most two decimals.');
-  } else if (Number(payment.amount) < 0.01) {
-    problems.push('The amount must be at least $0.01.');
+  } else if (Number(payment.amount) <= 0) {
+    problems.push('The amount must be more than zero.');
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(payment.date)) {
     problems.push('Enter the date it was paid.');
@@ -66,7 +66,8 @@ function problemWith(line: NewLine): string {
 // One opened invoice: its status, its lines and its totals. A draft takes new lines and a
 // percentage discount, and can be sent; a change to a sent invoice with no payments puts it back to
 // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
-// until nothing is due; the panel lists them with what has been paid and what is still due.
+// until nothing is due; the panel lists them with what has been paid and what is still due. The
+// server refuses a payment on a draft, over what is due, or dated after today or before the issue date.
 @Component({
   selector: 'app-invoice-panel',
   imports: [ReactiveFormsModule],
@@ -157,7 +158,7 @@ function problemWith(line: NewLine): string {
           </table>
         }
 
-        @if (inv.status === 'SENT' || inv.status === 'PART_PAID') {
+        @if (inv.status !== 'PAID') {
           <form
             [formGroup]="paymentForm"
             (ngSubmit)="recordPayment(inv.id)"

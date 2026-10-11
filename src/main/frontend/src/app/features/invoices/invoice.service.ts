@@ -121,8 +121,8 @@ export class InvoiceService {
   }
 
   // Records a payment against a sent invoice that still has something due; refused (409) when it
-  // is a draft, already paid, or the amount is more than is due. Answers the invoice with its
-  // payments and new status.
+  // is a draft, already paid, the amount is more than is due, or the date is after today or before
+  // the issue date. Answers the invoice with its payments and new status.
   recordPayment(invoiceId: number, payment: NewPayment): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments`, payment);
   }

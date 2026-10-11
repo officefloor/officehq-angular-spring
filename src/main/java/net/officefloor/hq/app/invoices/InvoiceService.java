@@ -161,7 +161,8 @@ public class InvoiceService {
     /**
      * Records a payment of the amount on the date against a sent invoice that still has something
      * due, and records it in the audit; empty if no such invoice. The amount has already been
-     * checked; a draft, an invoice already paid, or an amount over what is due is refused.
+     * checked; a draft, an invoice already paid, an amount over what is due, or a date after today
+     * or before the invoice's issue date is refused.
      */
     @Transactional
     public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal amount, LocalDate date) {
@@ -176,6 +177,14 @@ public class InvoiceService {
             }
             if (amount.compareTo(due) > 0) {
                 throw new InvoiceRejectedException("The payment is more than the $" + due.toPlainString() + " due.");
+            }
+            LocalDate now = today.date();
+            if (date.isAfter(now)) {
+                throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+            }
+            if (invoice.getIssueDate() != null && date.isBefore(invoice.getIssueDate())) {
+                throw new InvoiceRejectedException(
+                        "The payment date cannot be before the invoice's issue date (" + invoice.getIssueDate() + ").");
             }
             Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, date));
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="

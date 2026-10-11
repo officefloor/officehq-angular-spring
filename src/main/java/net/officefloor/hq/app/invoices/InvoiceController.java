@@ -115,10 +115,10 @@ public class InvoiceController {
             Boolean taxExempt) {
     }
 
-    /** A payment to record: an amount of at least $0.01 and the date it was paid. */
+    /** A payment to record: an amount more than zero with at most two decimals, and the date it was paid. */
     public record NewPayment(
             @NotNull(message = "Enter an amount.")
-            @DecimalMin(value = "0.01", message = "The amount must be at least $0.01.")
+            @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
             @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
             BigDecimal amount,
             @NotNull(message = "Enter the date it was paid.")
