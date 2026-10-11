@@ -1,0 +1,493 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 68f5595..bb2b815 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -21,6 +21,9 @@ export interface Client {
+   earlyPayDays: number | null;
+   // The standard retention percentage (0 to 20) new invoices for the client start with; 0 is none.
+   retentionPct: number;
++  // Days (0 to 30, a week as standard) past its due date an invoice or instalment is given before it
++  // is overdue, earns late interest and is charged the late fee.
++  graceDays: number;
+ }
+ 
+ export type NewClient = Omit<Client, 'id'>;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index ede6117..2577d5c 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -9,6 +9,8 @@ import { Client, ClientService, byName } from './client.service';
+ // A proper email address: a mailbox, an @, and a domain with at least one dot — name@company.com,
+ // not name@company (a typo). The same rule the server applies.
+ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
++// The grace period, in days past the due date, a client is given when none is set: a week.
++const STANDARD_GRACE_DAYS = 7;
+ 
+ // The workspace's clients: listed A to Z by name (ignoring capitals), with a form to add one.
+ // Clicking a client lists that client's invoices beside the clients. Typing an invoice number into
+@@ -128,6 +130,17 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+           step="0.01"
+           formControlName="retentionPct"
+         />
++        <label for="client-grace">Grace period in days, 0 to 30 (optional, a week if left out)</label>
++        <input
++          id="client-grace"
++          data-testid="client-form-grace-days"
++          type="number"
++          inputmode="numeric"
++          min="0"
++          max="30"
++          step="1"
++          formControlName="graceDays"
++        />
+         <label for="client-early-pct">Early-payment discount % (optional)</label>
+         <input
+           id="client-early-pct"
+@@ -218,6 +231,7 @@ export class Clients {
+     terms: new FormControl<number | null>(null),
+     discountPct: new FormControl<number | null>(null),
+     retentionPct: new FormControl<number | null>(null),
++    graceDays: new FormControl<number | null>(null),
+     earlyPct: new FormControl<number | null>(null),
+     earlyDays: new FormControl<number | null>(null),
+     taxExempt: new FormControl(false, { nonNullable: true }),
+@@ -249,6 +263,8 @@ export class Clients {
+     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
+     const retention = this.form.controls.retentionPct.value;
+     const retentionPct = retention === null || (retention as unknown) === '' ? null : Number(retention);
++    const grace = this.form.controls.graceDays.value;
++    const graceDays = grace === null || (grace as unknown) === '' ? null : Number(grace);
+     const taxExempt = this.form.controls.taxExempt.value;
+     const currency = this.form.controls.currency.value;
+     const early = this.form.controls.earlyPct.value;
+@@ -261,12 +277,22 @@ export class Clients {
+       terms: termsDays,
+       discountPct,
+       retentionPct,
++      graceDays,
+       earlyPct: earlyPayPct,
+       earlyDays: earlyPayDays,
+       taxExempt,
+       currency,
+     });
+-    const problem = this.problemWith(name, email, termsDays, discountPct, retentionPct, earlyPayPct, earlyPayDays);
++    const problem = this.problemWith(
++      name,
++      email,
++      termsDays,
++      discountPct,
++      retentionPct,
++      graceDays,
++      earlyPayPct,
++      earlyPayDays,
++    );
+     if (problem) {
+       this.form.markAllAsTouched();
+       this.error.set(problem);
+@@ -284,6 +310,7 @@ export class Clients {
+       earlyPayPct: earlyPayPct ?? 0,
+       earlyPayDays,
+       retentionPct: retentionPct ?? 0,
++      graceDays: graceDays ?? STANDARD_GRACE_DAYS,
+     };
+     this.service.add(client).subscribe({
+       next: (created) => {
+@@ -341,6 +368,7 @@ export class Clients {
+     termsDays: number | null,
+     discountPct: number | null,
+     retentionPct: number | null,
++    graceDays: number | null,
+     earlyPayPct: number | null,
+     earlyPayDays: number | null,
+   ): string {
+@@ -372,6 +400,9 @@ export class Clients {
+         problems.push('The standard retention can have at most two decimals.');
+       }
+     }
++    if (graceDays !== null && !(Number.isInteger(graceDays) && graceDays >= 0 && graceDays <= 30)) {
++      problems.push('The grace period must be from 0 to 30 days.');
++    }
+     if (earlyPayPct !== null) {
+       if (!(Number.isFinite(earlyPayPct) && earlyPayPct >= 0 && earlyPayPct <= 100)) {
+         problems.push('The early-payment discount must be from 0 to 100 percent.');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index ba25514..79bd4e0 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -5,8 +5,8 @@ import { Currency } from './invoice-format';
+ 
+ // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
+ // nothing is due, or PAID_LATE when the payment that cleared it (payments in date order) came after
+-// its due date; it is OVERDUE while something is still due more than 7 days (a week's grace) after
+-// its due date, part paid or not.
++// its due date; it is OVERDUE while something is still due more than its client's grace period
++// (graceDays, a week unless set otherwise) after its due date, part paid or not.
+ // The server works this out from its payments and today's date. A VOID invoice was voided while sent
+ // and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
+ // A credit note is a DRAFT until it is issued, then CREDIT_NOTE for good; a sent invoice whose issued
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 0203d25..3b66038 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -10,6 +10,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ import jakarta.persistence.EntityManager;
++import net.officefloor.hq.app.clients.Client;
+ import net.officefloor.hq.app.clients.Currency;
+ import net.officefloor.hq.app.invoices.Invoice;
+ import net.officefloor.hq.app.invoices.InvoiceRepository;
+@@ -38,7 +39,7 @@ public class TestSupportController {
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee");
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "interestWaivedOn", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+@@ -166,13 +167,14 @@ public class TestSupportController {
+             if (Currency.of(currency) == null) {
+                 throw refuse("unsupported value of clients[].currency: " + currency);
+             }
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct"},
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+                     percent(row.get("discountPct"), "clients[].discountPct"),
+                     flag(row.get("taxExempt"), "clients[].taxExempt"), currency,
+                     percent(row.get("earlyPayPct"), "clients[].earlyPayPct"),
+                     days(row.get("earlyPayDays"), "clients[].earlyPayDays"),
+-                    percent(row.get("retentionPct"), "clients[].retentionPct"));
++                    percent(row.get("retentionPct"), "clients[].retentionPct"),
++                    graceDays(row.get("graceDays"), "clients[].graceDays"));
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+             only(row, INVOICE_FIELDS, "invoices[]");
+@@ -331,7 +333,7 @@ public class TestSupportController {
+         if (!settings.isEmpty()) {
+             out.put("settings", settings);
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -348,6 +350,7 @@ public class TestSupportController {
+                         row.put("earlyPayDays", r.get("EARLY_PAY_DAYS"));
+                     }
+                     row.put("retentionPct", r.get("RETENTION_PCT"));
++                    row.put("graceDays", r.get("GRACE_DAYS"));
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+@@ -462,6 +465,18 @@ public class TestSupportController {
+         }
+     }
+ 
++    /** A grace period of 0 to 30 whole days; the standard week when left out. */
++    private static int graceDays(Object value, String field) {
++        Integer days = days(value, field);
++        if (days == null) {
++            return Invoice.GRACE_DAYS;
++        }
++        if (days > Client.MAX_GRACE_DAYS) {
++            throw refuse(field + " must be from 0 to " + Client.MAX_GRACE_DAYS + " days, not " + value);
++        }
++        return days;
++    }
++
+     /** A whole number of instalments from 2 to 24; null (no plan) when left out. */
+     private static Integer instalments(Object value, String field) {
+         if (value == null) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index f28f77d..56794ef 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
++import net.officefloor.hq.app.invoices.Invoice;
+ 
+ /** A client invoices are raised for. */
+ @Entity
+@@ -50,11 +51,22 @@ public class Client {
+     @Column(name = "retention_pct")
+     private BigDecimal retentionPct = BigDecimal.ZERO;
+ 
++    /**
++     * Days past its due date an invoice or instalment for this client is given before it is overdue,
++     * earns late interest and is charged the late fee: 0 to {@link #MAX_GRACE_DAYS}, a week as standard.
++     */
++    @Column(name = "grace_days")
++    private int graceDays = Invoice.GRACE_DAYS;
++
++    /** The longest grace period a client can be given, in days. */
++    public static final int MAX_GRACE_DAYS = 30;
++
+     protected Client() {
+     }
+ 
+     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+-            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct) {
++            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
++            Integer graceDays) {
+         this.name = name;
+         this.email = email;
+         this.termsDays = termsDays;
+@@ -64,6 +76,7 @@ public class Client {
+         this.earlyPayPct = earlyPayPct == null ? BigDecimal.ZERO : earlyPayPct;
+         this.earlyPayDays = earlyPayDays;
+         this.retentionPct = retentionPct == null ? BigDecimal.ZERO : retentionPct;
++        this.graceDays = graceDays == null ? Invoice.GRACE_DAYS : graceDays;
+     }
+ 
+     public Long getId() {
+@@ -105,4 +118,8 @@ public class Client {
+     public BigDecimal getRetentionPct() {
+         return retentionPct;
+     }
++
++    public int getGraceDays() {
++        return graceDays;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 40e16b6..afe2d9e 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -27,11 +27,11 @@ public class ClientController {
+ 
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+             boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+-            BigDecimal retentionPct) {
++            BigDecimal retentionPct, int graceDays) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+                     c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+-                    c.getRetentionPct());
++                    c.getRetentionPct(), c.getGraceDays());
+         }
+     }
+ 
+@@ -66,7 +66,11 @@ public class ClientController {
+             @DecimalMin(value = "0", message = "The standard retention must be from 0 to 20 percent.")
+             @DecimalMax(value = "20", message = "The standard retention must be from 0 to 20 percent.")
+             @Digits(integer = 2, fraction = 2, message = "The standard retention can have at most two decimals.")
+-            BigDecimal retentionPct) {
++            BigDecimal retentionPct,
++            /** The client's grace period in days; the standard week when left out. */
++            @Min(value = 0, message = "The grace period must be from 0 to 30 days.")
++            @Max(value = Client.MAX_GRACE_DAYS, message = "The grace period must be from 0 to 30 days.")
++            Integer graceDays) {
+ 
+         @AssertTrue(message = "Enter both the early-payment discount and its number of days, or neither.")
+         public boolean isEarlyPayComplete() {
+@@ -96,6 +100,6 @@ public class ClientController {
+     public ClientView add(@Valid @RequestBody NewClient body) {
+         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+                 Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
+-                body.retentionPct()));
++                body.retentionPct(), body.graceDays()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 7c8fb05..a984125 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -31,11 +31,11 @@ public class ClientService {
+ 
+     @Transactional
+     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+-            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct) {
++            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+-        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays, retentionPct));
++        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 5ced31c..5cbceec 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -139,6 +139,10 @@ public class Invoice {
+     @Formula("(SELECT c.early_pay_days FROM client c WHERE c.id = client_id)")
+     private Integer earlyPayDays;
+ 
++    /** The client's grace period in days; read from the client. */
++    @Formula("(SELECT c.grace_days FROM client c WHERE c.id = client_id)")
++    private Integer clientGraceDays;
++
+     /** The early discount the invoice was settled with; 0 when none was taken. */
+     @Column(name = "early_discount")
+     private BigDecimal earlyDiscount = BigDecimal.ZERO;
+@@ -557,13 +561,13 @@ public class Invoice {
+      * Works out the late fee and late interest charged by the given day, at the late fee (in US
+      * dollars) and annual rate (a percentage), from the payments (those not reversed count), and keeps
+      * them as part of what is payable. The fee is charged once, on the day the invoice becomes overdue
+-     * ({@link #GRACE_DAYS} days after its due date), when something is still owed then; it earns no
++     * ({@link #graceDays()} days after its due date), when something is still owed then; it earns no
+      * interest, and a payment from then on pays it first. A sent invoice not
+-     * spread over instalments, with something still owed more than {@link #GRACE_DAYS} days after its
+-     * due date, earns interest from the end of its grace week ({@link #GRACE_DAYS} days after its due
++     * spread over instalments, with something still owed more than {@link #graceDays()} days after its
++     * due date, earns interest from the end of its grace period ({@link #graceDays()} days after its due
+      * date), compounded daily at rate / 365: a balance B owing for
+      * d days earns B x ((1 + rate / 100 / 365)^d - 1), rounded half up to the cent. Each payment after
+-     * the grace week ends a period; every period earns interest on what the invoice still owed during it
++     * the grace period ends a period; every period earns interest on what the invoice still owed during it
+      * (earlier interest, the fee and retention left out), and a payment pays the fee, then the interest
+      * earned so far, then the invoice. An invoice spread over instalments instead earns interest
+      * instalment by instalment (see {@link #accrueInstalmentInterest}), and no late fee. On the day the
+@@ -582,11 +586,11 @@ public class Invoice {
+             return;
+         }
+         if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || dueDate == null
+-                || !today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
++                || !today.isAfter(dueDate.plusDays(graceDays()))) {
+             return;
+         }
+         boolean earnsInterest = annualRate != null && annualRate.signum() > 0;
+-        BigDecimal fee = lateFeeUsd == null || lateFeeUsd.signum() <= 0 ? zero() : lateFeeIn(lateFeeUsd, dueDate.plusDays(GRACE_DAYS + 1));
++        BigDecimal fee = lateFeeUsd == null || lateFeeUsd.signum() <= 0 ? zero() : lateFeeIn(lateFeeUsd, dueDate.plusDays(graceDays() + 1));
+         if (!earnsInterest && fee.signum() <= 0) {
+             return;
+         }
+@@ -598,7 +602,7 @@ public class Invoice {
+                 .filter(p -> !p.on().isAfter(today))
+                 .sorted(Comparator.comparing(Part::on).thenComparing(Part::paymentId)).toList();
+         BigDecimal owed = payableBeforeInterest(taxRate).subtract(retentionReleased(taxRate));
+-        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(dueDate.plusDays(GRACE_DAYS)))
++        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(dueDate.plusDays(graceDays())))
+                 .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+         if (owed.subtract(paidInGrace).signum() <= 0) {
+             return;
+@@ -606,12 +610,12 @@ public class Invoice {
+         BigDecimal daily = earnsInterest
+                 ? BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36500), MathContext.DECIMAL128))
+                 : null;
+-        LocalDate overdueOn = dueDate.plusDays(GRACE_DAYS + 1);
++        LocalDate overdueOn = dueDate.plusDays(graceDays() + 1);
+         BigDecimal charged = BigDecimal.ZERO;
+         BigDecimal unpaidInterest = BigDecimal.ZERO;
+         BigDecimal unpaidFee = BigDecimal.ZERO;
+         boolean feeCharged = false;
+-        LocalDate from = dueDate.plusDays(GRACE_DAYS);
++        LocalDate from = dueDate.plusDays(graceDays());
+         LocalDate waiveOn = interestWaivedOn != null && !interestWaivedOn.isBefore(overdueOn)
+                 && !interestWaivedOn.isAfter(today) ? interestWaivedOn : null;
+         BigDecimal feeWaived = BigDecimal.ZERO;
+@@ -674,9 +678,9 @@ public class Invoice {
+      * annual rate (a percentage), from the payments (those not reversed count; what credit notes took
+      * off has already come off the schedule). Payments, in the order they were made, pay each instalment's
+      * interest earned so far and then the instalment itself, earliest instalment first. An instalment
+-     * still not paid off more than {@link #GRACE_DAYS} days after its due date earns interest by the
+-     * same rule as an invoice: from the end of its own grace week, compounded daily at rate / 365, on
+-     * what is still unpaid of it, with each payment after its grace week ending a period.
++     * still not paid off more than {@link #graceDays()} days after its due date earns interest by the
++     * same rule as an invoice: from the end of its own grace period, compounded daily at rate / 365, on
++     * what is still unpaid of it, with each payment after its grace period ending a period.
+      */
+     private void accrueInstalmentInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+             LocalDate today) {
+@@ -704,10 +708,10 @@ public class Invoice {
+             LocalDate due = instalment.dueDate();
+             BigDecimal owed = instalment.payment();
+             boolean late = false;
+-            if (due != null && today.isAfter(due.plusDays(GRACE_DAYS))) {
++            if (due != null && today.isAfter(due.plusDays(graceDays()))) {
+                 BigDecimal paidInGrace = BigDecimal.ZERO;
+                 for (int j = 0; j < left.length; j++) {
+-                    if (!inOrder.get(j).on().isAfter(due.plusDays(GRACE_DAYS))) {
++                    if (!inOrder.get(j).on().isAfter(due.plusDays(graceDays()))) {
+                         paidInGrace = paidInGrace.add(left[j]);
+                     }
+                 }
+@@ -715,7 +719,7 @@ public class Invoice {
+             }
+             BigDecimal charged = BigDecimal.ZERO;
+             BigDecimal unpaidInterest = BigDecimal.ZERO;
+-            LocalDate from = due == null ? null : due.plusDays(GRACE_DAYS);
++            LocalDate from = due == null ? null : due.plusDays(graceDays());
+             for (int j = 0; j < left.length; j++) {
+                 Part part = inOrder.get(j);
+                 if (late && part.on().isAfter(from) && owed.signum() > 0) {
+@@ -949,7 +953,7 @@ public class Invoice {
+      * Each instalment of the plan at the tax rate once the given amount has been paid, on the given
+      * day: payments (with anything written off) pay the instalments in
+      * order, each its late interest and then itself, each paid off before the next. An instalment not
+-     * paid off more than {@link #GRACE_DAYS} days after its due date is overdue; empty when there is no
++     * paid off more than {@link #graceDays()} days after its due date is overdue; empty when there is no
+      * plan.
+      */
+     public List<Instalment.Progress> instalmentProgress(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
+@@ -968,7 +972,7 @@ public class Invoice {
+             Instalment.Status status;
+             if (unpaid.signum() <= 0 && interestUnpaid.signum() <= 0) {
+                 status = Instalment.Status.PAID;
+-            } else if (instalment.dueDate() != null && today.isAfter(instalment.dueDate().plusDays(GRACE_DAYS))) {
++            } else if (instalment.dueDate() != null && today.isAfter(instalment.dueDate().plusDays(graceDays()))) {
+                 status = Instalment.Status.OVERDUE;
+             } else if (part.signum() > 0) {
+                 status = Instalment.Status.PART_PAID;
+@@ -1082,12 +1086,17 @@ public class Invoice {
+         this.status = InvoiceStatus.DRAFT;
+     }
+ 
+-    /** Days past its due date an invoice is given before it becomes overdue: a week's grace. */
++    /** The standard days past its due date an invoice is given before it becomes overdue: a week's grace. */
+     public static final int GRACE_DAYS = 7;
+ 
++    /** Days past its due date this invoice is given before it becomes overdue: its client's grace period. */
++    public int graceDays() {
++        return clientGraceDays == null ? GRACE_DAYS : clientGraceDays;
++    }
++
+     /**
+      * The status on the given day once the given amount has been paid against the grand total at the
+-     * tax rate: a sent invoice with something still due more than {@link #GRACE_DAYS} days after its
++     * tax rate: a sent invoice with something still due more than {@link #graceDays()} days after its
+      * due date is overdue, part paid or not. Held retention is never due, so never makes it overdue;
+      * released retention is due {@link #RETENTION_DUE_DAYS} days after its release, and payments go to
+      * the rest of the invoice before it. An invoice spread over instalments is instead overdue when any
+@@ -1114,10 +1123,10 @@ public class Invoice {
+                     .anyMatch(p -> p.status() == Instalment.Status.OVERDUE)) {
+                 return InvoiceStatus.OVERDUE;
+             }
+-        } else if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
++        } else if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(graceDays()))) {
+             return InvoiceStatus.OVERDUE;
+         }
+-        if (retentionDue.signum() > 0 && today.isAfter(retentionDueDate().plusDays(GRACE_DAYS))) {
++        if (retentionDue.signum() > 0 && today.isAfter(retentionDueDate().plusDays(graceDays()))) {
+             return InvoiceStatus.OVERDUE;
+         }
+         if (!due && retentionHeld(taxRate).signum() > 0) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index c26bae6..edb4aee 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -5,9 +5,9 @@ package net.officefloor.hq.app.invoices;
+  * part paid while some of it has been paid and some is still due, and paid once nothing is due, or
+  * paid late when the payment that cleared it (taking payments in date order) came after its due date;
+  * those follow from its payments and are never stored. A sent invoice with something still due
+- * more than a week (the grace period) after its due date is overdue, part paid or not; that follows from the date and is never stored.
++ * more than its client's grace period (a week unless set otherwise) after its due date is overdue, part paid or not; that follows from the date and is never stored.
+  * An invoice spread over instalments is instead overdue when any of its instalments is not paid off a
+- * week after that instalment's due date (payments pay the instalments in order).
++ * grace period after that instalment's due date (payments pay the instalments in order).
+  * A sent invoice with no payments can be voided: it is then void for good, owes nothing and takes no
+  * payments or changes.
+  * A credit note is a draft until it is issued, when it becomes CREDIT_NOTE for good. A sent invoice
+diff --git a/src/main/resources/db/migration/V30__client_grace_days.sql b/src/main/resources/db/migration/V30__client_grace_days.sql
+new file mode 100644
+index 0000000..bdc0ae4
+--- /dev/null
++++ b/src/main/resources/db/migration/V30__client_grace_days.sql
+@@ -0,0 +1,3 @@
++-- The client's grace period: days past its due date an invoice or instalment is given before it is
++-- overdue, earns late interest and is charged the late fee (0 to 30; the standard is a week).
++ALTER TABLE client ADD COLUMN grace_days INT DEFAULT 7 NOT NULL;
