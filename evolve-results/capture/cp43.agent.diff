@@ -1,0 +1,78 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 410734c..33d2bf2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -28,6 +28,9 @@ public class Invoice {
+     /** Payments that leave less than this still due have the rest written off. */
+     public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("1.00");
+ 
++    /** A part payment must be at least this share of the grand total, unless it settles the invoice. */
++    public static final BigDecimal MINIMUM_PART_SHARE = new BigDecimal("0.10");
++
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+     private Long id;
+@@ -268,6 +271,19 @@ public class Invoice {
+                 : BigDecimal.ZERO.setScale(2);
+     }
+ 
++    /** The least a part payment may be at the tax rate: {@link #MINIMUM_PART_SHARE} of the grand total. */
++    public BigDecimal minimumPart(BigDecimal taxRate) {
++        return total(taxRate).multiply(MINIMUM_PART_SHARE).setScale(2, RoundingMode.HALF_UP);
++    }
++
++    /**
++     * Whether paying the amount on top of what was already paid is too small a part payment: under
++     * {@link #minimumPart} while leaving something still due (what would be written off counts as settled).
++     */
++    public boolean isTooSmallPart(BigDecimal amount, BigDecimal paid, BigDecimal taxRate) {
++        return amount.compareTo(minimumPart(taxRate)) < 0 && amountDue(paid.add(amount), taxRate).signum() > 0;
++    }
++
+     /** Adds a line to the end of the invoice. */
+     public void addLine(InvoiceLine line) {
+         lines.add(line);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 08ba00f..4f1d931 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -345,13 +345,19 @@ public class InvoiceService {
+             if (invoice.isVoid()) {
+                 throw new InvoiceRejectedException("A void invoice takes no payments.");
+             }
+-            BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
++            BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
++            BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+             if (due.signum() <= 0) {
+                 throw new InvoiceRejectedException("This invoice has already been paid.");
+             }
+             if (amount.compareTo(due) > 0) {
+                 throw new InvoiceRejectedException("The payment is more than the $" + due.toPlainString() + " due.");
+             }
++            if (invoice.isTooSmallPart(amount, paidSoFar, taxRate.percent())) {
++                throw new InvoiceRejectedException("A part payment must be at least $"
++                        + invoice.minimumPart(taxRate.percent()).toPlainString()
++                        + " (10% of the total), unless it settles the invoice.");
++            }
+             LocalDate now = today.date();
+             if (date.isAfter(now)) {
+                 throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+@@ -463,11 +469,17 @@ public class InvoiceService {
+             if (invoice.isVoid()) {
+                 throw new InvoiceRejectedException(number + " is void and takes no payments.");
+             }
+-            BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
++            BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
++            BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+             if (part.getAmount().compareTo(due) > 0) {
+                 throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
+                         + number + " is more than the $" + due.toPlainString() + " it has due.");
+             }
++            if (invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
++                throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
++                        + number + " is less than $" + invoice.minimumPart(taxRate.percent()).toPlainString()
++                        + " (10% of its total), unless it settles the invoice.");
++            }
+             if (invoice.getIssueDate() != null && date.isBefore(invoice.getIssueDate())) {
+                 throw new InvoiceRejectedException("The payment date cannot be before the issue date of " + number
+                         + " (" + invoice.getIssueDate() + ").");
