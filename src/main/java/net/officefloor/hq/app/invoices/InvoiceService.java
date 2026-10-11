@@ -203,6 +203,24 @@ public class InvoiceService {
     }
 
     /**
+     * Sets a draft's due date by hand, kept when it is sent; empty if no such invoice. A date before
+     * the issue date or more than {@link Invoice#MAX_DUE_DAYS} days after it is refused, as is any
+     * invoice that is not a draft.
+     */
+    @Transactional
+    public Optional<Invoice> setDueDate(Long invoiceId, LocalDate dueDate) {
+        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        found.ifPresent(invoice -> {
+            if (!invoice.isDraft()) {
+                throw new InvoiceRejectedException("Only a draft's due date can be set.");
+            }
+            invoice.setDueDate(dueDate);
+            invoices.saveAndFlush(invoice);
+        });
+        return found;
+    }
+
+    /**
      * Readies the invoice for a change: a draft stays as it is; a sent invoice with no payments goes
      * back to draft, to be sent again; an invoice with any payment is refused with the message.
      * Whether it went back to draft.
@@ -222,8 +240,10 @@ public class InvoiceService {
     }
 
     /**
-     * Sends a draft invoice, issuing it today and making it due on the client's terms, and records it in the audit; empty if
-     * no such invoice. An invoice already sent, with no lines, or whose discount needs a reason but has none, is refused.
+     * Sends a draft invoice, issuing it today and making it due on the client's terms (or keeping a due
+     * date set by hand), and records it in the audit; empty if no such invoice. An invoice already
+     * sent, with no lines, whose discount needs a reason but has none, or whose due date set by hand is
+     * before today, is refused.
      */
     @Transactional
     public Optional<Invoice> send(Long invoiceId) {
@@ -242,6 +262,10 @@ public class InvoiceService {
                 throw new InvoiceRejectedException(
                         "The discount is more than 20% of the subtotal; give it a reason before sending the invoice.");
             }
+            if (invoice.dueDatePassedBy(today.date())) {
+                throw new InvoiceRejectedException("The due date (" + invoice.getDueDate()
+                        + ") is already past; set a later due date before sending the invoice.");
+            }
             markSent(invoice);
         });
         return found;
@@ -249,12 +273,14 @@ public class InvoiceService {
 
     /**
      * Sends each of the client's drafts that has at least one line, lowest id first, as {@link #send}
-     * would; drafts with no lines, or whose discount needs a reason but has none, stay drafts.
+     * would; drafts with no lines, whose discount needs a reason but has none, or whose due date set by
+     * hand is already past, stay drafts.
      */
     @Transactional
     public void sendAllDrafts(Long clientId) {
         invoices.findByClientIdOrderByIdAsc(clientId).stream()
-                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty() && !invoice.discountLacksReason())
+                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty() && !invoice.discountLacksReason()
+                        && !invoice.dueDatePassedBy(today.date()))
                 .forEach(this::markSent);
     }
 

@@ -95,7 +95,7 @@ public class InvoiceController {
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
-            String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate) {
+            String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -115,7 +115,8 @@ public class InvoiceController {
                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
                     i.total(taxRate).toPlainString(),
                     payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
-                    i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn);
+                    i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
+                    i.isManualDueDate());
         }
     }
 
@@ -187,6 +188,12 @@ public class InvoiceController {
             LocalDate date,
             @Size(max = 64, message = "The reference must be at most 64 characters.")
             String reference) {
+    }
+
+    /** A due date to set on a draft by hand. */
+    public record NewDueDate(
+            @NotNull(message = "Enter the due date.")
+            LocalDate dueDate) {
     }
 
     /** The part of a split payment that goes to one invoice: more than zero, with at most two decimals. */
@@ -323,6 +330,13 @@ public class InvoiceController {
     @PutMapping("/api/invoices/{id}/discount")
     public InvoiceDetail setDiscount(@PathVariable Long id, @Valid @RequestBody NewDiscount body) {
         return invoices.setDiscount(id, body.discountPct(), body.discountAmount(), body.discountCap(), body.discountReason())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    @PutMapping("/api/invoices/{id}/due-date")
+    public InvoiceDetail setDueDate(@PathVariable Long id, @Valid @RequestBody NewDueDate body) {
+        return invoices.setDueDate(id, body.dueDate())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

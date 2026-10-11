@@ -127,7 +127,9 @@ function problemWith(line: NewLine): string {
 // A sent invoice with no payments can be voided; the server refuses to void a draft or one with
 // payments, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
 // cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
-// be duplicated into a new draft for the same client, which then opens.
+// be duplicated into a new draft for the same client, which then opens. A draft's due date can be set
+// by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
+// server refuses to send it once that date is past.
 @Component({
   selector: 'app-invoice-panel',
   imports: [ReactiveFormsModule, PaymentForm],
@@ -294,6 +296,15 @@ function problemWith(line: NewLine): string {
         }
 
         @if (inv.status === 'DRAFT') {
+          <form [formGroup]="dueForm" (ngSubmit)="setDueDate(inv.id)" aria-label="Due date" novalidate>
+            <label for="invoice-due-date">Due date (up to 120 days after the issue date)</label>
+            <input id="invoice-due-date" type="date" data-testid="invoice-due-input" formControlName="dueDate" />
+            <button type="submit" data-testid="invoice-due-submit" [disabled]="savingDue()">Set due date</button>
+            @if (dueError()) {
+              <p role="alert" data-testid="invoice-due-error">{{ dueError() }}</p>
+            }
+          </form>
+
           <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv.id)">
             Send invoice
           </button>
@@ -446,6 +457,8 @@ export class InvoicePanel {
   protected readonly editingLineId = signal<number | null>(null);
   protected readonly savingDiscount = signal(false);
   protected readonly discountError = signal('');
+  protected readonly savingDue = signal(false);
+  protected readonly dueError = signal('');
   protected readonly sending = signal(false);
   protected readonly sendError = signal('');
   protected readonly duplicating = signal(false);
@@ -473,6 +486,10 @@ export class InvoicePanel {
     reason: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly dueForm = new FormGroup({
+    dueDate: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     effect((onCleanup) => {
       const id = this.invoiceId();
@@ -483,6 +500,8 @@ export class InvoicePanel {
       this.error.set('');
       this.discountForm.reset();
       this.discountError.set('');
+      this.dueForm.reset();
+      this.dueError.set('');
       this.sendError.set('');
       this.voidError.set('');
       this.duplicateError.set('');
@@ -628,6 +647,32 @@ export class InvoicePanel {
   protected splitRecorded(invoiceId: number, list: InvoiceSummary[]): void {
     this.split.emit(list);
     this.service.open(invoiceId).subscribe((detail) => this.invoice.set(detail));
+  }
+
+  protected setDueDate(invoiceId: number): void {
+    const dueDate = this.dueForm.getRawValue().dueDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+      this.dueForm.markAllAsTouched();
+      this.dueError.set('Enter the due date as a date, like 2026-04-30.');
+      return;
+    }
+    this.savingDue.set(true);
+    this.dueError.set('');
+    this.service.setDueDate(invoiceId, dueDate).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.dueForm.reset();
+        this.savingDue.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.dueError.set(
+          typeof detail === 'string' && detail ? detail : 'The due date could not be set.',
+        );
+        this.savingDue.set(false);
+      },
+    });
   }
 
   protected send(invoiceId: number): void {

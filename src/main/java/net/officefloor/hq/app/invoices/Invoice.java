@@ -25,6 +25,9 @@ import java.util.List;
 @Table(name = "invoice")
 public class Invoice {
 
+    /** A due date set by hand can be at most this many days after the issue date. */
+    public static final int MAX_DUE_DAYS = 120;
+
     /** Payments that leave less than this still due have the rest written off. */
     public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("1.00");
 
@@ -46,6 +49,9 @@ public class Invoice {
 
     @Column(name = "due_date")
     private LocalDate dueDate;
+
+    @Column(name = "manual_due_date")
+    private boolean manualDueDate;
 
     @Column(name = "discount_pct")
     private BigDecimal discountPct = BigDecimal.ZERO;
@@ -189,11 +195,43 @@ public class Invoice {
         this.status = InvoiceStatus.VOID;
     }
 
-    /** Marks the invoice sent, issued on the given date and due on the given date. */
+    /** Whether the due date was set by hand; it is then kept when the invoice is sent. */
+    public boolean isManualDueDate() {
+        return manualDueDate;
+    }
+
+    /**
+     * Sets the due date by hand: not before the issue date nor more than {@link #MAX_DUE_DAYS} days
+     * after it, or it is refused.
+     */
+    public void setDueDate(LocalDate dueDate) {
+        if (issueDate != null && dueDate.isBefore(issueDate)) {
+            throw new InvoiceRejectedException(
+                    "The due date cannot be before the issue date (" + issueDate + ").");
+        }
+        if (issueDate != null && dueDate.isAfter(issueDate.plusDays(MAX_DUE_DAYS))) {
+            throw new InvoiceRejectedException("The due date can be at most " + MAX_DUE_DAYS
+                    + " days after the issue date, so no later than " + issueDate.plusDays(MAX_DUE_DAYS) + ".");
+        }
+        this.dueDate = dueDate;
+        this.manualDueDate = true;
+    }
+
+    /**
+     * Marks the invoice sent, issued on the given date and due on the given date, unless its due date
+     * was set by hand, which is kept.
+     */
     public void markSent(LocalDate issueDate, LocalDate dueDate) {
         this.status = InvoiceStatus.SENT;
         this.issueDate = issueDate;
-        this.dueDate = dueDate;
+        if (!manualDueDate) {
+            this.dueDate = dueDate;
+        }
+    }
+
+    /** Whether a due date set by hand is already past on the given send date. */
+    public boolean dueDatePassedBy(LocalDate sendDate) {
+        return manualDueDate && dueDate != null && dueDate.isBefore(sendDate);
     }
 
     /** Puts a sent invoice back to draft, so it has to be sent again. */

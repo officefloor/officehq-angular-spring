@@ -89,6 +89,8 @@ export interface InvoiceDetail {
   writtenOff: string;
   // The date (yyyy-mm-dd) of the payment that cleared it, payments in date order; null while not fully paid.
   paidDate: string | null;
+  // Whether the due date was set by hand; it is then kept when the invoice is sent.
+  manualDueDate: boolean;
 }
 
 // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
@@ -187,7 +189,14 @@ export class InvoiceService {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/discount`, discount);
   }
 
-  // Sends a draft invoice, keeping its issue and due dates; refused (409) when it has no lines.
+  // Sets a draft's due date (yyyy-mm-dd) by hand; refused (409) when it is before the issue date or
+  // more than 120 days after it. Answers the invoice with its new due date.
+  setDueDate(invoiceId: number, dueDate: string): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/due-date`, { dueDate });
+  }
+
+  // Sends a draft invoice, issuing it today and due on the client's terms, or keeping a due date set
+  // by hand; refused (409) when it has no lines or a due date set by hand is before today.
   send(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/send`, null);
   }
