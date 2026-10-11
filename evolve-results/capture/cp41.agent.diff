@@ -1,0 +1,318 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 8e1dbf7..cfdd025 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -200,6 +200,12 @@ function problemWith(line: NewLine): string {
+               </th>
+               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
+             </tr>
++            @if (inv.discountReason) {
++              <tr>
++                <th scope="row" colspan="8">Discount reason</th>
++                <td data-testid="invoice-discount-reason">{{ inv.discountReason }}</td>
++              </tr>
++            }
+             <tr>
+               <th scope="row" colspan="8">Tax (lines at their own rate, otherwise {{ inv.taxRate }}%)</th>
+               <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
+@@ -385,6 +391,13 @@ function problemWith(line: NewLine): string {
+             inputmode="decimal"
+             formControlName="cap"
+           />
++          <label for="discount-reason">reason (needed over 20% of the subtotal)</label>
++          <input
++            id="discount-reason"
++            data-testid="discount-form-reason"
++            maxlength="500"
++            formControlName="reason"
++          />
+           <button type="submit" data-testid="discount-form-submit" [disabled]="savingDiscount()">
+             Apply discount
+           </button>
+@@ -440,6 +453,7 @@ export class InvoicePanel {
+     pct: new FormControl('', { nonNullable: true }),
+     amount: new FormControl('', { nonNullable: true }),
+     cap: new FormControl('', { nonNullable: true }),
++    reason: new FormControl('', { nonNullable: true }),
+   });
+ 
+   constructor() {
+@@ -537,6 +551,10 @@ export class InvoicePanel {
+     if (cap) {
+       discount.discountCap = cap;
+     }
++    const reason = raw.reason.trim();
++    if (reason) {
++      discount.discountReason = reason;
++    }
+     this.service.setDiscount(invoiceId, discount).subscribe({
+       next: (detail) => {
+         this.invoice.set(detail);
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index b697f2b..d1b7456 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -59,7 +59,7 @@ export interface InvoicePaymentView {
+ // amount taken off instead ("0.00" when the discount is a percentage); `discountCap` is the most taken
+ // off in all, line discounts included (null when uncapped); `discount` is the amount the invoice
+ // discount takes off, rounded half up to the cent and shrunk so the total taken off stays within the cap; `taxRate` is the workspace's tax percentage (without
+-// trailing zeros, "0" when none is set) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
++// trailing zeros, "0" when none is set); `discountReason` is why the discount was given (null when none) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
+ // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
+ // `amountDue` is the total less that and less `writtenOff`: when payments leave less than $1.00 due,
+ // the rest is written off ("0.00" when nothing is). `reference` is its ISO 11649 RF payment reference, made from
+@@ -78,6 +78,7 @@ export interface InvoiceDetail {
+   discountAmount: string;
+   discountCap: string | null;
+   discount: string;
++  discountReason: string | null;
+   taxRate: string;
+   tax: string;
+   total: string;
+@@ -120,8 +121,8 @@ export interface NewLine {
+ }
+ 
+ // A discount to give: either a percentage or a fixed amount, as entered, with an optional cap on
+-// what a percentage takes off.
+-export type NewDiscount = ({ discountPct: string } | { discountAmount: string }) & { discountCap?: string };
++// what a percentage takes off and an optional reason, needed when it takes off more than a fifth of the subtotal.
++export type NewDiscount = ({ discountPct: string } | { discountAmount: string }) & { discountCap?: string; discountReason?: string };
+ 
+ // What a client still owes across its sent invoices (drafts do not count), after discounts, tax and
+ // payments, and how much of that is overdue; decimal strings to the cent, worked out by the server.
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 26c2178..ef3a117 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -34,7 +34,7 @@ public class TestSupportController {
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "allocations");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
+@@ -105,13 +105,14 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+                     percent(row.get("discountPct"), "invoices[].discountPct"),
+                     money(row.get("discountAmount"), "invoices[].discountAmount"),
+-                    row.get("discountCap") == null ? null : money(row.get("discountCap"), "invoices[].discountCap"));
++                    row.get("discountCap") == null ? null : money(row.get("discountCap"), "invoices[].discountCap"),
++                    row.get("discountReason") == null ? null : row.get("discountReason").toString());
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 insert("invoice_line", line.get("id"),
+@@ -183,7 +184,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -196,6 +197,9 @@ public class TestSupportController {
+                     if (r.get("DISCOUNT_CAP") != null) {
+                         row.put("discountCap", r.get("DISCOUNT_CAP"));
+                     }
++                    if (r.get("DISCOUNT_REASON") != null) {
++                        row.put("discountReason", r.get("DISCOUNT_REASON"));
++                    }
+                     row.put("lineItems", jdbc.queryForList(
+                             "SELECT id, description, qty, unit_price, tax_exempt, discount_pct, tax_rate FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index eee336d..ed7e9a0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -53,6 +53,9 @@ public class Invoice {
+     @Column(name = "discount_cap")
+     private BigDecimal discountCap;
+ 
++    @Column(name = "discount_reason")
++    private String discountReason;
++
+     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+     @JoinColumn(name = "invoice_id", nullable = false)
+     @OrderBy("id")
+@@ -80,6 +83,7 @@ public class Invoice {
+         copy.discountPct = discountPct;
+         copy.discountAmount = discountAmount;
+         copy.discountCap = discountCap;
++        copy.discountReason = discountReason;
+         lines.forEach(line -> copy.lines.add(line.copy()));
+         return copy;
+     }
+@@ -119,6 +123,26 @@ public class Invoice {
+         return discountCap;
+     }
+ 
++    /** Why the discount was given; null when no reason was given. */
++    public String getDiscountReason() {
++        return discountReason;
++    }
++
++    /** Sets why the discount was given; blank is no reason. */
++    public void setDiscountReason(String discountReason) {
++        this.discountReason = discountReason == null || discountReason.isBlank() ? null : discountReason.strip();
++    }
++
++    /** Whether the discount takes off more than a fifth of the subtotal, after any cap, and so needs a reason. */
++    public boolean discountNeedsReason() {
++        return discount().multiply(BigDecimal.valueOf(5)).compareTo(subtotal()) > 0;
++    }
++
++    /** Whether the discount needs a reason but has none. */
++    public boolean discountLacksReason() {
++        return discountNeedsReason() && discountReason == null;
++    }
++
+     /** Sets the percentage taken off the subtotal, clearing any fixed amount; it has already been checked. */
+     public void setDiscountPct(BigDecimal discountPct) {
+         this.discountPct = discountPct;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 4850911..b43578f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -94,7 +94,7 @@ public class InvoiceController {
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+-            String discountCap, String discount, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate) {
++            String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -110,7 +110,7 @@ public class InvoiceController {
+                     i.getDiscountPct().stripTrailingZeros().toPlainString(),
+                     i.getDiscountAmount().setScale(2).toPlainString(),
+                     i.getDiscountCap() == null ? null : i.getDiscountCap().setScale(2).toPlainString(),
+-                    i.discount().toPlainString(),
++                    i.discount().toPlainString(), i.getDiscountReason(),
+                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
+                     i.total(taxRate).toPlainString(),
+                     payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
+@@ -122,6 +122,7 @@ public class InvoiceController {
+      * A discount to give: a percentage from 0 to 100 with at most two decimals, or a fixed amount
+      * of money, not negative and to the cent. Exactly one of them. Optionally a cap, money not
+      * negative and to the cent, that everything taken off, line discounts included, never comes to more than.
++     * Optionally a reason, needed when the discount takes off more than a fifth of the subtotal.
+      */
+     public record NewDiscount(
+             @DecimalMin(value = "0", message = "The discount must be from 0 to 100 percent.")
+@@ -133,7 +134,9 @@ public class InvoiceController {
+             BigDecimal discountAmount,
+             @DecimalMin(value = "0", message = "The discount cap cannot be negative.")
+             @Digits(integer = 10, fraction = 2, message = "The discount cap can have at most two decimals.")
+-            BigDecimal discountCap) {
++            BigDecimal discountCap,
++            @Size(max = 500, message = "The discount reason can be at most 500 characters.")
++            String discountReason) {
+ 
+         @AssertTrue(message = "Enter either a discount percentage or a discount amount.")
+         public boolean isDiscountGiven() {
+@@ -308,7 +311,7 @@ public class InvoiceController {
+ 
+     @PutMapping("/api/invoices/{id}/discount")
+     public InvoiceDetail setDiscount(@PathVariable Long id, @Valid @RequestBody NewDiscount body) {
+-        return invoices.setDiscount(id, body.discountPct(), body.discountAmount(), body.discountCap())
++        return invoices.setDiscount(id, body.discountPct(), body.discountAmount(), body.discountCap(), body.discountReason())
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+index 89c020b..acd3533 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RestControllerAdvice(assignableTypes = InvoiceController.class)
+ public class InvoiceErrors {
+ 
+-    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "discountAmount", "discountCap", "discountGiven", "amount", "date", "reference");
++    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "discountAmount", "discountCap", "discountReason", "discountGiven", "amount", "date", "reference");
+ 
+     @ExceptionHandler(MethodArgumentNotValidException.class)
+     public ProblemDetail invalid(MethodArgumentNotValidException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index db9cd16..e27a17e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -148,12 +148,13 @@ public class InvoiceService {
+     /**
+      * Gives an invoice a percentage discount, or a fixed amount off when one is given; the one given
+      * clears the other, and the cap (null for none) limits everything taken off, line discounts included. Empty if no such invoice. The values have already been checked; a fixed amount
+-     * over the subtotal is refused. A sent invoice with no payments goes back to draft; one with a
++     * over the subtotal is refused, as is a discount taking off more than a fifth of the subtotal
++     * (after the cap) without a reason. A sent invoice with no payments goes back to draft; one with a
+      * payment refuses it.
+      */
+     @Transactional
+     public Optional<Invoice> setDiscount(Long invoiceId, BigDecimal discountPct, BigDecimal discountAmount,
+-            BigDecimal discountCap) {
++            BigDecimal discountCap, String discountReason) {
+         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+         found.ifPresent(invoice -> {
+             boolean reopened = reopenForChange(invoice, "A paid invoice cannot be given a discount.");
+@@ -163,6 +164,11 @@ public class InvoiceService {
+                 invoice.setDiscountPct(discountPct);
+             }
+             invoice.setDiscountCap(discountCap);
++            invoice.setDiscountReason(discountReason);
++            if (invoice.discountLacksReason()) {
++                throw new InvoiceRejectedException(
++                        "A discount of more than 20% of the subtotal needs a reason.");
++            }
+             invoices.saveAndFlush(invoice);
+             if (reopened) {
+                 audit.record("INVOICE_REOPENED id=" + invoice.getId());
+@@ -192,7 +198,7 @@ public class InvoiceService {
+ 
+     /**
+      * Sends a draft invoice, issuing it today and making it due on the client's terms, and records it in the audit; empty if
+-     * no such invoice. An invoice already sent, or with no lines, is refused.
++     * no such invoice. An invoice already sent, with no lines, or whose discount needs a reason but has none, is refused.
+      */
+     @Transactional
+     public Optional<Invoice> send(Long invoiceId) {
+@@ -207,6 +213,10 @@ public class InvoiceService {
+             if (invoice.getLines().isEmpty()) {
+                 throw new InvoiceRejectedException("Add at least one line before sending the invoice.");
+             }
++            if (invoice.discountLacksReason()) {
++                throw new InvoiceRejectedException(
++                        "The discount is more than 20% of the subtotal; give it a reason before sending the invoice.");
++            }
+             markSent(invoice);
+         });
+         return found;
+@@ -214,12 +224,12 @@ public class InvoiceService {
+ 
+     /**
+      * Sends each of the client's drafts that has at least one line, lowest id first, as {@link #send}
+-     * would; drafts with no lines stay drafts.
++     * would; drafts with no lines, or whose discount needs a reason but has none, stay drafts.
+      */
+     @Transactional
+     public void sendAllDrafts(Long clientId) {
+         invoices.findByClientIdOrderByIdAsc(clientId).stream()
+-                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty())
++                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty() && !invoice.discountLacksReason())
+                 .forEach(this::markSent);
+     }
+ 
+diff --git a/src/main/resources/db/migration/V13__invoice_discount_reason.sql b/src/main/resources/db/migration/V13__invoice_discount_reason.sql
+new file mode 100644
+index 0000000..393abcb
+--- /dev/null
++++ b/src/main/resources/db/migration/V13__invoice_discount_reason.sql
+@@ -0,0 +1,2 @@
++-- Why the invoice discount was given; needed when it takes off more than a fifth of the subtotal. NULL when none.
++ALTER TABLE invoice ADD COLUMN discount_reason VARCHAR(500);
