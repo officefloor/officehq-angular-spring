@@ -39,10 +39,10 @@ public class TestSupportController {
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion");
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "lineItems");
-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine");
+    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
@@ -74,6 +74,7 @@ public class TestSupportController {
         jdbc.execute("DELETE FROM app_setting");
         jdbc.execute("DELETE FROM fx_rate");
         jdbc.execute("DELETE FROM payment_allocation");
+        jdbc.execute("DELETE FROM client_rate");
         for (String table : List.of("payment", "invoice_line", "invoice", "client")) {
             jdbc.execute("DELETE FROM " + table);
             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH 1");
@@ -207,6 +208,16 @@ public class TestSupportController {
                     interestRate(row.get("interestRate"), "clients[].interestRate"),
                     row.get("region") == null ? null : row.get("region").toString(),
                     row.get("taxNumber") == null ? null : row.get("taxNumber").toString());
+            Long clientId = id(row.get("id") == null
+                    ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
+            for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
+                only(rate, Set.of("unitType", "unitPrice"), "clients[].rates[]");
+                if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
+                    throw refuse("clients[].rates[].unitType is required");
+                }
+                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price) VALUES (?, ?, ?)", clientId,
+                        rate.get("unitType").toString(), cents(rate.get("unitPrice"), "clients[].rates[].unitPrice"));
+            }
         }
         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
             only(row, INVOICE_FIELDS, "invoices[]");
@@ -252,14 +263,15 @@ public class TestSupportController {
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 insert("invoice_line", line.get("id"),
-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line"},
+                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type"},
                         invoiceId, text(line, "description"),
                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
-                        cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"),
+                        linePrice(invoiceId, line),
                         flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"),
                         percent(line.get("discountPct"), "invoices[].lineItems[].discountPct"),
                         line.get("taxRate") == null ? null : percent(line.get("taxRate"), "invoices[].lineItems[].taxRate"),
-                        line.get("creditOfLine") == null ? null : id(line.get("creditOfLine")));
+                        line.get("creditOfLine") == null ? null : id(line.get("creditOfLine")),
+                        line.get("unitType") == null ? null : line.get("unitType").toString());
             }
         }
         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
@@ -408,6 +420,17 @@ public class TestSupportController {
                     if (r.get("TAX_NUMBER") != null) {
                         row.put("taxNumber", r.get("TAX_NUMBER"));
                     }
+                    List<Map<String, Object>> rateCard = jdbc.queryForList(
+                            "SELECT unit_type, unit_price FROM client_rate WHERE client_id = ? ORDER BY unit_type",
+                            r.get("ID")).stream().map(c -> {
+                                Map<String, Object> rate = new LinkedHashMap<>();
+                                rate.put("unitType", c.get("UNIT_TYPE"));
+                                rate.put("unitPrice", c.get("UNIT_PRICE"));
+                                return rate;
+                            }).toList();
+                    if (!rateCard.isEmpty()) {
+                        row.put("rates", rateCard);
+                    }
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
@@ -457,12 +480,15 @@ public class TestSupportController {
                         row.put("discountReason", r.get("DISCOUNT_REASON"));
                     }
                     row.put("lineItems", jdbc.queryForList(
-                            "SELECT id, description, qty, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line FROM invoice_line WHERE invoice_id = ? ORDER BY id",
                             r.get("ID")).stream().map(l -> {
                                 Map<String, Object> line = new LinkedHashMap<>();
                                 line.put("id", l.get("ID"));
                                 line.put("description", l.get("DESCRIPTION"));
                                 line.put("qty", l.get("QTY"));
+                                if (l.get("UNIT_TYPE") != null) {
+                                    line.put("unitType", l.get("UNIT_TYPE"));
+                                }
                                 line.put("unitPrice", l.get("UNIT_PRICE"));
                                 line.put("taxExempt", l.get("TAX_EXEMPT"));
                                 line.put("discountPct", l.get("DISCOUNT_PCT"));
@@ -520,6 +546,24 @@ public class TestSupportController {
         }
         jdbc.update("INSERT INTO " + table + " (" + cols + ") VALUES (" + marks + ")", values);
         return jdbc.queryForObject("SELECT MAX(id) FROM " + table, Long.class);
+    }
+
+    /**
+     * A seeded line's unit price: the one given, or else its invoice's client's rate for the line's
+     * unit type; refused when neither is there.
+     */
+    private BigDecimal linePrice(Long invoiceId, Map<String, Object> line) {
+        if (line.get("unitPrice") != null || line.get("unitType") == null) {
+            return cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice");
+        }
+        List<BigDecimal> rate = jdbc.queryForList("SELECT r.unit_price FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
+                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", BigDecimal.class, invoiceId,
+                line.get("unitType").toString().trim());
+        if (rate.isEmpty()) {
+            throw refuse("invoices[].lineItems[].unitPrice is required: the client has no rate for unitType "
+                    + line.get("unitType"));
+        }
+        return rate.get(0);
     }
 
     /** A whole number of days, not negative; null when left out. */

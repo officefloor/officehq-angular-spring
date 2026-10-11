@@ -48,11 +48,12 @@ export interface InvoiceSummary {
 // (postage, say) has none. `taxRate` is the line's own tax rate (without trailing zeros), null when
 // it uses the workspace rate. `discountPct` is the line's own
 // discount (without trailing zeros), `discount` what it takes off quantity x unit price, and
-// `amount` is after it.
+// `amount` is after it. `unitType` is the unit the line is billed in (hour, day, ...), null when none.
 export interface InvoiceLineView {
   id: number;
   description: string;
   qty: string;
+  unitType: string | null;
   unitPrice: string;
   discountPct: string;
   discount: string;
@@ -200,12 +201,14 @@ export interface NewPayment {
   reference: string;
 }
 
-// A line to add to a draft: quantity, unit price, the line's own discount percentage and its own tax
-// rate as entered (each left out when none), checked again by the server.
+// A line to add to a draft: quantity, unit type, unit price, the line's own discount percentage and
+// its own tax rate as entered (each left out when none), checked again by the server. A line with a
+// unit type and no unit price is priced at the client's rate for that unit type.
 export interface NewLine {
   description: string;
   qty: string;
-  unitPrice: string;
+  unitType?: string;
+  unitPrice?: string;
   taxExempt: boolean;
   discountPct?: string;
   taxRate?: string;

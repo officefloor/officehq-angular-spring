@@ -160,8 +160,10 @@ function problemWith(line: NewLine): string {
   } else if (Number(line.qty) <= 0) {
     problems.push('The quantity must be more than zero.');
   }
-  if (!line.unitPrice) {
-    problems.push('Enter a unit price.');
+  if (line.unitPrice === undefined) {
+    if (line.unitType === undefined) {
+      problems.push('Enter a unit price, or a unit type to price the line from the client\'s rate card.');
+    }
   } else if (!TWO_DECIMALS.test(line.unitPrice)) {
     problems.push('The unit price must be a number with at most two decimals.');
   } else if (Number(line.unitPrice) < 0.01) {
@@ -234,6 +236,7 @@ function problemWith(line: NewLine): string {
             <tr>
               <th scope="col">Description</th>
               <th scope="col">Qty</th>
+              <th scope="col">Unit type</th>
               <th scope="col">Unit price</th>
               <th scope="col">Line discount</th>
               <th scope="col">Amount</th>
@@ -249,6 +252,7 @@ function problemWith(line: NewLine): string {
               <tr [attr.data-testid]="'line-row-' + l.id">
                 <td data-testid="line-description">{{ l.description }}</td>
                 <td data-testid="line-qty">{{ l.qty }}</td>
+                <td data-testid="line-unit-type">{{ l.unitType ?? '' }}</td>
                 <td data-testid="line-unit-price">{{ amount(l.unitPrice) }}</td>
                 <td data-testid="line-discount">{{ amount(l.discount) }}</td>
                 <td data-testid="line-amount">{{ amount(l.amount) }}</td>
@@ -677,13 +681,18 @@ function problemWith(line: NewLine): string {
             formControlName="qty"
             required
           />
-          <label for="line-unit-price">Unit price ({{ symbol() }})</label>
+          <label for="line-unit-type">Unit type (optional, e.g. hour)</label>
+          <input
+            id="line-unit-type"
+            data-testid="line-form-unit-type"
+            formControlName="unitType"
+          />
+          <label for="line-unit-price">Unit price ({{ symbol() }}, optional with a unit type on the rate card)</label>
           <input
             id="line-unit-price"
             data-testid="line-form-unit-price"
             inputmode="decimal"
             formControlName="unitPrice"
-            required
           />
           <label for="line-discount-pct">Line discount (%, optional)</label>
           <input
@@ -826,6 +835,7 @@ export class InvoicePanel {
   protected readonly form = new FormGroup({
     description: new FormControl('', { nonNullable: true }),
     qty: new FormControl('', { nonNullable: true }),
+    unitType: new FormControl('', { nonNullable: true }),
     unitPrice: new FormControl('', { nonNullable: true }),
     taxExempt: new FormControl(false, { nonNullable: true }),
     discountPct: new FormControl('', { nonNullable: true }),
@@ -894,6 +904,7 @@ export class InvoicePanel {
     this.form.setValue({
       description: line.description,
       qty: line.qty,
+      unitType: line.unitType ?? '',
       unitPrice: line.unitPrice,
       taxExempt: line.taxExempt,
       discountPct: Number(line.discountPct) === 0 ? '' : line.discountPct,
@@ -914,9 +925,16 @@ export class InvoicePanel {
     const line: NewLine = {
       description: raw.description.trim(),
       qty: raw.qty.trim(),
-      unitPrice: raw.unitPrice.trim().replace(/^\$/, ''),
       taxExempt: raw.taxExempt,
     };
+    const unitType = raw.unitType.trim();
+    if (unitType) {
+      line.unitType = unitType;
+    }
+    const unitPrice = raw.unitPrice.trim().replace(/^\$/, '');
+    if (unitPrice) {
+      line.unitPrice = unitPrice;
+    }
     const discountPct = raw.discountPct.trim().replace(/%$/, '').trim();
     if (discountPct) {
       line.discountPct = discountPct;

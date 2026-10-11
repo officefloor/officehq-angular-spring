@@ -1688,7 +1688,7 @@ public class Invoice {
      * Changes the line with the given id to the given values; whether the invoice had it. Refused when
      * the subtotal would then be less than a fixed discount on the invoice.
      */
-    public boolean updateLine(Long lineId, String description, BigDecimal qty, BigDecimal unitPrice,
+    public boolean updateLine(Long lineId, String description, BigDecimal qty, String unitType, BigDecimal unitPrice,
             boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
         InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
         if (line == null) {
@@ -1701,7 +1701,7 @@ public class Invoice {
                     + currency().format(left) + " subtotal would be less than the "
                     + currency().format(discountAmount) + " discount.");
         }
-        line.update(description, qty, unitPrice, taxExempt, discountPct, taxRate);
+        line.update(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
         return true;
     }
 

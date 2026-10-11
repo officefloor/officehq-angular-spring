@@ -214,13 +214,14 @@ public class InvoiceService {
      * invoice with no payments goes back to draft; one with a payment refuses it.
      */
     @Transactional
-    public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice,
-            boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+    public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, String unitType,
+            BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
-            requireWhole(invoice.currency(), unitPrice, "The unit price");
+            BigDecimal price = linePrice(invoice, unitType, unitPrice);
+            requireWhole(invoice.currency(), price, "The unit price");
             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
-            invoice.addLine(new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate));
+            invoice.addLine(new InvoiceLine(description, qty, unitType, price, taxExempt, discountPct, taxRate));
             invoices.saveAndFlush(invoice);
             if (reopened) {
                 audit.record("INVOICE_REOPENED id=" + invoice.getId());
@@ -260,7 +261,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
-            BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+            String unitType, BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
         Optional<Invoice> found = load(invoiceId);
         if (found.isEmpty()) {
             return found;
@@ -269,9 +270,10 @@ public class InvoiceService {
         if (!invoice.hasLine(lineId)) {
             return Optional.empty();
         }
-        requireWhole(invoice.currency(), unitPrice, "The unit price");
+        BigDecimal price = linePrice(invoice, unitType, unitPrice);
+        requireWhole(invoice.currency(), price, "The unit price");
         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
-        invoice.updateLine(lineId, description, qty, unitPrice, taxExempt, discountPct, taxRate);
+        invoice.updateLine(lineId, description, qty, unitType, price, taxExempt, discountPct, taxRate);
         invoices.saveAndFlush(invoice);
         if (reopened) {
             audit.record("INVOICE_REOPENED id=" + invoice.getId());
@@ -1368,6 +1370,26 @@ public class InvoiceService {
      * Refuses an amount entered with more decimals than the currency has: whole yen for a yen client
      * (the cent is already checked for the rest).
      */
+    /**
+     * A line's unit price: the one entered, or else the client's rate for the line's unit type.
+     * Refused when neither is there.
+     */
+    private BigDecimal linePrice(Invoice invoice, String unitType, BigDecimal unitPrice) {
+        if (unitPrice != null) {
+            return unitPrice;
+        }
+        if (unitType == null) {
+            throw new InvoiceRejectedException("Enter a unit price or a unit type.");
+        }
+        Client client = clients.findById(invoice.getClientId()).orElse(null);
+        BigDecimal rate = client == null ? null : client.rateFor(unitType);
+        if (rate == null) {
+            throw new InvoiceRejectedException("The client's rate card has no rate for " + unitType
+                    + "; enter a unit price.");
+        }
+        return rate;
+    }
+
     private static void requireWhole(Currency currency, BigDecimal amount, String what) {
         if (amount != null && !currency.isWhole(amount)) {
             throw new InvoiceRejectedException(what + " must be in whole yen, with no decimals.");

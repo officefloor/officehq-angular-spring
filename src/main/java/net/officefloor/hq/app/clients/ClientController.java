@@ -13,6 +13,8 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,11 +29,13 @@ public class ClientController {
 
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
             boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
-            BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber) {
+            BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
+            Map<String, BigDecimal> rates) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
-                    c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber());
+                    c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
+                    new TreeMap<>(c.getRates()));
         }
     }
 

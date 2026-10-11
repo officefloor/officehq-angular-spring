@@ -8,7 +8,14 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import java.math.BigDecimal;
+import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.hq.app.invoices.Invoice;
 
 /** A client invoices are raised for. */
@@ -77,6 +84,13 @@ public class Client {
      */
     @Column(name = "tax_number")
     private String taxNumber;
+
+    /** The client's rate card: its price per unit type (hour, day, ...); empty for none. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "client_rate", joinColumns = @JoinColumn(name = "client_id"))
+    @MapKeyColumn(name = "unit_type")
+    @Column(name = "unit_price")
+    private Map<String, BigDecimal> rates = new TreeMap<>();
 
     /** The highest late-interest rate a client can be given, as a percentage. */
     public static final int MAX_INTEREST_RATE = 30;
@@ -159,5 +173,18 @@ public class Client {
 
     public String getTaxNumber() {
         return taxNumber;
+    }
+
+    public Map<String, BigDecimal> getRates() {
+        return rates;
+    }
+
+    /** The client's price for the given unit type (matched ignoring case and surrounding spaces); null when not on its card. */
+    public BigDecimal rateFor(String unitType) {
+        if (unitType == null) {
+            return null;
+        }
+        return rates.entrySet().stream().filter(r -> r.getKey().equalsIgnoreCase(unitType.trim()))
+                .map(Map.Entry::getValue).findFirst().orElse(null);
     }
 }

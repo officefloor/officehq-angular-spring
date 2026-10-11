@@ -75,19 +75,19 @@ public class InvoiceController {
 
     /**
      * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
-     * money is a decimal string to the cent. {@code discountShare} is the line's share of the
+     * money is a decimal string to the cent. {@code unitType} is null when the line has none. {@code discountShare} is the line's share of the
      * invoice discount; {@code tax} is the line's tax, the rate on its amount less that share, and
      * {@code taxExempt} lines have none. {@code taxRate} (without trailing zeros) is the line's own
      * tax rate, null when it uses the workspace rate. {@code discountPct}
      * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
      * {@code amount} is after it. {@code creditOfLine} is the id of the line a credit note's line credits, null when none.
      */
-    public record LineView(Long id, String description, String qty, String unitPrice, String discountPct,
+    public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
             String discount, String amount, String discountShare, String tax, boolean taxExempt, String taxRate,
             Long creditOfLine) {
         static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
-                    l.getUnitPrice().setScale(2).toPlainString(),
+                    l.getUnitType(), l.getUnitPrice().setScale(2).toPlainString(),
                     l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount(scale).toPlainString(),
                     l.amount(scale).toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
                     l.isTaxExempt(),
@@ -203,7 +203,8 @@ public class InvoiceController {
     }
 
     /**
-     * A line to add: a description, a quantity above zero and a unit price of at least $0.01, and
+     * A line to add: a description, a quantity above zero, a unit type (none when left out or blank)
+     * and a unit price of at least $0.01 (the client's rate for the unit type when left out), and
      * whether it is tax exempt (taxable when left out), and its own discount percentage from 0 to 100
      * with at most two decimals (none when left out), and its own tax rate from 0 to 100 with at most
      * two decimals (the workspace rate when left out).
@@ -216,7 +217,8 @@ public class InvoiceController {
             @DecimalMin(value = "0", inclusive = false, message = "The quantity must be more than zero.")
             @Digits(integer = 10, fraction = 2, message = "The quantity can have at most two decimals.")
             BigDecimal qty,
-            @NotNull(message = "Enter a unit price.")
+            @Size(max = 64, message = "The unit type must be at most 64 characters.")
+            String unitType,
             @DecimalMin(value = "0.01", message = "The unit price must be at least $0.01.")
             @Digits(integer = 17, fraction = 2, message = "The unit price can have at most two decimals.")
             BigDecimal unitPrice,
@@ -450,10 +452,15 @@ public class InvoiceController {
                         "There is no invoice " + number.trim() + "."));
     }
 
+    /** The line's unit type, trimmed; null when left out or blank. */
+    private static String unitType(NewLine body) {
+        return body.unitType() == null || body.unitType().isBlank() ? null : body.unitType().trim();
+    }
+
     @PostMapping("/api/invoices/{id}/lines")
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
-        return invoices.addLine(id, body.description().trim(), body.qty(), body.unitPrice(),
+        return invoices.addLine(id, body.description().trim(), body.qty(), unitType(body), body.unitPrice(),
                 Boolean.TRUE.equals(body.taxExempt()),
                 body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
                 .map(this::detail)
@@ -463,7 +470,7 @@ public class InvoiceController {
     @PutMapping("/api/invoices/{id}/lines/{lineId}")
     public InvoiceDetail updateLine(@PathVariable Long id, @PathVariable Long lineId,
             @Valid @RequestBody NewLine body) {
-        return invoices.updateLine(id, lineId, body.description().trim(), body.qty(), body.unitPrice(),
+        return invoices.updateLine(id, lineId, body.description().trim(), body.qty(), unitType(body), body.unitPrice(),
                 Boolean.TRUE.equals(body.taxExempt()),
                 body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
                 .map(this::detail)

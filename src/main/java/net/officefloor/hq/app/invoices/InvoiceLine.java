@@ -44,6 +44,10 @@ public class InvoiceLine {
     @Column(name = "credit_of_line")
     private Long creditOfLine;
 
+    /** The unit type the line is billed in (hour, day, ...); null for none. */
+    @Column(name = "unit_type")
+    private String unitType;
+
     protected InvoiceLine() {
     }
 
@@ -57,9 +61,15 @@ public class InvoiceLine {
         this.taxRate = taxRate;
     }
 
-    /** A new line with the same description, quantity, price, discount, tax rate and exemption. */
+    public InvoiceLine(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, boolean taxExempt,
+            BigDecimal discountPct, BigDecimal taxRate) {
+        this(description, qty, unitPrice, taxExempt, discountPct, taxRate);
+        this.unitType = unitType;
+    }
+
+    /** A new line with the same description, quantity, unit type, price, discount, tax rate and exemption. */
     public InvoiceLine copy() {
-        return new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate);
+        return new InvoiceLine(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
     }
 
     /** A new credit note line crediting this line, with its description, quantity, price, discount, tax rate and exemption. */
@@ -70,9 +80,10 @@ public class InvoiceLine {
     }
 
     /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
-    public void update(String description, BigDecimal qty, BigDecimal unitPrice, boolean taxExempt,
+    public void update(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, boolean taxExempt,
             BigDecimal discountPct, BigDecimal taxRate) {
         this.description = description;
+        this.unitType = unitType;
         this.qty = qty;
         this.unitPrice = unitPrice;
         this.taxExempt = taxExempt;
@@ -90,6 +101,10 @@ public class InvoiceLine {
 
     public BigDecimal getQty() {
         return qty;
+    }
+
+    public String getUnitType() {
+        return unitType;
     }
 
     public BigDecimal getUnitPrice() {
