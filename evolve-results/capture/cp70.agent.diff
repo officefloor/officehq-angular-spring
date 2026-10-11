@@ -1,0 +1,379 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 5789f83..6db38ad 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -385,6 +385,12 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="invoice-interest">{{ amount(inv.lateInterest) }}</td>
+               </tr>
+             }
++            @if (inv.creditOf === null) {
++              <tr>
++                <th scope="row" colspan="4">Late charges waived</th>
++                <td data-testid="invoice-waived">{{ amount(inv.lateWaived) }}</td>
++              </tr>
++            }
+             <tr>
+               <th scope="row" colspan="4">Amount due</th>
+               <td data-testid="invoice-amount-due">{{ amount(inv.amountDue) }}</td>
+@@ -479,6 +485,20 @@ function problemWith(line: NewLine): string {
+           <p role="alert" data-testid="invoice-release-error">{{ releaseError() }}</p>
+         }
+ 
++        @if (inv.creditOf === null && inv.status !== 'DRAFT' && inv.status !== 'VOID') {
++          <button
++            type="button"
++            data-testid="invoice-waive"
++            [disabled]="waiving()"
++            (click)="waiveInterest(inv.id)"
++          >
++            Waive late charges
++          </button>
++        }
++        @if (waiveError()) {
++          <p role="alert" data-testid="invoice-waive-error">{{ waiveError() }}</p>
++        }
++
+         @if (inv.status === 'DRAFT') {
+           <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv)">
+             {{ inv.creditOf === null ? 'Send invoice' : 'Issue credit note' }}
+@@ -653,6 +673,8 @@ export class InvoicePanel {
+   protected readonly planError = signal('');
+   protected readonly releasing = signal(false);
+   protected readonly releaseError = signal('');
++  protected readonly waiving = signal(false);
++  protected readonly waiveError = signal('');
+   protected readonly sending = signal(false);
+   protected readonly sendError = signal('');
+   protected readonly duplicating = signal(false);
+@@ -722,6 +744,7 @@ export class InvoicePanel {
+       this.planForm.reset();
+       this.planError.set('');
+       this.releaseError.set('');
++      this.waiveError.set('');
+       this.sendError.set('');
+       this.voidError.set('');
+       this.duplicateError.set('');
+@@ -971,6 +994,25 @@ export class InvoicePanel {
+     });
+   }
+ 
++  protected waiveInterest(invoiceId: number): void {
++    this.waiving.set(true);
++    this.waiveError.set('');
++    this.service.waiveInterest(invoiceId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.waiving.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.waiveError.set(
++          typeof detail === 'string' && detail ? detail : 'The late charges could not be waived.',
++        );
++        this.waiving.set(false);
++      },
++    });
++  }
++
+   // Sends a draft; an issued credit note also changes what its original owes, so the client's
+   // invoices are shown again.
+   protected send(inv: InvoiceDetail): void {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index c1171e9..d9b8d01 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -144,6 +144,8 @@ export interface InvoiceDetail {
+   lateInterest: string;
+   // The late fee charged on it ("0.00" when none), in its currency: part of `amountDue`.
+   lateFee: string;
++  // The late fee and interest written off by waiving them ("0.00" when none were).
++  lateWaived: string;
+ }
+ 
+ // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,
+@@ -288,6 +290,12 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, null);
+   }
+ 
++  // Waives the late fee and late interest still unpaid on an overdue invoice; interest starts again
++  // from today on what is still owed. Refused (409) when there is nothing to waive.
++  waiveInterest(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/waive-interest`, null);
++  }
++
+   // Sends a draft invoice, issuing it today and due on the client's terms, or keeping a due date set
+   // by hand; refused (409) when it has no lines or a due date set by hand is before today.
+   send(invoiceId: number): Observable<InvoiceDetail> {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index cc656f8..4cee891 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -39,7 +39,7 @@ public class TestSupportController {
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "lateInterestRate", "lateFee");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "interestWaivedOn", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -168,7 +168,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_released_on", "instalments", "instalment_rate"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_released_on", "instalments", "instalment_rate", "interest_waived_on"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -182,7 +182,9 @@ public class TestSupportController {
+                     row.get("retentionReleasedOn") == null ? null
+                             : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"),
+                     instalments(row.get("instalments"), "invoices[].instalments"),
+-                    instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"));
++                    instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"),
++                    row.get("interestWaivedOn") == null ? null
++                            : date(row.get("interestWaivedOn"), "invoices[].interestWaivedOn"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 insert("invoice_line", line.get("id"),
+@@ -315,7 +317,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_released_on, instalments, instalment_rate FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_released_on, instalments, instalment_rate, interest_waived_on FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -334,6 +336,9 @@ public class TestSupportController {
+                     if (r.get("RETENTION_RELEASED_ON") != null) {
+                         row.put("retentionReleasedOn", r.get("RETENTION_RELEASED_ON").toString());
+                     }
++                    if (r.get("INTEREST_WAIVED_ON") != null) {
++                        row.put("interestWaivedOn", r.get("INTEREST_WAIVED_ON").toString());
++                    }
+                     if (r.get("INSTALMENTS") != null) {
+                         row.put("instalments", r.get("INSTALMENTS"));
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 6d9830e..c3a8733 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -89,6 +89,10 @@ public class Invoice {
+     @Column(name = "retention_released_on")
+     private LocalDate retentionReleasedOn;
+ 
++    /** The day the late fee and interest still unpaid were last waived; null when never. */
++    @Column(name = "interest_waived_on")
++    private LocalDate interestWaivedOn;
++
+     /** How many monthly instalments the invoice is spread over; null when it has no plan. */
+     @Column(name = "instalments")
+     private Integer instalments;
+@@ -169,6 +173,13 @@ public class Invoice {
+     @Transient
+     private BigDecimal lateFee = BigDecimal.ZERO;
+ 
++    /**
++     * The late fee and interest written off when they were waived (see {@link #accrueLateInterest}); not
++     * stored, worked out again each time the invoice is read.
++     */
++    @Transient
++    private BigDecimal lateWaived = BigDecimal.ZERO;
++
+     /**
+      * The late interest each instalment of a plan has been charged (see {@link #accrueLateInterest}), in
+      * the order of the instalments; empty when none is. Not stored, worked out again each time the
+@@ -385,6 +396,16 @@ public class Invoice {
+         return retentionReleasedOn == null ? null : retentionReleasedOn.plusDays(RETENTION_DUE_DAYS);
+     }
+ 
++    /** The day the late fee and interest still unpaid were last waived; null when never. */
++    public LocalDate getInterestWaivedOn() {
++        return interestWaivedOn;
++    }
++
++    /** Waives the late fee and interest still unpaid on the given day; interest starts again from then. */
++    public void waiveInterest(LocalDate on) {
++        this.interestWaivedOn = on;
++    }
++
+     /** Releases the retention on the given day, so it is added to the amount due. */
+     public void releaseRetention(LocalDate on) {
+         this.retentionReleasedOn = on;
+@@ -448,6 +469,11 @@ public class Invoice {
+         return lateInterest.setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
++    /** The late fee and interest written off by waiving them, to the cent; 0 when none was. */
++    public BigDecimal getLateWaived() {
++        return lateWaived.setScale(scale(), RoundingMode.HALF_UP);
++    }
++
+     /** The late fee charged, in the invoice's currency; 0 when none is. */
+     public BigDecimal getLateFee() {
+         return lateFee.setScale(scale(), RoundingMode.HALF_UP);
+@@ -478,12 +504,16 @@ public class Invoice {
+      * the grace week ends a period; every period earns interest on what the invoice still owed during it
+      * (earlier interest, the fee and retention left out), and a payment pays the fee, then the interest
+      * earned so far, then the invoice. An invoice spread over instalments instead earns interest
+-     * instalment by instalment (see {@link #accrueInstalmentInterest}), and no late fee.
++     * instalment by instalment (see {@link #accrueInstalmentInterest}), and no late fee. On the day the
++     * charges were waived (after the day's payments), the fee and interest still unpaid are written off
++     * (kept as what was waived) and that day ends a period: interest starts again from it on what is
++     * still owed, and no new fee is charged.
+      */
+     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+             BigDecimal lateFeeUsd, LocalDate today) {
+         this.lateInterest = BigDecimal.ZERO;
+         this.lateFee = BigDecimal.ZERO;
++        this.lateWaived = BigDecimal.ZERO;
+         this.instalmentInterest = List.of();
+         if (status == InvoiceStatus.SENT && !isCreditNote() && hasPlan()) {
+             accrueInstalmentInterest(payments, taxRate, annualRate, today);
+@@ -520,7 +550,28 @@ public class Invoice {
+         BigDecimal unpaidFee = BigDecimal.ZERO;
+         boolean feeCharged = false;
+         LocalDate from = dueDate.plusDays(GRACE_DAYS);
++        LocalDate waiveOn = interestWaivedOn != null && !interestWaivedOn.isBefore(overdueOn)
++                && !interestWaivedOn.isAfter(today) ? interestWaivedOn : null;
++        BigDecimal feeWaived = BigDecimal.ZERO;
++        BigDecimal interestWaived = BigDecimal.ZERO;
+         for (Part part : inOrder) {
++            if (waiveOn != null && part.on().isAfter(waiveOn)) {
++                if (!feeCharged) {
++                    unpaidFee = fee;
++                    feeCharged = true;
++                }
++                if (earnsInterest && owed.signum() > 0) {
++                    BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
++                    charged = charged.add(earned);
++                    unpaidInterest = unpaidInterest.add(earned);
++                }
++                from = waiveOn;
++                feeWaived = unpaidFee;
++                interestWaived = unpaidInterest;
++                unpaidFee = BigDecimal.ZERO;
++                unpaidInterest = BigDecimal.ZERO;
++                waiveOn = null;
++            }
+             if (!feeCharged && !part.on().isBefore(overdueOn)) {
+                 unpaidFee = fee;
+                 feeCharged = true;
+@@ -538,11 +589,22 @@ public class Invoice {
+             unpaidInterest = unpaidInterest.subtract(toInterest);
+             owed = owed.subtract(rest.subtract(toInterest));
+         }
++        if (waiveOn != null) {
++            if (earnsInterest && owed.signum() > 0) {
++                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
++                charged = charged.add(earned);
++                unpaidInterest = unpaidInterest.add(earned);
++            }
++            from = waiveOn;
++            feeWaived = feeCharged ? unpaidFee : fee;
++            interestWaived = unpaidInterest;
++        }
+         if (earnsInterest && owed.signum() > 0) {
+             charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
+         }
+-        this.lateFee = fee;
+-        this.lateInterest = charged;
++        this.lateFee = fee.subtract(feeWaived);
++        this.lateInterest = charged.subtract(interestWaived);
++        this.lateWaived = feeWaived.add(interestWaived);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index f665df0..33edd9e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -116,7 +116,8 @@ public class InvoiceController {
+      * {@code earlyDiscount} is the early-payment discount it was settled with (0 when none), and
+      * {@code settleAmount} what would settle it today while its early-payment window is open (null otherwise).
+      * {@code lateInterest} is the late interest charged on it so far, and {@code lateFee} the late fee
+-     * charged on it (0 when none), both part of the amount due.
++     * charged on it (0 when none), both part of the amount due; {@code lateWaived} is the late fee and
++     * interest written off by waiving them (0 when none was).
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -124,7 +125,7 @@ public class InvoiceController {
+             String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
+             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+             String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+-            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee) {
++            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -153,7 +154,8 @@ public class InvoiceController {
+                     i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate),
+                     i.currency(), i.getEarlyDiscountTaken().toPlainString(),
+                     Optional.ofNullable(i.settleAmount(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
+-                    i.getLateInterest().toPlainString(), i.getLateFee().toPlainString());
++                    i.getLateInterest().toPlainString(), i.getLateFee().toPlainString(),
++                    i.getLateWaived().toPlainString());
+         }
+     }
+ 
+@@ -473,6 +475,14 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /** Waives the late fee and late interest still unpaid on an overdue invoice. */
++    @PostMapping("/api/invoices/{id}/waive-interest")
++    public InvoiceDetail waiveInterest(@PathVariable Long id) {
++        return invoices.waiveInterest(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     @PutMapping("/api/invoices/{id}/due-date")
+     public InvoiceDetail setDueDate(@PathVariable Long id, @Valid @RequestBody NewDueDate body) {
+         return invoices.setDueDate(id, body.dueDate())
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index e392c2e..d423652 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -377,6 +377,28 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Waives the late fee and late interest still unpaid on a sent invoice today, writing them off, and
++     * records what was waived in the audit; empty if no such invoice. Interest starts again from today on
++     * what is still owed, with no new fee. Refused when there is nothing to waive.
++     */
++    @Transactional
++    public Optional<Invoice> waiveInterest(Long invoiceId) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            BigDecimal before = invoice.getLateWaived();
++            invoice.waiveInterest(today.date());
++            withInterest(List.of(invoice));
++            BigDecimal waived = invoice.getLateWaived().subtract(before);
++            if (invoice.hasPlan() || waived.signum() <= 0) {
++                throw new InvoiceRejectedException("There is no unpaid late interest or late fee to waive.");
++            }
++            invoices.saveAndFlush(invoice);
++            audit.record("INTEREST_WAIVED id=" + invoice.getId() + " amount=" + waived.toPlainString());
++        });
++        return found;
++    }
++
+     /**
+      * Readies the invoice for a change: a draft stays as it is; a sent invoice with no payments goes
+      * back to draft, to be sent again; an invoice with any payment is refused with the message.
+diff --git a/src/main/resources/db/migration/V26__invoice_interest_waived.sql b/src/main/resources/db/migration/V26__invoice_interest_waived.sql
+new file mode 100644
+index 0000000..f7a3024
+--- /dev/null
++++ b/src/main/resources/db/migration/V26__invoice_interest_waived.sql
+@@ -0,0 +1,3 @@
++-- The day the late fee and late interest still unpaid on an overdue invoice were last waived (null
++-- when never). Interest starts again from that day on what is still owed; no new fee is charged.
++ALTER TABLE invoice ADD COLUMN interest_waived_on DATE;
