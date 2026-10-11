@@ -1,0 +1,315 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 3404172..b63cb64 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -598,6 +598,23 @@ function problemWith(line: NewLine): string {
+           </form>
+         }
+ 
++        @if (inv.status === 'DRAFT' && inv.creditOf === null) {
++          <form [formGroup]="supplyForm" (ngSubmit)="setSupplyRegion(inv.id)" aria-label="Place of supply" novalidate>
++            <label for="invoice-supply-region">
++              Place of supply (region where the work is done; currently
++              <span data-testid="invoice-supply-region-current">{{ inv.supplyRegion ?? "the client's region" }}</span>,
++              leave blank for the client's region)
++            </label>
++            <input id="invoice-supply-region" data-testid="invoice-supply-region" formControlName="region" />
++            <button type="submit" data-testid="invoice-supply-region-submit" [disabled]="savingSupply()">
++              Set place of supply
++            </button>
++            @if (supplyError()) {
++              <p role="alert" data-testid="invoice-supply-region-error">{{ supplyError() }}</p>
++            }
++          </form>
++        }
++
+         @if (inv.creditOf === null) {
+           <form [formGroup]="surchargeForm" (ngSubmit)="setSurcharge(inv.id)" aria-label="Surcharge" novalidate>
+             <label for="surcharge-pct">Rush surcharge (%, 0 to 25, drafts only)</label>
+@@ -943,6 +960,12 @@ export class InvoicePanel {
+     dueDate: new FormControl('', { nonNullable: true }),
+   });
+ 
++  protected readonly supplyForm = new FormGroup({
++    region: new FormControl('', { nonNullable: true }),
++  });
++  protected readonly savingSupply = signal(false);
++  protected readonly supplyError = signal('');
++
+   constructor() {
+     effect((onCleanup) => {
+       const id = this.invoiceId();
+@@ -955,6 +978,8 @@ export class InvoicePanel {
+       this.discountError.set('');
+       this.dueForm.reset();
+       this.dueError.set('');
++      this.supplyForm.reset();
++      this.supplyError.set('');
+       this.retentionForm.reset();
+       this.retentionError.set('');
+       this.surchargeForm.reset();
+@@ -1126,6 +1151,26 @@ export class InvoicePanel {
+     this.service.open(invoiceId).subscribe((detail) => this.invoice.set(detail));
+   }
+ 
++  protected setSupplyRegion(invoiceId: number): void {
++    this.savingSupply.set(true);
++    this.supplyError.set('');
++    this.service.setSupplyRegion(invoiceId, this.supplyForm.getRawValue().region.trim()).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.supplyForm.reset();
++        this.savingSupply.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.supplyError.set(
++          typeof detail === 'string' && detail ? detail : 'The place of supply could not be set.',
++        );
++        this.savingSupply.set(false);
++      },
++    });
++  }
++
+   protected setDueDate(invoiceId: number): void {
+     const dueDate = this.dueForm.getRawValue().dueDate.trim();
+     if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 5a6cc8d..ec32586 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -209,6 +209,9 @@ export interface InvoiceDetail {
+   // that makes (signed); once settled in cash, the cash rounding it was settled with.
+   cashDue: string;
+   cashRounding: string;
++  // The region where the work is done (the place of supply), taxed and reverse charged as for it
++  // instead of the client's region; null for the client's region.
++  supplyRegion: string | null;
+ }
+ 
+ // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
+@@ -327,6 +330,10 @@ export class InvoiceService {
+ 
+   // Sets a draft's due date (yyyy-mm-dd) by hand; refused (409) when it is before the issue date or
+   // more than 120 days after it. Answers the invoice with its new due date.
++  setSupplyRegion(invoiceId: number, supplyRegion: string): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/supply-region`, { supplyRegion });
++  }
++
+   setDueDate(invoiceId: number, dueDate: string): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/due-date`, { dueDate });
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 1b854c4..25be03c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -50,7 +50,7 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -357,7 +357,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -381,7 +381,9 @@ public class TestSupportController {
+                     row.get("writtenOffOn") == null ? null
+                             : date(row.get("writtenOffOn"), "invoices[].writtenOffOn"),
+                     skippedInstalment(row.get("skippedInstalment"), "invoices[].skippedInstalment"),
+-                    surchargePct(row.get("surchargePct"), "invoices[].surchargePct"));
++                    surchargePct(row.get("surchargePct"), "invoices[].surchargePct"),
++                    row.get("supplyRegion") == null || row.get("supplyRegion").toString().isBlank() ? null
++                            : row.get("supplyRegion").toString());
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -632,7 +634,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -678,6 +680,9 @@ public class TestSupportController {
+                     if (r.get("DISCOUNT_REASON") != null) {
+                         row.put("discountReason", r.get("DISCOUNT_REASON"));
+                     }
++                    if (r.get("SUPPLY_REGION") != null) {
++                        row.put("supplyRegion", r.get("SUPPLY_REGION"));
++                    }
+                     row.put("lineItems", jdbc.queryForList(
+                             "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 99822db..388c280 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -90,6 +90,13 @@ public class Invoice {
+     @Column(name = "manual_due_date")
+     private boolean manualDueDate;
+ 
++    /**
++     * The region where the work is done (the place of supply): the invoice is taxed at its rate, and
++     * reverse charged as for it, instead of the client's region; null for the client's region.
++     */
++    @Column(name = "supply_region")
++    private String supplyRegion;
++
+     @Column(name = "discount_pct")
+     private BigDecimal discountPct = BigDecimal.ZERO;
+ 
+@@ -170,14 +177,14 @@ public class Invoice {
+      * The tax percentage of the client's region, from the workspace's regional rates, charged instead
+      * of the workspace rate; read from them, null when the client has no region or it has no rate.
+      */
+-    @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_tax_rate_' || c.region)")
++    @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_tax_rate_' || COALESCE(supply_region, c.region))")
+     private String regionTaxRate;
+ 
+     /**
+      * The dated changes of the client's region's rate, as "from date=rate" joined by commas in date
+      * order; null when there are none. Read from the workspace's tax rate changes.
+      */
+-    @Formula("(SELECT LISTAGG(CAST(t.from_date AS VARCHAR) || '=' || CAST(t.rate AS VARCHAR), ',') WITHIN GROUP (ORDER BY t.from_date, t.id) FROM tax_rate_change t, client c WHERE c.id = client_id AND t.region = c.region)")
++    @Formula("(SELECT LISTAGG(CAST(t.from_date AS VARCHAR) || '=' || CAST(t.rate AS VARCHAR), ',') WITHIN GROUP (ORDER BY t.from_date, t.id) FROM tax_rate_change t, client c WHERE c.id = client_id AND t.region = COALESCE(supply_region, c.region))")
+     private String regionRateChanges;
+ 
+     /**
+@@ -211,9 +218,9 @@ public class Invoice {
+      * no number, no region, a number from another region, is in the home region or there is no home
+      * region. With a valid number the invoice is reverse charged (see {@link #isReverseCharge}).
+      */
+-    @Formula("(SELECT c.tax_number FROM client c WHERE c.id = client_id AND c.region IS NOT NULL"
+-            + " AND UPPER(SUBSTRING(c.tax_number, 1, 2)) = UPPER(c.region)"
+-            + " AND c.region <> (SELECT s.setting_value FROM app_setting s WHERE s.name = 'home_region'))")
++    @Formula("(SELECT c.tax_number FROM client c WHERE c.id = client_id AND COALESCE(supply_region, c.region) IS NOT NULL"
++            + " AND UPPER(SUBSTRING(c.tax_number, 1, 2)) = UPPER(COALESCE(supply_region, c.region))"
++            + " AND COALESCE(supply_region, c.region) <> (SELECT s.setting_value FROM app_setting s WHERE s.name = 'home_region'))")
+     private String outOfRegionTaxNumber;
+ 
+     /** The id of the invoice this credit note credits; null for an ordinary invoice. */
+@@ -420,6 +427,7 @@ public class Invoice {
+      */
+     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
+         Invoice copy = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, dueDate);
++        copy.supplyRegion = supplyRegion;
+         copy.discountPct = discountPct;
+         copy.discountAmount = discountAmount;
+         copy.discountCap = discountCap;
+@@ -441,6 +449,7 @@ public class Invoice {
+     public Invoice creditNote(LocalDate issueDate) {
+         Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, null);
+         note.creditOf = id;
++        note.supplyRegion = supplyRegion;
+         note.creditedIssueDate = this.issueDate;
+         return note;
+     }
+@@ -1535,6 +1544,15 @@ public class Invoice {
+     }
+ 
+     /** Whether the due date was set by hand; it is then kept when the invoice is sent. */
++    public String getSupplyRegion() {
++        return supplyRegion;
++    }
++
++    /** Sets the place of supply; blank for none, so the client's region applies. */
++    public void setSupplyRegion(String supplyRegion) {
++        this.supplyRegion = supplyRegion == null || supplyRegion.isBlank() ? null : supplyRegion.trim().toUpperCase();
++    }
++
+     public boolean isManualDueDate() {
+         return manualDueDate;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 8fcbeb3..683d737 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -155,7 +155,7 @@ public class InvoiceController {
+             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+-            String withholdingPct) {
++            String withholdingPct, String supplyRegion) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -197,7 +197,8 @@ public class InvoiceController {
+                     i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),
+                     i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
+                     i.getSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
+-                    i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString());
++                    i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
++                    i.getSupplyRegion());
+         }
+     }
+ 
+@@ -608,6 +609,18 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /** The region where a draft's work is done; blank for none, so the client's region applies. */
++    public record NewSupplyRegion(
++            @Size(max = 50, message = "The region can be at most 50 characters.") String supplyRegion) {
++    }
++
++    @PutMapping("/api/invoices/{id}/supply-region")
++    public InvoiceDetail setSupplyRegion(@PathVariable Long id, @Valid @RequestBody NewSupplyRegion body) {
++        return invoices.setSupplyRegion(id, body.supplyRegion())
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     @PostMapping("/api/invoices/{id}/duplicate")
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail duplicate(@PathVariable Long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 380baf4..c281326 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -353,6 +353,25 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Sets the place of supply of a draft, the region where its work is done (blank for none, so the
++     * client's region applies); empty if no such invoice. Any invoice that is not a draft is refused.
++     */
++    @Transactional
++    public Optional<Invoice> setSupplyRegion(Long invoiceId, String supplyRegion) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            if (!invoice.isDraft()) {
++                throw new InvoiceRejectedException("Only a draft's place of supply can be set.");
++            }
++            invoice.setSupplyRegion(supplyRegion);
++            invoices.saveAndFlush(invoice);
++            // Read again the rate and tax number of the region of supply.
++            entityManager.refresh(invoice);
++        });
++        return found;
++    }
++
+     /**
+      * Sets the rush surcharge of a draft, a percentage of its amount after its discounts; empty if no
+      * such invoice. The percentage has already been checked; any invoice that is not a draft, or a
+diff --git a/src/main/resources/db/migration/V62__invoice_supply_region.sql b/src/main/resources/db/migration/V62__invoice_supply_region.sql
+new file mode 100644
+index 0000000..e903849
+--- /dev/null
++++ b/src/main/resources/db/migration/V62__invoice_supply_region.sql
+@@ -0,0 +1,3 @@
++-- The region where a draft's work is done (the place of supply): the invoice is taxed, and reverse
++-- charged, as for that region instead of the client's; null for the client's region.
++ALTER TABLE invoice ADD COLUMN supply_region VARCHAR(50);
