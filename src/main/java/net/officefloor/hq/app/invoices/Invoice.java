@@ -201,9 +201,13 @@ public class Invoice {
         this.status = InvoiceStatus.DRAFT;
     }
 
+    /** Days past its due date an invoice is given before it becomes overdue: a week's grace. */
+    public static final int GRACE_DAYS = 7;
+
     /**
      * The status on the given day once the given amount has been paid against the grand total at the
-     * tax rate: a sent invoice with something still due after its due date is overdue, part paid or not.
+     * tax rate: a sent invoice with something still due more than {@link #GRACE_DAYS} days after its
+     * due date is overdue, part paid or not.
      */
     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
         return statusWhenPaid(paid, null, taxRate, today);
@@ -218,7 +222,7 @@ public class Invoice {
             return status;
         }
         boolean due = amountDue(paid, taxRate).signum() > 0;
-        if (due && dueDate != null && today.isAfter(dueDate)) {
+        if (due && dueDate != null && today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
             return InvoiceStatus.OVERDUE;
         }
         if (paid.signum() <= 0) {
