@@ -1,0 +1,64 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 3cdb90e..aa67df7 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -5,7 +5,7 @@ import { Observable } from 'rxjs';
+ export type InvoiceStatus = 'DRAFT' | 'SENT';
+ 
+ // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
+-// server: every line's quantity times unit price added up exactly, then rounded once, half up.
++// server: each line's quantity times unit price rounded half up to the cent, then added up.
+ export interface InvoiceSummary {
+   id: number;
+   status: InvoiceStatus;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 3ea3e25..351126a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -12,7 +12,6 @@ import jakarta.persistence.OneToMany;
+ import jakarta.persistence.OrderBy;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+-import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+@@ -71,12 +70,11 @@ public class Invoice {
+     }
+ 
+     /**
+-     * Every line's quantity times unit price added up exactly, then rounded once, half up, to the
+-     * cent — so rounding never builds up line by line.
++     * The sum of the line amounts, each already rounded half up to the cent — so the total matches
++     * what a client gets by adding up the lines shown.
+      */
+     public BigDecimal total() {
+         return lines.stream().map(InvoiceLine::amount)
+-                .reduce(BigDecimal.ZERO, BigDecimal::add)
+-                .setScale(2, RoundingMode.HALF_UP);
++                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index ccc0edf..a7c4189 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ 
+ /** One line of an invoice: a quantity (up to two decimals) times a unit price. */
+ @Entity
+@@ -43,8 +44,8 @@ public class InvoiceLine {
+         return unitPrice;
+     }
+ 
+-    /** Quantity times unit price, exactly — not rounded. */
++    /** Quantity times unit price, rounded half up to the cent. */
+     public BigDecimal amount() {
+-        return qty.multiply(unitPrice);
++        return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+     }
+ }

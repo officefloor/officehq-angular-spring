@@ -1,0 +1,146 @@
+{
+  "checkpoint": 4,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "60a0e172a480a4ec3b53df5bc1692c14ea7afe7b"
+  },
+  "checkpoint_id": "cp04_line_rounding",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    3
+  ],
+  "replaced_tests": [
+    "cp03_client_invoices.spec.ts::totals an invoice from its fractional-quantity lines"
+  ],
+  "request": {
+    "spec": "My clients add up the lines on my invoices and get a different total from mine. Round each\nline's quantity times unit price to the cent first (half up), and make the invoice total the\nsum of those rounded line amounts.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for this implementation's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nMy clients add up the lines on my invoices and get a different total from mine. Round each\nline's quantity times unit price to the cent first (half up), and make the invoice total the\nsum of those rounded line amounts.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "88a6e1e5dd9a12cdfeaafd8a5726efb71d89c561",
+  "reset_sha": "",
+  "preagent_sha": "7aed18ec7acd271a5ff3a2905efe2730293dec5c",
+  "prev_sha": "7aed18ec7acd271a5ff3a2905efe2730293dec5c",
+  "base_sha": "60a0e172a480a4ec3b53df5bc1692c14ea7afe7b",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.19922979999999998,
+    "input_tokens": 12,
+    "output_tokens": 1878,
+    "cache_read_tokens": 122269,
+    "cache_creation_tokens": 17146,
+    "num_turns": 6,
+    "duration_ms": 41716,
+    "duration_api_ms": 19595,
+    "model": "claude-opus-5-5",
+    "session_id": "fb95e524-1448-4980-a8e3-d139f8bcd878",
+    "stop_reason": "success",
+    "result_text": "Invoice totals now match what your clients get when they add up the lines. Each line's quantity \u00d7 unit price is rounded half up to the cent first, and the invoice total is the sum of those rounded amounts. `bin/e2e` passes, including the check that earlier test data still seeds and reads back correctly.\n\n**What changed:**\n- **`InvoiceLine.amount()`** now rounds each line half up to the cent. Before, it returned the exact, unrounded product.\n- **`Invoice.total()`** now just adds up those rounded line amounts. Before, it added the exact products and rounded only once at the end, which is why totals could differ by a cent.\n- **Front end:** no logic change. It already displays the total the server sends. I only updated the comment in `invoice.service.ts` that described the old rule.\n\n**Example from the test invoice:** the three lines come to 25.625, 22.575 and 0.525. These now round to 25.63, 22.58 and 0.53, giving a total of **$48.74**. The old rule gave **$48.73**.\n\nNo stored data or schema changes were needed. This also means totals on existing invoices may go up or down by a cent or so when shown under the new rule.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.19922979999999998,
+        "num_turns": 6,
+        "duration_ms": 41716,
+        "duration_api_ms": 19595,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp04.agent.jsonl",
+  "agent_diff_file": "cp04.agent.diff",
+  "build_log_file": "cp04.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 8,
+    "results": {
+      "cp01_workspace_clients.spec.ts::lists clients by name ignoring capitals": true,
+      "cp01_workspace_clients.spec.ts::adds a client in its place in the list": true,
+      "cp02_client_validation.spec.ts::refuses a client without a name or with a bad email": true,
+      "cp02_client_validation.spec.ts::refuses an email another client already has": true,
+      "cp02_client_validation.spec.ts::accepts a proper new client": true,
+      "cp03_client_invoices.spec.ts::lists only the selected client's invoices": true,
+      "cp03_client_invoices.spec.ts::totals an invoice from its fractional-quantity lines": true,
+      "cp04_line_rounding.spec.ts::rounds each line before adding them up": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_workspace_clients.spec.ts::lists clients by name ignoring capitals",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 496,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_workspace_clients.spec.ts::adds a client in its place in the list",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 593,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_validation.spec.ts::refuses a client without a name or with a bad email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 450,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_validation.spec.ts::refuses an email another client already has",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 204,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_validation.spec.ts::accepts a proper new client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 295,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_client_invoices.spec.ts::lists only the selected client's invoices",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 463,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_client_invoices.spec.ts::totals an invoice from its fractional-quantity lines",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 287,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_line_rounding.spec.ts::rounds each line before adding them up",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 291,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 5,
+      "failures": []
+    }
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
