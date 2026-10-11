@@ -35,6 +35,12 @@ public class Invoice {
     /** A part payment must be at least this share of the grand total, unless it settles the invoice. */
     public static final BigDecimal MINIMUM_PART_SHARE = new BigDecimal("0.10");
 
+    /** The most retention a draft can hold back, as a percentage of the grand total. */
+    public static final BigDecimal MAX_RETENTION_PCT = new BigDecimal("20");
+
+    /** Released retention falls due this many days after the day it was released. */
+    public static final int RETENTION_DUE_DAYS = 30;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -65,6 +71,12 @@ public class Invoice {
 
     @Column(name = "discount_reason")
     private String discountReason;
+
+    @Column(name = "retention_pct")
+    private BigDecimal retentionPct = BigDecimal.ZERO;
+
+    @Column(name = "retention_released_on")
+    private LocalDate retentionReleasedOn;
 
     /** Whether the invoice's client is tax exempt, so no line is taxed; read from the client. */
     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
@@ -115,6 +127,7 @@ public class Invoice {
         copy.discountAmount = discountAmount;
         copy.discountCap = discountCap;
         copy.discountReason = discountReason;
+        copy.retentionPct = retentionPct;
         lines.forEach(line -> copy.lines.add(line.copy()));
         return copy;
     }
@@ -240,6 +253,54 @@ public class Invoice {
         this.discountPct = BigDecimal.ZERO;
     }
 
+    /** The percentage of the grand total held back as retention, 0 to {@link #MAX_RETENTION_PCT}. */
+    public BigDecimal getRetentionPct() {
+        return retentionPct;
+    }
+
+    /** Sets the percentage held back as retention; it has already been checked. */
+    public void setRetentionPct(BigDecimal retentionPct) {
+        this.retentionPct = retentionPct;
+    }
+
+    /** The day the retention was released; null while it is still held. */
+    public LocalDate getRetentionReleasedOn() {
+        return retentionReleasedOn;
+    }
+
+    /** The day released retention falls due, {@link #RETENTION_DUE_DAYS} after its release; null while held. */
+    public LocalDate retentionDueDate() {
+        return retentionReleasedOn == null ? null : retentionReleasedOn.plusDays(RETENTION_DUE_DAYS);
+    }
+
+    /** Releases the retention on the given day, so it is added to the amount due. */
+    public void releaseRetention(LocalDate on) {
+        this.retentionReleasedOn = on;
+    }
+
+    /** The retention at the tax rate: the retention percentage of the grand total, rounded down to the cent. */
+    public BigDecimal retention(BigDecimal taxRate) {
+        if (isCreditNote()) {
+            return BigDecimal.ZERO.setScale(2);
+        }
+        return total(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.DOWN);
+    }
+
+    /** The retention still held back at the tax rate: all of it until it is released, then nothing. */
+    public BigDecimal retentionHeld(BigDecimal taxRate) {
+        return retentionReleasedOn == null ? retention(taxRate) : BigDecimal.ZERO.setScale(2);
+    }
+
+    /** The retention released at the tax rate: nothing until it is released, then all of it. */
+    public BigDecimal retentionReleased(BigDecimal taxRate) {
+        return retentionReleasedOn == null ? BigDecimal.ZERO.setScale(2) : retention(taxRate);
+    }
+
+    /** What the invoice is owed in all, held retention left out: the grand total less what is credited and held. */
+    private BigDecimal payable(BigDecimal taxRate) {
+        return total(taxRate).subtract(getCredited()).subtract(retentionHeld(taxRate));
+    }
+
     public List<InvoiceLine> getLines() {
         return lines;
     }
@@ -309,7 +370,9 @@ public class Invoice {
     /**
      * The status on the given day once the given amount has been paid against the grand total at the
      * tax rate: a sent invoice with something still due more than {@link #GRACE_DAYS} days after its
-     * due date is overdue, part paid or not.
+     * due date is overdue, part paid or not. Held retention is never due, so never makes it overdue;
+     * released retention is due {@link #RETENTION_DUE_DAYS} days after its release, and payments go to
+     * the rest of the invoice before it.
      */
     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
         return statusWhenPaid(paid, null, taxRate, today);
@@ -323,9 +386,18 @@ public class Invoice {
         if (status != InvoiceStatus.SENT) {
             return status;
         }
-        boolean due = amountDue(paid, taxRate).signum() > 0;
-        if (due && dueDate != null && today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
+        BigDecimal amountDue = amountDue(paid, taxRate);
+        boolean due = amountDue.signum() > 0;
+        BigDecimal retentionDue = amountDue.min(retentionReleased(taxRate)).max(BigDecimal.ZERO);
+        boolean restDue = amountDue.subtract(retentionDue).signum() > 0;
+        if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
             return InvoiceStatus.OVERDUE;
+        }
+        if (retentionDue.signum() > 0 && today.isAfter(retentionDueDate().plusDays(GRACE_DAYS))) {
+            return InvoiceStatus.OVERDUE;
+        }
+        if (!due && retentionHeld(taxRate).signum() > 0) {
+            return InvoiceStatus.RETENTION_HELD;
         }
         if (paid.signum() <= 0) {
             return !due && getCredited().signum() > 0 ? InvoiceStatus.CREDITED : status;
@@ -340,11 +412,11 @@ public class Invoice {
     /**
      * The date the invoice was fully paid: the date of the payment that cleared its grand total at the
      * tax rate, taking the parts of payments (not reversed) in the order they were applied (credit used
-     * counts on the day it was applied); null while something is still due.
+     * counts on the day it was applied); null while something is still due or retention is held.
      */
     public LocalDate paidOn(List<Payment> payments, BigDecimal taxRate) {
-        BigDecimal total = total(taxRate).subtract(getCredited());
-        if (status != InvoiceStatus.SENT || total.signum() <= 0) {
+        BigDecimal total = payable(taxRate);
+        if (status != InvoiceStatus.SENT || total.signum() <= 0 || retentionHeld(taxRate).signum() > 0) {
             return null;
         }
         record Part(LocalDate on, Long paymentId, BigDecimal amount) {
@@ -365,14 +437,14 @@ public class Invoice {
 
     /**
      * What is still due once the given amount has been paid: the grand total less it, less what credit
-     * notes have credited, less anything written off — so nothing once payments leave less than
-     * {@link #WRITE_OFF_LIMIT}. A credit note itself has nothing due.
+     * notes have credited, less the retention still held, less anything written off — so nothing once
+     * payments leave less than {@link #WRITE_OFF_LIMIT}. A credit note itself has nothing due.
      */
     public BigDecimal amountDue(BigDecimal paid, BigDecimal taxRate) {
         if (isCreditNote()) {
             return BigDecimal.ZERO.setScale(2);
         }
-        return total(taxRate).subtract(getCredited()).subtract(paid).subtract(writtenOff(paid, taxRate));
+        return payable(taxRate).subtract(paid).subtract(writtenOff(paid, taxRate));
     }
 
     /**
@@ -380,7 +452,7 @@ public class Invoice {
      * {@link #WRITE_OFF_LIMIT} still due, all of what is left; otherwise nothing.
      */
     public BigDecimal writtenOff(BigDecimal paid, BigDecimal taxRate) {
-        BigDecimal left = total(taxRate).subtract(getCredited()).subtract(paid);
+        BigDecimal left = payable(taxRate).subtract(paid);
         return !isCreditNote() && paid.signum() > 0 && left.signum() > 0 && left.compareTo(WRITE_OFF_LIMIT) < 0
                 ? left.setScale(2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO.setScale(2);

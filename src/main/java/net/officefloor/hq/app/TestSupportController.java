@@ -35,7 +35,7 @@ public class TestSupportController {
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "lineItems");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "allocations");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
@@ -112,7 +112,7 @@ public class TestSupportController {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_released_on"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
@@ -121,7 +121,10 @@ public class TestSupportController {
                     row.get("discountCap") == null ? null : money(row.get("discountCap"), "invoices[].discountCap"),
                     row.get("discountReason") == null ? null : row.get("discountReason").toString(),
                     flag(row.get("manualDueDate"), "invoices[].manualDueDate"),
-                    row.get("creditOf") == null ? null : id(row.get("creditOf")));
+                    row.get("creditOf") == null ? null : id(row.get("creditOf")),
+                    percent(row.get("retentionPct"), "invoices[].retentionPct"),
+                    row.get("retentionReleasedOn") == null ? null
+                            : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"));
             if ("CREDIT_NOTE".equals(status) && row.get("creditOf") == null) {
                 throw refuse("an invoices[] row with status CREDIT_NOTE needs creditOf");
             }
@@ -205,7 +208,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_released_on FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -218,6 +221,10 @@ public class TestSupportController {
                     row.put("manualDueDate", r.get("MANUAL_DUE_DATE"));
                     if (r.get("DISCOUNT_CAP") != null) {
                         row.put("discountCap", r.get("DISCOUNT_CAP"));
+                    }
+                    row.put("retentionPct", r.get("RETENTION_PCT"));
+                    if (r.get("RETENTION_RELEASED_ON") != null) {
+                        row.put("retentionReleasedOn", r.get("RETENTION_RELEASED_ON").toString());
                     }
                     if (r.get("CREDIT_OF") != null) {
                         row.put("creditOf", r.get("CREDIT_OF"));

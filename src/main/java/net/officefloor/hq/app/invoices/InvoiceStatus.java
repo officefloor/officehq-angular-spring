@@ -11,7 +11,9 @@ package net.officefloor.hq.app.invoices;
  * A credit note is a draft until it is issued, when it becomes CREDIT_NOTE for good. A sent invoice
  * whose issued credit notes leave nothing due, with nothing paid, is credited; that follows from its
  * credit notes and is never stored.
+ * A sent invoice with retention still held back and nothing else due shows retention held instead of
+ * paid; that follows from its retention and payments and is never stored.
  */
 public enum InvoiceStatus {
-    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED
+    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, RETENTION_HELD
 }

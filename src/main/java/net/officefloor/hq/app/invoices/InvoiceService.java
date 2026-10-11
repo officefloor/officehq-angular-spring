@@ -254,6 +254,55 @@ public class InvoiceService {
     }
 
     /**
+     * Sets the percentage of a draft's grand total held back as retention; empty if no such invoice.
+     * The percentage has already been checked; any invoice that is not a draft, or a credit note, is refused.
+     */
+    @Transactional
+    public Optional<Invoice> setRetention(Long invoiceId, BigDecimal retentionPct) {
+        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        found.ifPresent(invoice -> {
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note holds back no retention.");
+            }
+            if (!invoice.isDraft()) {
+                throw new InvoiceRejectedException("Retention can only be set on a draft.");
+            }
+            invoice.setRetentionPct(retentionPct);
+            invoices.saveAndFlush(invoice);
+        });
+        return found;
+    }
+
+    /**
+     * Releases the retention held back on a sent invoice today, adding it to the amount due (falling
+     * due {@link Invoice#RETENTION_DUE_DAYS} days later), and records it in the audit; empty if no such
+     * invoice. Refused while anything else is still due, or when there is no retention held to release.
+     */
+    @Transactional
+    public Optional<Invoice> releaseRetention(Long invoiceId) {
+        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        found.ifPresent(invoice -> {
+            if (invoice.isDraft() || invoice.isVoid() || invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("Retention can only be released on a sent invoice.");
+            }
+            BigDecimal rate = taxRate.percent();
+            BigDecimal held = invoice.retentionHeld(rate);
+            if (held.signum() <= 0) {
+                throw new InvoiceRejectedException("There is no retention held to release.");
+            }
+            BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), rate);
+            if (due.signum() > 0) {
+                throw new InvoiceRejectedException("The retention can only be released once nothing else is due; $"
+                        + due.setScale(2, RoundingMode.HALF_UP).toPlainString() + " is still due.");
+            }
+            invoice.releaseRetention(today.date());
+            invoices.saveAndFlush(invoice);
+            audit.record("RETENTION_RELEASED id=" + invoice.getId() + " amount=" + held.toPlainString());
+        });
+        return found;
+    }
+
+    /**
      * Readies the invoice for a change: a draft stays as it is; a sent invoice with no payments goes
      * back to draft, to be sent again; an invoice with any payment is refused with the message.
      * Whether it went back to draft.

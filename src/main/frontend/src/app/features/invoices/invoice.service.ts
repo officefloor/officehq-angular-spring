@@ -9,7 +9,8 @@ import { Observable } from 'rxjs';
 // The server works this out from its payments and today's date. A VOID invoice was voided while sent
 // and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
 // A credit note is a DRAFT until it is issued, then CREDIT_NOTE for good; a sent invoice whose issued
-// credit notes leave nothing due, with nothing paid, is CREDITED.
+// credit notes leave nothing due, with nothing paid, is CREDITED. A sent invoice with nothing due
+// but retention still held back is RETENTION_HELD instead of PAID.
 export type InvoiceStatus =
   | 'DRAFT'
   | 'SENT'
@@ -19,7 +20,8 @@ export type InvoiceStatus =
   | 'OVERDUE'
   | 'VOID'
   | 'CREDIT_NOTE'
-  | 'CREDITED';
+  | 'CREDITED'
+  | 'RETENTION_HELD';
 
 // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
 // server: the grand total — the lines' subtotal less any discount plus tax.
@@ -111,6 +113,14 @@ export interface InvoiceDetail {
   creditOf: number | null;
   // The total as listed: negative for a credit note.
   listedTotal: string;
+  // The percentage of the grand total held back (without trailing zeros), and `retention`, that share
+  // rounded down to the cent; `retentionHeld` is what is still held back, not part of `amountDue`.
+  retentionPct: string;
+  retention: string;
+  retentionHeld: string;
+  // The day (yyyy-mm-dd) the retention was released, and the day it then falls due; null while held.
+  retentionReleasedOn: string | null;
+  retentionDueDate: string | null;
 }
 
 // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
@@ -215,6 +225,18 @@ export class InvoiceService {
   // more than 120 days after it. Answers the invoice with its new due date.
   setDueDate(invoiceId: number, dueDate: string): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/due-date`, { dueDate });
+  }
+
+  // Sets the percentage of a draft's grand total held back as retention (0 to 20, up to two decimals);
+  // refused (400) outside that, or (409) when it is not a draft.
+  setRetention(invoiceId: number, retentionPct: string): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct });
+  }
+
+  // Releases the retention held back on a sent invoice, adding it to the amount due; refused (409)
+  // while anything else is due or when there is nothing to release.
+  releaseRetention(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, null);
   }
 
   // Sends a draft invoice, issuing it today and due on the client's terms, or keeping a due date set

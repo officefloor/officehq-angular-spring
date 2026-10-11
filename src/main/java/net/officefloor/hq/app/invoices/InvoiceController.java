@@ -52,7 +52,7 @@ public class InvoiceController {
 
     /**
      * What a client still owes across its sent invoices (drafts do not count), after discounts, tax
-     * and payments, less the client's unused credit (so it can be below zero), how much of what is due
+     * and payments, retention included whether held or released, less the client's unused credit (so it can be below zero), how much of what is due
      * is overdue, and the unused credit; decimal strings to the cent.
      */
     public record ClientBalance(Long clientId, String balance, String overdue, String credit) {
@@ -101,11 +101,16 @@ public class InvoiceController {
      * it, payments taken in date order; null while it is not fully paid. {@code credited} is what
      * issued credit notes take off it; {@code creditOf} the id of the invoice a credit note credits
      * (null for an ordinary invoice) and {@code listedTotal} the total as listed, negative for a credit note.
+     * {@code retentionPct} (without trailing zeros) is the share of the grand total held back as
+     * {@code retention}, rounded down to the cent; {@code retentionHeld} is what is still held back (not
+     * part of the amount due), {@code retentionReleasedOn} the day it was released (null while held) and
+     * {@code retentionDueDate} the day released retention falls due.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
-            String credited, Long creditOf, String listedTotal) {
+            String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
+            String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -126,7 +131,9 @@ public class InvoiceController {
                     i.total(taxRate).toPlainString(),
                     payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
-                    i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate));
+                    i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
+                    i.getRetentionPct().stripTrailingZeros().toPlainString(), i.retention(taxRate).toPlainString(),
+                    i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate());
         }
     }
 
@@ -220,6 +227,15 @@ public class InvoiceController {
             LocalDate date) {
     }
 
+    /** A retention to hold back on a draft: a percentage from 0 to 20 with at most two decimals. */
+    public record NewRetention(
+            @NotNull(message = "Enter a retention percentage.")
+            @DecimalMin(value = "0", message = "The retention must be from 0 to 20 percent.")
+            @DecimalMax(value = "20", message = "The retention must be from 0 to 20 percent.")
+            @Digits(integer = 2, fraction = 2, message = "The retention can have at most two decimals.")
+            BigDecimal retentionPct) {
+    }
+
     /** A due date to set on a draft by hand. */
     public record NewDueDate(
             @NotNull(message = "Enter the due date.")
@@ -294,7 +310,7 @@ public class InvoiceController {
             BigDecimal due = i.amountDue(paid.get(i.getId()), rate);
             BigDecimal[] sums = owed.computeIfAbsent(i.getClientId(),
                     k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) });
-            sums[0] = sums[0].add(due);
+            sums[0] = sums[0].add(due).add(i.retentionHeld(rate));
             if (i.statusWhenPaid(paid.get(i.getId()), rate, on) == InvoiceStatus.OVERDUE) {
                 sums[1] = sums[1].add(due);
             }
@@ -369,6 +385,21 @@ public class InvoiceController {
     @PutMapping("/api/invoices/{id}/discount")
     public InvoiceDetail setDiscount(@PathVariable Long id, @Valid @RequestBody NewDiscount body) {
         return invoices.setDiscount(id, body.discountPct(), body.discountAmount(), body.discountCap(), body.discountReason())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    @PutMapping("/api/invoices/{id}/retention")
+    public InvoiceDetail setRetention(@PathVariable Long id, @Valid @RequestBody NewRetention body) {
+        return invoices.setRetention(id, body.retentionPct())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** Releases the retention held back on a sent invoice once nothing else is due. */
+    @PostMapping("/api/invoices/{id}/release-retention")
+    public InvoiceDetail releaseRetention(@PathVariable Long id) {
+        return invoices.releaseRetention(id)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

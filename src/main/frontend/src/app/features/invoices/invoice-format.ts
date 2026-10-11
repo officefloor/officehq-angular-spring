@@ -10,6 +10,7 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   VOID: 'Void',
   CREDIT_NOTE: 'Credit note',
   CREDITED: 'Credited',
+  RETENTION_HELD: 'Retention held',
 };
 const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 

@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestControllerAdvice(assignableTypes = InvoiceController.class)
 public class InvoiceErrors {
 
-    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "discountAmount", "discountCap", "discountReason", "discountGiven", "amount", "date", "reference", "dueDate");
+    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "discountAmount", "discountCap", "discountReason", "discountGiven", "amount", "date", "reference", "dueDate", "retentionPct");
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ProblemDetail invalid(MethodArgumentNotValidException e) {
