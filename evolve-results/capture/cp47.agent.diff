@@ -1,0 +1,298 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 77fe1b2..7c03d33 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -8,6 +8,8 @@ export interface Client {
+   email: string;
+   // Payment terms in days; null means due at the end of the month after issue.
+   termsDays: number | null;
++  // The standard percentage discount new invoices for the client start with; 0 is none.
++  discountPct: number;
+ }
+ 
+ export type NewClient = Omit<Client, 'id'>;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 1564a21..0027ef8 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -105,6 +105,17 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+           step="1"
+           formControlName="terms"
+         />
++        <label for="client-discount">Standard discount % (optional)</label>
++        <input
++          id="client-discount"
++          data-testid="client-form-discount-pct"
++          type="number"
++          inputmode="decimal"
++          min="0"
++          max="100"
++          step="0.01"
++          formControlName="discountPct"
++        />
+         <button type="submit" data-testid="client-form-submit" [disabled]="saving()">
+           Add client
+         </button>
+@@ -153,6 +164,7 @@ export class Clients {
+       validators: [Validators.required, Validators.pattern(PROPER_EMAIL)],
+     }),
+     terms: new FormControl<number | null>(null),
++    discountPct: new FormControl<number | null>(null),
+   });
+ 
+   constructor() {
+@@ -176,8 +188,10 @@ export class Clients {
+     const email = this.form.controls.email.value.trim();
+     const terms = this.form.controls.terms.value;
+     const termsDays = terms === null || (terms as unknown) === '' ? null : Number(terms);
+-    this.form.setValue({ name, email, terms: termsDays });
+-    const problem = this.problemWith(name, email, termsDays);
++    const discount = this.form.controls.discountPct.value;
++    const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
++    this.form.setValue({ name, email, terms: termsDays, discountPct });
++    const problem = this.problemWith(name, email, termsDays, discountPct);
+     if (problem) {
+       this.form.markAllAsTouched();
+       this.error.set(problem);
+@@ -185,7 +199,7 @@ export class Clients {
+     }
+     this.saving.set(true);
+     this.error.set('');
+-    this.service.add({ name, email, termsDays }).subscribe({
++    this.service.add({ name, email, termsDays, discountPct: discountPct ?? 0 }).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created].sort(byName));
+         this.form.reset();
+@@ -234,7 +248,12 @@ export class Clients {
+ 
+   // What is wrong with the client, or '' when it can be saved. A duplicate email is checked here
+   // for a quick answer; the server is the authority.
+-  private problemWith(name: string, email: string, termsDays: number | null): string {
++  private problemWith(
++    name: string,
++    email: string,
++    termsDays: number | null,
++    discountPct: number | null,
++  ): string {
+     const problems: string[] = [];
+     if (!name) {
+       problems.push("Enter the client's name.");
+@@ -249,6 +268,13 @@ export class Clients {
+     if (termsDays !== null && !(Number.isInteger(termsDays) && termsDays >= 1 && termsDays <= 365)) {
+       problems.push('Payment terms must be from 1 to 365 days.');
+     }
++    if (discountPct !== null) {
++      if (!(Number.isFinite(discountPct) && discountPct >= 0 && discountPct <= 100)) {
++        problems.push('The standard discount must be from 0 to 100 percent.');
++      } else if (Math.abs(Math.round(discountPct * 100) - discountPct * 100) > 1e-6) {
++        problems.push('The standard discount can have at most two decimals.');
++      }
++    }
+     return problems.join(' ');
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index b68e8db..0f9a443 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -32,7 +32,7 @@ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+@@ -92,8 +92,9 @@ public class TestSupportController {
+         }
+         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
+             only(row, CLIENT_FIELDS, "clients[]");
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days"},
+-                    text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"));
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct"},
++                    text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
++                    percent(row.get("discountPct"), "clients[].discountPct"));
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+             only(row, INVOICE_FIELDS, "invoices[]");
+@@ -173,7 +174,7 @@ public class TestSupportController {
+         if (!taxRate.isEmpty()) {
+             out.put("settings", Map.of("taxRate", new BigDecimal(taxRate.get(0))));
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -182,6 +183,7 @@ public class TestSupportController {
+                     if (r.get("TERMS_DAYS") != null) {
+                         row.put("termsDays", r.get("TERMS_DAYS"));
+                     }
++                    row.put("discountPct", r.get("DISCOUNT_PCT"));
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 27a19ff..7bd1c43 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -1,10 +1,12 @@
+ package net.officefloor.hq.app.clients;
+ 
++import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import java.math.BigDecimal;
+ 
+ /** A client invoices are raised for. */
+ @Entity
+@@ -22,13 +24,18 @@ public class Client {
+     /** Payment terms in days; null means the usual end of the following month. */
+     private Integer termsDays;
+ 
++    /** The standard percentage discount new invoices for this client start with; 0 is none. */
++    @Column(name = "discount_pct")
++    private BigDecimal discountPct = BigDecimal.ZERO;
++
+     protected Client() {
+     }
+ 
+-    public Client(String name, String email, Integer termsDays) {
++    public Client(String name, String email, Integer termsDays, BigDecimal discountPct) {
+         this.name = name;
+         this.email = email;
+         this.termsDays = termsDays;
++        this.discountPct = discountPct == null ? BigDecimal.ZERO : discountPct;
+     }
+ 
+     public Long getId() {
+@@ -46,4 +53,8 @@ public class Client {
+     public Integer getTermsDays() {
+         return termsDays;
+     }
++
++    public BigDecimal getDiscountPct() {
++        return discountPct;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 026ec46..d24738a 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -1,12 +1,16 @@
+ package net.officefloor.hq.app.clients;
+ 
+ import jakarta.validation.Valid;
++import jakarta.validation.constraints.DecimalMax;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.Max;
+ import jakarta.validation.constraints.Min;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
+ import java.util.List;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -20,9 +24,9 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/clients")
+ public class ClientController {
+ 
+-    public record ClientView(Long id, String name, String email, Integer termsDays) {
++    public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct) {
+         static ClientView of(Client c) {
+-            return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays());
++            return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct());
+         }
+     }
+ 
+@@ -37,7 +41,11 @@ public class ClientController {
+             String email,
+             @Min(value = 1, message = "Payment terms must be from 1 to 365 days.")
+             @Max(value = 365, message = "Payment terms must be from 1 to 365 days.")
+-            Integer termsDays) {
++            Integer termsDays,
++            @DecimalMin(value = "0", message = "The standard discount must be from 0 to 100 percent.")
++            @DecimalMax(value = "100", message = "The standard discount must be from 0 to 100 percent.")
++            @Digits(integer = 3, fraction = 2, message = "The standard discount can have at most two decimals.")
++            BigDecimal discountPct) {
+     }
+ 
+     /**
+@@ -60,6 +68,6 @@ public class ClientController {
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClientView add(@Valid @RequestBody NewClient body) {
+-        return ClientView.of(clients.add(body.name(), body.email(), body.termsDays()));
++        return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index aa01f0d..6e0faab 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.clients;
+ 
++import java.math.BigDecimal;
+ import java.util.Comparator;
+ import java.util.List;
+ import org.springframework.stereotype.Service;
+@@ -29,11 +30,11 @@ public class ClientService {
+     }
+ 
+     @Transactional
+-    public Client add(String name, String email, Integer termsDays) {
++    public Client add(String name, String email, Integer termsDays, BigDecimal discountPct) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+-        return clients.save(new Client(name.trim(), address, termsDays));
++        return clients.save(new Client(name.trim(), address, termsDays, discountPct));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 0918918..10253e0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -59,14 +59,18 @@ public class InvoiceService {
+         return invoices.findWithLinesById(id);
+     }
+ 
+-    /** An empty draft for the client, issued today and due on the client's terms; empty if no such client. */
++    /**
++     * An empty draft for the client, issued today, due on the client's terms and starting with the
++     * client's standard discount; empty if no such client.
++     */
+     @Transactional
+     public Optional<Invoice> newDraft(Long clientId) {
+-        if (!clients.existsById(clientId)) {
+-            return Optional.empty();
+-        }
+-        LocalDate issued = today.date();
+-        return Optional.of(invoices.save(Invoice.draft(clientId, issued, dueDateFor(clientId, issued))));
++        return clients.findById(clientId).map(client -> {
++            LocalDate issued = today.date();
++            Invoice draft = Invoice.draft(clientId, issued, dueDateFor(clientId, issued));
++            draft.setDiscountPct(client.getDiscountPct());
++            return invoices.save(draft);
++        });
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/migration/V15__client_discount.sql b/src/main/resources/db/migration/V15__client_discount.sql
+new file mode 100644
+index 0000000..511d8d4
+--- /dev/null
++++ b/src/main/resources/db/migration/V15__client_discount.sql
+@@ -0,0 +1,3 @@
++-- A client's standard percentage discount, 0 to 100 with up to two decimals, that new invoices
++-- for the client start with; 0 is none.
++ALTER TABLE client ADD COLUMN discount_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
