@@ -1,0 +1,179 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 37494a2..e2a0476 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -92,7 +92,7 @@ function problemWith(line: NewLine): string {
+ }
+ 
+ // One opened invoice: its status, its lines and its totals. A line may carry its own percentage
+-// discount, shown on the line, with its amount after it. A draft takes new lines and a
++// discount, shown on the line, with its amount after it, and its own tax. A draft takes new lines and a
+ // percentage discount, and can be sent; a change to a sent invoice with no payments puts it back to
+ // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
+ // until nothing is due; the panel lists them with what has been paid and what is still due. The
+@@ -119,6 +119,7 @@ function problemWith(line: NewLine): string {
+               <th scope="col">Line discount</th>
+               <th scope="col">Amount</th>
+               <th scope="col">Discount share</th>
++              <th scope="col">Tax status</th>
+               <th scope="col">Tax</th>
+             </tr>
+           </thead>
+@@ -132,28 +133,29 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="line-amount">{{ money(l.amount) }}</td>
+                 <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
+                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
++                <td data-testid="line-tax">{{ money(l.tax) }}</td>
+               </tr>
+             } @empty {
+               <tr>
+-                <td colspan="7" data-testid="line-empty">No lines yet.</td>
++                <td colspan="8" data-testid="line-empty">No lines yet.</td>
+               </tr>
+             }
+           </tbody>
+           <tfoot>
+             <tr>
+-              <th scope="row" colspan="6">Subtotal</th>
++              <th scope="row" colspan="7">Subtotal</th>
+               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="6">Discount ({{ inv.discountPct }}%)</th>
++              <th scope="row" colspan="7">Discount ({{ inv.discountPct }}%)</th>
+               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="6">Tax ({{ inv.taxRate }}%)</th>
++              <th scope="row" colspan="7">Tax ({{ inv.taxRate }}%)</th>
+               <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="6">Total</th>
++              <th scope="row" colspan="7">Total</th>
+               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
+             </tr>
+           </tfoot>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index be74454..4c0dbb6 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -20,8 +20,9 @@ export interface InvoiceSummary {
+ 
+ // One line of an opened invoice. `qty` is as entered, without trailing zeros ("1.5"); money is a
+ // decimal string to the cent. `discountShare` is the line's share of the invoice discount, split in
+-// cents in proportion to the line amounts by the server; the shares add up to the discount. A
+-// `taxExempt` line (postage, say) is left out of the taxed amount. `discountPct` is the line's own
++// cents in proportion to the line amounts by the server; the shares add up to the discount. `tax` is
++// the tax rate on the amount less that share, rounded half up to the cent; a `taxExempt` line
++// (postage, say) has none. `discountPct` is the line's own
+ // discount (without trailing zeros), `discount` what it takes off quantity x unit price, and
+ // `amount` is after it.
+ export interface InvoiceLineView {
+@@ -33,6 +34,7 @@ export interface InvoiceLineView {
+   discount: string;
+   amount: string;
+   discountShare: string;
++  tax: string;
+   taxExempt: boolean;
+ }
+ 
+@@ -48,8 +50,7 @@ export interface InvoicePaymentView {
+ // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
+ // percentage taken off the subtotal, without trailing zeros ("12.5"); `discount` is the amount it
+ // takes off, rounded half up to the cent; `taxRate` is the workspace's tax percentage (without
+-// trailing zeros, "0" when none is set) and `tax` is that rate on the taxable lines' amounts less
+-// their discount shares, rounded half up to the cent; `total` is the subtotal less the discount plus the tax.
++// trailing zeros, "0" when none is set) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
+ // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
+ // `amountDue` is the total less that. `reference` is its ISO 11649 RF payment reference, made from
+ // the seven digits of its number, in groups of four (RF16 0000 075).
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 88e6ffe..24b95de 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -190,20 +190,25 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The tax charged at the given rate (a percentage): each taxable line's amount less its share of
+-     * the discount, added up, and the rate charged on that, rounded half up to the cent. Tax-exempt
+-     * lines are left out.
++     * Each line's tax at the given rate (a percentage), in the order of the lines: the rate on the
++     * line's amount less its share of the discount, rounded half up to the cent. Tax-exempt lines
++     * have no tax.
+      */
+-    public BigDecimal tax(BigDecimal taxRate) {
++    public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
+         List<BigDecimal> shares = discountShares();
+-        BigDecimal taxable = BigDecimal.ZERO;
++        List<BigDecimal> taxes = new ArrayList<>(lines.size());
+         for (int i = 0; i < lines.size(); i++) {
+-            if (!lines.get(i).isTaxExempt()) {
+-                taxable = taxable.add(lines.get(i).amount().subtract(shares.get(i)));
+-            }
++            InvoiceLine line = lines.get(i);
++            taxes.add(line.isTaxExempt() ? BigDecimal.ZERO.setScale(2)
++                    : line.amount().subtract(shares.get(i)).multiply(taxRate).divide(BigDecimal.valueOf(100))
++                            .setScale(2, RoundingMode.HALF_UP));
+         }
+-        return taxable.multiply(taxRate).divide(BigDecimal.valueOf(100))
+-                .setScale(2, RoundingMode.HALF_UP);
++        return taxes;
++    }
++
++    /** The tax charged at the given rate (a percentage): the sum of the line taxes. */
++    public BigDecimal tax(BigDecimal taxRate) {
++        return lineTaxes(taxRate).stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
+     /** The grand total: the subtotal less the discount, plus tax at the given rate. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 05cad28..688e2cf 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -53,25 +53,26 @@ public class InvoiceController {
+     /**
+      * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
+      * money is a decimal string to the cent. {@code discountShare} is the line's share of the
+-     * invoice discount; {@code taxExempt} lines are left out of the taxed amount. {@code discountPct}
++     * invoice discount; {@code tax} is the line's tax, the rate on its amount less that share, and
++     * {@code taxExempt} lines have none. {@code discountPct}
+      * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
+      * {@code amount} is after it.
+      */
+     public record LineView(Long id, String description, String qty, String unitPrice, String discountPct,
+-            String discount, String amount, String discountShare, boolean taxExempt) {
+-        static LineView of(InvoiceLine l, BigDecimal discountShare) {
++            String discount, String amount, String discountShare, String tax, boolean taxExempt) {
++        static LineView of(InvoiceLine l, BigDecimal discountShare, BigDecimal tax) {
+             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
+                     l.getUnitPrice().setScale(2).toPlainString(),
+                     l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount().toPlainString(),
+-                    l.amount().toPlainString(), discountShare.toPlainString(), l.isTaxExempt());
++                    l.amount().toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
++                    l.isTaxExempt());
+         }
+     }
+ 
+     /**
+      * An opened invoice: its lines, subtotal, discount percentage (without trailing zeros, "12.5"),
+-     * the amount it takes off, the tax rate (without trailing zeros) and the tax charged on the taxable
+-     * lines less their discount shares, and the
+-     * grand total; the payments made to it, what they add up to and what is still due (money as
++     * the amount it takes off, the tax rate (without trailing zeros) and the tax charged, the sum of the
++     * line taxes, and the grand total; the payments made to it, what they add up to and what is still due (money as
+      * decimal strings to the cent). Its status follows what has been paid. {@code reference} is its
+      * RF payment reference in groups of four.
+      */
+@@ -82,8 +83,9 @@ public class InvoiceController {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+             List<BigDecimal> shares = i.discountShares();
++            List<BigDecimal> taxes = i.lineTaxes(taxRate);
+             List<LineView> lines = IntStream.range(0, shares.size())
+-                    .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n))).toList();
++                    .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n), taxes.get(n))).toList();
+             return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()),
+                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
+                     i.statusWhenPaid(paid, taxRate), i.getIssueDate(), i.getDueDate(),
