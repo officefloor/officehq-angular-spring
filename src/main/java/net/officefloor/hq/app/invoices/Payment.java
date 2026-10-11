@@ -70,6 +70,15 @@ public class Payment {
         return payment;
     }
 
+    /** A deposit: the whole amount held on the client's account as credit, applied to no invoice. */
+    public static Payment deposit(Long clientId, BigDecimal amount, LocalDate date) {
+        Payment payment = new Payment();
+        payment.clientId = clientId;
+        payment.amount = amount;
+        payment.date = date;
+        return payment;
+    }
+
     public Long getId() {
         return id;
     }
@@ -101,6 +110,20 @@ public class Payment {
 
     public List<PaymentAllocation> getAllocations() {
         return allocations;
+    }
+
+    /** The part of this payment applied to no invoice: credit on the client's account; none once reversed. */
+    public BigDecimal credit() {
+        if (reversed) {
+            return BigDecimal.ZERO;
+        }
+        return amount.subtract(allocations.stream().map(PaymentAllocation::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+    }
+
+    /** Applies part of this payment's credit to the invoice on the day. */
+    public void apply(Long invoiceId, BigDecimal part, LocalDate on) {
+        allocations.add(new PaymentAllocation(invoiceId, part, on));
     }
 
     /** How much of this payment goes to the invoice. */

@@ -37,7 +37,7 @@ public class TestSupportController {
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "allocations");
-    private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
+    private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID");
 
     private final Audit audit;
@@ -146,9 +146,10 @@ public class TestSupportController {
                 if (allocation.get("invoiceId") == null) {
                     throw refuse("payments[].allocations[].invoiceId is required");
                 }
-                jdbc.update("INSERT INTO payment_allocation (payment_id, invoice_id, amount) VALUES (?, ?, ?)",
+                jdbc.update("INSERT INTO payment_allocation (payment_id, invoice_id, amount, applied_date) VALUES (?, ?, ?, ?)",
                         paymentId, id(allocation.get("invoiceId")),
-                        cents(allocation.get("amount"), "payments[].allocations[].amount"));
+                        cents(allocation.get("amount"), "payments[].allocations[].amount"),
+                        allocation.get("date") == null ? null : date(allocation.get("date"), "payments[].allocations[].date"));
             }
         }
         // Keep generated ids clear of the seeded ones.
@@ -233,11 +234,14 @@ public class TestSupportController {
                     row.put("reference", r.get("REFERENCE"));
                     row.put("reversed", r.get("REVERSED"));
                     row.put("allocations", jdbc.queryForList(
-                            "SELECT invoice_id, amount FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
+                            "SELECT invoice_id, amount, applied_date FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
                             r.get("ID")).stream().map(a -> {
                                 Map<String, Object> allocation = new LinkedHashMap<>();
                                 allocation.put("invoiceId", a.get("INVOICE_ID"));
                                 allocation.put("amount", a.get("AMOUNT"));
+                                if (a.get("APPLIED_DATE") != null) {
+                                    allocation.put("date", a.get("APPLIED_DATE").toString());
+                                }
                                 return allocation;
                             }).toList());
                     return row;

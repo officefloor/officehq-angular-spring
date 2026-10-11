@@ -292,6 +292,7 @@ function problemWith(line: NewLine): string {
             [allocations]="allocations()"
             (paid)="paymentRecorded($event)"
             (split)="splitRecorded(inv.id, $event)"
+            (deposited)="splitRecorded(inv.id, $event)"
           />
         }
 

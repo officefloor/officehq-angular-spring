@@ -104,6 +104,8 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
 // payment is spread over those invoices instead, and the parts must add up to it. The server refuses a payment on a draft, over what is due, or dated after today
 // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
 // invoice number may be quoted instead: it must pass its Luhn check and stands for that invoice's reference.
+// Ticking Deposit instead holds the whole amount on the client's account as credit, applied to no
+// invoice even when one is open; the client's credit is used when one of its invoices is sent.
 @Component({
   selector: 'app-payment-form',
   imports: [ReactiveFormsModule],
@@ -139,6 +141,13 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
         autocapitalize="characters"
         placeholder="RF16 0000 075"
       />
+      <input
+        id="payment-deposit"
+        type="checkbox"
+        data-testid="payment-form-deposit"
+        formControlName="deposit"
+      />
+      <label for="payment-deposit">Deposit (hold as credit on the client's account)</label>
       <button type="submit" data-testid="payment-form-submit" [disabled]="saving()">
         Record payment
       </button>
@@ -159,6 +168,8 @@ export class PaymentForm {
   readonly paid = output<InvoiceDetail>();
   // The client's invoices after a payment spread over several of them.
   readonly split = output<InvoiceSummary[]>();
+  // The client's invoices after a deposit held as credit.
+  readonly deposited = output<InvoiceSummary[]>();
 
   protected readonly saving = signal(false);
   protected readonly error = signal('');
@@ -167,6 +178,7 @@ export class PaymentForm {
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
     reference: new FormControl('', { nonNullable: true }),
+    deposit: new FormControl(false, { nonNullable: true }),
   });
 
   protected record(): void {
@@ -176,6 +188,10 @@ export class PaymentForm {
       date: raw.date.trim(),
       reference: raw.reference.replace(/\s/g, '').toUpperCase(),
     };
+    if (raw.deposit) {
+      this.recordDeposit(payment);
+      return;
+    }
     const allocations = this.allocations();
     const invoiceId = this.invoiceId();
     let problem = problemWithPayment(payment, allocations.length === 0 && invoiceId === null);
@@ -221,5 +237,31 @@ export class PaymentForm {
           error: failed,
         });
     }
+  }
+
+  // Records the whole payment as a deposit, credit on the client's account; any reference is not kept.
+  private recordDeposit(payment: NewPayment): void {
+    const problem = problemWithPayment({ ...payment, reference: '' }, false);
+    if (problem) {
+      this.form.markAllAsTouched();
+      this.error.set(problem);
+      return;
+    }
+    this.saving.set(true);
+    this.error.set('');
+    this.service.recordDeposit(this.clientId(), { amount: payment.amount, date: payment.date }).subscribe({
+      next: (list) => {
+        this.form.reset();
+        this.saving.set(false);
+        this.deposited.emit(list);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.error.set(
+          typeof detail === 'string' && detail ? detail : 'The deposit could not be recorded.',
+        );
+        this.saving.set(false);
+      },
+    });
   }
 }

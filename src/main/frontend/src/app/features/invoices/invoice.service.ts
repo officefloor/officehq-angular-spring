@@ -128,11 +128,13 @@ export interface NewLine {
 export type NewDiscount = ({ discountPct: string } | { discountAmount: string }) & { discountCap?: string; discountReason?: string };
 
 // What a client still owes across its sent invoices (drafts do not count), after discounts, tax and
-// payments, and how much of that is overdue; decimal strings to the cent, worked out by the server.
+// payments, less the client's unused credit (so it can be below zero), how much of what is due is
+// overdue, and the unused credit; decimal strings to the cent, worked out by the server.
 export interface ClientBalance {
   clientId: number;
   balance: string;
   overdue: string;
+  credit: string;
 }
 
 // The invoices REST API.
@@ -233,6 +235,13 @@ export class InvoiceService {
   // Answers the client's invoices with their new statuses.
   recordSplitPayment(clientId: number, payment: NewSplitPayment): Observable<InvoiceSummary[]> {
     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment);
+  }
+
+  // Records a deposit: the whole amount held on the client's account as credit, applied to no invoice
+  // until one of the client's invoices is sent; refused (409) when dated after today. Answers the
+  // client's invoices.
+  recordDeposit(clientId: number, deposit: { amount: string; date: string }): Observable<InvoiceSummary[]> {
+    return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/deposits`, deposit);
   }
 
   // Reverses a payment (a bounced cheque) on every invoice it was applied to; refused (409) when it

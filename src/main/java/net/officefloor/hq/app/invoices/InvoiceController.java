@@ -47,9 +47,10 @@ public class InvoiceController {
 
     /**
      * What a client still owes across its sent invoices (drafts do not count), after discounts, tax
-     * and payments, and how much of that is overdue; decimal strings to the cent.
+     * and payments, less the client's unused credit (so it can be below zero), how much of what is due
+     * is overdue, and the unused credit; decimal strings to the cent.
      */
-    public record ClientBalance(Long clientId, String balance, String overdue) {
+    public record ClientBalance(Long clientId, String balance, String overdue, String credit) {
     }
 
     /**
@@ -191,6 +192,16 @@ public class InvoiceController {
             String reference) {
     }
 
+    /** A deposit to hold as credit: an amount more than zero with at most two decimals, and the date it was paid. */
+    public record NewDeposit(
+            @NotNull(message = "Enter an amount.")
+            @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
+            @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
+            BigDecimal amount,
+            @NotNull(message = "Enter the date it was paid.")
+            LocalDate date) {
+    }
+
     /** A due date to set on a draft by hand. */
     public record NewDueDate(
             @NotNull(message = "Enter the due date.")
@@ -250,7 +261,10 @@ public class InvoiceController {
         return list.stream().map(i -> InvoiceSummary.of(i, rate, paid.get(i.getId()), paidOn.get(i.getId()), on)).toList();
     }
 
-    /** The balance of each client that has a sent invoice; a client not listed owes nothing. Void invoices do not count. */
+    /**
+     * The balance of each client that has a sent invoice or credit; a client not listed owes nothing and
+     * has no credit. Void invoices do not count.
+     */
     @GetMapping("/api/clients/balances")
     public List<ClientBalance> balances() {
         BigDecimal rate = taxRate.percent();
@@ -267,8 +281,14 @@ public class InvoiceController {
                 sums[1] = sums[1].add(due);
             }
         }
-        return owed.entrySet().stream().map(e -> new ClientBalance(e.getKey(),
-                e.getValue()[0].toPlainString(), e.getValue()[1].toPlainString())).toList();
+        Map<Long, BigDecimal> credits = invoices.credits();
+        credits.keySet().forEach(clientId -> owed.computeIfAbsent(clientId,
+                k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) }));
+        return owed.entrySet().stream().map(e -> {
+            BigDecimal credit = credits.getOrDefault(e.getKey(), BigDecimal.ZERO).setScale(2);
+            return new ClientBalance(e.getKey(), e.getValue()[0].subtract(credit).toPlainString(),
+                    e.getValue()[1].toPlainString(), credit.toPlainString());
+        }).toList();
     }
 
     @PostMapping("/api/clients/{clientId}/invoices")
@@ -410,6 +430,15 @@ public class InvoiceController {
                 .map(InvoiceController::reference)
                 .distinct()
                 .toList();
+    }
+
+    /** Records a deposit held on the client's account as credit; answers the client's invoices. */
+    @PostMapping("/api/clients/{clientId}/deposits")
+    @ResponseStatus(HttpStatus.CREATED)
+    public List<InvoiceSummary> recordDeposit(@PathVariable Long clientId, @Valid @RequestBody NewDeposit body) {
+        invoices.recordDeposit(clientId, body.amount(), body.date())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+        return forClient(clientId);
     }
 
     @PostMapping("/api/invoices/{id}/payments")

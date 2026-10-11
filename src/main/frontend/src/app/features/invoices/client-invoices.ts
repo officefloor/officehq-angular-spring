@@ -112,6 +112,7 @@ import { money, statusLabel } from './invoice-format';
         [clientId]="clientId()"
         [allocations]="allocations()"
         (split)="splitRecorded($event)"
+        (deposited)="splitRecorded($event)"
       />
     }
   `,

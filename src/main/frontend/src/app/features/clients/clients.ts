@@ -74,7 +74,8 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
               <span data-testid="client-email">{{ c.email }}</span>
               <span>
                 Owes <span data-testid="client-balance">{{ money(balanceOf(c.id).balance) }}</span>,
-                overdue <span data-testid="client-overdue">{{ money(balanceOf(c.id).overdue) }}</span>
+                overdue <span data-testid="client-overdue">{{ money(balanceOf(c.id).overdue) }}</span>,
+                credit <span data-testid="client-credit">{{ money(balanceOf(c.id).credit) }}</span>
               </span>
             </button>
           </li>
@@ -181,7 +182,7 @@ export class Clients {
   }
 
   protected balanceOf(clientId: number): ClientBalance {
-    return this.balances().get(clientId) ?? { clientId, balance: '0', overdue: '0' };
+    return this.balances().get(clientId) ?? { clientId, balance: '0', overdue: '0', credit: '0' };
   }
 
   // Fetches what every client owes again, after a payment or other change to an invoice.

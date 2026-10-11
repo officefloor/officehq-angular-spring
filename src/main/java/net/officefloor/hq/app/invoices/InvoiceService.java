@@ -288,13 +288,79 @@ public class InvoiceService {
                 .forEach(this::markSent);
     }
 
-    /** Issues the draft today, due on the client's terms, and records it in the audit. */
+    /**
+     * Issues the draft today, due on the client's terms, and records it in the audit; then uses the
+     * client's credit on it (see {@link #applyCredit}).
+     */
     private void markSent(Invoice invoice) {
         LocalDate issued = today.date();
         invoice.markSent(issued, dueDateFor(invoice.getClientId(), issued));
         invoices.saveAndFlush(invoice);
         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
                 + " total=" + invoice.total(taxRate.percent()).toPlainString());
+        applyCredit(invoice);
+    }
+
+    /**
+     * Uses the client's credit on the invoice just sent, up to what it has due: the oldest payment's
+     * credit first (lower id first on the same date), each part applied today and recorded in the audit.
+     */
+    private void applyCredit(Invoice invoice) {
+        BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
+        LocalDate now = today.date();
+        boolean used = false;
+        for (Payment payment : payments.findForClient(invoice.getClientId())) {
+            if (due.signum() <= 0) {
+                break;
+            }
+            BigDecimal credit = payment.credit();
+            if (credit.signum() <= 0) {
+                continue;
+            }
+            BigDecimal part = credit.min(due);
+            payment.apply(invoice.getId(), part, now);
+            payments.saveAndFlush(payment);
+            audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
+                    + part.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+            due = due.subtract(part);
+            used = true;
+        }
+        if (used) {
+            recordWriteOff(invoice);
+        }
+    }
+
+    /**
+     * Records a deposit of the amount on the date from the client: the whole amount is held on the
+     * client's account as credit, applied to no invoice, and recorded in the audit; empty if no such
+     * client. The amount has already been checked; a date after today is refused.
+     */
+    @Transactional
+    public Optional<Payment> recordDeposit(Long clientId, BigDecimal amount, LocalDate date) {
+        if (clients.findById(clientId).isEmpty()) {
+            return Optional.empty();
+        }
+        LocalDate now = today.date();
+        if (date.isAfter(now)) {
+            throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+        }
+        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date));
+        audit.record("DEPOSIT_RECORDED id=" + payment.getId() + " client=" + clientId + " amount="
+                + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        return Optional.of(payment);
+    }
+
+    /** The unused credit of each client that has any, by client id. */
+    @Transactional(readOnly = true)
+    public Map<Long, BigDecimal> credits() {
+        Map<Long, BigDecimal> credits = new HashMap<>();
+        for (Payment payment : payments.findNotReversed()) {
+            BigDecimal credit = payment.credit();
+            if (credit.signum() > 0) {
+                credits.merge(payment.getClientId(), credit, BigDecimal::add);
+            }
+        }
+        return credits;
     }
 
     /**

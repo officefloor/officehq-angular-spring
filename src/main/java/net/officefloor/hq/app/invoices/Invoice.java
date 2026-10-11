@@ -281,20 +281,25 @@ public class Invoice {
 
     /**
      * The date the invoice was fully paid: the date of the payment that cleared its grand total at the
-     * tax rate, taking the payments (not reversed) in date order; null while something is still due.
+     * tax rate, taking the parts of payments (not reversed) in the order they were applied (credit used
+     * counts on the day it was applied); null while something is still due.
      */
     public LocalDate paidOn(List<Payment> payments, BigDecimal taxRate) {
         BigDecimal total = total(taxRate);
         if (status != InvoiceStatus.SENT || total.signum() <= 0) {
             return null;
         }
-        List<Payment> inOrder = payments.stream().filter(p -> !p.isReversed())
-                .sorted(Comparator.comparing(Payment::getDate).thenComparing(Payment::getId)).toList();
+        record Part(LocalDate on, Long paymentId, BigDecimal amount) {
+        }
+        List<Part> inOrder = payments.stream().filter(p -> !p.isReversed())
+                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
+                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
+                .sorted(Comparator.comparing(Part::on).thenComparing(Part::paymentId)).toList();
         BigDecimal sum = BigDecimal.ZERO;
-        for (Payment p : inOrder) {
-            sum = sum.add(p.amountTo(id));
+        for (Part p : inOrder) {
+            sum = sum.add(p.amount());
             if (sum.signum() > 0 && total.subtract(sum).compareTo(WRITE_OFF_LIMIT) < 0) {
-                return p.getDate();
+                return p.on();
             }
         }
         return null;
