@@ -1,0 +1,56 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 5e518fe..99822db 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1709,9 +1709,13 @@ public class Invoice {
+                 : zero();
+     }
+ 
+-    /** The least a part payment may be at the tax rate: {@link #MINIMUM_PART_SHARE} of the grand total. */
+-    public BigDecimal minimumPart(BigDecimal taxRate) {
+-        return owedTotal(taxRate).multiply(MINIMUM_PART_SHARE).setScale(scale(), RoundingMode.HALF_UP);
++    /**
++     * The least a part payment may be at the tax rate once the amount was already paid:
++     * {@link #MINIMUM_PART_SHARE} of what the invoice still has due.
++     */
++    public BigDecimal minimumPart(BigDecimal paid, BigDecimal taxRate) {
++        return amountDue(paid, taxRate).max(BigDecimal.ZERO).multiply(MINIMUM_PART_SHARE)
++                .setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
+     /**
+@@ -1724,7 +1728,7 @@ public class Invoice {
+             return amount.compareTo(earliestUnpaid(paid, taxRate)) < 0
+                     && amountDue(paid.add(amount), taxRate).signum() > 0;
+         }
+-        return amount.compareTo(minimumPart(taxRate)) < 0 && amountDue(paid.add(amount), taxRate).signum() > 0;
++        return amount.compareTo(minimumPart(paid, taxRate)) < 0 && amountDue(paid.add(amount), taxRate).signum() > 0;
+     }
+ 
+     /** Adds a line to the end of the invoice. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 3690380..380baf4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1158,8 +1158,8 @@ public class InvoiceService {
+             }
+             if (invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
+                 throw new InvoiceRejectedException("A part payment must be at least "
+-                        + invoice.currency().format(invoice.minimumPart(taxRate.percent()))
+-                        + " (10% of the total), unless it settles the invoice.");
++                        + invoice.currency().format(invoice.minimumPart(paidSoFar, taxRate.percent()))
++                        + " (10% of what it still has due), unless it settles the invoice.");
+             }
+             if (date.isAfter(now)) {
+                 throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+@@ -1443,8 +1443,8 @@ public class InvoiceService {
+             }
+             if (invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
+                 throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
+-                        + number + " is less than " + currency.format(invoice.minimumPart(taxRate.percent()))
+-                        + " (10% of its total), unless it settles the invoice.");
++                        + number + " is less than " + currency.format(invoice.minimumPart(paidSoFar, taxRate.percent()))
++                        + " (10% of what it still has due), unless it settles the invoice.");
+             }
+             if (invoice.getIssueDate() != null && date.isBefore(invoice.getIssueDate())) {
+                 throw new InvoiceRejectedException("The payment date cannot be before the issue date of " + number
