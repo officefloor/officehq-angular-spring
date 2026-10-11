@@ -108,7 +108,8 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
 // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
 // invoice number may be quoted instead: it must pass its Luhn check and stands for that invoice's reference.
 // Ticking Deposit instead holds the whole amount on the client's account as credit, applied to no
-// invoice even when one is open; the client's credit is used when one of its invoices is sent.
+// invoice even when one is open; the client's credit is used when one of its invoices is sent. A
+// deposit quoting one of the client's drafts is held for that draft until it is sent.
 @Component({
   selector: 'app-payment-form',
   imports: [ReactiveFormsModule],
@@ -156,7 +157,9 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
         data-testid="payment-form-deposit"
         formControlName="deposit"
       />
-      <label for="payment-deposit">Deposit (hold as credit on the client's account)</label>
+      <label for="payment-deposit"
+        >Deposit (hold as credit on the client's account; quote a draft's reference to hold it for that invoice)</label
+      >
       <button type="submit" data-testid="payment-form-submit" [disabled]="saving()">
         Record payment
       </button>
@@ -268,9 +271,11 @@ export class PaymentForm {
     }
   }
 
-  // Records the whole payment as a deposit, credit on the client's account; any reference is not kept.
+  // Records the whole payment as a deposit, credit on the client's account. With a reference (an RF
+  // reference or invoice number of one of the client's drafts; the server refuses any other) it is held
+  // for that invoice: used first when it is sent, and by nothing else until then.
   private recordDeposit(payment: NewPayment): void {
-    const problem = problemWithPayment({ ...payment, reference: '' }, false);
+    const problem = problemWithPayment(payment, false);
     if (problem) {
       this.form.markAllAsTouched();
       this.error.set(problem);
@@ -278,19 +283,26 @@ export class PaymentForm {
     }
     this.saving.set(true);
     this.error.set('');
-    this.service.recordDeposit(this.clientId(), { amount: payment.amount, currency: payment.currency, date: payment.date }).subscribe({
-      next: (list) => {
-        this.form.reset({ currency: this.currency() });
-        this.saving.set(false);
-        this.deposited.emit(list);
-      },
-      error: (e: HttpErrorResponse) => {
-        const detail: unknown = e.error?.detail;
-        this.error.set(
-          typeof detail === 'string' && detail ? detail : 'The deposit could not be recorded.',
-        );
-        this.saving.set(false);
-      },
-    });
+    this.service
+      .recordDeposit(this.clientId(), {
+        amount: payment.amount,
+        currency: payment.currency,
+        date: payment.date,
+        reference: payment.reference || undefined,
+      })
+      .subscribe({
+        next: (list) => {
+          this.form.reset({ currency: this.currency() });
+          this.saving.set(false);
+          this.deposited.emit(list);
+        },
+        error: (e: HttpErrorResponse) => {
+          const detail: unknown = e.error?.detail;
+          this.error.set(
+            typeof detail === 'string' && detail ? detail : 'The deposit could not be recorded.',
+          );
+          this.saving.set(false);
+        },
+      });
   }
 }

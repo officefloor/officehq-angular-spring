@@ -93,10 +93,19 @@ public class Payment {
 
     /** A deposit: the whole amount held on the client's account as credit, applied to no invoice. */
     public static Payment deposit(Long clientId, BigDecimal amount, LocalDate date) {
+        return deposit(clientId, amount, date, null);
+    }
+
+    /**
+     * A deposit quoting the reference of one of the client's drafts (null when none): held for that
+     * invoice while it is a draft.
+     */
+    public static Payment deposit(Long clientId, BigDecimal amount, LocalDate date, String reference) {
         Payment payment = new Payment();
         payment.clientId = clientId;
         payment.amount = amount;
         payment.date = date;
+        payment.reference = reference;
         return payment;
     }
 

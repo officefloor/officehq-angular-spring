@@ -334,9 +334,13 @@ export class InvoiceService {
   }
 
   // Records a deposit: the whole amount held on the client's account as credit, applied to no invoice
-  // until one of the client's invoices is sent; refused (409) when dated after today. Answers the
+  // until one of the client's invoices is sent; refused (409) when dated after today. With a reference
+  // it is held for that one of the client's drafts, refused (409) when it is not one. Answers the
   // client's invoices.
-  recordDeposit(clientId: number, deposit: { amount: string; currency: Currency; date: string }): Observable<InvoiceSummary[]> {
+  recordDeposit(
+    clientId: number,
+    deposit: { amount: string; currency: Currency; date: string; reference?: string },
+  ): Observable<InvoiceSummary[]> {
     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/deposits`, deposit);
   }
 

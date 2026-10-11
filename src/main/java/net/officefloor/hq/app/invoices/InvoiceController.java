@@ -229,7 +229,10 @@ public class InvoiceController {
             String reference) {
     }
 
-    /** A deposit to hold as credit: an amount more than zero with at most two decimals, and the date it was paid. */
+    /**
+     * A deposit to hold as credit: an amount more than zero with at most two decimals, the date it was
+     * paid, and optionally the reference of the client's draft it is held for.
+     */
     public record NewDeposit(
             @NotNull(message = "Enter an amount.")
             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
@@ -238,7 +241,10 @@ public class InvoiceController {
             // The currency it was paid in; the client's own when left out.
             Currency currency,
             @NotNull(message = "Enter the date it was paid.")
-            LocalDate date) {
+            LocalDate date,
+            // The reference or invoice number of the client's draft to hold it for; none when left out.
+            @Size(max = 64, message = "The reference must be at most 64 characters.")
+            String reference) {
     }
 
     /** A refund of unused credit: an amount more than zero with at most two decimals, and the date it was refunded. */
@@ -557,7 +563,7 @@ public class InvoiceController {
     @PostMapping("/api/clients/{clientId}/deposits")
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> recordDeposit(@PathVariable Long clientId, @Valid @RequestBody NewDeposit body) {
-        invoices.recordDeposit(clientId, body.amount(), body.currency(), body.date())
+        invoices.recordDeposit(clientId, body.amount(), body.currency(), body.date(), reference(body.reference()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
         return forClient(clientId);
     }

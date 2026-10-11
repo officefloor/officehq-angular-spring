@@ -513,14 +513,27 @@ public class InvoiceService {
     }
 
     /**
-     * Uses the client's credit on the invoice just sent, up to what it has due: the oldest payment's
-     * credit first (lower id first on the same date), each part applied today and recorded in the audit.
+     * Uses the client's credit on the invoice just sent, up to what it has due: deposits held for it
+     * first, then the oldest payment's credit (lower id first on the same date), never a deposit held
+     * for another of the client's drafts; each part applied today and recorded in the audit.
      */
     private void applyCredit(Invoice invoice) {
         BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
         LocalDate now = today.date();
         boolean used = false;
+        Map<String, Long> drafts = draftsByReference(invoice.getClientId());
+        List<Payment> usable = new ArrayList<>();
+        List<Payment> others = new ArrayList<>();
         for (Payment payment : payments.findForClient(invoice.getClientId())) {
+            Long heldFor = heldFor(payment, drafts);
+            if (invoice.getId().equals(heldFor)) {
+                usable.add(payment);
+            } else if (heldFor == null) {
+                others.add(payment);
+            }
+        }
+        usable.addAll(others);
+        for (Payment payment : usable) {
             if (due.signum() <= 0) {
                 break;
             }
@@ -544,13 +557,20 @@ public class InvoiceService {
     /**
      * Records a deposit of the amount on the date from the client: the whole amount is held on the
      * client's account as credit, applied to no invoice, and recorded in the audit; empty if no such
-     * client. The amount has already been checked; a date after today is refused.
+     * client. With a reference (null when none, already checked) it is held for that one of the
+     * client's drafts (see {@link #heldFor}); a reference that is not one of its drafts' is refused.
+     * The amount has already been checked; a date after today is refused.
      */
     @Transactional
-    public Optional<Payment> recordDeposit(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date) {
+    public Optional<Payment> recordDeposit(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+            String reference) {
         Optional<Client> client = clients.findById(clientId);
         if (client.isEmpty()) {
             return Optional.empty();
+        }
+        if (reference != null && !draftsByReference(clientId).containsKey(reference)) {
+            throw new InvoiceRejectedException(PaymentReference.grouped(reference)
+                    + " is not the reference of any of this client's drafts, so the deposit cannot be held for it.");
         }
         Currency currency = client.get().getCurrency();
         BigDecimal amount = converted(paidAmount, paidIn, currency);
@@ -558,14 +578,16 @@ public class InvoiceService {
         if (date.isAfter(now)) {
             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
         }
-        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date).paidIn(paidIn, paidAmount, currency));
+        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date, reference)
+                .paidIn(paidIn, paidAmount, currency));
         audit.record("DEPOSIT_RECORDED id=" + payment.getId() + " client=" + clientId + " amount="
                 + amount.setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
         return Optional.of(payment);
     }
 
     /**
-     * Refunds the amount of the client's unused credit on the date: the oldest payment's credit first
+     * Refunds the amount of the client's unused credit on the date, never a deposit held for one of its
+     * drafts: the oldest payment's credit first
      * (lower id first on the same date), then the next, each part recorded in the audit; empty if no
      * such client. The amount has already been checked; a date after today or before a payment it
      * would come from, or an amount more than the client's credit, is refused.
@@ -586,7 +608,11 @@ public class InvoiceService {
         List<BigDecimal> parts = new ArrayList<>();
         BigDecimal left = amount;
         BigDecimal credit = BigDecimal.ZERO;
+        Map<String, Long> drafts = draftsByReference(clientId);
         for (Payment payment : payments.findForClient(clientId)) {
+            if (heldFor(payment, drafts) != null) {
+                continue;
+            }
             BigDecimal unused = payment.credit();
             if (unused.signum() <= 0) {
                 continue;
@@ -981,6 +1007,34 @@ public class InvoiceService {
         if (amount != null && !currency.isWhole(amount)) {
             throw new InvoiceRejectedException(what + " must be in whole yen, with no decimals.");
         }
+    }
+
+    /** The RF reference of each of the client's drafts, to its invoice id. */
+    private Map<String, Long> draftsByReference(Long clientId) {
+        Map<String, Long> drafts = new HashMap<>();
+        for (Invoice invoice : invoices.findByClientIdOrderByIdAsc(clientId)) {
+            if (invoice.isDraft() && !invoice.isCreditNote()) {
+                drafts.put(PaymentReference.of(invoice.getId()), invoice.getId());
+            }
+        }
+        return drafts;
+    }
+
+    /**
+     * The draft the payment is held for, or null when it is ordinary credit: a payment whose reference
+     * (an RF reference or invoice number, as stored) is that of one of the client's drafts is a deposit
+     * held for it. Once that invoice has been sent the deposit's rest is ordinary credit.
+     */
+    private static Long heldFor(Payment payment, Map<String, Long> drafts) {
+        String reference = payment.getReference();
+        if (reference == null || reference.isBlank()) {
+            return null;
+        }
+        String compact = reference.replaceAll("\\s", "").toUpperCase();
+        if (compact.startsWith("INV")) {
+            compact = InvoiceNumber.idOf(compact).map(PaymentReference::of).orElse(compact);
+        }
+        return drafts.get(compact);
     }
 
     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
