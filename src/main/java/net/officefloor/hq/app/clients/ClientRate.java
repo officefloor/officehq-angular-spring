@@ -3,10 +3,22 @@ package net.officefloor.hq.app.clients;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
-/** An entry of a client's rate card: a single unit price, or progressive tiers (see {@link RateTiers}). */
+/**
+ * An entry of a client's rate card: a single unit price, or progressive tiers (see {@link RateTiers}), for a
+ * unit type from a date (or always).
+ */
 @Embeddable
 public class ClientRate {
+
+    /** The unit type (hour, day, ...) the entry prices. */
+    @Column(name = "unit_type")
+    private String unitType;
+
+    /** The date the entry takes effect from; null for one that has always applied. */
+    @Column(name = "effective_from")
+    private LocalDate effectiveFrom;
 
     /** The single unit price; null when priced in tiers. */
     @Column(name = "unit_price")
@@ -34,17 +46,45 @@ public class ClientRate {
     protected ClientRate() {
     }
 
-    /** A single unit price, billed in the given increment and minimum units (null for none). */
-    public ClientRate(BigDecimal unitPrice, BigDecimal increment, BigDecimal minUnits) {
+    /**
+     * A single unit price for the unit type from the date (null for always), billed in the given increment and
+     * minimum units (null for none).
+     */
+    public ClientRate(String unitType, LocalDate effectiveFrom, BigDecimal unitPrice, BigDecimal increment, BigDecimal minUnits) {
+        this.unitType = unitType;
+        this.effectiveFrom = effectiveFrom;
         this.unitPrice = unitPrice;
         this.increment = increment;
         this.minUnits = minUnits;
     }
 
-    /** A single unit price, billed in the given increment and minimum units and taxed at the given rate (null for none). */
-    public ClientRate(BigDecimal unitPrice, BigDecimal increment, BigDecimal minUnits, BigDecimal taxRate) {
-        this(unitPrice, increment, minUnits);
+    /**
+     * A single unit price for the unit type from the date (null for always), billed in the given increment and
+     * minimum units and taxed at the given rate (null for none).
+     */
+    public ClientRate(String unitType, LocalDate effectiveFrom, BigDecimal unitPrice, BigDecimal increment, BigDecimal minUnits,
+            BigDecimal taxRate) {
+        this(unitType, effectiveFrom, unitPrice, increment, minUnits);
         this.taxRate = taxRate;
+    }
+
+    public String getUnitType() {
+        return unitType;
+    }
+
+    /** The date the entry takes effect from; null for always. */
+    public LocalDate getEffectiveFrom() {
+        return effectiveFrom;
+    }
+
+    /** Whether the entry is for the unit type, matched ignoring case and surrounding spaces. */
+    public boolean isFor(String type) {
+        return type != null && unitType.equalsIgnoreCase(type.trim());
+    }
+
+    /** Whether the entry has taken effect by the date. */
+    public boolean inForceOn(LocalDate on) {
+        return effectiveFrom == null || !effectiveFrom.isAfter(on);
     }
 
     public BigDecimal getUnitPrice() {

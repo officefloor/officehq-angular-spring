@@ -230,7 +230,7 @@ public class TestSupportController {
                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", TaxRate.HOME_REGION, home);
             }
             for (Map<String, Object> rate : rows(values.get("rates"), "settings.rates")) {
-                only(rate, Set.of("unitType", "unitPrice", "tiers"), "settings.rates[]");
+                only(rate, Set.of("unitType", "from", "unitPrice", "tiers"), "settings.rates[]");
                 if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
                     throw refuse("settings.rates[].unitType is required");
                 }
@@ -239,6 +239,7 @@ public class TestSupportController {
                     throw refuse("settings.rates[] needs either unitPrice or tiers");
                 }
                 priceList.add(rate.get("unitType").toString(),
+                        rate.get("from") == null ? null : date(rate.get("from"), "settings.rates[].from"),
                         tiers != null ? null : cents(rate.get("unitPrice"), "settings.rates[].unitPrice"), tiers);
             }
             for (Map<String, Object> change : rows(values.get("taxRateChanges"), "settings.taxRateChanges")) {
@@ -310,7 +311,7 @@ public class TestSupportController {
             Long clientId = id(row.get("id") == null
                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
-                only(rate, Set.of("unitType", "unitPrice", "tiers", "increment", "minUnits", "taxRate"), "clients[].rates[]");
+                only(rate, Set.of("unitType", "from", "unitPrice", "tiers", "increment", "minUnits", "taxRate"), "clients[].rates[]");
                 if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
                     throw refuse("clients[].rates[].unitType is required");
                 }
@@ -328,8 +329,9 @@ public class TestSupportController {
                 if (minUnits != null && minUnits.signum() <= 0) {
                     throw refuse("clients[].rates[].minUnits must be more than zero, not " + rate.get("minUnits"));
                 }
-                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price, tiers, increment, min_units, tax_rate) VALUES (?, ?, ?, ?, ?, ?, ?)", clientId,
+                jdbc.update("INSERT INTO client_rate (client_id, unit_type, effective_from, unit_price, tiers, increment, min_units, tax_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", clientId,
                         rate.get("unitType").toString(),
+                        rate.get("from") == null ? null : date(rate.get("from"), "clients[].rates[].from"),
                         tiers != null ? null : cents(rate.get("unitPrice"), "clients[].rates[].unitPrice"),
                         tiers == null ? null : tiers.format(), increment, minUnits,
                         rate.get("taxRate") == null ? null : percent(rate.get("taxRate"), "clients[].rates[].taxRate"));
@@ -560,7 +562,7 @@ public class TestSupportController {
             settings.put("volumeDiscounts", volumeDiscountRows);
         }
         List<Map<String, Object>> priceListRates = priceList.all().stream()
-                .map(e -> rate(e.unitType(), e.unitPrice(), e.tiers())).toList();
+                .map(e -> rate(e.unitType(), e.from(), e.unitPrice(), e.tiers())).toList();
         if (!priceListRates.isEmpty()) {
             settings.put("rates", priceListRates);
         }
@@ -600,9 +602,11 @@ public class TestSupportController {
                         row.put("taxNumber", r.get("TAX_NUMBER"));
                     }
                     List<Map<String, Object>> rateCard = jdbc.queryForList(
-                            "SELECT unit_type, unit_price, tiers, increment, min_units, tax_rate FROM client_rate WHERE client_id = ? ORDER BY unit_type",
+                            "SELECT unit_type, effective_from, unit_price, tiers, increment, min_units, tax_rate FROM client_rate WHERE client_id = ? ORDER BY unit_type, effective_from NULLS FIRST",
                             r.get("ID")).stream().map(c -> {
-                                Map<String, Object> entry = rate((String) c.get("UNIT_TYPE"), (BigDecimal) c.get("UNIT_PRICE"),
+                                Map<String, Object> entry = rate((String) c.get("UNIT_TYPE"),
+                                        c.get("EFFECTIVE_FROM") == null ? null : ((java.sql.Date) c.get("EFFECTIVE_FROM")).toLocalDate(),
+                                        (BigDecimal) c.get("UNIT_PRICE"),
                                         RateTiers.parse((String) c.get("TIERS")));
                                 if (c.get("INCREMENT") != null) {
                                     entry.put("increment", c.get("INCREMENT"));
@@ -740,31 +744,32 @@ public class TestSupportController {
 
     /**
      * A seeded line's unit price and the tiers it is priced in (null for a single price): the price
-     * given, or else its invoice's client's rate for the line's unit type — a single price, or tiers
-     * whose first band's price is kept as the unit price; refused when neither is there — and whether
-     * the line is priced from the card.
+     * given, or else its invoice's client's rate for the line's unit type in force on the invoice's issue
+     * date — a single price, or tiers whose first band's price is kept as the unit price — or else the price
+     * list's then; refused when neither is there — and whether the line is priced from the rates, which a
+     * draft's line follows.
      */
     private Object[] linePrice(Long invoiceId, Map<String, Object> line) {
         if (line.get("unitPrice") != null || line.get("unitType") == null) {
             return new Object[] {cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"), null, false};
         }
+        Map<String, Object> invoice = jdbc.queryForMap("SELECT i.status, i.issue_date, c.currency FROM invoice i JOIN client c ON c.id = i.client_id WHERE i.id = ?", invoiceId);
+        LocalDate on = invoiceDate(invoice.get("ISSUE_DATE"));
+        // A draft's line priced from the rates follows them; a sent invoice's has its price fixed.
+        boolean draft = "DRAFT".equals(invoice.get("STATUS"));
         List<Map<String, Object>> rate = jdbc.queryForList("SELECT r.unit_price, r.tiers FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
-                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", invoiceId,
-                line.get("unitType").toString().trim());
+                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?) AND (r.effective_from IS NULL OR r.effective_from <= ?) "
+                + "ORDER BY r.effective_from DESC NULLS LAST LIMIT 1", invoiceId,
+                line.get("unitType").toString().trim(), on);
         if (rate.isEmpty()) {
-            Map<String, Object> invoice = jdbc.queryForMap("SELECT i.issue_date, c.currency FROM invoice i JOIN client c ON c.id = i.client_id WHERE i.id = ?", invoiceId);
-            LocalDate on = invoice.get("ISSUE_DATE") == null ? today.date()
-                    : ((java.sql.Date) invoice.get("ISSUE_DATE")).toLocalDate();
             PriceList.Converted listed = priceList.priceFor(line.get("unitType").toString(),
                     Currency.orUsd((String) invoice.get("CURRENCY")), on);
             if (listed == null) {
                 throw refuse("invoices[].lineItems[].unitPrice is required: neither the client's rate card nor the price list has unitType "
-                        + line.get("unitType"));
+                        + line.get("unitType") + " in force on the issue date");
             }
-            return new Object[] {listed.unitPrice(), listed.tiers(), false};
+            return new Object[] {listed.unitPrice(), listed.tiers(), draft};
         }
-        // A draft's line priced from the card follows it; a sent invoice's has its price fixed.
-        boolean draft = "DRAFT".equals(jdbc.queryForObject("SELECT status FROM invoice WHERE id = ?", String.class, invoiceId));
         RateTiers tiers = RateTiers.parse((String) rate.get(0).get("TIERS"));
         if (tiers != null) {
             return new Object[] {tiers.firstPrice(), tiers.format(), draft};
@@ -772,21 +777,34 @@ public class TestSupportController {
         return new Object[] {rate.get(0).get("UNIT_PRICE"), null, draft};
     }
 
-    /** A seeded line's billing increment or minimum units: its invoice's client's given column for the line's unit type; null for none. */
+    /** The day an invoice's rates are taken on: its issue date, or today when it has none. */
+    private LocalDate invoiceDate(Object issueDate) {
+        return issueDate == null ? today.date() : ((java.sql.Date) issueDate).toLocalDate();
+    }
+
+    /**
+     * A seeded line's billing increment or minimum units: its invoice's client's given column for the line's unit type
+     * in the entry in force on the invoice's issue date; null for none.
+     */
     private BigDecimal lineRate(Long invoiceId, Map<String, Object> line, String column) {
         if (line.get("unitType") == null) {
             return null;
         }
+        LocalDate on = invoiceDate(jdbc.queryForMap("SELECT issue_date FROM invoice WHERE id = ?", invoiceId).get("ISSUE_DATE"));
         List<BigDecimal> found = jdbc.queryForList("SELECT r." + column + " FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
-                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", BigDecimal.class, invoiceId,
-                line.get("unitType").toString().trim());
+                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?) AND (r.effective_from IS NULL OR r.effective_from <= ?) "
+                + "ORDER BY r.effective_from DESC NULLS LAST LIMIT 1", BigDecimal.class, invoiceId,
+                line.get("unitType").toString().trim(), on);
         return found.isEmpty() ? null : found.get(0);
     }
 
-    /** A rate card or price list entry as read back: its unit type and a single unitPrice or tiers. */
-    private static Map<String, Object> rate(String unitType, BigDecimal unitPrice, RateTiers tiers) {
+    /** A rate card or price list entry as read back: its unit type, the date it takes effect from if any, and a single unitPrice or tiers. */
+    private static Map<String, Object> rate(String unitType, LocalDate from, BigDecimal unitPrice, RateTiers tiers) {
         Map<String, Object> rate = new LinkedHashMap<>();
         rate.put("unitType", unitType);
+        if (from != null) {
+            rate.put("from", from.toString());
+        }
         if (tiers == null) {
             rate.put("unitPrice", unitPrice);
         } else {

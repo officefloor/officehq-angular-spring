@@ -12,11 +12,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.TreeMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,22 +29,24 @@ public class ClientController {
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
-            Map<String, RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge) {
+            List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
-                    new TreeMap<>(c.getRates().entrySet().stream().collect(Collectors.toMap(
-                            Map.Entry::getKey, e -> RateView.of(e.getValue())))), c.getWithholdingPct(), c.getMinimumCharge());
+                    c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge());
         }
     }
 
-    /** A rate card entry: its single unit price, or else its tiers (null when it has a single price). */
-    public record RateView(BigDecimal unitPrice, List<RateTiers.Band> tiers, BigDecimal increment, BigDecimal minUnits,
+    /**
+     * A rate card entry: its unit type, the date it takes effect from (null for always), and its single unit price,
+     * or else its tiers (null when it has a single price).
+     */
+    public record RateView(String unitType, LocalDate from, BigDecimal unitPrice, List<RateTiers.Band> tiers, BigDecimal increment, BigDecimal minUnits,
             BigDecimal taxRate) {
         static RateView of(ClientRate r) {
             RateTiers tiers = r.tiers();
-            return new RateView(r.getUnitPrice(), tiers == null ? null : tiers.bands(), r.getIncrement(), r.getMinUnits(), r.getTaxRate());
+            return new RateView(r.getUnitType(), r.getEffectiveFrom(), r.getUnitPrice(), tiers == null ? null : tiers.bands(), r.getIncrement(), r.getMinUnits(), r.getTaxRate());
         }
     }
 

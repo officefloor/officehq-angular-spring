@@ -12,10 +12,11 @@ import jakarta.persistence.CollectionTable;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.MapKeyColumn;
 import java.math.BigDecimal;
-import java.util.Map;
-import java.util.TreeMap;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import net.officefloor.hq.app.invoices.Invoice;
 
 /** A client invoices are raised for. */
@@ -103,11 +104,13 @@ public class Client {
     @Column(name = "minimum_charge")
     private BigDecimal minimumCharge;
 
-    /** The client's rate card: its price, single or tiered, per unit type (hour, day, ...); empty for none. */
+    /**
+     * The client's rate card: its prices, single or tiered, per unit type (hour, day, ...), each from a date or
+     * always; empty for none.
+     */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "client_rate", joinColumns = @JoinColumn(name = "client_id"))
-    @MapKeyColumn(name = "unit_type")
-    private Map<String, ClientRate> rates = new TreeMap<>();
+    private List<ClientRate> rates = new ArrayList<>();
 
     /** The highest late-interest rate a client can be given, as a percentage. */
     public static final int MAX_INTEREST_RATE = 30;
@@ -207,16 +210,17 @@ public class Client {
         return taxNumber;
     }
 
-    public Map<String, ClientRate> getRates() {
+    public List<ClientRate> getRates() {
         return rates;
     }
 
-    /** The client's rate for the given unit type (matched ignoring case and surrounding spaces); null when not on its card. */
-    public ClientRate rateFor(String unitType) {
-        if (unitType == null) {
-            return null;
-        }
-        return rates.entrySet().stream().filter(r -> r.getKey().equalsIgnoreCase(unitType.trim()))
-                .map(Map.Entry::getValue).findFirst().orElse(null);
+    /**
+     * The client's rate for the given unit type (matched ignoring case and surrounding spaces) in force on the date:
+     * the latest entry from on or before it, an entry with no date before any dated one; null when none is.
+     */
+    public ClientRate rateFor(String unitType, LocalDate on) {
+        return rates.stream().filter(r -> r.isFor(unitType) && r.inForceOn(on))
+                .max(Comparator.comparing(ClientRate::getEffectiveFrom, Comparator.nullsFirst(Comparator.naturalOrder())))
+                .orElse(null);
     }
 }

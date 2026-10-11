@@ -177,10 +177,11 @@ public class Invoice {
     private String regionRateChanges;
 
     /**
-     * The tax rates of the client's rate card entries that have one, as "unit type" and rate separated by
-     * CHAR(31), entries separated by CHAR(30); null when none has. Read from the client's rate card.
+     * The tax rates of the client's rate card entries, as "unit type", the date the entry takes effect from
+     * (empty for always) and rate (empty for none) separated by CHAR(31), entries separated by CHAR(30); null
+     * when the card is empty. Read from the client's rate card.
      */
-    @Formula("(SELECT LISTAGG(r.unit_type || CHAR(31) || CAST(r.tax_rate AS VARCHAR), CHAR(30)) WITHIN GROUP (ORDER BY r.unit_type) FROM client_rate r WHERE r.client_id = client_id AND r.tax_rate IS NOT NULL)")
+    @Formula("(SELECT LISTAGG(r.unit_type || CHAR(31) || COALESCE(CAST(r.effective_from AS VARCHAR), '') || CHAR(31) || COALESCE(CAST(r.tax_rate AS VARCHAR), ''), CHAR(30)) WITHIN GROUP (ORDER BY r.unit_type) FROM client_rate r WHERE r.client_id = client_id)")
     private String cardTaxRates;
 
     /** The issue date of the invoice this credit note credits; null for an ordinary invoice. */
@@ -1951,19 +1952,27 @@ public class Invoice {
 
     /**
      * The tax rate of the client's rate card entry for the unit type (matched ignoring case and surrounding
-     * spaces); null when the unit type is not on the card or its entry has no tax rate.
+     * spaces) in force on the issue date (the latest entry while there is none); null when the unit type has
+     * no entry in force or its entry has no tax rate.
      */
     private BigDecimal cardTaxRate(String unitType) {
         if (unitType == null || cardTaxRates == null) {
             return null;
         }
+        String rate = null;
+        LocalDate latest = null;
         for (String entry : cardTaxRates.split("\u001e")) {
-            int at = entry.lastIndexOf('\u001f');
-            if (at >= 0 && entry.substring(0, at).equalsIgnoreCase(unitType.trim())) {
-                return new BigDecimal(entry.substring(at + 1).trim());
+            String[] parts = entry.split("\u001f", -1);
+            if (parts.length != 3 || !parts[0].equalsIgnoreCase(unitType.trim())) {
+                continue;
+            }
+            LocalDate from = parts[1].isBlank() ? LocalDate.MIN : LocalDate.parse(parts[1].trim());
+            if ((issueDate == null || !from.isAfter(issueDate)) && (latest == null || from.isAfter(latest))) {
+                latest = from;
+                rate = parts[2];
             }
         }
-        return null;
+        return rate == null || rate.isBlank() ? null : new BigDecimal(rate.trim());
     }
 
     /**

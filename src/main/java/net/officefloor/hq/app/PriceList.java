@@ -12,7 +12,8 @@ import org.springframework.stereotype.Service;
 /**
  * The workspace price list (the {@code price_list_rate} table): a price in US dollars per unit type,
  * a single price or tiers (see {@link RateTiers}), for unit types a client's own rate card doesn't
- * cover. A line priced from it gets each price, or each band's price, converted into the client's
+ * cover. An entry can take effect from a date (one without a date has always applied); a line is
+ * priced at the latest entry for its unit type in force on the invoice's issue date. A line priced from it gets each price, or each band's price, converted into the client's
  * currency at the rates on the invoice's issue date, rounded down to the currency's step.
  */
 @Service
@@ -26,8 +27,11 @@ public class PriceList {
         this.exchangeRates = exchangeRates;
     }
 
-    /** An entry of the price list: its unit type and a single unit price or tiers, in US dollars. */
-    public record Entry(String unitType, BigDecimal unitPrice, RateTiers tiers) {
+    /**
+     * An entry of the price list: its unit type, the date it takes effect from (null for always) and a single
+     * unit price or tiers, in US dollars.
+     */
+    public record Entry(String unitType, LocalDate from, BigDecimal unitPrice, RateTiers tiers) {
     }
 
     /** A price converted into a client's currency: a single unit price, or tiers in their stored form. */
@@ -36,23 +40,27 @@ public class PriceList {
 
     /** Every entry, by unit type. */
     public List<Entry> all() {
-        return jdbc.query("SELECT unit_type, unit_price, tiers FROM price_list_rate ORDER BY unit_type",
-                (rs, n) -> new Entry(rs.getString(1), rs.getBigDecimal(2), RateTiers.parse(rs.getString(3))));
+        return jdbc.query("SELECT unit_type, effective_from, unit_price, tiers FROM price_list_rate"
+                + " ORDER BY unit_type, effective_from NULLS FIRST",
+                (rs, n) -> new Entry(rs.getString(1), rs.getObject(2, LocalDate.class), rs.getBigDecimal(3),
+                        RateTiers.parse(rs.getString(4))));
     }
 
-    /** Adds an entry: a single unit price, or tiers. */
-    public void add(String unitType, BigDecimal unitPrice, RateTiers tiers) {
-        jdbc.update("INSERT INTO price_list_rate (unit_type, unit_price, tiers) VALUES (?, ?, ?)", unitType,
-                tiers == null ? unitPrice : null, tiers == null ? null : tiers.format());
+    /** Adds an entry from the date (null for always): a single unit price, or tiers. */
+    public void add(String unitType, LocalDate from, BigDecimal unitPrice, RateTiers tiers) {
+        jdbc.update("INSERT INTO price_list_rate (unit_type, effective_from, unit_price, tiers) VALUES (?, ?, ?, ?)", unitType,
+                from, tiers == null ? unitPrice : null, tiers == null ? null : tiers.format());
     }
 
     /**
-     * The price list's price for the unit type (matched ignoring case) converted into the currency at
-     * the rates on the date, or null when the price list has none.
+     * The price list's price for the unit type (matched ignoring case) in force on the date, converted
+     * into the currency at the rates on the date, or null when the price list has none in force.
      */
     public Converted priceFor(String unitType, Currency currency, LocalDate on) {
         List<Map<String, Object>> found = jdbc.queryForList(
-                "SELECT unit_price, tiers FROM price_list_rate WHERE LOWER(unit_type) = LOWER(?)", unitType.trim());
+                "SELECT unit_price, tiers FROM price_list_rate WHERE LOWER(unit_type) = LOWER(?)"
+                        + " AND (effective_from IS NULL OR effective_from <= ?) ORDER BY effective_from DESC NULLS LAST LIMIT 1",
+                unitType.trim(), on);
         if (found.isEmpty()) {
             return null;
         }

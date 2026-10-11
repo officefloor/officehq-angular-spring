@@ -79,8 +79,9 @@ public class InvoiceLine {
     private boolean overtime;
 
     /**
-     * Whether the line's price comes from its client's rate card for its unit type: on a draft it follows the
-     * card when that rate is changed. Sending fixes the price on the line and clears it.
+     * Whether the line's price comes from the rates for its unit type (its client's rate card, or else the price
+     * list): on a draft it follows the card when that rate is changed, and sending reprices it at the rates in force
+     * on the day it is sent, then fixes the price on the line and clears it.
      */
     @Column(name = "card_priced")
     private boolean cardPriced;

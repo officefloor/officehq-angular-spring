@@ -584,40 +584,53 @@ public class InvoiceService {
     }
 
     /**
-     * Puts a single price for the unit type on the client's rate card, adding it or replacing its price
-     * (its increment, minimum units and tax rate are kept); empty if no such client. The price has already been
-     * checked. The lines of the client's drafts priced from the card in that unit type are repriced
-     * straight away; sent invoices keep the prices they were sent with.
+     * Puts a single price for the unit type on the client's rate card: replaces the price of its entry in force
+     * today (its date, increment, minimum units and tax rate are kept), or adds an entry that has always applied
+     * when none is; empty if no such client. The price has already been checked. The lines of the client's drafts
+     * priced from the rates in that unit type are repriced straight away; sent invoices keep the prices they were
+     * sent with.
      */
     @Transactional
     public Optional<Client> setRate(Long clientId, String unitType, BigDecimal unitPrice) {
         Optional<Client> found = clients.findById(clientId);
         found.ifPresent(client -> {
             String type = unitType.trim();
-            String key = client.getRates().keySet().stream().filter(k -> k.equalsIgnoreCase(type)).findFirst().orElse(type);
-            ClientRate old = client.getRates().get(key);
+            ClientRate old = client.rateFor(type, today.date());
             requireWhole(client.getCurrency(), unitPrice, "The price");
-            client.getRates().put(key, new ClientRate(unitPrice, old == null ? null : old.getIncrement(),
-                    old == null ? null : old.getMinUnits(), old == null ? null : old.getTaxRate()));
+            if (old != null) {
+                client.getRates().remove(old);
+            }
+            client.getRates().add(old == null ? new ClientRate(type, null, unitPrice, null, null)
+                    : new ClientRate(old.getUnitType(), old.getEffectiveFrom(), unitPrice, old.getIncrement(), old.getMinUnits(),
+                            old.getTaxRate()));
             clients.saveAndFlush(client);
             for (Invoice invoice : invoices.findByClientIdOrderByIdAsc(clientId)) {
                 if (!invoice.isDraft()) {
                     continue;
                 }
-                boolean changed = false;
-                for (InvoiceLine line : invoice.getLines()) {
-                    if (line.isCardPriced() && line.getUnitType() != null && line.getUnitType().trim().equalsIgnoreCase(type)) {
-                        LinePrice price = linePrice(invoice, line.getUnitType(), null);
-                        line.reprice(price.unitPrice(), price.tiers(), price.increment(), price.minUnits());
-                        changed = true;
-                    }
-                }
-                if (changed) {
+                if (repriceFromRates(invoice, type, invoice.getIssueDate() == null ? today.date() : invoice.getIssueDate())) {
                     invoices.saveAndFlush(invoice);
                 }
             }
         });
         return found;
+    }
+
+    /**
+     * Reprices the draft's lines priced from the rates (all of them, or those of the given unit type) at the
+     * rates in force on the date; whether any was.
+     */
+    private boolean repriceFromRates(Invoice invoice, String unitType, LocalDate on) {
+        boolean changed = false;
+        for (InvoiceLine line : invoice.getLines()) {
+            if (line.isCardPriced() && line.getUnitType() != null
+                    && (unitType == null || line.getUnitType().trim().equalsIgnoreCase(unitType))) {
+                LinePrice price = linePrice(invoice, line.getUnitType(), null, on);
+                line.reprice(price.unitPrice(), price.tiers(), price.increment(), price.minUnits());
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     /**
@@ -801,6 +814,7 @@ public class InvoiceService {
      */
     private void markSent(Invoice invoice) {
         LocalDate issued = today.date();
+        repriceFromRates(invoice, null, issued);
         invoice.markSent(issued, dueDateFor(invoice.getClientId(), issued));
         invoices.saveAndFlush(invoice);
         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
@@ -1493,15 +1507,21 @@ public class InvoiceService {
     }
 
     /**
-     * A line's price: the unit price entered, or else the client's rate for the line's unit type —
-     * a single price, or tiers starting from the first band — or, when the card has none, the
-     * workspace price list's converted into the client's currency (see {@link PriceList}). Refused when neither is there, and a
-     * single price with more decimals than the currency has. Either way the line is billed in the
-     * increment, and at least the minimum units, the client's rate card has for its unit type, if any.
+     * A line's price: the unit price entered, or else the client's rate for the line's unit type in force on the
+     * invoice's issue date (today while it has none) — a single price, or tiers starting from the first band — or,
+     * when the card has none in force, the workspace price list's in force then, converted into the client's currency
+     * (see {@link PriceList}). Refused when neither is there, and a single price with more decimals than the currency
+     * has. Either way the line is billed in the increment, and at least the minimum units, the client's rate card has
+     * for its unit type then, if any. A price from the rates follows them while the invoice is a draft.
      */
     private LinePrice linePrice(Invoice invoice, String unitType, BigDecimal unitPrice) {
+        return linePrice(invoice, unitType, unitPrice, invoice.getIssueDate() == null ? today.date() : invoice.getIssueDate());
+    }
+
+    /** A line's price as {@link #linePrice(Invoice, String, BigDecimal)}, at the rates in force on the given date. */
+    private LinePrice linePrice(Invoice invoice, String unitType, BigDecimal unitPrice, LocalDate on) {
         Client client = unitType == null ? null : clients.findById(invoice.getClientId()).orElse(null);
-        ClientRate rate = client == null ? null : client.rateFor(unitType);
+        ClientRate rate = client == null ? null : client.rateFor(unitType, on);
         BigDecimal increment = rate == null ? null : rate.getIncrement();
         BigDecimal minUnits = rate == null ? null : rate.getMinUnits();
         if (unitPrice != null) {
@@ -1512,13 +1532,12 @@ public class InvoiceService {
             throw new InvoiceRejectedException("Enter a unit price or a unit type.");
         }
         if (rate == null) {
-            LocalDate on = invoice.getIssueDate() == null ? today.date() : invoice.getIssueDate();
             PriceList.Converted listed = priceList.priceFor(unitType, invoice.currency(), on);
             if (listed == null) {
                 throw new InvoiceRejectedException("The client's rate card has no rate for " + unitType
                         + "; enter a unit price.");
             }
-            return new LinePrice(listed.unitPrice(), listed.tiers(), null, null);
+            return new LinePrice(listed.unitPrice(), listed.tiers(), null, null, true);
         }
         RateTiers tiers = rate.tiers();
         if (tiers != null) {
