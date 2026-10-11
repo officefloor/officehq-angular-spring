@@ -279,15 +279,16 @@ public class InvoiceController {
 
     /**
      * One instalment of a plan: its number, the day it falls due, and its payment, interest, principal
-     * and the balance left after it, what has been paid off it, decimal strings to the cent; and its status.
+     * and the balance left after it, what has been paid off it and the late interest it has been
+     * charged, decimal strings to the cent; and its status.
      */
     public record InstalmentView(int number, LocalDate dueDate, String payment, String interest, String principal,
-            String balance, String paid, Instalment.Status status) {
+            String balance, String paid, String lateInterest, Instalment.Status status) {
         static InstalmentView of(Instalment.Progress p) {
             Instalment i = p.instalment();
             return new InstalmentView(i.number(), i.dueDate(), i.payment().toPlainString(),
                     i.interest().toPlainString(), i.principal().toPlainString(), i.balance().toPlainString(),
-                    p.paid().toPlainString(), p.status());
+                    p.paid().toPlainString(), p.lateInterest().toPlainString(), p.status());
         }
     }
 

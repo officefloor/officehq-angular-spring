@@ -291,6 +291,7 @@ function problemWith(line: NewLine): string {
                 <th scope="col">Principal</th>
                 <th scope="col">Balance</th>
                 <th scope="col">Paid</th>
+                <th scope="col">Late interest</th>
                 <th scope="col">Status</th>
               </tr>
             </thead>
@@ -304,6 +305,7 @@ function problemWith(line: NewLine): string {
                   <td data-testid="instalment-principal">{{ amount(s.principal) }}</td>
                   <td data-testid="instalment-balance">{{ amount(s.balance) }}</td>
                   <td data-testid="instalment-paid">{{ amount(s.paid) }}</td>
+                  <td data-testid="instalment-late-interest">{{ amount(s.lateInterest) }}</td>
                   <td data-testid="instalment-status">{{ instalmentStatusLabel(s.status) }}</td>
                 </tr>
               }

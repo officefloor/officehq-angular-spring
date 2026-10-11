@@ -169,6 +169,14 @@ public class Invoice {
     @Transient
     private BigDecimal lateFee = BigDecimal.ZERO;
 
+    /**
+     * The late interest each instalment of a plan has been charged (see {@link #accrueLateInterest}), in
+     * the order of the instalments; empty when none is. Not stored, worked out again each time the
+     * invoice is read.
+     */
+    @Transient
+    private List<BigDecimal> instalmentInterest = List.of();
+
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
@@ -468,12 +476,18 @@ public class Invoice {
      * d days earns B x ((1 + rate / 100 / 365)^d - 1), rounded half up to the cent. Each payment after
      * the due date ends a period; every period earns interest on what the invoice still owed during it
      * (earlier interest, the fee and retention left out), and a payment pays the fee, then the interest
-     * earned so far, then the invoice.
+     * earned so far, then the invoice. An invoice spread over instalments instead earns interest
+     * instalment by instalment (see {@link #accrueInstalmentInterest}), and no late fee.
      */
     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
             BigDecimal lateFeeUsd, LocalDate today) {
         this.lateInterest = BigDecimal.ZERO;
         this.lateFee = BigDecimal.ZERO;
+        this.instalmentInterest = List.of();
+        if (status == InvoiceStatus.SENT && !isCreditNote() && hasPlan()) {
+            accrueInstalmentInterest(payments, taxRate, annualRate, today);
+            return;
+        }
         if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || dueDate == null
                 || !today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
             return;
@@ -528,6 +542,76 @@ public class Invoice {
         }
         this.lateFee = fee;
         this.lateInterest = charged;
+    }
+
+    /**
+     * Works out the late interest each instalment of the plan has been charged by the given day, at the
+     * annual rate (a percentage), from the payments (those not reversed count; what credit notes took
+     * off counts from the issue date). Payments, in the order they were made, pay each instalment's
+     * interest earned so far and then the instalment itself, earliest instalment first. An instalment
+     * still not paid off more than {@link #GRACE_DAYS} days after its due date earns interest by the
+     * same rule as an invoice: from its own due date, compounded daily at rate / 365, on what is still
+     * unpaid of it, with each payment after its due date ending a period.
+     */
+    private void accrueInstalmentInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+            LocalDate today) {
+        if (annualRate == null || annualRate.signum() <= 0) {
+            return;
+        }
+        record Part(LocalDate on, Long paymentId, BigDecimal amount) {
+        }
+        List<Part> inOrder = new ArrayList<>();
+        if (getCredited().signum() > 0) {
+            inOrder.add(new Part(issueDate == null ? LocalDate.MIN : issueDate, 0L, getCredited()));
+        }
+        payments.stream().filter(p -> !p.isReversed())
+                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
+                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
+                .filter(p -> !p.on().isAfter(today))
+                .forEach(inOrder::add);
+        inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
+        BigDecimal[] left = inOrder.stream().map(Part::amount).toArray(BigDecimal[]::new);
+        BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36500), MathContext.DECIMAL128));
+        List<BigDecimal> charges = new ArrayList<>();
+        BigDecimal total = BigDecimal.ZERO;
+        for (Instalment instalment : schedule(taxRate)) {
+            LocalDate due = instalment.dueDate();
+            BigDecimal owed = instalment.payment();
+            boolean late = false;
+            if (due != null && today.isAfter(due.plusDays(GRACE_DAYS))) {
+                BigDecimal paidInGrace = BigDecimal.ZERO;
+                for (int j = 0; j < left.length; j++) {
+                    if (!inOrder.get(j).on().isAfter(due.plusDays(GRACE_DAYS))) {
+                        paidInGrace = paidInGrace.add(left[j]);
+                    }
+                }
+                late = paidInGrace.compareTo(owed) < 0;
+            }
+            BigDecimal charged = BigDecimal.ZERO;
+            BigDecimal unpaidInterest = BigDecimal.ZERO;
+            LocalDate from = due;
+            for (int j = 0; j < left.length; j++) {
+                Part part = inOrder.get(j);
+                if (late && part.on().isAfter(due) && owed.signum() > 0) {
+                    BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
+                    charged = charged.add(earned);
+                    unpaidInterest = unpaidInterest.add(earned);
+                    from = part.on();
+                }
+                BigDecimal toInterest = left[j].min(unpaidInterest).max(BigDecimal.ZERO);
+                unpaidInterest = unpaidInterest.subtract(toInterest);
+                BigDecimal toOwed = left[j].subtract(toInterest).min(owed).max(BigDecimal.ZERO);
+                owed = owed.subtract(toOwed);
+                left[j] = left[j].subtract(toInterest).subtract(toOwed);
+            }
+            if (late && owed.signum() > 0) {
+                charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
+            }
+            charges.add(charged.setScale(scale(), RoundingMode.HALF_UP));
+            total = total.add(charged);
+        }
+        this.instalmentInterest = charges;
+        this.lateInterest = total;
     }
 
     /** The interest the balance earns over the days at the daily growth factor, rounded half up to the cent. */
@@ -653,18 +737,25 @@ public class Invoice {
     /**
      * Each instalment of the plan at the tax rate once the given amount has been paid, on the given
      * day: payments (with what credit notes took off and anything written off) pay the instalments in
-     * order, each paid off before the next. An instalment not paid off more than {@link #GRACE_DAYS}
-     * days after its due date is overdue; empty when there is no plan.
+     * order, each its late interest and then itself, each paid off before the next. An instalment not
+     * paid off more than {@link #GRACE_DAYS} days after its due date is overdue; empty when there is no
+     * plan.
      */
     public List<Instalment.Progress> instalmentProgress(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
         List<Instalment.Progress> progress = new ArrayList<>();
         BigDecimal left = paid.add(getCredited()).add(writtenOff(paid, taxRate));
-        for (Instalment instalment : schedule(taxRate)) {
+        List<Instalment> schedule = schedule(taxRate);
+        for (int k = 0; k < schedule.size(); k++) {
+            Instalment instalment = schedule.get(k);
+            BigDecimal interest = k < instalmentInterest.size() ? instalmentInterest.get(k) : zero();
+            BigDecimal toInterest = left.min(interest).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
+            left = left.subtract(toInterest);
+            BigDecimal interestUnpaid = interest.subtract(toInterest);
             BigDecimal part = left.min(instalment.payment()).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
             left = left.subtract(part);
             BigDecimal unpaid = instalment.payment().subtract(part);
             Instalment.Status status;
-            if (unpaid.signum() <= 0) {
+            if (unpaid.signum() <= 0 && interestUnpaid.signum() <= 0) {
                 status = Instalment.Status.PAID;
             } else if (instalment.dueDate() != null && today.isAfter(instalment.dueDate().plusDays(GRACE_DAYS))) {
                 status = Instalment.Status.OVERDUE;
@@ -673,14 +764,14 @@ public class Invoice {
             } else {
                 status = Instalment.Status.DUE;
             }
-            progress.add(new Instalment.Progress(instalment, part, unpaid, status));
+            progress.add(new Instalment.Progress(instalment, part, unpaid, interest, interestUnpaid, status));
         }
         return progress;
     }
 
     /**
      * What is overdue at the tax rate once the given amount has been paid, on the given day: for a plan,
-     * only what is unpaid on its overdue instalments; otherwise all that is due when it is overdue.
+     * only what is unpaid on its overdue instalments, their late interest included; otherwise all that is due when it is overdue.
      */
     public BigDecimal overdueAmount(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
         if (statusWhenPaid(paid, taxRate, today) != InvoiceStatus.OVERDUE) {
@@ -690,7 +781,7 @@ public class Invoice {
             return amountDue(paid, taxRate);
         }
         return instalmentProgress(paid, taxRate, today).stream()
-                .filter(p -> p.status() == Instalment.Status.OVERDUE).map(Instalment.Progress::unpaid)
+                .filter(p -> p.status() == Instalment.Status.OVERDUE).map(Instalment.Progress::owed)
                 .reduce(zero(), BigDecimal::add);
     }
 
@@ -703,17 +794,17 @@ public class Invoice {
             return dueDate;
         }
         return instalmentProgress(paid, taxRate, LocalDate.MIN).stream()
-                .filter(p -> p.unpaid().signum() > 0).map(p -> p.instalment().dueDate())
+                .filter(p -> p.owed().signum() > 0).map(p -> p.instalment().dueDate())
                 .findFirst().orElse(dueDate);
     }
 
     /**
-     * What is still unpaid on the earliest instalment not yet paid off, at the tax rate, once the
-     * given amount has been paid; zero when there is no plan or all are paid.
+     * What is still unpaid on the earliest instalment not yet paid off, its late interest included, at
+     * the tax rate, once the given amount has been paid; zero when there is no plan or all are paid.
      */
     public BigDecimal earliestUnpaid(BigDecimal paid, BigDecimal taxRate) {
         return instalmentProgress(paid, taxRate, LocalDate.MIN).stream()
-                .map(Instalment.Progress::unpaid).filter(u -> u.signum() > 0)
+                .map(Instalment.Progress::owed).filter(u -> u.signum() > 0)
                 .findFirst().orElse(zero());
     }
 
