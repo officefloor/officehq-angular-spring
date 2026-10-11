@@ -165,6 +165,13 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines`, line);
   }
 
+  // Changes a line of a draft, or of a sent invoice with no payments (putting it back to draft), with
+  // the same checks as adding one; refused (409) when the subtotal would be less than a fixed
+  // discount. Answers the invoice with its lines and totals worked out again.
+  updateLine(invoiceId: number, lineId: number, line: NewLine): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/lines/${lineId}`, line);
+  }
+
   // Removes a line from a draft, or from a sent invoice with no payments (putting it back to draft);
   // refused (409) when what is left would be less than a fixed discount. Answers the invoice with its
   // remaining lines and new totals.

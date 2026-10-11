@@ -302,6 +302,16 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 
+    @PutMapping("/api/invoices/{id}/lines/{lineId}")
+    public InvoiceDetail updateLine(@PathVariable Long id, @PathVariable Long lineId,
+            @Valid @RequestBody NewLine body) {
+        return invoices.updateLine(id, lineId, body.description().trim(), body.qty(), body.unitPrice(),
+                Boolean.TRUE.equals(body.taxExempt()),
+                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
+    }
+
     @DeleteMapping("/api/invoices/{id}/lines/{lineId}")
     public InvoiceDetail removeLine(@PathVariable Long id, @PathVariable Long lineId) {
         return invoices.removeLine(id, lineId)

@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import {
   InvoiceDetail,
+  InvoiceLineView,
   InvoiceService,
   InvoiceSummary,
   NewAllocation,
@@ -69,7 +70,7 @@ function problemWithDiscountForm(pct: string, amount: string, cap: string): stri
   return pct ? problemWithDiscount(pct) : problemWithDiscountAmount(amount);
 }
 
-// What is wrong with a line, or '' when it can be added.
+// What is wrong with a line, or '' when it can be added or saved.
 function problemWith(line: NewLine): string {
   const problems: string[] = [];
   if (!line.description) {
@@ -111,7 +112,9 @@ function problemWith(line: NewLine): string {
 }
 
 // One opened invoice: its status, its lines and its totals. A line may carry its own percentage
-// discount, shown on the line, with its amount after it, and its own tax. A draft takes new lines and a
+// discount, shown on the line, with its amount after it, and its own tax. A line's edit button loads it
+// into the line form, which then saves the changes to that line (with the same checks, and refused when
+// the subtotal would be less than a fixed discount) instead of adding one. A draft takes new lines and a
 // percentage or fixed discount, can have lines removed (refused when what is left would be less than a
 // fixed discount), and can be sent; a change to a sent invoice with no payments puts it back to
 // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
@@ -167,6 +170,15 @@ function problemWith(line: NewLine): string {
                 <td data-testid="line-tax-rate">{{ (l.taxRate ?? inv.taxRate) + '%' }}</td>
                 <td data-testid="line-tax">{{ money(l.tax) }}</td>
                 <td>
+                  <button
+                    type="button"
+                    data-testid="line-edit"
+                    [disabled]="saving()"
+                    [attr.aria-label]="'Edit line ' + l.description"
+                    (click)="editLine(l)"
+                  >
+                    Edit
+                  </button>
                   <button
                     type="button"
                     data-testid="line-remove"
@@ -311,7 +323,7 @@ function problemWith(line: NewLine): string {
           <p role="alert" data-testid="invoice-void-error">{{ voidError() }}</p>
         }
 
-        <form [formGroup]="form" (ngSubmit)="addLine(inv.id)" aria-label="Add a line" novalidate>
+        <form [formGroup]="form" (ngSubmit)="saveLine(inv.id)" [attr.aria-label]="editingLineId() === null ? 'Add a line' : 'Edit a line'" novalidate>
           <label for="line-description">Description</label>
           <input
             id="line-description"
@@ -357,8 +369,11 @@ function problemWith(line: NewLine): string {
           />
           <label for="line-exempt">Tax exempt</label>
           <button type="submit" data-testid="line-form-submit" [disabled]="saving()">
-            Add line
+            {{ editingLineId() === null ? 'Add line' : 'Save line' }}
           </button>
+          @if (editingLineId() !== null) {
+            <button type="button" (click)="cancelEdit()">Cancel</button>
+          }
           @if (error()) {
             <p role="alert" data-testid="line-form-error">{{ error() }}</p>
           }
@@ -427,6 +442,8 @@ export class InvoicePanel {
   protected readonly invoice = signal<InvoiceDetail | null>(null);
   protected readonly saving = signal(false);
   protected readonly error = signal('');
+  // The line loaded into the line form to be changed, or null when the form adds a new line.
+  protected readonly editingLineId = signal<number | null>(null);
   protected readonly savingDiscount = signal(false);
   protected readonly discountError = signal('');
   protected readonly sending = signal(false);
@@ -462,6 +479,7 @@ export class InvoicePanel {
       this.reload();
       this.invoice.set(null);
       this.form.reset();
+      this.editingLineId.set(null);
       this.error.set('');
       this.discountForm.reset();
       this.discountError.set('');
@@ -474,7 +492,27 @@ export class InvoicePanel {
     });
   }
 
-  protected addLine(invoiceId: number): void {
+  // Loads a line into the line form, so submitting it changes that line instead of adding one.
+  protected editLine(line: InvoiceLineView): void {
+    this.form.setValue({
+      description: line.description,
+      qty: line.qty,
+      unitPrice: line.unitPrice,
+      taxExempt: line.taxExempt,
+      discountPct: Number(line.discountPct) === 0 ? '' : line.discountPct,
+      taxRate: line.taxRate ?? '',
+    });
+    this.editingLineId.set(line.id);
+    this.error.set('');
+  }
+
+  protected cancelEdit(): void {
+    this.form.reset();
+    this.editingLineId.set(null);
+    this.error.set('');
+  }
+
+  protected saveLine(invoiceId: number): void {
     const raw = this.form.getRawValue();
     const line: NewLine = {
       description: raw.description.trim(),
@@ -498,18 +536,23 @@ export class InvoicePanel {
     }
     this.saving.set(true);
     this.error.set('');
-    this.service.addLine(invoiceId, line).subscribe({
+    const lineId = this.editingLineId();
+    const request =
+      lineId === null
+        ? this.service.addLine(invoiceId, line)
+        : this.service.updateLine(invoiceId, lineId, line);
+    request.subscribe({
       next: (detail) => {
         this.invoice.set(detail);
         this.changed.emit(detail);
         this.form.reset();
+        this.editingLineId.set(null);
         this.saving.set(false);
       },
       error: (e: HttpErrorResponse) => {
         const detail: unknown = e.error?.detail;
-        this.error.set(
-          typeof detail === 'string' && detail ? detail : 'The line could not be added.',
-        );
+        const fallback = lineId === null ? 'The line could not be added.' : 'The line could not be changed.';
+        this.error.set(typeof detail === 'string' && detail ? detail : fallback);
         this.saving.set(false);
       },
     });
@@ -521,6 +564,10 @@ export class InvoicePanel {
     this.service.removeLine(invoiceId, lineId).subscribe({
       next: (detail) => {
         this.invoice.set(detail);
+        if (this.editingLineId() === lineId) {
+          this.form.reset();
+          this.editingLineId.set(null);
+        }
         this.changed.emit(detail);
         this.saving.set(false);
       },

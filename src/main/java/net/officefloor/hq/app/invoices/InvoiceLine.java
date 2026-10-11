@@ -58,6 +58,17 @@ public class InvoiceLine {
         return new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate);
     }
 
+    /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
+    public void update(String description, BigDecimal qty, BigDecimal unitPrice, boolean taxExempt,
+            BigDecimal discountPct, BigDecimal taxRate) {
+        this.description = description;
+        this.qty = qty;
+        this.unitPrice = unitPrice;
+        this.taxExempt = taxExempt;
+        this.discountPct = discountPct;
+        this.taxRate = taxRate;
+    }
+
     public Long getId() {
         return id;
     }

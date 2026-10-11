@@ -298,6 +298,27 @@ public class Invoice {
     }
 
     /**
+     * Changes the line with the given id to the given values; whether the invoice had it. Refused when
+     * the subtotal would then be less than a fixed discount on the invoice.
+     */
+    public boolean updateLine(Long lineId, String description, BigDecimal qty, BigDecimal unitPrice,
+            boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+        InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
+        if (line == null) {
+            return false;
+        }
+        BigDecimal changed = new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate).amount();
+        BigDecimal left = subtotal().subtract(line.amount()).add(changed);
+        if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
+            throw new InvoiceRejectedException("This line cannot be changed: the $"
+                    + left.setScale(2).toPlainString() + " subtotal would be less than the $"
+                    + discountAmount.setScale(2).toPlainString() + " discount.");
+        }
+        line.update(description, qty, unitPrice, taxExempt, discountPct, taxRate);
+        return true;
+    }
+
+    /**
      * The sum of the line amounts, each after its own discount and already to the cent — so the subtotal
      * matches what a client gets by adding up the lines shown.
      */

@@ -146,6 +146,31 @@ public class InvoiceService {
     }
 
     /**
+     * Changes a line of an invoice; empty if no such invoice or line. The line has already been
+     * checked. Refused when the subtotal would be less than a fixed discount. A sent invoice with no
+     * payments goes back to draft; one with a payment refuses it.
+     */
+    @Transactional
+    public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
+            BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        if (found.isEmpty()) {
+            return found;
+        }
+        Invoice invoice = found.get();
+        if (!invoice.hasLine(lineId)) {
+            return Optional.empty();
+        }
+        boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
+        invoice.updateLine(lineId, description, qty, unitPrice, taxExempt, discountPct, taxRate);
+        invoices.saveAndFlush(invoice);
+        if (reopened) {
+            audit.record("INVOICE_REOPENED id=" + invoice.getId());
+        }
+        return found;
+    }
+
+    /**
      * Gives an invoice a percentage discount, or a fixed amount off when one is given; the one given
      * clears the other, and the cap (null for none) limits everything taken off, line discounts included. Empty if no such invoice. The values have already been checked; a fixed amount
      * over the subtotal is refused, as is a discount taking off more than a fifth of the subtotal
