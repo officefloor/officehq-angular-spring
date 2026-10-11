@@ -65,6 +65,13 @@ public class InvoiceLine {
     @Column(name = "billing_increment")
     private BigDecimal increment;
 
+    /**
+     * The minimum units the line is billed, from its client's rate card for its unit type (a call-out is at
+     * least 2 hours): it is billed at least that many units, after rounding up to its increment; null for none.
+     */
+    @Column(name = "billing_min_units")
+    private BigDecimal minUnits;
+
     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
@@ -90,15 +97,16 @@ public class InvoiceLine {
     }
 
     public InvoiceLine(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
-            BigDecimal increment, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+            BigDecimal increment, BigDecimal minUnits, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
         this(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
         this.tiers = tiers;
         this.increment = increment;
+        this.minUnits = minUnits;
     }
 
     /** A new line with the same description, quantity, unit type, price, tiers, discount, tax rate and exemption. */
     public InvoiceLine copy() {
-        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, taxExempt, discountPct, taxRate);
+        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, minUnits, taxExempt, discountPct, taxRate);
     }
 
     /** A new credit note line crediting this line, with its description, quantity, price, discount, tax rate and exemption. */
@@ -110,8 +118,9 @@ public class InvoiceLine {
 
     /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
     public void update(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
-            BigDecimal increment, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+            BigDecimal increment, BigDecimal minUnits, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
         this.increment = increment;
+        this.minUnits = minUnits;
         this.description = description;
         this.unitType = unitType;
         this.qty = qty;
@@ -152,12 +161,19 @@ public class InvoiceLine {
         return increment;
     }
 
-    /** The quantity the line is billed on: its quantity rounded up to the next whole increment, or as entered without one. */
+    /** The minimum units the line is billed; null for none. */
+    public BigDecimal getMinUnits() {
+        return minUnits;
+    }
+
+    /**
+     * The quantity the line is billed on: its quantity rounded up to the next whole increment (as entered without
+     * one), and then at least its minimum units.
+     */
     public BigDecimal billedQty() {
-        if (increment == null || increment.signum() <= 0) {
-            return qty;
-        }
-        return qty.divide(increment, 0, RoundingMode.CEILING).multiply(increment);
+        BigDecimal billed = increment == null || increment.signum() <= 0 ? qty
+                : qty.divide(increment, 0, RoundingMode.CEILING).multiply(increment);
+        return minUnits != null && billed.compareTo(minUnits) < 0 ? minUnits : billed;
     }
 
     /** Whether the line is priced in progressive tiers rather than at its unit price. */

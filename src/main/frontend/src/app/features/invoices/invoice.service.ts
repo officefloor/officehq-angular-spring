@@ -71,7 +71,8 @@ export interface InvoiceLineView {
   // then the first band's, and a change of quantity reprices it from the bands.
   tiered: boolean;
   // The quantity the line is billed and priced on, without trailing zeros: `qty` rounded up to the
-  // next whole increment its unit type has on the client's rate card, or `qty` itself without one.
+  // next whole increment its unit type has on the client's rate card (`qty` itself without one), and
+  // then at least the minimum units it has there.
   billedQty: string;
 }
 

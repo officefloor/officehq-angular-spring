@@ -20,6 +20,10 @@ public class ClientRate {
     @Column(name = "increment")
     private BigDecimal increment;
 
+    /** The minimum units the unit type is billed (a call-out is at least 2 hours); null for none. */
+    @Column(name = "min_units")
+    private BigDecimal minUnits;
+
     protected ClientRate() {
     }
 
@@ -29,6 +33,10 @@ public class ClientRate {
 
     public BigDecimal getIncrement() {
         return increment;
+    }
+
+    public BigDecimal getMinUnits() {
+        return minUnits;
     }
 
     /** The tiers; null for a single unit price. */

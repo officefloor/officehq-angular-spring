@@ -86,7 +86,7 @@ public class InvoiceController {
      * {@code amount} is after it. {@code creditOfLine} is the id of the line a credit note's line credits, null when none.
      * {@code tiered} lines are priced in progressive tiers from the rate card; their {@code unitPrice} is the first band's.
      * {@code billedQty} (without trailing zeros) is the quantity the line is priced on: its quantity rounded up to the next
-     * whole increment of its unit type's rate card entry, or the quantity as entered without one.
+     * whole increment of its unit type's rate card entry (as entered without one), and then at least its minimum units.
      */
     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
             String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,

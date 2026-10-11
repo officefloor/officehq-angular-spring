@@ -269,7 +269,7 @@ public class TestSupportController {
             Long clientId = id(row.get("id") == null
                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
-                only(rate, Set.of("unitType", "unitPrice", "tiers", "increment"), "clients[].rates[]");
+                only(rate, Set.of("unitType", "unitPrice", "tiers", "increment", "minUnits"), "clients[].rates[]");
                 if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
                     throw refuse("clients[].rates[].unitType is required");
                 }
@@ -282,10 +282,15 @@ public class TestSupportController {
                 if (increment != null && increment.signum() <= 0) {
                     throw refuse("clients[].rates[].increment must be more than zero, not " + rate.get("increment"));
                 }
-                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price, tiers, increment) VALUES (?, ?, ?, ?, ?)", clientId,
+                BigDecimal minUnits = rate.get("minUnits") == null ? null
+                        : cents(rate.get("minUnits"), "clients[].rates[].minUnits");
+                if (minUnits != null && minUnits.signum() <= 0) {
+                    throw refuse("clients[].rates[].minUnits must be more than zero, not " + rate.get("minUnits"));
+                }
+                jdbc.update("INSERT INTO client_rate (client_id, unit_type, unit_price, tiers, increment, min_units) VALUES (?, ?, ?, ?, ?, ?)", clientId,
                         rate.get("unitType").toString(),
                         tiers != null ? null : cents(rate.get("unitPrice"), "clients[].rates[].unitPrice"),
-                        tiers == null ? null : tiers.format(), increment);
+                        tiers == null ? null : tiers.format(), increment, minUnits);
             }
         }
         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
@@ -334,7 +339,7 @@ public class TestSupportController {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 Object[] price = linePrice(invoiceId, line);
                 insert("invoice_line", line.get("id"),
-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment"},
+                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units"},
                         invoiceId, text(line, "description"),
                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
                         price[0], price[1],
@@ -343,7 +348,7 @@ public class TestSupportController {
                         line.get("taxRate") == null ? null : percent(line.get("taxRate"), "invoices[].lineItems[].taxRate"),
                         line.get("creditOfLine") == null ? null : id(line.get("creditOfLine")),
                         line.get("unitType") == null ? null : line.get("unitType").toString(),
-                        lineIncrement(invoiceId, line));
+                        lineRate(invoiceId, line, "increment"), lineRate(invoiceId, line, "min_units"));
             }
         }
         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
@@ -528,12 +533,15 @@ public class TestSupportController {
                         row.put("taxNumber", r.get("TAX_NUMBER"));
                     }
                     List<Map<String, Object>> rateCard = jdbc.queryForList(
-                            "SELECT unit_type, unit_price, tiers, increment FROM client_rate WHERE client_id = ? ORDER BY unit_type",
+                            "SELECT unit_type, unit_price, tiers, increment, min_units FROM client_rate WHERE client_id = ? ORDER BY unit_type",
                             r.get("ID")).stream().map(c -> {
                                 Map<String, Object> entry = rate((String) c.get("UNIT_TYPE"), (BigDecimal) c.get("UNIT_PRICE"),
                                         RateTiers.parse((String) c.get("TIERS")));
                                 if (c.get("INCREMENT") != null) {
                                     entry.put("increment", c.get("INCREMENT"));
+                                }
+                                if (c.get("MIN_UNITS") != null) {
+                                    entry.put("minUnits", c.get("MIN_UNITS"));
                                 }
                                 return entry;
                             }).toList();
@@ -690,12 +698,12 @@ public class TestSupportController {
         return new Object[] {rate.get(0).get("UNIT_PRICE"), null};
     }
 
-    /** A seeded line's billing increment: its invoice's client's increment for the line's unit type; null for none. */
-    private BigDecimal lineIncrement(Long invoiceId, Map<String, Object> line) {
+    /** A seeded line's billing increment or minimum units: its invoice's client's given column for the line's unit type; null for none. */
+    private BigDecimal lineRate(Long invoiceId, Map<String, Object> line, String column) {
         if (line.get("unitType") == null) {
             return null;
         }
-        List<BigDecimal> found = jdbc.queryForList("SELECT r.increment FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
+        List<BigDecimal> found = jdbc.queryForList("SELECT r." + column + " FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
                 + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", BigDecimal.class, invoiceId,
                 line.get("unitType").toString().trim());
         return found.isEmpty() ? null : found.get(0);

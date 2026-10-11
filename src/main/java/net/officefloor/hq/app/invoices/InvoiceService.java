@@ -229,7 +229,7 @@ public class InvoiceService {
         found.ifPresent(invoice -> {
             LinePrice price = linePrice(invoice, unitType, unitPrice);
             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
-            invoice.addLine(new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), taxExempt,
+            invoice.addLine(new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), taxExempt,
                     discountPct, taxRate));
             invoices.saveAndFlush(invoice);
             if (reopened) {
@@ -281,7 +281,7 @@ public class InvoiceService {
         }
         LinePrice price = linePrice(invoice, unitType, unitPrice);
         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
-        invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), taxExempt,
+        invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), taxExempt,
                 discountPct, taxRate);
         invoices.saveAndFlush(invoice);
         if (reopened) {
@@ -1439,7 +1439,7 @@ public class InvoiceService {
      * (the cent is already checked for the rest).
      */
     /** A line's unit price, and the tiers it is priced in (null when it has a single price). */
-    private record LinePrice(BigDecimal unitPrice, String tiers, BigDecimal increment) {
+    private record LinePrice(BigDecimal unitPrice, String tiers, BigDecimal increment, BigDecimal minUnits) {
     }
 
     /**
@@ -1447,15 +1447,16 @@ public class InvoiceService {
      * a single price, or tiers starting from the first band — or, when the card has none, the
      * workspace price list's converted into the client's currency (see {@link PriceList}). Refused when neither is there, and a
      * single price with more decimals than the currency has. Either way the line is billed in the
-     * increment the client's rate card has for its unit type, if any.
+     * increment, and at least the minimum units, the client's rate card has for its unit type, if any.
      */
     private LinePrice linePrice(Invoice invoice, String unitType, BigDecimal unitPrice) {
         Client client = unitType == null ? null : clients.findById(invoice.getClientId()).orElse(null);
         ClientRate rate = client == null ? null : client.rateFor(unitType);
         BigDecimal increment = rate == null ? null : rate.getIncrement();
+        BigDecimal minUnits = rate == null ? null : rate.getMinUnits();
         if (unitPrice != null) {
             requireWhole(invoice.currency(), unitPrice, "The unit price");
-            return new LinePrice(unitPrice, null, increment);
+            return new LinePrice(unitPrice, null, increment, minUnits);
         }
         if (unitType == null) {
             throw new InvoiceRejectedException("Enter a unit price or a unit type.");
@@ -1467,14 +1468,14 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("The client's rate card has no rate for " + unitType
                         + "; enter a unit price.");
             }
-            return new LinePrice(listed.unitPrice(), listed.tiers(), null);
+            return new LinePrice(listed.unitPrice(), listed.tiers(), null, null);
         }
         RateTiers tiers = rate.tiers();
         if (tiers != null) {
-            return new LinePrice(tiers.firstPrice(), tiers.format(), increment);
+            return new LinePrice(tiers.firstPrice(), tiers.format(), increment, minUnits);
         }
         requireWhole(invoice.currency(), rate.getUnitPrice(), "The unit price");
-        return new LinePrice(rate.getUnitPrice(), null, increment);
+        return new LinePrice(rate.getUnitPrice(), null, increment, minUnits);
     }
 
     private static void requireWhole(Currency currency, BigDecimal amount, String what) {
