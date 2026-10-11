@@ -25,6 +25,9 @@ import java.util.List;
 @Table(name = "invoice")
 public class Invoice {
 
+    /** Payments that leave less than this still due have the rest written off. */
+    public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("1.00");
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -215,16 +218,30 @@ public class Invoice {
         BigDecimal sum = BigDecimal.ZERO;
         for (Payment p : inOrder) {
             sum = sum.add(p.amountTo(id));
-            if (sum.compareTo(total) >= 0) {
+            if (sum.signum() > 0 && total.subtract(sum).compareTo(WRITE_OFF_LIMIT) < 0) {
                 return p.getDate();
             }
         }
         return null;
     }
 
-    /** What is still due once the given amount has been paid: the grand total less it. */
+    /**
+     * What is still due once the given amount has been paid: the grand total less it, less anything
+     * written off — so nothing once payments leave less than {@link #WRITE_OFF_LIMIT}.
+     */
     public BigDecimal amountDue(BigDecimal paid, BigDecimal taxRate) {
-        return total(taxRate).subtract(paid);
+        return total(taxRate).subtract(paid).subtract(writtenOff(paid, taxRate));
+    }
+
+    /**
+     * What is written off once the given amount has been paid: when payments leave less than
+     * {@link #WRITE_OFF_LIMIT} still due, all of what is left; otherwise nothing.
+     */
+    public BigDecimal writtenOff(BigDecimal paid, BigDecimal taxRate) {
+        BigDecimal left = total(taxRate).subtract(paid);
+        return paid.signum() > 0 && left.signum() > 0 && left.compareTo(WRITE_OFF_LIMIT) < 0
+                ? left.setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO.setScale(2);
     }
 
     /** Adds a line to the end of the invoice. */

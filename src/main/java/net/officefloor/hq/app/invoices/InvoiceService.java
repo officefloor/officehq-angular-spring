@@ -333,6 +333,7 @@ public class InvoiceService {
             Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, date, reference));
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
                     + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+            recordWriteOff(invoice);
         });
         return found;
     }
@@ -447,7 +448,16 @@ public class InvoiceService {
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + part.getInvoiceId() + " amount="
                     + part.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
         }
+        spreadOver.forEach(this::recordWriteOff);
         return payment;
+    }
+
+    /** Records in the audit what a payment just recorded left written off on the invoice, if anything. */
+    private void recordWriteOff(Invoice invoice) {
+        BigDecimal writtenOff = invoice.writtenOff(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
+        if (writtenOff.signum() > 0) {
+            audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + writtenOff.toPlainString());
+        }
     }
 
     /**

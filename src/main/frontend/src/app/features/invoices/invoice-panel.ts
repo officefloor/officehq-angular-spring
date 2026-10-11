@@ -115,7 +115,8 @@ function problemWith(line: NewLine): string {
 // percentage or fixed discount, can have lines removed (refused when what is left would be less than a
 // fixed discount), and can be sent; a change to a sent invoice with no payments puts it back to
 // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
-// until nothing is due; the panel lists them with what has been paid and what is still due. The
+// until nothing is due, less than $1.00 left being written off; the panel lists them with what has
+// been paid, what is still due and what was written off. The
 // server refuses a payment on a draft, over what is due, or dated after today or before the issue date.
 // The panel shows the invoice's RF payment reference; a payment may quote one, which must pass the
 // ISO 11649 check and be this invoice's. When parts of a payment are filled in on the list, the
@@ -253,6 +254,10 @@ function problemWith(line: NewLine): string {
             <tr>
               <th scope="row" colspan="4">Amount due</th>
               <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
+            </tr>
+            <tr>
+              <th scope="row" colspan="4">Written off (under $1.00 left)</th>
+              <td data-testid="invoice-written-off">{{ money(inv.writtenOff) }}</td>
             </tr>
           </tfoot>
         </table>

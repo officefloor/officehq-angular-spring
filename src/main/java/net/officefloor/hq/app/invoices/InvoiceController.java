@@ -86,14 +86,15 @@ public class InvoiceController {
     /**
      * An opened invoice: its lines, subtotal, discount percentage (without trailing zeros, "12.5"),
      * the amount it takes off, the tax rate (without trailing zeros) and the tax charged, the sum of the
-     * line taxes, and the grand total; the payments made to it, what they add up to and what is still due (money as
+     * line taxes, and the grand total; the payments made to it, what they add up to, what is still due and what was written off because less than
+     * $1.00 was left (money as
      * decimal strings to the cent). Its status follows what has been paid. {@code reference} is its
      * RF payment reference in groups of four. {@code paidDate} is the date of the payment that cleared
      * it, payments taken in date order; null while it is not fully paid.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
-            String discountCap, String discount, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, LocalDate paidDate) {
+            String discountCap, String discount, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -113,7 +114,7 @@ public class InvoiceController {
                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
                     i.total(taxRate).toPlainString(),
                     payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
-                    i.amountDue(paid, taxRate).toPlainString(), paidOn);
+                    i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn);
         }
     }
 

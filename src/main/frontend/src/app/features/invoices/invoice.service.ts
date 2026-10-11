@@ -61,7 +61,8 @@ export interface InvoicePaymentView {
 // discount takes off, rounded half up to the cent and shrunk so the total taken off stays within the cap; `taxRate` is the workspace's tax percentage (without
 // trailing zeros, "0" when none is set) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
 // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
-// `amountDue` is the total less that. `reference` is its ISO 11649 RF payment reference, made from
+// `amountDue` is the total less that and less `writtenOff`: when payments leave less than $1.00 due,
+// the rest is written off ("0.00" when nothing is). `reference` is its ISO 11649 RF payment reference, made from
 // the seven digits of its number, in groups of four (RF16 0000 075).
 export interface InvoiceDetail {
   id: number;
@@ -83,6 +84,7 @@ export interface InvoiceDetail {
   payments: InvoicePaymentView[];
   paid: string;
   amountDue: string;
+  writtenOff: string;
   // The date (yyyy-mm-dd) of the payment that cleared it, payments in date order; null while not fully paid.
   paidDate: string | null;
 }
