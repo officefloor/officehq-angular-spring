@@ -24,6 +24,22 @@ function problemWithDiscount(pct: string): string {
   return '';
 }
 
+// Whether a reference passes the ISO 11649 check: its first four characters moved to the end,
+// letters as numbers (A=10 up to Z=35), mod 97 is 1. Spaces and capitals are ignored by the caller.
+function referenceChecks(reference: string): boolean {
+  if (!/^RF\d{2}[A-Z0-9]{1,21}$/.test(reference)) {
+    return false;
+  }
+  const moved = reference.slice(4) + reference.slice(0, 4);
+  let rest = 0;
+  for (const c of moved) {
+    for (const d of String(parseInt(c, 36))) {
+      rest = (rest * 10 + Number(d)) % 97;
+    }
+  }
+  return rest === 1;
+}
+
 // What is wrong with a payment, or '' when it can be recorded.
 function problemWithPayment(payment: NewPayment): string {
   const problems: string[] = [];
@@ -36,6 +52,9 @@ function problemWithPayment(payment: NewPayment): string {
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(payment.date)) {
     problems.push('Enter the date it was paid.');
+  }
+  if (payment.reference && !referenceChecks(payment.reference)) {
+    problems.push('The payment reference is mistyped: check it against the invoice.');
   }
   return problems.join(' ');
 }
@@ -68,6 +87,8 @@ function problemWith(line: NewLine): string {
 // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
 // until nothing is due; the panel lists them with what has been paid and what is still due. The
 // server refuses a payment on a draft, over what is due, or dated after today or before the issue date.
+// The panel shows the invoice's RF payment reference; a payment may quote one, which must pass the
+// ISO 11649 check and be this invoice's.
 @Component({
   selector: 'app-invoice-panel',
   imports: [ReactiveFormsModule],
@@ -78,6 +99,7 @@ function problemWith(line: NewLine): string {
       </h2>
       @if (invoice(); as inv) {
         <p>Status: <span data-testid="invoice-panel-status">{{ statusLabel(inv.status) }}</span></p>
+        <p>Payment reference: <span data-testid="invoice-reference">{{ inv.reference }}</span></p>
         <table>
           <thead>
             <tr>
@@ -131,6 +153,7 @@ function problemWith(line: NewLine): string {
               <tr>
                 <th scope="col">Paid on</th>
                 <th scope="col">Amount</th>
+                <th scope="col">Reference</th>
               </tr>
             </thead>
             <tbody>
@@ -138,20 +161,21 @@ function problemWith(line: NewLine): string {
                 <tr [attr.data-testid]="'payment-row-' + p.id">
                   <td data-testid="payment-date">{{ p.date }}</td>
                   <td data-testid="payment-amount">{{ money(p.amount) }}</td>
+                  <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="2" data-testid="payment-empty">No payments yet.</td>
+                  <td colspan="3" data-testid="payment-empty">No payments yet.</td>
                 </tr>
               }
             </tbody>
             <tfoot>
               <tr>
-                <th scope="row">Paid</th>
+                <th scope="row" colspan="2">Paid</th>
                 <td data-testid="invoice-paid">{{ money(inv.paid) }}</td>
               </tr>
               <tr>
-                <th scope="row">Amount due</th>
+                <th scope="row" colspan="2">Amount due</th>
                 <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
               </tr>
             </tfoot>
@@ -180,6 +204,14 @@ function problemWith(line: NewLine): string {
               data-testid="payment-form-date"
               formControlName="date"
               required
+            />
+            <label for="payment-reference">Reference quoted (optional)</label>
+            <input
+              id="payment-reference"
+              data-testid="payment-form-reference"
+              formControlName="reference"
+              autocapitalize="characters"
+              placeholder="RF16 0000 075"
             />
             <button type="submit" data-testid="payment-form-submit" [disabled]="savingPayment()">
               Record payment
@@ -292,6 +324,7 @@ export class InvoicePanel {
   protected readonly paymentForm = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
+    reference: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly discountForm = new FormGroup({
@@ -379,6 +412,7 @@ export class InvoicePanel {
     const payment: NewPayment = {
       amount: raw.amount.trim().replace(/^\$/, ''),
       date: raw.date.trim(),
+      reference: raw.reference.replace(/\s/g, '').toUpperCase(),
     };
     const problem = problemWithPayment(payment);
     if (problem) {

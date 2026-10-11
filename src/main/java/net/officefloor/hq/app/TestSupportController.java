@@ -36,7 +36,7 @@ public class TestSupportController {
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt");
-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "allocations");
+    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "allocations");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
 
@@ -134,9 +134,10 @@ public class TestSupportController {
             if (row.get("date") == null) {
                 throw refuse("payments[].date is required");
             }
-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date"},
+            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference"},
                     id(row.get("clientId")), cents(row.get("amount"), "payments[].amount"),
-                    date(row.get("date"), "payments[].date"));
+                    date(row.get("date"), "payments[].date"),
+                    row.get("reference") == null ? null : row.get("reference").toString());
             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
                 if (allocation.get("invoiceId") == null) {
@@ -202,13 +203,14 @@ public class TestSupportController {
                             }).toList());
                     return row;
                 }).toList());
-        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date FROM payment ORDER BY id")
+        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference FROM payment ORDER BY id")
                 .stream().map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
                     row.put("clientId", r.get("CLIENT_ID"));
                     row.put("amount", r.get("AMOUNT"));
                     row.put("date", r.get("PAYMENT_DATE").toString());
+                    row.put("reference", r.get("REFERENCE"));
                     row.put("allocations", jdbc.queryForList(
                             "SELECT invoice_id, amount FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
                             r.get("ID")).stream().map(a -> {

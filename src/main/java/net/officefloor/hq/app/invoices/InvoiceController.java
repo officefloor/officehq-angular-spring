@@ -39,10 +39,14 @@ public class InvoiceController {
         }
     }
 
-    /** A payment made to an opened invoice: the amount that went to it (to the cent) and its date. */
-    public record PaymentView(Long id, String amount, LocalDate date) {
+    /**
+     * A payment made to an opened invoice: the amount that went to it (to the cent), its date and the
+     * reference it quoted in groups of four (null when none).
+     */
+    public record PaymentView(Long id, String amount, LocalDate date, String reference) {
         static PaymentView of(Payment p, Long invoiceId) {
-            return new PaymentView(p.getId(), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate());
+            return new PaymentView(p.getId(), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
+                    p.getReference() == null ? null : PaymentReference.grouped(p.getReference()));
         }
     }
 
@@ -65,9 +69,10 @@ public class InvoiceController {
      * the amount it takes off, the tax rate (without trailing zeros) and the tax charged on the taxable
      * lines less their discount shares, and the
      * grand total; the payments made to it, what they add up to and what is still due (money as
-     * decimal strings to the cent). Its status follows what has been paid.
+     * decimal strings to the cent). Its status follows what has been paid. {@code reference} is its
+     * RF payment reference in groups of four.
      */
-    public record InvoiceDetail(Long id, String number, Long clientId, InvoiceStatus status, LocalDate issueDate,
+    public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discount,
             String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments) {
@@ -76,7 +81,8 @@ public class InvoiceController {
             List<BigDecimal> shares = i.discountShares();
             List<LineView> lines = IntStream.range(0, shares.size())
                     .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n))).toList();
-            return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()), i.getClientId(),
+            return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()),
+                    PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
                     i.statusWhenPaid(paid, taxRate), i.getIssueDate(), i.getDueDate(),
                     lines, i.subtotal().toPlainString(),
                     i.getDiscountPct().stripTrailingZeros().toPlainString(), i.discount().toPlainString(),
@@ -115,14 +121,19 @@ public class InvoiceController {
             Boolean taxExempt) {
     }
 
-    /** A payment to record: an amount more than zero with at most two decimals, and the date it was paid. */
+    /**
+     * A payment to record: an amount more than zero with at most two decimals, the date it was paid,
+     * and the reference the client quoted (optional).
+     */
     public record NewPayment(
             @NotNull(message = "Enter an amount.")
             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
             @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
             BigDecimal amount,
             @NotNull(message = "Enter the date it was paid.")
-            LocalDate date) {
+            LocalDate date,
+            @Size(max = 64, message = "The reference must be at most 64 characters.")
+            String reference) {
     }
 
     private final InvoiceService invoices;
@@ -198,7 +209,12 @@ public class InvoiceController {
     @PostMapping("/api/invoices/{id}/payments")
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
-        return invoices.recordPayment(id, body.amount(), body.date())
+        String reference = null;
+        if (body.reference() != null && !body.reference().isBlank()) {
+            reference = PaymentReference.parse(body.reference()).orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, body.reference().trim() + " is mistyped: check the payment reference."));
+        }
+        return invoices.recordPayment(id, body.amount(), body.date(), reference)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

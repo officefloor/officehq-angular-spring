@@ -162,10 +162,11 @@ public class InvoiceService {
      * Records a payment of the amount on the date against a sent invoice that still has something
      * due, and records it in the audit; empty if no such invoice. The amount has already been
      * checked; a draft, an invoice already paid, an amount over what is due, or a date after today
-     * or before the invoice's issue date is refused.
+     * or before the invoice's issue date is refused. The reference (null when none was quoted) has
+     * already been checked; one that belongs to a different invoice is refused.
      */
     @Transactional
-    public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal amount, LocalDate date) {
+    public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal amount, LocalDate date, String reference) {
         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isDraft()) {
@@ -186,7 +187,12 @@ public class InvoiceService {
                 throw new InvoiceRejectedException(
                         "The payment date cannot be before the invoice's issue date (" + invoice.getIssueDate() + ").");
             }
-            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, date));
+            if (reference != null && !reference.equals(PaymentReference.of(invoice.getId()))) {
+                throw new InvoiceRejectedException(PaymentReference.grouped(reference)
+                        + " is the reference of a different invoice; this invoice's is "
+                        + PaymentReference.grouped(PaymentReference.of(invoice.getId())) + ".");
+            }
+            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, date, reference));
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
                     + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
         });

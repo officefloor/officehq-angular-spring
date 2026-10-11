@@ -33,11 +33,12 @@ export interface InvoiceLineView {
 }
 
 // A payment made to an opened invoice: the amount that went to it, a decimal string to the cent,
-// and the date it was paid (yyyy-mm-dd).
+// the date it was paid (yyyy-mm-dd) and the RF reference it quoted in groups of four (null when none).
 export interface InvoicePaymentView {
   id: number;
   amount: string;
   date: string;
+  reference: string | null;
 }
 
 // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
@@ -46,10 +47,12 @@ export interface InvoicePaymentView {
 // trailing zeros, "0" when none is set) and `tax` is that rate on the taxable lines' amounts less
 // their discount shares, rounded half up to the cent; `total` is the subtotal less the discount plus the tax.
 // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
-// `amountDue` is the total less that.
+// `amountDue` is the total less that. `reference` is its ISO 11649 RF payment reference, made from
+// the seven digits of its number, in groups of four (RF16 0000 075).
 export interface InvoiceDetail {
   id: number;
   number: string;
+  reference: string;
   clientId: number;
   status: InvoiceStatus;
   issueDate: string | null;
@@ -66,11 +69,12 @@ export interface InvoiceDetail {
   amountDue: string;
 }
 
-// A payment to record against a sent invoice: the amount as entered and the date (yyyy-mm-dd),
-// checked again by the server.
+// A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
+// RF reference the client quoted ('' when none), checked again by the server.
 export interface NewPayment {
   amount: string;
   date: string;
+  reference: string;
 }
 
 // A line to add to a draft: quantity and unit price as entered, checked again by the server.
@@ -122,7 +126,7 @@ export class InvoiceService {
 
   // Records a payment against a sent invoice that still has something due; refused (409) when it
   // is a draft, already paid, the amount is more than is due, or the date is after today or before
-  // the issue date. Answers the invoice with its payments and new status.
+  // the issue date, or the reference is mistyped (400) or another invoice's (409). Answers the invoice with its payments and new status.
   recordPayment(invoiceId: number, payment: NewPayment): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments`, payment);
   }

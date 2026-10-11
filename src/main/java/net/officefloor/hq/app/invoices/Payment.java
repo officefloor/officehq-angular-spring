@@ -31,6 +31,9 @@ public class Payment {
     @Column(name = "payment_date")
     private LocalDate date;
 
+    /** The payment reference the client quoted, or null when none was. */
+    private String reference;
+
     @ElementCollection
     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
     private List<PaymentAllocation> allocations = new ArrayList<>();
@@ -38,12 +41,13 @@ public class Payment {
     protected Payment() {
     }
 
-    /** A payment made wholly against one invoice. */
-    public static Payment against(Invoice invoice, BigDecimal amount, LocalDate date) {
+    /** A payment made wholly against one invoice, quoting the reference (null when none). */
+    public static Payment against(Invoice invoice, BigDecimal amount, LocalDate date, String reference) {
         Payment payment = new Payment();
         payment.clientId = invoice.getClientId();
         payment.amount = amount;
         payment.date = date;
+        payment.reference = reference;
         payment.allocations.add(new PaymentAllocation(invoice.getId(), amount));
         return payment;
     }
@@ -62,6 +66,10 @@ public class Payment {
 
     public LocalDate getDate() {
         return date;
+    }
+
+    public String getReference() {
+        return reference;
     }
 
     public List<PaymentAllocation> getAllocations() {
