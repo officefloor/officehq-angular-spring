@@ -1,0 +1,50 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 855c984..6614ada 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -55,7 +55,7 @@ export class InvoiceService {
+     return this.http.get<InvoiceSummary[]>(`/api/clients/${clientId}/invoices`);
+   }
+ 
+-  // Starts an empty draft for the client, issued today and due 30 days later.
++  // Starts an empty draft for the client, issued today and due on the last day of the following month.
+   newDraft(clientId: number): Observable<InvoiceSummary> {
+     return this.http.post<InvoiceSummary>(`/api/clients/${clientId}/invoices`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index d8a279b..c9521f3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -13,9 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
+ @Service
+ public class InvoiceService {
+ 
+-    /** A new invoice is due this many days after it is issued. */
+-    static final int PAYMENT_TERMS_DAYS = 30;
+-
+     private final InvoiceRepository invoices;
+     private final ClientRepository clients;
+     private final Today today;
+@@ -36,14 +33,20 @@ public class InvoiceService {
+         return invoices.findWithLinesById(id);
+     }
+ 
+-    /** An empty draft for the client, issued today and due 30 days later; empty if no such client. */
++    /** An empty draft for the client, issued today and due on the last day of the following month; empty if no such client. */
+     @Transactional
+     public Optional<Invoice> newDraft(Long clientId) {
+         if (!clients.existsById(clientId)) {
+             return Optional.empty();
+         }
+         LocalDate issued = today.date();
+-        return Optional.of(invoices.save(Invoice.draft(clientId, issued, issued.plusDays(PAYMENT_TERMS_DAYS))));
++        return Optional.of(invoices.save(Invoice.draft(clientId, issued, dueDateFor(issued))));
++    }
++
++    /** A new invoice is due on the last day of the month after the month it is issued in. */
++    static LocalDate dueDateFor(LocalDate issued) {
++        LocalDate nextMonth = issued.plusMonths(1);
++        return nextMonth.withDayOfMonth(nextMonth.lengthOfMonth());
+     }
+ 
+     /**
