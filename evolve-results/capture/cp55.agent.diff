@@ -1,0 +1,663 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-format.ts b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+index 51feeff..b2dd3ff 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-format.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+@@ -10,6 +10,7 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
+   VOID: 'Void',
+   CREDIT_NOTE: 'Credit note',
+   CREDITED: 'Credited',
++  RETENTION_HELD: 'Retention held',
+ };
+ const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index a38b86b..010f752 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -27,6 +27,20 @@ function problemWithDiscount(pct: string): string {
+   return '';
+ }
+ 
++// A retention percentage from 0 to 20 with at most two decimals, e.g. 5 or 2.5; the server checks it again.
++function problemWithRetention(pct: string): string {
++  if (!/^-?\d+(\.\d+)?$/.test(pct)) {
++    return 'The retention must be a number, like 5 or 2.5.';
++  }
++  if (Number(pct) < 0 || Number(pct) > 20) {
++    return 'The retention must be from 0 to 20 percent.';
++  }
++  if (!TWO_DECIMALS.test(pct)) {
++    return 'The retention can have at most two decimals.';
++  }
++  return '';
++}
++
+ // A fixed amount of money, not negative and to the cent, e.g. 25 or 12.50; the server checks it is
+ // no more than the subtotal.
+ function problemWithDiscountAmount(amount: string): string {
+@@ -130,7 +144,9 @@ function problemWith(line: NewLine): string {
+ // cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
+ // be duplicated into a new draft for the same client, which then opens. A draft's due date can be set
+ // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
+-// server refuses to send it once that date is past.
++// server refuses to send it once that date is past. A draft can hold back retention, a percentage of
++// the grand total (0 to 20); while held it is not part of the amount due, and once nothing else is due
++// it can be released on the sent invoice, falling due 30 days later.
+ @Component({
+   selector: 'app-invoice-panel',
+   imports: [ReactiveFormsModule, PaymentForm],
+@@ -229,6 +245,13 @@ function problemWith(line: NewLine): string {
+               <th scope="row" colspan="8">Total</th>
+               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="8">
++                Retention ({{ inv.retentionPct }}%@if (inv.retentionReleasedOn) {, released
++                  {{ inv.retentionReleasedOn }}, due {{ inv.retentionDueDate }}} @else if (+inv.retention > 0) {, held back})
++              </th>
++              <td data-testid="invoice-retention">{{ money(inv.retention) }}</td>
++            </tr>
+           </tfoot>
+         </table>
+ 
+@@ -296,7 +319,8 @@ function problemWith(line: NewLine): string {
+           inv.creditOf === null &&
+           inv.status !== 'PAID' &&
+           inv.status !== 'PAID_LATE' &&
+-          inv.status !== 'CREDITED'
++          inv.status !== 'CREDITED' &&
++          inv.status !== 'RETENTION_HELD'
+         ) {
+           <app-payment-form
+             [clientId]="inv.clientId"
+@@ -319,6 +343,38 @@ function problemWith(line: NewLine): string {
+           </form>
+         }
+ 
++        @if (inv.status === 'DRAFT' && inv.creditOf === null) {
++          <form [formGroup]="retentionForm" (ngSubmit)="setRetention(inv.id)" aria-label="Retention" novalidate>
++            <label for="retention-pct">Retention (%, 0 to 20)</label>
++            <input id="retention-pct" data-testid="retention-form-pct" inputmode="decimal" formControlName="pct" />
++            <button type="submit" data-testid="retention-form-submit" [disabled]="savingRetention()">
++              Set retention
++            </button>
++            @if (retentionError()) {
++              <p role="alert" data-testid="retention-form-error">{{ retentionError() }}</p>
++            }
++          </form>
++        }
++
++        @if (
++          inv.creditOf === null &&
++          inv.status !== 'DRAFT' &&
++          inv.status !== 'VOID' &&
++          +inv.retentionHeld > 0
++        ) {
++          <button
++            type="button"
++            data-testid="invoice-release-retention"
++            [disabled]="releasing()"
++            (click)="releaseRetention(inv.id)"
++          >
++            Release retention
++          </button>
++        }
++        @if (releaseError()) {
++          <p role="alert" data-testid="invoice-release-error">{{ releaseError() }}</p>
++        }
++
+         @if (inv.status === 'DRAFT') {
+           <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv)">
+             {{ inv.creditOf === null ? 'Send invoice' : 'Issue credit note' }}
+@@ -487,6 +543,10 @@ export class InvoicePanel {
+   protected readonly discountError = signal('');
+   protected readonly savingDue = signal(false);
+   protected readonly dueError = signal('');
++  protected readonly savingRetention = signal(false);
++  protected readonly retentionError = signal('');
++  protected readonly releasing = signal(false);
++  protected readonly releaseError = signal('');
+   protected readonly sending = signal(false);
+   protected readonly sendError = signal('');
+   protected readonly duplicating = signal(false);
+@@ -516,6 +576,10 @@ export class InvoicePanel {
+     reason: new FormControl('', { nonNullable: true }),
+   });
+ 
++  protected readonly retentionForm = new FormGroup({
++    pct: new FormControl('', { nonNullable: true }),
++  });
++
+   protected readonly dueForm = new FormGroup({
+     dueDate: new FormControl('', { nonNullable: true }),
+   });
+@@ -532,6 +596,9 @@ export class InvoicePanel {
+       this.discountError.set('');
+       this.dueForm.reset();
+       this.dueError.set('');
++      this.retentionForm.reset();
++      this.retentionError.set('');
++      this.releaseError.set('');
+       this.sendError.set('');
+       this.voidError.set('');
+       this.duplicateError.set('');
+@@ -706,6 +773,52 @@ export class InvoicePanel {
+     });
+   }
+ 
++  protected setRetention(invoiceId: number): void {
++    const pct = this.retentionForm.getRawValue().pct.trim().replace(/%$/, '').trim();
++    const problem = problemWithRetention(pct);
++    if (problem) {
++      this.retentionForm.markAllAsTouched();
++      this.retentionError.set(problem);
++      return;
++    }
++    this.savingRetention.set(true);
++    this.retentionError.set('');
++    this.service.setRetention(invoiceId, pct).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.retentionForm.reset();
++        this.savingRetention.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.retentionError.set(
++          typeof detail === 'string' && detail ? detail : 'The retention could not be set.',
++        );
++        this.savingRetention.set(false);
++      },
++    });
++  }
++
++  protected releaseRetention(invoiceId: number): void {
++    this.releasing.set(true);
++    this.releaseError.set('');
++    this.service.releaseRetention(invoiceId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.releasing.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.releaseError.set(
++          typeof detail === 'string' && detail ? detail : 'The retention could not be released.',
++        );
++        this.releasing.set(false);
++      },
++    });
++  }
++
+   // Sends a draft; an issued credit note also changes what its original owes, so the client's
+   // invoices are shown again.
+   protected send(inv: InvoiceDetail): void {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index cb2df21..57f875f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -9,7 +9,8 @@ import { Observable } from 'rxjs';
+ // The server works this out from its payments and today's date. A VOID invoice was voided while sent
+ // and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
+ // A credit note is a DRAFT until it is issued, then CREDIT_NOTE for good; a sent invoice whose issued
+-// credit notes leave nothing due, with nothing paid, is CREDITED.
++// credit notes leave nothing due, with nothing paid, is CREDITED. A sent invoice with nothing due
++// but retention still held back is RETENTION_HELD instead of PAID.
+ export type InvoiceStatus =
+   | 'DRAFT'
+   | 'SENT'
+@@ -19,7 +20,8 @@ export type InvoiceStatus =
+   | 'OVERDUE'
+   | 'VOID'
+   | 'CREDIT_NOTE'
+-  | 'CREDITED';
++  | 'CREDITED'
++  | 'RETENTION_HELD';
+ 
+ // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
+ // server: the grand total — the lines' subtotal less any discount plus tax.
+@@ -111,6 +113,14 @@ export interface InvoiceDetail {
+   creditOf: number | null;
+   // The total as listed: negative for a credit note.
+   listedTotal: string;
++  // The percentage of the grand total held back (without trailing zeros), and `retention`, that share
++  // rounded down to the cent; `retentionHeld` is what is still held back, not part of `amountDue`.
++  retentionPct: string;
++  retention: string;
++  retentionHeld: string;
++  // The day (yyyy-mm-dd) the retention was released, and the day it then falls due; null while held.
++  retentionReleasedOn: string | null;
++  retentionDueDate: string | null;
+ }
+ 
+ // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
+@@ -217,6 +227,18 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/due-date`, { dueDate });
+   }
+ 
++  // Sets the percentage of a draft's grand total held back as retention (0 to 20, up to two decimals);
++  // refused (400) outside that, or (409) when it is not a draft.
++  setRetention(invoiceId: number, retentionPct: string): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct });
++  }
++
++  // Releases the retention held back on a sent invoice, adding it to the amount due; refused (409)
++  // while anything else is due or when there is nothing to release.
++  releaseRetention(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, null);
++  }
++
+   // Sends a draft invoice, issuing it today and due on the client's terms, or keeping a due date set
+   // by hand; refused (409) when it has no lines or a due date set by hand is before today.
+   send(invoiceId: number): Observable<InvoiceDetail> {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index a50100b..5a2f915 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -35,7 +35,7 @@ public class TestSupportController {
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "allocations");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -112,7 +112,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_released_on"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -121,7 +121,10 @@ public class TestSupportController {
+                     row.get("discountCap") == null ? null : money(row.get("discountCap"), "invoices[].discountCap"),
+                     row.get("discountReason") == null ? null : row.get("discountReason").toString(),
+                     flag(row.get("manualDueDate"), "invoices[].manualDueDate"),
+-                    row.get("creditOf") == null ? null : id(row.get("creditOf")));
++                    row.get("creditOf") == null ? null : id(row.get("creditOf")),
++                    percent(row.get("retentionPct"), "invoices[].retentionPct"),
++                    row.get("retentionReleasedOn") == null ? null
++                            : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"));
+             if ("CREDIT_NOTE".equals(status) && row.get("creditOf") == null) {
+                 throw refuse("an invoices[] row with status CREDIT_NOTE needs creditOf");
+             }
+@@ -205,7 +208,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_released_on FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -219,6 +222,10 @@ public class TestSupportController {
+                     if (r.get("DISCOUNT_CAP") != null) {
+                         row.put("discountCap", r.get("DISCOUNT_CAP"));
+                     }
++                    row.put("retentionPct", r.get("RETENTION_PCT"));
++                    if (r.get("RETENTION_RELEASED_ON") != null) {
++                        row.put("retentionReleasedOn", r.get("RETENTION_RELEASED_ON").toString());
++                    }
+                     if (r.get("CREDIT_OF") != null) {
+                         row.put("creditOf", r.get("CREDIT_OF"));
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 92bd39e..6a3bc3b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -35,6 +35,12 @@ public class Invoice {
+     /** A part payment must be at least this share of the grand total, unless it settles the invoice. */
+     public static final BigDecimal MINIMUM_PART_SHARE = new BigDecimal("0.10");
+ 
++    /** The most retention a draft can hold back, as a percentage of the grand total. */
++    public static final BigDecimal MAX_RETENTION_PCT = new BigDecimal("20");
++
++    /** Released retention falls due this many days after the day it was released. */
++    public static final int RETENTION_DUE_DAYS = 30;
++
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+     private Long id;
+@@ -66,6 +72,12 @@ public class Invoice {
+     @Column(name = "discount_reason")
+     private String discountReason;
+ 
++    @Column(name = "retention_pct")
++    private BigDecimal retentionPct = BigDecimal.ZERO;
++
++    @Column(name = "retention_released_on")
++    private LocalDate retentionReleasedOn;
++
+     /** Whether the invoice's client is tax exempt, so no line is taxed; read from the client. */
+     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
+     private boolean clientTaxExempt;
+@@ -115,6 +127,7 @@ public class Invoice {
+         copy.discountAmount = discountAmount;
+         copy.discountCap = discountCap;
+         copy.discountReason = discountReason;
++        copy.retentionPct = retentionPct;
+         lines.forEach(line -> copy.lines.add(line.copy()));
+         return copy;
+     }
+@@ -240,6 +253,54 @@ public class Invoice {
+         this.discountPct = BigDecimal.ZERO;
+     }
+ 
++    /** The percentage of the grand total held back as retention, 0 to {@link #MAX_RETENTION_PCT}. */
++    public BigDecimal getRetentionPct() {
++        return retentionPct;
++    }
++
++    /** Sets the percentage held back as retention; it has already been checked. */
++    public void setRetentionPct(BigDecimal retentionPct) {
++        this.retentionPct = retentionPct;
++    }
++
++    /** The day the retention was released; null while it is still held. */
++    public LocalDate getRetentionReleasedOn() {
++        return retentionReleasedOn;
++    }
++
++    /** The day released retention falls due, {@link #RETENTION_DUE_DAYS} after its release; null while held. */
++    public LocalDate retentionDueDate() {
++        return retentionReleasedOn == null ? null : retentionReleasedOn.plusDays(RETENTION_DUE_DAYS);
++    }
++
++    /** Releases the retention on the given day, so it is added to the amount due. */
++    public void releaseRetention(LocalDate on) {
++        this.retentionReleasedOn = on;
++    }
++
++    /** The retention at the tax rate: the retention percentage of the grand total, rounded down to the cent. */
++    public BigDecimal retention(BigDecimal taxRate) {
++        if (isCreditNote()) {
++            return BigDecimal.ZERO.setScale(2);
++        }
++        return total(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.DOWN);
++    }
++
++    /** The retention still held back at the tax rate: all of it until it is released, then nothing. */
++    public BigDecimal retentionHeld(BigDecimal taxRate) {
++        return retentionReleasedOn == null ? retention(taxRate) : BigDecimal.ZERO.setScale(2);
++    }
++
++    /** The retention released at the tax rate: nothing until it is released, then all of it. */
++    public BigDecimal retentionReleased(BigDecimal taxRate) {
++        return retentionReleasedOn == null ? BigDecimal.ZERO.setScale(2) : retention(taxRate);
++    }
++
++    /** What the invoice is owed in all, held retention left out: the grand total less what is credited and held. */
++    private BigDecimal payable(BigDecimal taxRate) {
++        return total(taxRate).subtract(getCredited()).subtract(retentionHeld(taxRate));
++    }
++
+     public List<InvoiceLine> getLines() {
+         return lines;
+     }
+@@ -309,7 +370,9 @@ public class Invoice {
+     /**
+      * The status on the given day once the given amount has been paid against the grand total at the
+      * tax rate: a sent invoice with something still due more than {@link #GRACE_DAYS} days after its
+-     * due date is overdue, part paid or not.
++     * due date is overdue, part paid or not. Held retention is never due, so never makes it overdue;
++     * released retention is due {@link #RETENTION_DUE_DAYS} days after its release, and payments go to
++     * the rest of the invoice before it.
+      */
+     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
+         return statusWhenPaid(paid, null, taxRate, today);
+@@ -323,10 +386,19 @@ public class Invoice {
+         if (status != InvoiceStatus.SENT) {
+             return status;
+         }
+-        boolean due = amountDue(paid, taxRate).signum() > 0;
+-        if (due && dueDate != null && today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
++        BigDecimal amountDue = amountDue(paid, taxRate);
++        boolean due = amountDue.signum() > 0;
++        BigDecimal retentionDue = amountDue.min(retentionReleased(taxRate)).max(BigDecimal.ZERO);
++        boolean restDue = amountDue.subtract(retentionDue).signum() > 0;
++        if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
+             return InvoiceStatus.OVERDUE;
+         }
++        if (retentionDue.signum() > 0 && today.isAfter(retentionDueDate().plusDays(GRACE_DAYS))) {
++            return InvoiceStatus.OVERDUE;
++        }
++        if (!due && retentionHeld(taxRate).signum() > 0) {
++            return InvoiceStatus.RETENTION_HELD;
++        }
+         if (paid.signum() <= 0) {
+             return !due && getCredited().signum() > 0 ? InvoiceStatus.CREDITED : status;
+         }
+@@ -340,11 +412,11 @@ public class Invoice {
+     /**
+      * The date the invoice was fully paid: the date of the payment that cleared its grand total at the
+      * tax rate, taking the parts of payments (not reversed) in the order they were applied (credit used
+-     * counts on the day it was applied); null while something is still due.
++     * counts on the day it was applied); null while something is still due or retention is held.
+      */
+     public LocalDate paidOn(List<Payment> payments, BigDecimal taxRate) {
+-        BigDecimal total = total(taxRate).subtract(getCredited());
+-        if (status != InvoiceStatus.SENT || total.signum() <= 0) {
++        BigDecimal total = payable(taxRate);
++        if (status != InvoiceStatus.SENT || total.signum() <= 0 || retentionHeld(taxRate).signum() > 0) {
+             return null;
+         }
+         record Part(LocalDate on, Long paymentId, BigDecimal amount) {
+@@ -365,14 +437,14 @@ public class Invoice {
+ 
+     /**
+      * What is still due once the given amount has been paid: the grand total less it, less what credit
+-     * notes have credited, less anything written off — so nothing once payments leave less than
+-     * {@link #WRITE_OFF_LIMIT}. A credit note itself has nothing due.
++     * notes have credited, less the retention still held, less anything written off — so nothing once
++     * payments leave less than {@link #WRITE_OFF_LIMIT}. A credit note itself has nothing due.
+      */
+     public BigDecimal amountDue(BigDecimal paid, BigDecimal taxRate) {
+         if (isCreditNote()) {
+             return BigDecimal.ZERO.setScale(2);
+         }
+-        return total(taxRate).subtract(getCredited()).subtract(paid).subtract(writtenOff(paid, taxRate));
++        return payable(taxRate).subtract(paid).subtract(writtenOff(paid, taxRate));
+     }
+ 
+     /**
+@@ -380,7 +452,7 @@ public class Invoice {
+      * {@link #WRITE_OFF_LIMIT} still due, all of what is left; otherwise nothing.
+      */
+     public BigDecimal writtenOff(BigDecimal paid, BigDecimal taxRate) {
+-        BigDecimal left = total(taxRate).subtract(getCredited()).subtract(paid);
++        BigDecimal left = payable(taxRate).subtract(paid);
+         return !isCreditNote() && paid.signum() > 0 && left.signum() > 0 && left.compareTo(WRITE_OFF_LIMIT) < 0
+                 ? left.setScale(2, RoundingMode.HALF_UP)
+                 : BigDecimal.ZERO.setScale(2);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 23fb0f1..e9727f7 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -52,7 +52,7 @@ public class InvoiceController {
+ 
+     /**
+      * What a client still owes across its sent invoices (drafts do not count), after discounts, tax
+-     * and payments, less the client's unused credit (so it can be below zero), how much of what is due
++     * and payments, retention included whether held or released, less the client's unused credit (so it can be below zero), how much of what is due
+      * is overdue, and the unused credit; decimal strings to the cent.
+      */
+     public record ClientBalance(Long clientId, String balance, String overdue, String credit) {
+@@ -101,11 +101,16 @@ public class InvoiceController {
+      * it, payments taken in date order; null while it is not fully paid. {@code credited} is what
+      * issued credit notes take off it; {@code creditOf} the id of the invoice a credit note credits
+      * (null for an ordinary invoice) and {@code listedTotal} the total as listed, negative for a credit note.
++     * {@code retentionPct} (without trailing zeros) is the share of the grand total held back as
++     * {@code retention}, rounded down to the cent; {@code retentionHeld} is what is still held back (not
++     * part of the amount due), {@code retentionReleasedOn} the day it was released (null while held) and
++     * {@code retentionDueDate} the day released retention falls due.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
+-            String credited, Long creditOf, String listedTotal) {
++            String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
++            String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -126,7 +131,9 @@ public class InvoiceController {
+                     i.total(taxRate).toPlainString(),
+                     payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
+                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
+-                    i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate));
++                    i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
++                    i.getRetentionPct().stripTrailingZeros().toPlainString(), i.retention(taxRate).toPlainString(),
++                    i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate());
+         }
+     }
+ 
+@@ -220,6 +227,15 @@ public class InvoiceController {
+             LocalDate date) {
+     }
+ 
++    /** A retention to hold back on a draft: a percentage from 0 to 20 with at most two decimals. */
++    public record NewRetention(
++            @NotNull(message = "Enter a retention percentage.")
++            @DecimalMin(value = "0", message = "The retention must be from 0 to 20 percent.")
++            @DecimalMax(value = "20", message = "The retention must be from 0 to 20 percent.")
++            @Digits(integer = 2, fraction = 2, message = "The retention can have at most two decimals.")
++            BigDecimal retentionPct) {
++    }
++
+     /** A due date to set on a draft by hand. */
+     public record NewDueDate(
+             @NotNull(message = "Enter the due date.")
+@@ -294,7 +310,7 @@ public class InvoiceController {
+             BigDecimal due = i.amountDue(paid.get(i.getId()), rate);
+             BigDecimal[] sums = owed.computeIfAbsent(i.getClientId(),
+                     k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) });
+-            sums[0] = sums[0].add(due);
++            sums[0] = sums[0].add(due).add(i.retentionHeld(rate));
+             if (i.statusWhenPaid(paid.get(i.getId()), rate, on) == InvoiceStatus.OVERDUE) {
+                 sums[1] = sums[1].add(due);
+             }
+@@ -373,6 +389,21 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    @PutMapping("/api/invoices/{id}/retention")
++    public InvoiceDetail setRetention(@PathVariable Long id, @Valid @RequestBody NewRetention body) {
++        return invoices.setRetention(id, body.retentionPct())
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
++    /** Releases the retention held back on a sent invoice once nothing else is due. */
++    @PostMapping("/api/invoices/{id}/release-retention")
++    public InvoiceDetail releaseRetention(@PathVariable Long id) {
++        return invoices.releaseRetention(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     @PutMapping("/api/invoices/{id}/due-date")
+     public InvoiceDetail setDueDate(@PathVariable Long id, @Valid @RequestBody NewDueDate body) {
+         return invoices.setDueDate(id, body.dueDate())
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+index a61983d..346214c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RestControllerAdvice(assignableTypes = InvoiceController.class)
+ public class InvoiceErrors {
+ 
+-    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "discountAmount", "discountCap", "discountReason", "discountGiven", "amount", "date", "reference", "dueDate");
++    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "discountAmount", "discountCap", "discountReason", "discountGiven", "amount", "date", "reference", "dueDate", "retentionPct");
+ 
+     @ExceptionHandler(MethodArgumentNotValidException.class)
+     public ProblemDetail invalid(MethodArgumentNotValidException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 7205a01..049a88a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -253,6 +253,55 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Sets the percentage of a draft's grand total held back as retention; empty if no such invoice.
++     * The percentage has already been checked; any invoice that is not a draft, or a credit note, is refused.
++     */
++    @Transactional
++    public Optional<Invoice> setRetention(Long invoiceId, BigDecimal retentionPct) {
++        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isCreditNote()) {
++                throw new InvoiceRejectedException("A credit note holds back no retention.");
++            }
++            if (!invoice.isDraft()) {
++                throw new InvoiceRejectedException("Retention can only be set on a draft.");
++            }
++            invoice.setRetentionPct(retentionPct);
++            invoices.saveAndFlush(invoice);
++        });
++        return found;
++    }
++
++    /**
++     * Releases the retention held back on a sent invoice today, adding it to the amount due (falling
++     * due {@link Invoice#RETENTION_DUE_DAYS} days later), and records it in the audit; empty if no such
++     * invoice. Refused while anything else is still due, or when there is no retention held to release.
++     */
++    @Transactional
++    public Optional<Invoice> releaseRetention(Long invoiceId) {
++        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isDraft() || invoice.isVoid() || invoice.isCreditNote()) {
++                throw new InvoiceRejectedException("Retention can only be released on a sent invoice.");
++            }
++            BigDecimal rate = taxRate.percent();
++            BigDecimal held = invoice.retentionHeld(rate);
++            if (held.signum() <= 0) {
++                throw new InvoiceRejectedException("There is no retention held to release.");
++            }
++            BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), rate);
++            if (due.signum() > 0) {
++                throw new InvoiceRejectedException("The retention can only be released once nothing else is due; $"
++                        + due.setScale(2, RoundingMode.HALF_UP).toPlainString() + " is still due.");
++            }
++            invoice.releaseRetention(today.date());
++            invoices.saveAndFlush(invoice);
++            audit.record("RETENTION_RELEASED id=" + invoice.getId() + " amount=" + held.toPlainString());
++        });
++        return found;
++    }
++
+     /**
+      * Readies the invoice for a change: a draft stays as it is; a sent invoice with no payments goes
+      * back to draft, to be sent again; an invoice with any payment is refused with the message.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index c9d9b67..393e163 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -11,7 +11,9 @@ package net.officefloor.hq.app.invoices;
+  * A credit note is a draft until it is issued, when it becomes CREDIT_NOTE for good. A sent invoice
+  * whose issued credit notes leave nothing due, with nothing paid, is credited; that follows from its
+  * credit notes and is never stored.
++ * A sent invoice with retention still held back and nothing else due shows retention held instead of
++ * paid; that follows from its retention and payments and is never stored.
+  */
+ public enum InvoiceStatus {
+-    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED
++    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, RETENTION_HELD
+ }
+diff --git a/src/main/resources/db/migration/V20__invoice_retention.sql b/src/main/resources/db/migration/V20__invoice_retention.sql
+new file mode 100644
+index 0000000..58b71ce
+--- /dev/null
++++ b/src/main/resources/db/migration/V20__invoice_retention.sql
+@@ -0,0 +1,4 @@
++-- Retention held back until a job is signed off: a percentage (0 to 20) of the grand total, and the
++-- day it was released (null while it is still held). Released retention falls due 30 days later.
++ALTER TABLE invoice ADD COLUMN retention_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
++ALTER TABLE invoice ADD COLUMN retention_released_on DATE;
