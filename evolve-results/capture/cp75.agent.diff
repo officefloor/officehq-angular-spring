@@ -1,0 +1,277 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index e0a31c0..68f5595 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -19,6 +19,8 @@ export interface Client {
+   // paid off within earlyPayDays of its issue date (null when there is none).
+   earlyPayPct: number;
+   earlyPayDays: number | null;
++  // The standard retention percentage (0 to 20) new invoices for the client start with; 0 is none.
++  retentionPct: number;
+ }
+ 
+ export type NewClient = Omit<Client, 'id'>;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index a459fe9..0a42e38 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -117,6 +117,17 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+           step="0.01"
+           formControlName="discountPct"
+         />
++        <label for="client-retention">Standard retention % (optional)</label>
++        <input
++          id="client-retention"
++          data-testid="client-form-retention-pct"
++          type="number"
++          inputmode="decimal"
++          min="0"
++          max="20"
++          step="0.01"
++          formControlName="retentionPct"
++        />
+         <label for="client-early-pct">Early-payment discount % (optional)</label>
+         <input
+           id="client-early-pct"
+@@ -203,6 +214,7 @@ export class Clients {
+     }),
+     terms: new FormControl<number | null>(null),
+     discountPct: new FormControl<number | null>(null),
++    retentionPct: new FormControl<number | null>(null),
+     earlyPct: new FormControl<number | null>(null),
+     earlyDays: new FormControl<number | null>(null),
+     taxExempt: new FormControl(false, { nonNullable: true }),
+@@ -232,6 +244,8 @@ export class Clients {
+     const termsDays = terms === null || (terms as unknown) === '' ? null : Number(terms);
+     const discount = this.form.controls.discountPct.value;
+     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
++    const retention = this.form.controls.retentionPct.value;
++    const retentionPct = retention === null || (retention as unknown) === '' ? null : Number(retention);
+     const taxExempt = this.form.controls.taxExempt.value;
+     const currency = this.form.controls.currency.value;
+     const early = this.form.controls.earlyPct.value;
+@@ -243,12 +257,13 @@ export class Clients {
+       email,
+       terms: termsDays,
+       discountPct,
++      retentionPct,
+       earlyPct: earlyPayPct,
+       earlyDays: earlyPayDays,
+       taxExempt,
+       currency,
+     });
+-    const problem = this.problemWith(name, email, termsDays, discountPct, earlyPayPct, earlyPayDays);
++    const problem = this.problemWith(name, email, termsDays, discountPct, retentionPct, earlyPayPct, earlyPayDays);
+     if (problem) {
+       this.form.markAllAsTouched();
+       this.error.set(problem);
+@@ -265,6 +280,7 @@ export class Clients {
+       currency,
+       earlyPayPct: earlyPayPct ?? 0,
+       earlyPayDays,
++      retentionPct: retentionPct ?? 0,
+     };
+     this.service.add(client).subscribe({
+       next: (created) => {
+@@ -320,6 +336,7 @@ export class Clients {
+     email: string,
+     termsDays: number | null,
+     discountPct: number | null,
++    retentionPct: number | null,
+     earlyPayPct: number | null,
+     earlyPayDays: number | null,
+   ): string {
+@@ -344,6 +361,13 @@ export class Clients {
+         problems.push('The standard discount can have at most two decimals.');
+       }
+     }
++    if (retentionPct !== null) {
++      if (!(Number.isFinite(retentionPct) && retentionPct >= 0 && retentionPct <= 20)) {
++        problems.push('The standard retention must be from 0 to 20 percent.');
++      } else if (Math.abs(Math.round(retentionPct * 100) - retentionPct * 100) > 1e-6) {
++        problems.push('The standard retention can have at most two decimals.');
++      }
++    }
+     if (earlyPayPct !== null) {
+       if (!(Number.isFinite(earlyPayPct) && earlyPayPct >= 0 && earlyPayPct <= 100)) {
+         problems.push('The early-payment discount must be from 0 to 100 percent.');
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 590416e..0203d25 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -38,7 +38,7 @@ public class TestSupportController {
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee");
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "interestWaivedOn", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+@@ -166,12 +166,13 @@ public class TestSupportController {
+             if (Currency.of(currency) == null) {
+                 throw refuse("unsupported value of clients[].currency: " + currency);
+             }
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days"},
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+                     percent(row.get("discountPct"), "clients[].discountPct"),
+                     flag(row.get("taxExempt"), "clients[].taxExempt"), currency,
+                     percent(row.get("earlyPayPct"), "clients[].earlyPayPct"),
+-                    days(row.get("earlyPayDays"), "clients[].earlyPayDays"));
++                    days(row.get("earlyPayDays"), "clients[].earlyPayDays"),
++                    percent(row.get("retentionPct"), "clients[].retentionPct"));
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+             only(row, INVOICE_FIELDS, "invoices[]");
+@@ -330,7 +331,7 @@ public class TestSupportController {
+         if (!settings.isEmpty()) {
+             out.put("settings", settings);
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -346,6 +347,7 @@ public class TestSupportController {
+                     if (r.get("EARLY_PAY_DAYS") != null) {
+                         row.put("earlyPayDays", r.get("EARLY_PAY_DAYS"));
+                     }
++                    row.put("retentionPct", r.get("RETENTION_PCT"));
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index d120057..f28f77d 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -46,11 +46,15 @@ public class Client {
+     @Column(name = "early_pay_days")
+     private Integer earlyPayDays;
+ 
++    /** The standard retention percentage (0 to 20) new invoices for this client start with; 0 is none. */
++    @Column(name = "retention_pct")
++    private BigDecimal retentionPct = BigDecimal.ZERO;
++
+     protected Client() {
+     }
+ 
+     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+-            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays) {
++            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct) {
+         this.name = name;
+         this.email = email;
+         this.termsDays = termsDays;
+@@ -59,6 +63,7 @@ public class Client {
+         this.currency = currency == null ? Currency.USD : currency;
+         this.earlyPayPct = earlyPayPct == null ? BigDecimal.ZERO : earlyPayPct;
+         this.earlyPayDays = earlyPayDays;
++        this.retentionPct = retentionPct == null ? BigDecimal.ZERO : retentionPct;
+     }
+ 
+     public Long getId() {
+@@ -96,4 +101,8 @@ public class Client {
+     public Integer getEarlyPayDays() {
+         return earlyPayDays;
+     }
++
++    public BigDecimal getRetentionPct() {
++        return retentionPct;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 5a775b2..40e16b6 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -26,10 +26,12 @@ import org.springframework.web.bind.annotation.RestController;
+ public class ClientController {
+ 
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+-            boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays) {
++            boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
++            BigDecimal retentionPct) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+-                    c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays());
++                    c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
++                    c.getRetentionPct());
+         }
+     }
+ 
+@@ -60,7 +62,11 @@ public class ClientController {
+             BigDecimal earlyPayPct,
+             @Min(value = 1, message = "The early-payment window must be from 1 to 365 days.")
+             @Max(value = 365, message = "The early-payment window must be from 1 to 365 days.")
+-            Integer earlyPayDays) {
++            Integer earlyPayDays,
++            @DecimalMin(value = "0", message = "The standard retention must be from 0 to 20 percent.")
++            @DecimalMax(value = "20", message = "The standard retention must be from 0 to 20 percent.")
++            @Digits(integer = 2, fraction = 2, message = "The standard retention can have at most two decimals.")
++            BigDecimal retentionPct) {
+ 
+         @AssertTrue(message = "Enter both the early-payment discount and its number of days, or neither.")
+         public boolean isEarlyPayComplete() {
+@@ -89,6 +95,7 @@ public class ClientController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClientView add(@Valid @RequestBody NewClient body) {
+         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+-                Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays()));
++                Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
++                body.retentionPct()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index bc8faff..7c8fb05 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -31,11 +31,11 @@ public class ClientService {
+ 
+     @Transactional
+     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+-            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays) {
++            Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+-        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays));
++        return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, currency, earlyPayPct, earlyPayDays, retentionPct));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index ec9958e..9becf96 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -104,7 +104,7 @@ public class InvoiceService {
+ 
+     /**
+      * An empty draft for the client, issued today, due on the client's terms and starting with the
+-     * client's standard discount; empty if no such client.
++     * client's standard discount and retention; empty if no such client.
+      */
+     @Transactional
+     public Optional<Invoice> newDraft(Long clientId) {
+@@ -112,13 +112,14 @@ public class InvoiceService {
+             LocalDate issued = today.date();
+             Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), client.getCurrency(), issued, dueDateFor(clientId, issued));
+             draft.setDiscountPct(client.getDiscountPct());
++            draft.setRetentionPct(client.getRetentionPct());
+             return invoices.save(draft);
+         });
+     }
+ 
+     /**
+      * A new draft for the invoice's client with copies of its lines and the same invoice discount,
+-     * issued today and due as any new invoice is, and records it in the audit; empty if no such
++     * retention and instalment plan (not the client's standard ones), issued today and due as any new invoice is, and records it in the audit; empty if no such
+      * invoice. Payments are not copied.
+      */
+     @Transactional
+diff --git a/src/main/resources/db/migration/V29__client_retention.sql b/src/main/resources/db/migration/V29__client_retention.sql
+new file mode 100644
+index 0000000..3bfec76
+--- /dev/null
++++ b/src/main/resources/db/migration/V29__client_retention.sql
+@@ -0,0 +1,2 @@
++-- The standard retention (0 to 20 percent, 0 is none) new invoices for the client start with.
++ALTER TABLE client ADD COLUMN retention_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
