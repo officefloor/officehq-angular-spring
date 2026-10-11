@@ -472,9 +472,10 @@ public class Invoice {
      * ({@link #GRACE_DAYS} days after its due date), when something is still owed then; it earns no
      * interest, and a payment from then on pays it first. A sent invoice not
      * spread over instalments, with something still owed more than {@link #GRACE_DAYS} days after its
-     * due date, earns interest from its due date, compounded daily at rate / 365: a balance B owing for
+     * due date, earns interest from the end of its grace week ({@link #GRACE_DAYS} days after its due
+     * date), compounded daily at rate / 365: a balance B owing for
      * d days earns B x ((1 + rate / 100 / 365)^d - 1), rounded half up to the cent. Each payment after
-     * the due date ends a period; every period earns interest on what the invoice still owed during it
+     * the grace week ends a period; every period earns interest on what the invoice still owed during it
      * (earlier interest, the fee and retention left out), and a payment pays the fee, then the interest
      * earned so far, then the invoice. An invoice spread over instalments instead earns interest
      * instalment by instalment (see {@link #accrueInstalmentInterest}), and no late fee.
@@ -518,7 +519,7 @@ public class Invoice {
         BigDecimal unpaidInterest = BigDecimal.ZERO;
         BigDecimal unpaidFee = BigDecimal.ZERO;
         boolean feeCharged = false;
-        LocalDate from = dueDate;
+        LocalDate from = dueDate.plusDays(GRACE_DAYS);
         for (Part part : inOrder) {
             if (!feeCharged && !part.on().isBefore(overdueOn)) {
                 unpaidFee = fee;
@@ -527,7 +528,7 @@ public class Invoice {
             BigDecimal toFee = part.amount().min(unpaidFee).max(BigDecimal.ZERO);
             unpaidFee = unpaidFee.subtract(toFee);
             BigDecimal rest = part.amount().subtract(toFee);
-            if (earnsInterest && part.on().isAfter(dueDate) && owed.signum() > 0) {
+            if (earnsInterest && part.on().isAfter(from) && owed.signum() > 0) {
                 BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
                 charged = charged.add(earned);
                 unpaidInterest = unpaidInterest.add(earned);
@@ -550,8 +551,8 @@ public class Invoice {
      * off counts from the issue date). Payments, in the order they were made, pay each instalment's
      * interest earned so far and then the instalment itself, earliest instalment first. An instalment
      * still not paid off more than {@link #GRACE_DAYS} days after its due date earns interest by the
-     * same rule as an invoice: from its own due date, compounded daily at rate / 365, on what is still
-     * unpaid of it, with each payment after its due date ending a period.
+     * same rule as an invoice: from the end of its own grace week, compounded daily at rate / 365, on
+     * what is still unpaid of it, with each payment after its grace week ending a period.
      */
     private void accrueInstalmentInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
             LocalDate today) {
@@ -589,10 +590,10 @@ public class Invoice {
             }
             BigDecimal charged = BigDecimal.ZERO;
             BigDecimal unpaidInterest = BigDecimal.ZERO;
-            LocalDate from = due;
+            LocalDate from = due == null ? null : due.plusDays(GRACE_DAYS);
             for (int j = 0; j < left.length; j++) {
                 Part part = inOrder.get(j);
-                if (late && part.on().isAfter(due) && owed.signum() > 0) {
+                if (late && part.on().isAfter(from) && owed.signum() > 0) {
                     BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
                     charged = charged.add(earned);
                     unpaidInterest = unpaidInterest.add(earned);
