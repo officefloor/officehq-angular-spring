@@ -939,31 +939,20 @@ public class InvoiceService {
                     : "Those invoices have already been paid.");
         }
         String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
-        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, true);
+        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts);
     }
 
     /**
      * Records one payment of the amount on the date spread over several of the client's invoices, and
      * records each part in the audit. The amounts have already been checked to be more than zero; they
-     * must add up exactly to the payment, and each must go to a different sent invoice of the client
-     * and be no more than what it still has due. The date must be no later than today nor before any
-     * of the invoices' issue dates. The reference (null when none) has already been checked; it must
-     * be the reference of one of the invoices.
-     */
-    @Transactional
-    public Payment recordSplitPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
-            String reference, List<PaymentAllocation> parts) {
-        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId), date);
-        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, false);
-    }
-
-    /**
-     * Records the payment spread over the parts as {@link #recordSplitPayment} does, except that when
-     * credit may be held the parts may add up to less than the payment: the rest is held on the
-     * client's account as credit and recorded in the audit.
+     * must add up to no more than the payment: the rest is
+     * held on the client's account as credit and recorded in the audit. Each must go to a different
+     * sent invoice of the client and be no more than what it still has due. The date must be no later
+     * than today nor before any of the invoices' issue dates. The reference (null when none) has
+     * already been checked; it must be the reference of one of the invoices.
      */
     private Payment recordSpread(Long clientId, BigDecimal amount, BigDecimal paidAmount, Currency paidIn,
-            LocalDate date, String reference, List<PaymentAllocation> parts, boolean holdCredit) {
+            LocalDate date, String reference, List<PaymentAllocation> parts) {
         if (parts.isEmpty()) {
             throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
         }
@@ -973,7 +962,7 @@ public class InvoiceService {
             requireWhole(currency, part.getAmount(), "Each invoice's part");
         }
         BigDecimal sum = parts.stream().map(PaymentAllocation::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (holdCredit ? sum.compareTo(amount) > 0 : sum.compareTo(amount) != 0) {
+        if (sum.compareTo(amount) > 0) {
             throw new InvoiceRejectedException("The amounts for the invoices add up to "
                     + currency.format(sum) + ", not the " + currency.format(amount) + " paid.");
         }

@@ -178,6 +178,7 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
         [clientName]="client.name"
         [currency]="client.currency"
         [openInvoice]="openInvoice()"
+        [picked]="picked()"
         (changed)="loadBalances()"
       />
     }
@@ -202,6 +203,8 @@ export class Clients {
   protected readonly looking = signal(false);
   protected readonly lookupError = signal('');
   protected readonly openInvoice = signal<{ id: number; clientId: number } | null>(null);
+  // Bumped each time a client is picked from the list, so its invoices are shown with none open.
+  protected readonly picked = signal(0);
   protected readonly lookup = new FormGroup({
     number: new FormControl('', { nonNullable: true }),
   });
@@ -301,6 +304,7 @@ export class Clients {
   protected selectClient(id: number): void {
     this.openInvoice.set(null);
     this.selectedId.set(id);
+    this.picked.update((n) => n + 1);
   }
 
   // Opens the invoice with the typed number and selects its client. The server checks the number's

@@ -6,10 +6,9 @@ import {
   InvoiceDetail,
   InvoiceService,
   InvoiceSummary,
-  NewAllocation,
   NewPayment,
 } from './invoice.service';
-import { CURRENCIES, Currency, TWO_DECIMALS, cents, symbolOf } from './invoice-format';
+import { CURRENCIES, Currency, TWO_DECIMALS, symbolOf } from './invoice-format';
 
 // Whether a reference passes the ISO 11649 check: its first four characters moved to the end,
 // letters as numbers (A=10 up to Z=35), mod 97 is 1. Spaces and capitals are ignored by the caller.
@@ -83,27 +82,10 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
   return problems.join(' ');
 }
 
-// What is wrong with the parts of a split payment, or '' when they fit it. Whether each part is no
-// more than its invoice has due is checked by the server, as is whether they add up to a payment made
-// in another currency than the client's (`currency`) once converted.
-function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[], currency: Currency): string {
-  if (allocations.some((a) => !TWO_DECIMALS.test(a.amount))) {
-    return "Each invoice's part must be a number with at most two decimals.";
-  }
-  if (allocations.some((a) => cents(a.amount) <= 0)) {
-    return "Each invoice's part must be more than zero.";
-  }
-  const sum = allocations.reduce((total, a) => total + cents(a.amount), 0);
-  if (payment.currency === currency && TWO_DECIMALS.test(payment.amount) && sum !== cents(payment.amount)) {
-    return `The parts add up to $${(sum / 100).toFixed(2)}, not the $${(cents(payment.amount) / 100).toFixed(2)} paid.`;
-  }
-  return '';
-}
-
-// Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`), or, when none
-// is open, to the client's invoices whose references are quoted (several may be, separated by
-// commas: RF references or invoice numbers, applied overdue first, then largest due first), or without one to the client's unpaid invoices in that order; once any invoice in the list has a part, the
-// payment is spread over those invoices instead, and the parts must add up to it, none over what its invoice has due. Otherwise what is paid beyond
+// Records a payment. It goes to the open invoice (`invoiceId`), or, when none is open, to the client's
+// invoices whose references are quoted (several may be, separated by commas: RF references or invoice
+// numbers, applied overdue first, then largest due first), or without one to the client's unpaid
+// invoices in that order. What is paid beyond
 // what is due is held on the client's account as credit. The server refuses a payment on a draft, or dated after today
 // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
 // invoice number may be quoted instead: it must pass its Luhn check and stands for that invoice's reference.
@@ -179,9 +161,8 @@ export class PaymentForm {
   readonly currency = input<Currency>('USD');
   protected readonly symbolOf = symbolOf;
   protected readonly currencies = CURRENCIES;
-  // The open invoice, which takes the payment when no parts are filled in; null when none is open.
+  // The open invoice, which takes the payment; null when none is open.
   readonly invoiceId = input<number | null>(null);
-  readonly allocations = input<NewAllocation[]>([]);
   // The open invoice after a payment to it alone.
   readonly paid = output<InvoiceDetail>();
   // The client's invoices after a payment spread over several of them.
@@ -225,12 +206,8 @@ export class PaymentForm {
       this.recordDeposit(payment);
       return;
     }
-    const allocations = this.allocations();
     const invoiceId = this.invoiceId();
-    let problem = problemWithPayment(payment, allocations.length === 0 && invoiceId === null);
-    if (allocations.length > 0) {
-      problem = [problem, problemWithAllocations(payment, allocations, this.currency())].filter((p) => p).join(' ');
-    }
+    const problem = problemWithPayment(payment, invoiceId === null);
     if (problem) {
       this.form.markAllAsTouched();
       this.error.set(problem);
@@ -249,9 +226,9 @@ export class PaymentForm {
       );
       this.saving.set(false);
     };
-    if (allocations.length > 0 || invoiceId === null) {
+    if (invoiceId === null) {
       this.service
-        .recordSplitPayment(this.clientId(), { ...payment, allocations })
+        .recordSplitPayment(this.clientId(), payment)
         .subscribe({
           next: (list) => {
             done();
@@ -259,7 +236,7 @@ export class PaymentForm {
           },
           error: failed,
         });
-    } else if (invoiceId !== null) {
+    } else {
       this.service
         .recordPayment(invoiceId, payment)
         .subscribe({

@@ -6,7 +6,6 @@ import {
   InvoiceLineView,
   InvoiceService,
   InvoiceSummary,
-  NewAllocation,
   NewDiscount,
   NewLine,
 } from './invoice.service';
@@ -434,7 +433,6 @@ function problemWith(line: NewLine): string {
             [clientId]="inv.clientId"
             [currency]="inv.currency"
             [invoiceId]="inv.id"
-            [allocations]="allocations()"
             (paid)="paymentRecorded($event)"
             (split)="splitRecorded(inv.id, $event)"
             (deposited)="splitRecorded(inv.id, $event)"
@@ -661,9 +659,7 @@ export class InvoicePanel {
   readonly reload = input(0);
   // The invoice after a change made here, so the list can show its new total.
   readonly changed = output<InvoiceDetail>();
-  // The parts of a payment filled in on the list; when any is, a payment is spread over them.
-  readonly allocations = input<NewAllocation[]>([]);
-  // The client's invoices after a payment spread over several of them.
+  // The client's invoices after a deposit or a payment spread over several of them.
   readonly split = output<InvoiceSummary[]>();
   // A new draft copied from this invoice, to be listed and opened.
   readonly duplicated = output<InvoiceDetail>();

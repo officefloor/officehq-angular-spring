@@ -311,17 +311,7 @@ public class InvoiceController {
             LocalDate dueDate) {
     }
 
-    /** The part of a split payment that goes to one invoice: more than zero, with at most two decimals. */
-    public record NewAllocation(
-            @NotNull(message = "Choose the invoice each part of the payment goes to.")
-            Long invoiceId,
-            @NotNull(message = "Enter how much of the payment goes to each invoice.")
-            @DecimalMin(value = "0", inclusive = false, message = "Each invoice's part must be more than zero.")
-            @Digits(integer = 17, fraction = 2, message = "Each invoice's part can have at most two decimals.")
-            BigDecimal amount) {
-    }
-
-    /** A payment to spread over several of a client's invoices: a payment and the part going to each. */
+    /** A payment to spread automatically over several of a client's invoices. */
     public record NewSplitPayment(
             @NotNull(message = "Enter an amount.")
             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
@@ -332,9 +322,7 @@ public class InvoiceController {
             @NotNull(message = "Enter the date it was paid.")
             LocalDate date,
             @Size(max = 255, message = "The references must be at most 255 characters.")
-            String reference,
-            @NotNull(message = "Enter how much of the payment goes to each invoice.")
-            List<@Valid NewAllocation> allocations) {
+            String reference) {
     }
 
     private final InvoiceService invoices;
@@ -527,20 +515,14 @@ public class InvoiceController {
     }
 
     /**
-     * Records one payment spread over several of the client's invoices, or, with no parts given,
-     * applied to the invoices whose references are quoted (several may be, separated by commas) or, with none,
+     * Records one payment spread automatically over several of the client's invoices: applied to the invoices whose references are quoted (several may be, separated by commas) or, with none,
      * to all its unpaid invoices, overdue first (earliest due date first), then the largest amount due first; answers the client's invoices
      * with their new statuses.
      */
     @PostMapping("/api/clients/{clientId}/payments")
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
-        if (body.allocations().isEmpty()) {
-            invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()));
-        } else {
-            invoices.recordSplitPayment(clientId, body.amount(), body.currency(), body.date(), reference(body.reference()),
-                    body.allocations().stream().map(a -> new PaymentAllocation(a.invoiceId(), a.amount())).toList());
-        }
+        invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()));
         return forClient(clientId);
     }
 

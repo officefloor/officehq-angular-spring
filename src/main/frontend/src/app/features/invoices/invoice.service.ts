@@ -180,17 +180,6 @@ export interface NewPayment {
   reference: string;
 }
 
-// The part of a split payment that goes to one invoice: the amount as entered.
-export interface NewAllocation {
-  invoiceId: number;
-  amount: string;
-}
-
-// A payment spread over several of a client's invoices, with the part going to each.
-export interface NewSplitPayment extends NewPayment {
-  allocations: NewAllocation[];
-}
-
 // A line to add to a draft: quantity, unit price, the line's own discount percentage and its own tax
 // rate as entered (each left out when none), checked again by the server.
 export interface NewLine {
@@ -336,12 +325,11 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments`, payment);
   }
 
-  // Records one payment spread over several of the client's invoices; refused (409) unless the parts
-  // add up to the payment and each goes to a sent invoice of the client, no more than it has due.
-  // With no parts it goes to the invoices whose references are quoted (comma separated), earliest due
-  // date first, refused when one is mistyped (400) or not the client's; what they do not owe is held as credit.
+  // Records one payment spread automatically over the client's invoices: those whose references are
+  // quoted (comma separated), or with none all its unpaid invoices, overdue first, then the largest due
+  // first; refused when a reference is mistyped (400) or not the client's; what they do not owe is held as credit.
   // Answers the client's invoices with their new statuses.
-  recordSplitPayment(clientId: number, payment: NewSplitPayment): Observable<InvoiceSummary[]> {
+  recordSplitPayment(clientId: number, payment: NewPayment): Observable<InvoiceSummary[]> {
     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment);
   }
 
