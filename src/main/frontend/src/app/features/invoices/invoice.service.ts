@@ -85,7 +85,8 @@ export interface InvoiceLineView {
 // quoted in groups of four (null when none).
 // A payment to an opened invoice: `amount` is in the `currency` it was paid in, `allocated` (the
 // part applied to this invoice) in the client's currency. `surcharge` is the part of the amount that
-// was the card surcharge, in the client's currency ("0.00" unless paid by card).
+// was the card surcharge, in the client's currency ("0.00" unless paid by card), and `fxFee` the part
+// that was the conversion fee ("0.00" unless paid in another currency).
 export interface InvoicePaymentView {
   id: number;
   amount: string;
@@ -95,6 +96,7 @@ export interface InvoicePaymentView {
   reference: string | null;
   method: PaymentMethod;
   surcharge: string;
+  fxFee: string;
 }
 
 // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the

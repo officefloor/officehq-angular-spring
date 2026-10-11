@@ -62,6 +62,10 @@ public class Payment {
     /** The part of the amount that is the card surcharge of a card payment: it pays nothing; 0 otherwise. */
     private BigDecimal surcharge = BigDecimal.ZERO;
 
+    /** The part of the amount that is the conversion fee of a payment in another currency: it pays nothing; 0 otherwise. */
+    @Column(name = "fx_fee")
+    private BigDecimal fxFee = BigDecimal.ZERO;
+
     @ElementCollection
     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
     private List<PaymentAllocation> allocations = new ArrayList<>();
@@ -152,6 +156,17 @@ public class Payment {
         return this;
     }
 
+    /** Notes the part of the amount that is the conversion fee (null for none). */
+    public Payment feeCharged(BigDecimal fee) {
+        this.fxFee = fee == null ? BigDecimal.ZERO : fee;
+        return this;
+    }
+
+    /** The part of the amount that is the conversion fee; 0 for a payment in the client's own currency. */
+    public BigDecimal getFxFee() {
+        return fxFee == null ? BigDecimal.ZERO : fxFee;
+    }
+
     /** The part of the amount that is the card surcharge; 0 for a payment not made by card. */
     public BigDecimal getSurcharge() {
         return surcharge == null ? BigDecimal.ZERO : surcharge;
@@ -219,14 +234,14 @@ public class Payment {
     }
 
     /**
-     * The part of this payment applied to no invoice, not refunded and not its card surcharge: credit
+     * The part of this payment applied to no invoice, not refunded and not its card surcharge or conversion fee: credit
      * on the client's account; none once reversed.
      */
     public BigDecimal credit() {
         if (reversed) {
             return BigDecimal.ZERO;
         }
-        return amount.subtract(getSurcharge()).subtract(refunded).subtract(allocations.stream().map(PaymentAllocation::getAmount)
+        return amount.subtract(getSurcharge()).subtract(getFxFee()).subtract(refunded).subtract(allocations.stream().map(PaymentAllocation::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
     }
 

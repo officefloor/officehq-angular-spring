@@ -63,15 +63,16 @@ public class InvoiceController {
      * A payment made to an opened invoice: the whole amount paid in the {@code currency} it was paid in,
      * how much of it went to this invoice (to the cent) in the client's currency, its date and the
      * reference it quoted in groups of four (null when none). {@code surcharge} is the part of it that
-     * was the card surcharge, in the client's currency ("0.00" unless paid by card).
+     * was the card surcharge, in the client's currency ("0.00" unless paid by card), and {@code fxFee} the
+     * part that was the conversion fee ("0.00" unless paid in another currency).
      */
     public record PaymentView(Long id, String amount, Currency currency, String allocated, LocalDate date,
-            String reference, PaymentMethod method, String surcharge) {
+            String reference, PaymentMethod method, String surcharge, String fxFee) {
         static PaymentView of(Payment p, Long invoiceId, Currency clientCurrency) {
             return new PaymentView(p.getId(), p.paidAmount().setScale(2).toPlainString(),
                     p.paidCurrency(clientCurrency), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
                     p.getReference() == null ? null : PaymentReference.grouped(p.getReference()), p.getMethod(),
-                    p.getSurcharge().setScale(2).toPlainString());
+                    p.getSurcharge().setScale(2).toPlainString(), p.getFxFee().setScale(2).toPlainString());
         }
     }
 

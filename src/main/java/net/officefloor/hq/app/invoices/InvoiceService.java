@@ -17,6 +17,7 @@ import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.CardSurcharge;
 import net.officefloor.hq.app.ExchangeRates;
+import net.officefloor.hq.app.FxFee;
 import net.officefloor.hq.app.LateInterestRate;
 import net.officefloor.hq.app.PriceList;
 import net.officefloor.hq.app.TaxRate;
@@ -48,11 +49,14 @@ public class InvoiceService {
     private final PriceList priceList;
     private final CardSurcharge cardSurcharge;
 
+    private final FxFee fxFee;
+
     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
-            LateInterestRate lateInterestRate, CardSurcharge cardSurcharge, PriceList priceList) {
+            LateInterestRate lateInterestRate, CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList) {
         this.priceList = priceList;
         this.cardSurcharge = cardSurcharge;
+        this.fxFee = fxFee;
         this.lateInterestRate = lateInterestRate;
         this.exchangeRates = exchangeRates;
         this.entityManager = entityManager;
@@ -896,11 +900,13 @@ public class InvoiceService {
             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
         }
         BigDecimal surcharge = surchargeOf(amount, currency, method);
+        BigDecimal fee = feeOf(amount, paidIn, currency);
         Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date, reference)
-                .paidIn(paidIn, paidAmount, currency).by(method).surcharged(surcharge));
+                .paidIn(paidIn, paidAmount, currency).by(method).surcharged(surcharge).feeCharged(fee));
+        recordFee(payment, currency);
         recordSurcharge(payment, currency);
         audit.record("DEPOSIT_RECORDED id=" + payment.getId() + " client=" + clientId + " amount="
-                + amount.subtract(surcharge).setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+                + amount.subtract(surcharge).subtract(fee).setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
         return Optional.of(payment);
     }
 
@@ -1099,9 +1105,10 @@ public class InvoiceService {
                         + invoice.currency().format(invoice.currency().cashStep()) + " coins.");
             }
             BigDecimal received = converted(paidAmount, paidIn, invoice.currency(), date);
-            // Only what is left once the card surcharge is taken out pays the invoice.
+            // Only what is left once the conversion fee and card surcharge are taken out pays the invoice.
             BigDecimal surcharge = surchargeOf(received, invoice.currency(), method);
-            BigDecimal amount = received.subtract(surcharge);
+            BigDecimal fee = feeOf(received, paidIn, invoice.currency());
+            BigDecimal amount = received.subtract(surcharge).subtract(fee);
             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
             if (due.signum() <= 0) {
@@ -1154,7 +1161,8 @@ public class InvoiceService {
                 invoices.saveAndFlush(invoice);
             }
             Payment payment = payments.saveAndFlush(Payment.against(invoice, received, applied, date, reference)
-                    .paidIn(paidIn, paidAmount, invoice.currency()).by(method).surcharged(surcharge));
+                    .paidIn(paidIn, paidAmount, invoice.currency()).by(method).surcharged(surcharge).feeCharged(fee));
+            recordFee(payment, invoice.currency());
             recordSurcharge(payment, invoice.currency());
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
                     + applied.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
@@ -1202,9 +1210,10 @@ public class InvoiceService {
             List<QuotedReference> references, PaymentMethod method) {
         Currency currency = currencyOf(clientId);
         BigDecimal received = converted(paidAmount, paidIn, currency, date);
-        // Only what is left once the card surcharge is taken out pays invoices or is held as credit.
+        // Only what is left once the conversion fee and card surcharge are taken out pays invoices or is held as credit.
         BigDecimal surcharge = surchargeOf(received, currency, method);
-        BigDecimal amount = received.subtract(surcharge);
+        BigDecimal fee = feeOf(received, paidIn, currency);
+        BigDecimal amount = received.subtract(surcharge).subtract(fee);
         List<Invoice> ofClient = loadForClient(clientId);
         List<Invoice> candidates = ofClient;
         List<PaymentAllocation> parts = new ArrayList<>();
@@ -1268,7 +1277,7 @@ public class InvoiceService {
                     : "Those invoices have already been paid.");
         }
         String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
-        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, method, surcharge);
+        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, method, surcharge, fee);
     }
 
     /**
@@ -1367,7 +1376,7 @@ public class InvoiceService {
      */
     private Payment recordSpread(Long clientId, BigDecimal amount, BigDecimal paidAmount, Currency paidIn,
             LocalDate date, String reference, List<PaymentAllocation> parts, PaymentMethod method,
-            BigDecimal surcharge) {
+            BigDecimal surcharge, BigDecimal fee) {
         if (parts.isEmpty()) {
             throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
         }
@@ -1430,8 +1439,9 @@ public class InvoiceService {
             throw new InvoiceRejectedException(PaymentReference.grouped(reference)
                     + " is not the reference of any of the invoices being paid.");
         }
-        Payment payment = payments.saveAndFlush(Payment.split(clientId, amount.add(surcharge), date, reference, parts)
-                .paidIn(paidIn, paidAmount, currency).by(method).surcharged(surcharge));
+        Payment payment = payments.saveAndFlush(Payment.split(clientId, amount.add(surcharge).add(fee), date, reference, parts)
+                .paidIn(paidIn, paidAmount, currency).by(method).surcharged(surcharge).feeCharged(fee));
+        recordFee(payment, currency);
         recordSurcharge(payment, currency);
         for (PaymentAllocation part : parts) {
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + part.getInvoiceId() + " amount="
@@ -1555,6 +1565,22 @@ public class InvoiceService {
     /** The card surcharge in the amount received by the method (null for a bank transfer): 0 unless by card. */
     private BigDecimal surchargeOf(BigDecimal received, Currency currency, PaymentMethod method) {
         return method == PaymentMethod.CARD ? cardSurcharge.of(received, currency.scale()) : BigDecimal.ZERO;
+    }
+
+    /**
+     * The conversion fee in the amount received converted into the client's currency from the currency paid in
+     * (null for the client's own): 0 unless paid in another currency.
+     */
+    private BigDecimal feeOf(BigDecimal received, Currency paidIn, Currency currency) {
+        return paidIn != null && paidIn != currency ? fxFee.of(received, currency.scale()) : BigDecimal.ZERO;
+    }
+
+    /** Records in the audit the conversion fee a payment just recorded carried, if any. */
+    private void recordFee(Payment payment, Currency currency) {
+        if (payment.getFxFee().signum() > 0) {
+            audit.record("FX_FEE payment=" + payment.getId() + " amount="
+                    + payment.getFxFee().setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+        }
     }
 
     /** Records in the audit the card surcharge a payment just recorded carried, if any. */

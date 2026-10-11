@@ -39,7 +39,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold");
     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
@@ -65,6 +65,8 @@ public class TestSupportController {
 
     private final CardSurcharge cardSurcharge;
 
+    private final FxFee fxFee;
+
     private final PriceList priceList;
 
     private final Today today;
@@ -75,13 +77,14 @@ public class TestSupportController {
 
     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
             PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
-            CardSurcharge cardSurcharge, PriceList priceList, Today today, LateInterestRate lateInterestRate,
+            CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList, Today today, LateInterestRate lateInterestRate,
             VolumeDiscounts volumeDiscounts) {
         this.volumeDiscounts = volumeDiscounts;
         this.lateInterestRate = lateInterestRate;
         this.today = today;
         this.priceList = priceList;
         this.cardSurcharge = cardSurcharge;
+        this.fxFee = fxFee;
         this.exchangeRates = exchangeRates;
         this.payments = payments;
         this.entityManager = entityManager;
@@ -156,6 +159,11 @@ public class TestSupportController {
                 BigDecimal rate = percent(values.get("cardSurchargePct"), "settings.cardSurchargePct");
                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                         CardSurcharge.CARD_SURCHARGE_PCT, rate.toPlainString());
+            }
+            if (values.get("fxFeePct") != null) {
+                BigDecimal rate = percent(values.get("fxFeePct"), "settings.fxFeePct");
+                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                        FxFee.FX_FEE_PCT, rate.toPlainString());
             }
             if (values.get("usdPer") != null) {
                 if (!(values.get("usdPer") instanceof Map<?, ?> rates)) {
@@ -415,14 +423,16 @@ public class TestSupportController {
             // Part of a card payment is the workspace's card surcharge, as when one is recorded.
             BigDecimal surcharge = PaymentMethod.CARD.name().equals(method) && amount != null
                     ? cardSurcharge.of(amount, clientCurrency.scale()) : BigDecimal.ZERO;
-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method", "surcharge"},
+            // Part of a payment in another currency is the workspace's conversion fee, as when one is recorded.
+            BigDecimal fee = foreign ? fxFee.of(amount, clientCurrency.scale()) : BigDecimal.ZERO;
+            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method", "surcharge", "fx_fee"},
                     id(row.get("clientId")), amount,
                     date(row.get("date"), "payments[].date"),
                     row.get("reference") == null ? null : row.get("reference").toString(),
                     flag(row.get("reversed"), "payments[].reversed"),
                     money(row.get("refunded"), "payments[].refunded"),
                     row.get("creditNote") == null ? null : id(row.get("creditNote")),
-                    foreign ? paidIn.name() : null, foreign ? paidAmount : null, method, surcharge);
+                    foreign ? paidIn.name() : null, foreign ? paidAmount : null, method, surcharge, fee);
             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
                 if (allocation.get("invoiceId") == null) {
@@ -488,6 +498,11 @@ public class TestSupportController {
                 String.class, CardSurcharge.CARD_SURCHARGE_PCT);
         if (!cardSurchargePct.isEmpty()) {
             settings.put("cardSurchargePct", new BigDecimal(cardSurchargePct.get(0)));
+        }
+        List<String> fxFeePct = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+                String.class, FxFee.FX_FEE_PCT);
+        if (!fxFeePct.isEmpty()) {
+            settings.put("fxFeePct", new BigDecimal(fxFeePct.get(0)));
         }
         List<String> minimumCharge = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
                 String.class, MINIMUM_CHARGE);

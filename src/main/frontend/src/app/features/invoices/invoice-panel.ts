@@ -457,6 +457,7 @@ function problemWith(line: NewLine): string {
             <tr>
               <th scope="col">Paid on</th>
               <th scope="col">Amount</th>
+              <th scope="col">Conversion fee</th>
               <th scope="col">Card surcharge</th>
               <th scope="col">To this invoice</th>
               <th scope="col">Reference</th>
@@ -468,6 +469,7 @@ function problemWith(line: NewLine): string {
               <tr [attr.data-testid]="'payment-row-' + p.id">
                 <td data-testid="payment-date">{{ p.date }}</td>
                 <td data-testid="payment-amount">{{ money(p.amount, p.currency) }}</td>
+                <td data-testid="payment-fx-fee">{{ amount(p.fxFee) }}</td>
                 <td data-testid="payment-surcharge">{{ amount(p.surcharge) }}</td>
                 <td data-testid="payment-allocated">{{ amount(p.allocated) }}</td>
                 <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
