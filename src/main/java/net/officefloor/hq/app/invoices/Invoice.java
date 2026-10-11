@@ -182,10 +182,12 @@ public class Invoice {
 
     /**
      * The tax number of the invoice's client when the client is in a region other than the workspace's
-     * home region; read from them, null when it has no number, no region, is in the home region or
-     * there is no home region. With a valid number the invoice is reverse charged (see {@link #isReverseCharge}).
+     * home region and the number's two letters are that region's code; read from them, null when it has
+     * no number, no region, a number from another region, is in the home region or there is no home
+     * region. With a valid number the invoice is reverse charged (see {@link #isReverseCharge}).
      */
     @Formula("(SELECT c.tax_number FROM client c WHERE c.id = client_id AND c.region IS NOT NULL"
+            + " AND UPPER(SUBSTRING(c.tax_number, 1, 2)) = UPPER(c.region)"
             + " AND c.region <> (SELECT s.setting_value FROM app_setting s WHERE s.name = 'home_region'))")
     private String outOfRegionTaxNumber;
 
@@ -240,6 +242,11 @@ public class Invoice {
     /** The percentage of the amount before tax the client withholds for its tax office; read from the client. */
     @Formula("(SELECT c.withholding_pct FROM client c WHERE c.id = client_id)")
     private BigDecimal withholdingPct;
+
+    /** The percentage of the amount before tax the client withholds for its tax office; 0 when none. */
+    public BigDecimal getWithholdingPct() {
+        return withholdingPct == null ? BigDecimal.ZERO : withholdingPct;
+    }
 
     /** The client's grace period in days; read from the client. */
     @Formula("(SELECT c.grace_days FROM client c WHERE c.id = client_id)")
@@ -747,10 +754,11 @@ public class Invoice {
 
     /**
      * The withholding: the client's withholding percentage of the amount before tax, rounded down to
-     * the cent. The client pays it to its tax office instead, so it is never owed. Nothing for a credit note.
+     * the cent. The client pays it to its tax office instead, so it is never owed. Nothing for a credit
+     * note, nor for a reverse-charged invoice: the client pays it all.
      */
     public BigDecimal withholding(BigDecimal taxRate) {
-        if (isCreditNote() || withholdingPct == null || withholdingPct.signum() <= 0) {
+        if (isCreditNote() || isReverseCharge() || withholdingPct == null || withholdingPct.signum() <= 0) {
             return zero();
         }
         return beforeTax(taxRate).multiply(withholdingPct).divide(BigDecimal.valueOf(100))
@@ -1958,8 +1966,8 @@ public class Invoice {
     }
 
     /**
-     * Whether the invoice is reverse charged: its client is registered (a valid tax number) in a region
-     * other than the workspace's home region and accounts for the tax itself, so no line is taxed.
+     * Whether the invoice is reverse charged: its client is registered (a valid tax number whose two
+     * letters are the region's code) in a region other than the workspace's home region and accounts for the tax itself, so no line is taxed.
      */
     public boolean isReverseCharge() {
         return TaxNumber.isValid(outOfRegionTaxNumber);

@@ -36,7 +36,7 @@ export interface Client {
   // workspace's regional rates when one is listed; null for no region.
   region: string | null;
   // The client's tax number without spaces: two letters then ten digits, the last two a check on the
-  // first eight. With a valid one and a region outside the workspace's home region its invoices are
+  // first eight. With a valid one whose two letters are its region (outside the workspace's home region) its invoices are
   // reverse charged; null for no number.
   taxNumber: string | null;
 }

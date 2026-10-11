@@ -189,8 +189,8 @@ export interface InvoiceDetail {
   // The day (yyyy-mm-dd) it was written off as a bad debt, null when it was not; everything it still
   // owed then, late charges and retention included, is in `writtenOff`.
   writtenOffOn: string | null;
-  // Whether it is reverse charged: its client is registered (a valid tax number) outside the
-  // workspace's home region and accounts for the tax itself, so no line is taxed.
+  // Whether it is reverse charged: its client is registered (a valid tax number whose two letters are
+  // their region's code) outside the workspace's home region and accounts for the tax itself, so no line is taxed.
   reverseCharge: boolean;
   // What the amount after its discounts plus the surcharge falls short of the workspace's minimum
   // charge, added to the invoice and taxed at the client's rate; "0.00" when there is none.
@@ -200,8 +200,11 @@ export interface InvoiceDetail {
   surchargePct: string;
   surcharge: string;
   // What the client withholds for its tax office: its withholding percentage of the amount before tax,
-  // rounded down to the cent ("0.00" when none). Never owed, so left out of the amount due.
+  // rounded down to the cent ("0.00" when none, or when reverse charged). Never owed, so left out of
+  // the amount due.
   withholding: string;
+  // The client's withholding percentage (without trailing zeros); "0" when it withholds nothing.
+  withholdingPct: string;
   // The amount due rounded down to the cash coin below (0.05, or whole yen), and the difference
   // that makes (signed); once settled in cash, the cash rounding it was settled with.
   cashDue: string;

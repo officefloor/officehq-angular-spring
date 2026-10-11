@@ -90,7 +90,7 @@ public class Client {
     private String region;
 
     /**
-     * The client's tax number, without spaces (see {@link TaxNumber}): with a valid one and a region
+     * The client's tax number, without spaces (see {@link TaxNumber}): with a valid one from its region
      * outside the workspace's home region its invoices are reverse charged; null for no number.
      */
     @Column(name = "tax_number")

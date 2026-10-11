@@ -369,7 +369,7 @@ function problemWith(line: NewLine): string {
               <th scope="row" colspan="10">Total</th>
               <td data-testid="invoice-grand-total">{{ amount(inv.total) }}</td>
             </tr>
-            @if (+inv.withholding > 0) {
+            @if (+inv.withholdingPct > 0) {
               <tr>
                 <th scope="row" colspan="10">Withheld by the client for its tax office</th>
                 <td data-testid="invoice-withholding">{{ amount(inv.withholding) }}</td>

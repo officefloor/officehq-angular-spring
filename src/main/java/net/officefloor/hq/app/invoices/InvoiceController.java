@@ -143,7 +143,8 @@ public class InvoiceController {
      * {@code surchargePct} (without trailing zeros) is the rush surcharge percentage and {@code surcharge} that share of
      * the subtotal less the discount, rounded down to the cent; it counts towards the {@code minimumCharge}.
      * {@code withholding} is what the client withholds for its tax office (0 when none): never owed, so
-     * left out of the amount due.
+     * left out of the amount due; nothing when reverse charged. {@code withholdingPct} (without trailing zeros)
+     * is the client's withholding percentage.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
@@ -153,7 +154,8 @@ public class InvoiceController {
             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
-            String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding) {
+            String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+            String withholdingPct) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -195,7 +197,7 @@ public class InvoiceController {
                     i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),
                     i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
                     i.getSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
-                    i.withholding(taxRate).toPlainString());
+                    i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString());
         }
     }
 
