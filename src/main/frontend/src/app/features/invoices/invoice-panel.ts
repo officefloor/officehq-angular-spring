@@ -272,6 +272,12 @@ function problemWith(line: NewLine): string {
               <th scope="row" colspan="4">Paid</th>
               <td data-testid="invoice-paid">{{ money(inv.paid) }}</td>
             </tr>
+            @if (inv.creditOf === null) {
+              <tr>
+                <th scope="row" colspan="4">Credited</th>
+                <td data-testid="invoice-credited">{{ money(inv.credited) }}</td>
+              </tr>
+            }
             <tr>
               <th scope="row" colspan="4">Amount due</th>
               <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
@@ -286,7 +292,12 @@ function problemWith(line: NewLine): string {
           <p role="alert" data-testid="payment-reverse-error">{{ reverseError() }}</p>
         }
 
-        @if (inv.status !== 'PAID' && inv.status !== 'PAID_LATE') {
+        @if (
+          inv.creditOf === null &&
+          inv.status !== 'PAID' &&
+          inv.status !== 'PAID_LATE' &&
+          inv.status !== 'CREDITED'
+        ) {
           <app-payment-form
             [clientId]="inv.clientId"
             [invoiceId]="inv.id"
@@ -297,7 +308,7 @@ function problemWith(line: NewLine): string {
           />
         }
 
-        @if (inv.status === 'DRAFT') {
+        @if (inv.status === 'DRAFT' && inv.creditOf === null) {
           <form [formGroup]="dueForm" (ngSubmit)="setDueDate(inv.id)" aria-label="Due date" novalidate>
             <label for="invoice-due-date">Due date (up to 120 days after the issue date)</label>
             <input id="invoice-due-date" type="date" data-testid="invoice-due-input" formControlName="dueDate" />
@@ -306,12 +317,23 @@ function problemWith(line: NewLine): string {
               <p role="alert" data-testid="invoice-due-error">{{ dueError() }}</p>
             }
           </form>
+        }
 
-          <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv.id)">
-            Send invoice
+        @if (inv.status === 'DRAFT') {
+          <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv)">
+            {{ inv.creditOf === null ? 'Send invoice' : 'Issue credit note' }}
           </button>
           @if (sendError()) {
             <p role="alert" data-testid="invoice-send-error">{{ sendError() }}</p>
+          }
+        }
+
+        @if (inv.creditOf === null && inv.status !== 'DRAFT' && inv.status !== 'VOID') {
+          <button type="button" data-testid="invoice-credit" [disabled]="crediting()" (click)="creditNote(inv.id)">
+            Credit note
+          </button>
+          @if (creditError()) {
+            <p role="alert" data-testid="invoice-credit-error">{{ creditError() }}</p>
           }
         }
 
@@ -327,7 +349,7 @@ function problemWith(line: NewLine): string {
           <p role="alert" data-testid="invoice-duplicate-error">{{ duplicateError() }}</p>
         }
 
-        @if (inv.status !== 'VOID') {
+        @if (inv.status !== 'VOID' && inv.status !== 'CREDIT_NOTE') {
           <button type="button" data-testid="invoice-void" [disabled]="voiding()" (click)="voidInvoice(inv.id)">
             Void invoice
           </button>
@@ -392,47 +414,49 @@ function problemWith(line: NewLine): string {
           }
         </form>
 
-        <form
-          [formGroup]="discountForm"
-          (ngSubmit)="setDiscount(inv.id)"
-          aria-label="Discount"
-          novalidate
-        >
-          <label for="discount-pct">Discount (%)</label>
-          <input
-            id="discount-pct"
-            data-testid="discount-form-pct"
-            inputmode="decimal"
-            formControlName="pct"
-          />
-          <label for="discount-amount">or amount ($)</label>
-          <input
-            id="discount-amount"
-            data-testid="discount-form-amount"
-            inputmode="decimal"
-            formControlName="amount"
-          />
-          <label for="discount-cap">capped at ($, optional)</label>
-          <input
-            id="discount-cap"
-            data-testid="discount-form-cap"
-            inputmode="decimal"
-            formControlName="cap"
-          />
-          <label for="discount-reason">reason (needed over 20% of the subtotal)</label>
-          <input
-            id="discount-reason"
-            data-testid="discount-form-reason"
-            maxlength="500"
-            formControlName="reason"
-          />
-          <button type="submit" data-testid="discount-form-submit" [disabled]="savingDiscount()">
-            Apply discount
-          </button>
-          @if (discountError()) {
-            <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
-          }
-        </form>
+        @if (inv.creditOf === null) {
+          <form
+            [formGroup]="discountForm"
+            (ngSubmit)="setDiscount(inv.id)"
+            aria-label="Discount"
+            novalidate
+          >
+            <label for="discount-pct">Discount (%)</label>
+            <input
+              id="discount-pct"
+              data-testid="discount-form-pct"
+              inputmode="decimal"
+              formControlName="pct"
+            />
+            <label for="discount-amount">or amount ($)</label>
+            <input
+              id="discount-amount"
+              data-testid="discount-form-amount"
+              inputmode="decimal"
+              formControlName="amount"
+            />
+            <label for="discount-cap">capped at ($, optional)</label>
+            <input
+              id="discount-cap"
+              data-testid="discount-form-cap"
+              inputmode="decimal"
+              formControlName="cap"
+            />
+            <label for="discount-reason">reason (needed over 20% of the subtotal)</label>
+            <input
+              id="discount-reason"
+              data-testid="discount-form-reason"
+              maxlength="500"
+              formControlName="reason"
+            />
+            <button type="submit" data-testid="discount-form-submit" [disabled]="savingDiscount()">
+              Apply discount
+            </button>
+            @if (discountError()) {
+              <p role="alert" data-testid="discount-form-error">{{ discountError() }}</p>
+            }
+          </form>
+        }
       }
     </section>
   `,
@@ -451,6 +475,8 @@ export class InvoicePanel {
   readonly split = output<InvoiceSummary[]>();
   // A new draft copied from this invoice, to be listed and opened.
   readonly duplicated = output<InvoiceDetail>();
+  // A new draft credit note against this invoice, to be listed and opened.
+  readonly credited = output<InvoiceDetail>();
 
   protected readonly invoice = signal<InvoiceDetail | null>(null);
   protected readonly saving = signal(false);
@@ -465,6 +491,8 @@ export class InvoicePanel {
   protected readonly sendError = signal('');
   protected readonly duplicating = signal(false);
   protected readonly duplicateError = signal('');
+  protected readonly crediting = signal(false);
+  protected readonly creditError = signal('');
   protected readonly voiding = signal(false);
   protected readonly voidError = signal('');
   protected readonly reversing = signal(false);
@@ -507,6 +535,7 @@ export class InvoicePanel {
       this.sendError.set('');
       this.voidError.set('');
       this.duplicateError.set('');
+      this.creditError.set('');
       this.reverseError.set('');
       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
       onCleanup(() => sub.unsubscribe());
@@ -677,13 +706,18 @@ export class InvoicePanel {
     });
   }
 
-  protected send(invoiceId: number): void {
+  // Sends a draft; an issued credit note also changes what its original owes, so the client's
+  // invoices are shown again.
+  protected send(inv: InvoiceDetail): void {
     this.sending.set(true);
     this.sendError.set('');
-    this.service.send(invoiceId).subscribe({
+    this.service.send(inv.id).subscribe({
       next: (detail) => {
         this.invoice.set(detail);
         this.changed.emit(detail);
+        if (detail.creditOf !== null) {
+          this.service.forClient(detail.clientId).subscribe((list) => this.split.emit(list));
+        }
         this.sending.set(false);
       },
       error: (e: HttpErrorResponse) => {
@@ -710,6 +744,24 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The invoice could not be duplicated.',
         );
         this.duplicating.set(false);
+      },
+    });
+  }
+
+  protected creditNote(invoiceId: number): void {
+    this.crediting.set(true);
+    this.creditError.set('');
+    this.service.creditNote(invoiceId).subscribe({
+      next: (detail) => {
+        this.crediting.set(false);
+        this.credited.emit(detail);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.creditError.set(
+          typeof detail === 'string' && detail ? detail : 'The credit note could not be started.',
+        );
+        this.crediting.set(false);
       },
     });
   }

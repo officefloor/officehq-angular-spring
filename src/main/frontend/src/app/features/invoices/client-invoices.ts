@@ -78,7 +78,7 @@ import { money, statusLabel } from './invoice-format';
               <td data-testid="invoice-issue">{{ i.issueDate }}</td>
               <td data-testid="invoice-due">{{ i.dueDate }}</td>
               <td>
-                @if (i.status !== 'DRAFT' && i.status !== 'VOID') {
+                @if (i.status !== 'DRAFT' && i.status !== 'VOID' && i.status !== 'CREDIT_NOTE') {
                   <input
                     class="allocate"
                     data-testid="invoice-allocate"
@@ -109,6 +109,7 @@ import { money, statusLabel } from './invoice-format';
         (changed)="totalChanged($event)"
         (split)="splitRecorded($event)"
         (duplicated)="duplicated($event)"
+        (credited)="duplicated($event)"
       />
     } @else if (invoices().length > 0) {
       <app-payment-form
@@ -194,10 +195,13 @@ export class ClientInvoices {
     });
   }
 
-  // An invoice was duplicated: list the new draft and open it.
+  // An invoice was duplicated or credited: list the new draft and open it.
   protected duplicated(detail: InvoiceDetail): void {
-    const { id, number, status, total, issueDate, dueDate } = detail;
-    this.invoices.update((list) => [...list, { id, number, status, total, issueDate, dueDate }]);
+    const { id, number, status, listedTotal, issueDate, dueDate, creditOf } = detail;
+    this.invoices.update((list) => [
+      ...list,
+      { id, number, status, total: listedTotal, issueDate, dueDate, creditOf },
+    ]);
     this.selectedId.set(id);
   }
 
@@ -222,7 +226,7 @@ export class ClientInvoices {
               status: detail.status,
               issueDate: detail.issueDate,
               dueDate: detail.dueDate,
-              total: detail.total,
+              total: detail.listedTotal,
             }
           : i,
       ),

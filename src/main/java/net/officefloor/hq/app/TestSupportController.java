@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.officefloor.hq.app.invoices.InvoiceRepository;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,18 +35,22 @@ public class TestSupportController {
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "lineItems");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "allocations");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
-    private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID");
+    private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
+    private final InvoiceRepository invoices;
+    private final TaxRate taxRate;
 
-    public TestSupportController(Audit audit, JdbcTemplate jdbc) {
+    public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate) {
         this.audit = audit;
         this.jdbc = jdbc;
+        this.invoices = invoices;
+        this.taxRate = taxRate;
     }
 
     /** Truncate all domain tables and clear the audit file so each spec starts clean. */
@@ -107,7 +112,7 @@ public class TestSupportController {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
@@ -115,7 +120,11 @@ public class TestSupportController {
                     money(row.get("discountAmount"), "invoices[].discountAmount"),
                     row.get("discountCap") == null ? null : money(row.get("discountCap"), "invoices[].discountCap"),
                     row.get("discountReason") == null ? null : row.get("discountReason").toString(),
-                    flag(row.get("manualDueDate"), "invoices[].manualDueDate"));
+                    flag(row.get("manualDueDate"), "invoices[].manualDueDate"),
+                    row.get("creditOf") == null ? null : id(row.get("creditOf")));
+            if ("CREDIT_NOTE".equals(status) && row.get("creditOf") == null) {
+                throw refuse("an invoices[] row with status CREDIT_NOTE needs creditOf");
+            }
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 insert("invoice_line", line.get("id"),
@@ -152,6 +161,11 @@ public class TestSupportController {
                         cents(allocation.get("amount"), "payments[].allocations[].amount"),
                         allocation.get("date") == null ? null : date(allocation.get("date"), "payments[].allocations[].date"));
             }
+        }
+        // An issued credit note keeps its grand total, which comes off its original.
+        for (Long noteId : jdbc.queryForList("SELECT id FROM invoice WHERE status = 'CREDIT_NOTE'", Long.class)) {
+            BigDecimal total = invoices.findWithLinesById(noteId).orElseThrow().total(taxRate.percent());
+            jdbc.update("UPDATE invoice SET credit_total = ? WHERE id = ?", total, noteId);
         }
         // Keep generated ids clear of the seeded ones.
         for (String table : List.of("client", "invoice", "invoice_line", "payment")) {
@@ -191,7 +205,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -204,6 +218,9 @@ public class TestSupportController {
                     row.put("manualDueDate", r.get("MANUAL_DUE_DATE"));
                     if (r.get("DISCOUNT_CAP") != null) {
                         row.put("discountCap", r.get("DISCOUNT_CAP"));
+                    }
+                    if (r.get("CREDIT_OF") != null) {
+                        row.put("creditOf", r.get("CREDIT_OF"));
                     }
                     if (r.get("DISCOUNT_REASON") != null) {
                         row.put("discountReason", r.get("DISCOUNT_REASON"));

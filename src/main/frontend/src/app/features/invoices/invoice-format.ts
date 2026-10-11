@@ -8,6 +8,8 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   PAID_LATE: 'Paid late',
   OVERDUE: 'Overdue',
   VOID: 'Void',
+  CREDIT_NOTE: 'Credit note',
+  CREDITED: 'Credited',
 };
 const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 

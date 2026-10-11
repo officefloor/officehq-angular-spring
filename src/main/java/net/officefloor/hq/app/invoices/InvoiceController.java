@@ -37,12 +37,17 @@ public class InvoiceController {
      * follows what has been paid and whether it is past due.
      */
     public record InvoiceSummary(Long id, String number, InvoiceStatus status, String total,
-            LocalDate issueDate, LocalDate dueDate) {
+            LocalDate issueDate, LocalDate dueDate, Long creditOf) {
         static InvoiceSummary of(Invoice i, BigDecimal taxRate, BigDecimal paid, LocalDate paidOn, LocalDate today) {
-            BigDecimal total = i.total(taxRate);
-            return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.statusWhenPaid(paid, paidOn, taxRate, today),
-                    total.toPlainString(), i.getIssueDate(), i.getDueDate());
+            return new InvoiceSummary(i.getId(), i.number(), i.statusWhenPaid(paid, paidOn, taxRate, today),
+                    listedTotal(i, taxRate), i.getIssueDate(), i.getDueDate(), i.getCreditOf());
         }
+    }
+
+    /** The grand total as listed: negative for a credit note. */
+    static String listedTotal(Invoice i, BigDecimal taxRate) {
+        BigDecimal total = i.total(taxRate);
+        return (i.isCreditNote() ? total.negate() : total).toPlainString();
     }
 
     /**
@@ -93,11 +98,14 @@ public class InvoiceController {
      * $1.00 was left (money as
      * decimal strings to the cent). Its status follows what has been paid. {@code reference} is its
      * RF payment reference in groups of four. {@code paidDate} is the date of the payment that cleared
-     * it, payments taken in date order; null while it is not fully paid.
+     * it, payments taken in date order; null while it is not fully paid. {@code credited} is what
+     * issued credit notes take off it; {@code creditOf} the id of the invoice a credit note credits
+     * (null for an ordinary invoice) and {@code listedTotal} the total as listed, negative for a credit note.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
-            String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate) {
+            String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
+            String credited, Long creditOf, String listedTotal) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -106,7 +114,7 @@ public class InvoiceController {
             List<BigDecimal> taxes = i.lineTaxes(taxRate);
             List<LineView> lines = IntStream.range(0, shares.size())
                     .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n), taxes.get(n))).toList();
-            return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()),
+            return new InvoiceDetail(i.getId(), i.number(),
                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
                     i.statusWhenPaid(paid, paidOn, taxRate, today), i.getIssueDate(), i.getDueDate(),
                     lines, i.subtotal().toPlainString(),
@@ -118,7 +126,7 @@ public class InvoiceController {
                     i.total(taxRate).toPlainString(),
                     payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
-                    i.isManualDueDate());
+                    i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate));
         }
     }
 
@@ -273,12 +281,12 @@ public class InvoiceController {
 
     /**
      * The balance of each client that has a sent invoice or credit; a client not listed owes nothing and
-     * has no credit. Void invoices do not count.
+     * has no credit. Void invoices and credit notes do not count (a credit note comes off its original).
      */
     @GetMapping("/api/clients/balances")
     public List<ClientBalance> balances() {
         BigDecimal rate = taxRate.percent();
-        List<Invoice> sent = invoices.all().stream().filter(i -> !i.isDraft() && !i.isVoid()).toList();
+        List<Invoice> sent = invoices.all().stream().filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote()).toList();
         Map<Long, BigDecimal> paid = invoices.paid(sent);
         LocalDate on = today.date();
         Map<Long, BigDecimal[]> owed = new TreeMap<>();
@@ -326,7 +334,7 @@ public class InvoiceController {
     public InvoiceDetail openByNumber(@PathVariable String number) {
         Long id = InvoiceNumber.idOf(number).orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.BAD_REQUEST, number.trim() + " is mistyped: check the invoice number."));
-        return invoices.find(id).map(this::detail)
+        return invoices.find(id).filter(i -> i.number().equals(number.trim().toUpperCase())).map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "There is no invoice " + number.trim() + "."));
     }
@@ -376,6 +384,15 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail duplicate(@PathVariable Long id) {
         return invoices.duplicate(id)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** Starts a draft credit note against a sent invoice; answers the new draft. */
+    @PostMapping("/api/invoices/{id}/credit-note")
+    @ResponseStatus(HttpStatus.CREATED)
+    public InvoiceDetail creditNote(@PathVariable Long id) {
+        return invoices.creditNote(id)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
  */
 public final class InvoiceNumber {
 
-    private static final Pattern FORM = Pattern.compile("INV-(\\d{6})(\\d)");
+    private static final Pattern FORM = Pattern.compile("(?:INV|CN)-(\\d{6})(\\d)");
 
     private InvoiceNumber() {
     }
@@ -21,8 +21,13 @@ public final class InvoiceNumber {
         return "INV-" + digits + checkDigit(digits);
     }
 
+    /** The number of the credit note with this id: CN-, then the same digits as an invoice number. */
+    public static String creditNoteOf(long id) {
+        return "CN-" + of(id).substring("INV-".length());
+    }
+
     /**
-     * The invoice id a typed number stands for. Empty when it is not of the form INV-nnnnnnn or its
+     * The invoice id a typed number stands for. Empty when it is not of the form INV-nnnnnnn (or CN-nnnnnnn) or its
      * check digit does not match — the number was mistyped.
      */
     public static Optional<Long> idOf(String typed) {

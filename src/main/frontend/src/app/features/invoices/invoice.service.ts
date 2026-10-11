@@ -8,18 +8,32 @@ import { Observable } from 'rxjs';
 // its due date, part paid or not.
 // The server works this out from its payments and today's date. A VOID invoice was voided while sent
 // and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
-export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID' | 'PAID_LATE' | 'OVERDUE' | 'VOID';
+// A credit note is a DRAFT until it is issued, then CREDIT_NOTE for good; a sent invoice whose issued
+// credit notes leave nothing due, with nothing paid, is CREDITED.
+export type InvoiceStatus =
+  | 'DRAFT'
+  | 'SENT'
+  | 'PART_PAID'
+  | 'PAID'
+  | 'PAID_LATE'
+  | 'OVERDUE'
+  | 'VOID'
+  | 'CREDIT_NOTE'
+  | 'CREDITED';
 
 // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
 // server: the grand total — the lines' subtotal less any discount plus tax.
 export interface InvoiceSummary {
   id: number;
-  // INV-, the id padded to six digits, then a Luhn check digit, e.g. INV-0000075.
+  // INV-, the id padded to six digits, then a Luhn check digit, e.g. INV-0000075; CN- for a credit note.
   number: string;
   status: InvoiceStatus;
+  // Negative for a credit note.
   total: string;
   issueDate: string | null;
   dueDate: string | null;
+  // The id of the invoice a credit note credits; null for an ordinary invoice.
+  creditOf: number | null;
 }
 
 // One line of an opened invoice. `qty` is as entered, without trailing zeros ("1.5"); money is a
@@ -91,6 +105,12 @@ export interface InvoiceDetail {
   paidDate: string | null;
   // Whether the due date was set by hand; it is then kept when the invoice is sent.
   manualDueDate: boolean;
+  // What issued credit notes take off the amount due.
+  credited: string;
+  // The id of the invoice a credit note credits; null for an ordinary invoice.
+  creditOf: number | null;
+  // The total as listed: negative for a credit note.
+  listedTotal: string;
 }
 
 // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
@@ -213,6 +233,11 @@ export class InvoiceService {
   // today and due as any new invoice; payments are not copied. Answers the new draft.
   duplicate(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/duplicate`, null);
+  }
+
+  // Starts an empty draft credit note against a sent invoice, numbered CN-; answers the new draft.
+  creditNote(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/credit-note`, null);
   }
 
   // Voids a sent invoice with no payments; refused (409) for a draft, a void invoice or one with

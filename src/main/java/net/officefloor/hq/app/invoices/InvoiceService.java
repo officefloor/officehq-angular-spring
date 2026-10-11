@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.invoices;
 
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.math.RoundingMode;
@@ -32,9 +33,11 @@ public class InvoiceService {
     private final Today today;
     private final TaxRate taxRate;
     private final Audit audit;
+    private final EntityManager entityManager;
 
     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
-            Today today, TaxRate taxRate, Audit audit) {
+            Today today, TaxRate taxRate, Audit audit, EntityManager entityManager) {
+        this.entityManager = entityManager;
         this.invoices = invoices;
         this.payments = payments;
         this.clients = clients;
@@ -81,11 +84,34 @@ public class InvoiceService {
     @Transactional
     public Optional<Invoice> duplicate(Long invoiceId) {
         return invoices.findWithLinesById(invoiceId).map(original -> {
+            if (original.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note cannot be duplicated.");
+            }
             LocalDate issued = today.date();
             Invoice copy = invoices.saveAndFlush(original.duplicate(issued, dueDateFor(original.getClientId(), issued)));
             audit.record("INVOICE_DUPLICATED from=" + InvoiceNumber.of(original.getId())
                     + " to=" + InvoiceNumber.of(copy.getId()));
             return copy;
+        });
+    }
+
+    /**
+     * A new, empty draft credit note against the sent invoice, issued today; empty if no such invoice.
+     * A draft, a void invoice or a credit note is refused.
+     */
+    @Transactional
+    public Optional<Invoice> creditNote(Long invoiceId) {
+        return invoices.findWithLinesById(invoiceId).map(original -> {
+            if (original.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note cannot itself be credited.");
+            }
+            if (original.isDraft()) {
+                throw new InvoiceRejectedException("Only a sent invoice can be credited.");
+            }
+            if (original.isVoid()) {
+                throw new InvoiceRejectedException("A void invoice cannot be credited.");
+            }
+            return invoices.saveAndFlush(original.creditNote(today.date()));
         });
     }
 
@@ -186,6 +212,9 @@ public class InvoiceService {
             BigDecimal discountCap, String discountReason) {
         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
         found.ifPresent(invoice -> {
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note has no discount.");
+            }
             boolean reopened = reopenForChange(invoice, "A paid invoice cannot be given a discount.");
             if (discountAmount != null) {
                 invoice.setDiscountAmount(discountAmount);
@@ -236,6 +265,12 @@ public class InvoiceService {
         if (invoice.isVoid()) {
             throw new InvoiceRejectedException("A void invoice cannot be changed.");
         }
+        if (invoice.isCreditNote()) {
+            throw new InvoiceRejectedException("An issued credit note cannot be changed.");
+        }
+        if (invoice.hasCreditNotesIssued()) {
+            throw new InvoiceRejectedException("An invoice with an issued credit note cannot be changed.");
+        }
         if (!payments.findForInvoice(invoice.getId()).isEmpty()) {
             throw new InvoiceRejectedException(refusal);
         }
@@ -262,6 +297,14 @@ public class InvoiceService {
             if (invoice.getLines().isEmpty()) {
                 throw new InvoiceRejectedException("Add at least one line before sending the invoice.");
             }
+            if (invoice.isCreditNote()) {
+                String refusal = creditNoteRefusal(invoice);
+                if (refusal != null) {
+                    throw new InvoiceRejectedException(refusal);
+                }
+                issue(invoice);
+                return;
+            }
             if (invoice.discountLacksReason()) {
                 throw new InvoiceRejectedException(
                         "The discount is more than 20% of the subtotal; give it a reason before sending the invoice.");
@@ -285,7 +328,44 @@ public class InvoiceService {
         invoices.findByClientIdOrderByIdAsc(clientId).stream()
                 .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty() && !invoice.discountLacksReason()
                         && !invoice.dueDatePassedBy(today.date()))
-                .forEach(this::markSent);
+                .forEach(invoice -> {
+                    if (!invoice.isCreditNote()) {
+                        markSent(invoice);
+                    } else if (creditNoteRefusal(invoice) == null) {
+                        issue(invoice);
+                    }
+                });
+    }
+
+    /**
+     * Why the draft credit note cannot be issued, or null when it can: its original must be a sent
+     * invoice (not void) that still owes at least the credit note's grand total.
+     */
+    private String creditNoteRefusal(Invoice note) {
+        Invoice original = invoices.findWithLinesById(note.getCreditOf()).orElse(null);
+        if (original == null || original.isDraft() || original.isVoid()) {
+            return "The invoice this credits is not a sent invoice, so the credit note cannot be issued.";
+        }
+        // Read again what it has been credited: another credit note may just have been issued against it.
+        entityManager.refresh(original);
+        BigDecimal rate = taxRate.percent();
+        BigDecimal due = original.amountDue(paid(List.of(original)).get(original.getId()), rate);
+        BigDecimal total = note.total(rate);
+        if (total.compareTo(due) > 0) {
+            return "The credit note's total of $" + total.toPlainString() + " is more than the $"
+                    + due.setScale(2, RoundingMode.HALF_UP).toPlainString() + " " + original.number()
+                    + " still owes.";
+        }
+        return null;
+    }
+
+    /** Issues the draft credit note today, its grand total coming off its original, and records it in the audit. */
+    private void issue(Invoice note) {
+        BigDecimal rate = taxRate.percent();
+        note.markIssued(today.date(), rate);
+        invoices.saveAndFlush(note);
+        audit.record("CREDIT_NOTE_ISSUED id=" + note.getId() + " number=" + note.number() + " invoice="
+                + note.getCreditOf() + " total=" + note.total(rate).toPlainString());
     }
 
     /**
@@ -296,7 +376,7 @@ public class InvoiceService {
         LocalDate issued = today.date();
         invoice.markSent(issued, dueDateFor(invoice.getClientId(), issued));
         invoices.saveAndFlush(invoice);
-        audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
+        audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
                 + " total=" + invoice.total(taxRate.percent()).toPlainString());
         applyCredit(invoice);
     }
@@ -428,12 +508,18 @@ public class InvoiceService {
             if (invoice.isDraft()) {
                 throw new InvoiceRejectedException("A draft cannot be voided; only a sent invoice can.");
             }
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("An issued credit note cannot be voided.");
+            }
+            if (invoice.hasCreditNotesIssued()) {
+                throw new InvoiceRejectedException("An invoice with an issued credit note cannot be voided.");
+            }
             if (!payments.findForInvoice(invoice.getId()).isEmpty()) {
                 throw new InvoiceRejectedException("An invoice with payments cannot be voided.");
             }
             invoice.markVoid();
             invoices.saveAndFlush(invoice);
-            audit.record("INVOICE_VOIDED id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId()));
+            audit.record("INVOICE_VOIDED id=" + invoice.getId() + " number=" + invoice.number());
         });
         return found;
     }
@@ -492,6 +578,9 @@ public class InvoiceService {
             }
             if (invoice.isVoid()) {
                 throw new InvoiceRejectedException("A void invoice takes no payments.");
+            }
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note takes no payments.");
             }
             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
@@ -557,12 +646,15 @@ public class InvoiceService {
                 if (invoice.isVoid()) {
                     throw new InvoiceRejectedException(number + " is void and takes no payments.");
                 }
+                if (invoice.isCreditNote()) {
+                    throw new InvoiceRejectedException(invoice.number() + " is a credit note and takes no payments.");
+                }
                 named.add(invoice.getId());
             }
             candidates = ofClient.stream().filter(i -> named.contains(i.getId())).toList();
         }
         List<Invoice> sent = candidates.stream()
-                .filter(i -> !i.isDraft() && !i.isVoid())
+                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote())
                 .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(Invoice::getId))
                 .toList();
@@ -638,6 +730,9 @@ public class InvoiceService {
             }
             if (invoice.isVoid()) {
                 throw new InvoiceRejectedException(number + " is void and takes no payments.");
+            }
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException(invoice.number() + " is a credit note and takes no payments.");
             }
             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());

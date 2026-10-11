@@ -70,6 +70,22 @@ public class Invoice {
     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
     private boolean clientTaxExempt;
 
+    /** The id of the invoice this credit note credits; null for an ordinary invoice. */
+    @Column(name = "credit_of")
+    private Long creditOf;
+
+    /** An issued credit note's grand total, kept when it is issued; null until then. */
+    @Column(name = "credit_total")
+    private BigDecimal creditTotal;
+
+    /** What the credit notes issued against this invoice add up to; read from them. */
+    @Formula("(SELECT COALESCE(SUM(cn.credit_total), 0) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
+    private BigDecimal credited = BigDecimal.ZERO;
+
+    /** How many credit notes have been issued against this invoice; read from them. */
+    @Formula("(SELECT COUNT(*) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
+    private int creditNotesIssued;
+
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
@@ -101,6 +117,48 @@ public class Invoice {
         copy.discountReason = discountReason;
         lines.forEach(line -> copy.lines.add(line.copy()));
         return copy;
+    }
+
+    /**
+     * A new, empty draft credit note for the sent invoice, issued on the given date: same client, no
+     * discount, taxed as the original's lines are.
+     */
+    public Invoice creditNote(LocalDate issueDate) {
+        Invoice note = draft(clientId, clientTaxExempt, issueDate, null);
+        note.creditOf = id;
+        return note;
+    }
+
+    /** Whether this is a credit note against another invoice. */
+    public boolean isCreditNote() {
+        return creditOf != null;
+    }
+
+    /** The id of the invoice this credit note credits; null for an ordinary invoice. */
+    public Long getCreditOf() {
+        return creditOf;
+    }
+
+    /** The number shown: CN-... for a credit note, otherwise INV-... (see {@link InvoiceNumber}). */
+    public String number() {
+        return isCreditNote() ? InvoiceNumber.creditNoteOf(id) : InvoiceNumber.of(id);
+    }
+
+    /** What the credit notes issued against this invoice add up to, to the cent. */
+    public BigDecimal getCredited() {
+        return (credited == null ? BigDecimal.ZERO : credited).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** Whether a credit note has been issued against this invoice: it can then no longer change. */
+    public boolean hasCreditNotesIssued() {
+        return creditNotesIssued > 0;
+    }
+
+    /** Issues a draft credit note on the given date, keeping its grand total at the tax rate. */
+    public void markIssued(LocalDate issueDate, BigDecimal taxRate) {
+        this.creditTotal = total(taxRate);
+        this.status = InvoiceStatus.CREDIT_NOTE;
+        this.issueDate = issueDate;
     }
 
     public Long getId() {
@@ -270,7 +328,7 @@ public class Invoice {
             return InvoiceStatus.OVERDUE;
         }
         if (paid.signum() <= 0) {
-            return status;
+            return !due && getCredited().signum() > 0 ? InvoiceStatus.CREDITED : status;
         }
         if (due) {
             return InvoiceStatus.PART_PAID;
@@ -285,7 +343,7 @@ public class Invoice {
      * counts on the day it was applied); null while something is still due.
      */
     public LocalDate paidOn(List<Payment> payments, BigDecimal taxRate) {
-        BigDecimal total = total(taxRate);
+        BigDecimal total = total(taxRate).subtract(getCredited());
         if (status != InvoiceStatus.SENT || total.signum() <= 0) {
             return null;
         }
@@ -306,11 +364,15 @@ public class Invoice {
     }
 
     /**
-     * What is still due once the given amount has been paid: the grand total less it, less anything
-     * written off — so nothing once payments leave less than {@link #WRITE_OFF_LIMIT}.
+     * What is still due once the given amount has been paid: the grand total less it, less what credit
+     * notes have credited, less anything written off — so nothing once payments leave less than
+     * {@link #WRITE_OFF_LIMIT}. A credit note itself has nothing due.
      */
     public BigDecimal amountDue(BigDecimal paid, BigDecimal taxRate) {
-        return total(taxRate).subtract(paid).subtract(writtenOff(paid, taxRate));
+        if (isCreditNote()) {
+            return BigDecimal.ZERO.setScale(2);
+        }
+        return total(taxRate).subtract(getCredited()).subtract(paid).subtract(writtenOff(paid, taxRate));
     }
 
     /**
@@ -318,8 +380,8 @@ public class Invoice {
      * {@link #WRITE_OFF_LIMIT} still due, all of what is left; otherwise nothing.
      */
     public BigDecimal writtenOff(BigDecimal paid, BigDecimal taxRate) {
-        BigDecimal left = total(taxRate).subtract(paid);
-        return paid.signum() > 0 && left.signum() > 0 && left.compareTo(WRITE_OFF_LIMIT) < 0
+        BigDecimal left = total(taxRate).subtract(getCredited()).subtract(paid);
+        return !isCreditNote() && paid.signum() > 0 && left.signum() > 0 && left.compareTo(WRITE_OFF_LIMIT) < 0
                 ? left.setScale(2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO.setScale(2);
     }

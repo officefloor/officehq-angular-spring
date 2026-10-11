@@ -8,7 +8,10 @@ package net.officefloor.hq.app.invoices;
  * more than a week (the grace period) after its due date is overdue, part paid or not; that follows from the date and is never stored.
  * A sent invoice with no payments can be voided: it is then void for good, owes nothing and takes no
  * payments or changes.
+ * A credit note is a draft until it is issued, when it becomes CREDIT_NOTE for good. A sent invoice
+ * whose issued credit notes leave nothing due, with nothing paid, is credited; that follows from its
+ * credit notes and is never stored.
  */
 public enum InvoiceStatus {
-    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID
+    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED
 }
