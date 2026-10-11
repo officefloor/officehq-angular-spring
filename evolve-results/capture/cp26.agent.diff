@@ -1,0 +1,307 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index 28f2d4e..0fd1276 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -7,7 +7,7 @@ import { money, statusLabel } from './invoice-format';
+ // One client's invoices, each with its status, total, issue and due dates. Clicking an invoice
+ // opens it in the invoice panel beside the list; New invoice starts an empty draft and opens it.
+ // An invoice looked up by its number is opened as soon as its client's invoices are shown.
+-// Every sent invoice has a box for its part of a payment; once any is filled, the payment recorded
++// Every sent invoice that is not void has a box for its part of a payment; once any is filled, the payment recorded
+ // (in the panel, or below the list when no invoice is open) is spread over those invoices.
+ @Component({
+   selector: 'app-client-invoices',
+@@ -73,7 +73,7 @@ import { money, statusLabel } from './invoice-format';
+               <td data-testid="invoice-issue">{{ i.issueDate }}</td>
+               <td data-testid="invoice-due">{{ i.dueDate }}</td>
+               <td>
+-                @if (i.status !== 'DRAFT') {
++                @if (i.status !== 'DRAFT' && i.status !== 'VOID') {
+                   <input
+                     class="allocate"
+                     data-testid="invoice-allocate"
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-format.ts b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+index e8ec1f1..46b001c 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-format.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+@@ -6,6 +6,7 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
+   PART_PAID: 'Part paid',
+   PAID: 'Paid',
+   OVERDUE: 'Overdue',
++  VOID: 'Void',
+ };
+ const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 1ed7767..81310b5 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -69,6 +69,8 @@ function problemWith(line: NewLine): string {
+ // The panel shows the invoice's RF payment reference; a payment may quote one, which must pass the
+ // ISO 11649 check and be this invoice's. When parts of a payment are filled in on the list, the
+ // payment is spread over those invoices instead; each payment shows how much of it went here.
++// A sent invoice with no payments can be voided; the server refuses to void a draft or one with
++// payments, and refuses any payment or change to a void invoice.
+ @Component({
+   selector: 'app-invoice-panel',
+   imports: [ReactiveFormsModule, PaymentForm],
+@@ -187,6 +189,15 @@ function problemWith(line: NewLine): string {
+           }
+         }
+ 
++        @if (inv.status !== 'VOID') {
++          <button type="button" data-testid="invoice-void" [disabled]="voiding()" (click)="voidInvoice(inv.id)">
++            Void invoice
++          </button>
++        }
++        @if (voidError()) {
++          <p role="alert" data-testid="invoice-void-error">{{ voidError() }}</p>
++        }
++
+         <form [formGroup]="form" (ngSubmit)="addLine(inv.id)" aria-label="Add a line" novalidate>
+           <label for="line-description">Description</label>
+           <input
+@@ -276,6 +287,8 @@ export class InvoicePanel {
+   protected readonly discountError = signal('');
+   protected readonly sending = signal(false);
+   protected readonly sendError = signal('');
++  protected readonly voiding = signal(false);
++  protected readonly voidError = signal('');
+   protected readonly statusLabel = statusLabel;
+   protected readonly money = money;
+ 
+@@ -300,6 +313,7 @@ export class InvoicePanel {
+       this.discountForm.reset();
+       this.discountError.set('');
+       this.sendError.set('');
++      this.voidError.set('');
+       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
+       onCleanup(() => sub.unsubscribe());
+     });
+@@ -398,4 +412,23 @@ export class InvoicePanel {
+       },
+     });
+   }
++
++  protected voidInvoice(invoiceId: number): void {
++    this.voiding.set(true);
++    this.voidError.set('');
++    this.service.void(invoiceId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.voiding.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.voidError.set(
++          typeof detail === 'string' && detail ? detail : 'The invoice could not be voided.',
++        );
++        this.voiding.set(false);
++      },
++    });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index a43d7c9..2e6c671 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -4,8 +4,9 @@ import { Observable } from 'rxjs';
+ 
+ // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
+ // nothing is due; it is OVERDUE while something is still due after its due date, part paid or not.
+-// The server works this out from its payments and today's date.
+-export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID' | 'OVERDUE';
++// The server works this out from its payments and today's date. A VOID invoice was voided while sent
++// and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
++export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID' | 'OVERDUE' | 'VOID';
+ 
+ // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
+ // server: the grand total — the lines' subtotal less any discount plus tax.
+@@ -158,6 +159,12 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/send`, null);
+   }
+ 
++  // Voids a sent invoice with no payments; refused (409) for a draft, a void invoice or one with
++  // payments. Answers the invoice with its new status.
++  void(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/void`, null);
++  }
++
+   // Records a payment against a sent invoice that still has something due; refused (409) when it
+   // is a draft, already paid, the amount is more than is due, or the date is after today or before
+   // the issue date, or the reference is mistyped (400) or another invoice's (409). Answers the invoice with its payments and new status.
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 32bfaa8..c7707e8 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -38,7 +38,7 @@ public class TestSupportController {
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "allocations");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
+-    private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
++    private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID");
+ 
+     private final Audit audit;
+     private final JdbcTemplate jdbc;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index e763ee0..d6f9fca 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -101,6 +101,16 @@ public class Invoice {
+         return status == InvoiceStatus.DRAFT;
+     }
+ 
++    /** Whether the invoice has been voided: it no longer counts, takes no payments and cannot be changed. */
++    public boolean isVoid() {
++        return status == InvoiceStatus.VOID;
++    }
++
++    /** Voids a sent invoice. */
++    public void markVoid() {
++        this.status = InvoiceStatus.VOID;
++    }
++
+     /** Marks the invoice sent; its issue and due dates stay as they are. */
+     public void markSent() {
+         this.status = InvoiceStatus.SENT;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 3e4083f..20f19b1 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -207,11 +207,11 @@ public class InvoiceController {
+         return list.stream().map(i -> InvoiceSummary.of(i, rate, paid.get(i.getId()), on)).toList();
+     }
+ 
+-    /** The balance of each client that has a sent invoice; a client not listed owes nothing. */
++    /** The balance of each client that has a sent invoice; a client not listed owes nothing. Void invoices do not count. */
+     @GetMapping("/api/clients/balances")
+     public List<ClientBalance> balances() {
+         BigDecimal rate = taxRate.percent();
+-        List<Invoice> sent = invoices.all().stream().filter(i -> !i.isDraft()).toList();
++        List<Invoice> sent = invoices.all().stream().filter(i -> !i.isDraft() && !i.isVoid()).toList();
+         Map<Long, BigDecimal> paid = invoices.paid(sent);
+         LocalDate on = today.date();
+         Map<Long, BigDecimal[]> owed = new TreeMap<>();
+@@ -275,6 +275,13 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    @PostMapping("/api/invoices/{id}/void")
++    public InvoiceDetail voidInvoice(@PathVariable Long id) {
++        return invoices.voidInvoice(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /**
+      * Records one payment spread over several of the client's invoices, or, with no parts given,
+      * applied to its oldest unpaid invoices first; answers the client's invoices
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 571f727..5ffb899 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * Lists a client's invoices, opens one, starts new drafts, adds lines to them, gives them a discount,
+- * sends them and records payments against them.
++ * sends them, voids them and records payments against them.
+  */
+ @Service
+ public class InvoiceService {
+@@ -120,6 +120,9 @@ public class InvoiceService {
+         if (invoice.isDraft()) {
+             return false;
+         }
++        if (invoice.isVoid()) {
++            throw new InvoiceRejectedException("A void invoice cannot be changed.");
++        }
+         if (!payments.findForInvoice(invoice.getId()).isEmpty()) {
+             throw new InvoiceRejectedException(refusal);
+         }
+@@ -135,6 +138,9 @@ public class InvoiceService {
+     public Optional<Invoice> send(Long invoiceId) {
+         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+         found.ifPresent(invoice -> {
++            if (invoice.isVoid()) {
++                throw new InvoiceRejectedException("A void invoice cannot be sent.");
++            }
+             if (!invoice.isDraft()) {
+                 throw new InvoiceRejectedException("This invoice has already been sent.");
+             }
+@@ -149,6 +155,30 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Voids a sent invoice with no payments, and records it in the audit; empty if no such invoice. A
++     * draft, an invoice already void, or one with any payment is refused.
++     */
++    @Transactional
++    public Optional<Invoice> voidInvoice(Long invoiceId) {
++        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isVoid()) {
++                throw new InvoiceRejectedException("This invoice is already void.");
++            }
++            if (invoice.isDraft()) {
++                throw new InvoiceRejectedException("A draft cannot be voided; only a sent invoice can.");
++            }
++            if (!payments.findForInvoice(invoice.getId()).isEmpty()) {
++                throw new InvoiceRejectedException("An invoice with payments cannot be voided.");
++            }
++            invoice.markVoid();
++            invoices.saveAndFlush(invoice);
++            audit.record("INVOICE_VOIDED id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId()));
++        });
++        return found;
++    }
++
+     /** The payments made to the invoice, oldest first, with their allocations. */
+     @Transactional(readOnly = true)
+     public List<Payment> payments(Long invoiceId) {
+@@ -182,6 +212,9 @@ public class InvoiceService {
+             if (invoice.isDraft()) {
+                 throw new InvoiceRejectedException("Send the invoice before recording a payment.");
+             }
++            if (invoice.isVoid()) {
++                throw new InvoiceRejectedException("A void invoice takes no payments.");
++            }
+             BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
+             if (due.signum() <= 0) {
+                 throw new InvoiceRejectedException("This invoice has already been paid.");
+@@ -219,7 +252,7 @@ public class InvoiceService {
+     @Transactional
+     public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, String reference) {
+         List<Invoice> sent = invoices.findByClientIdOrderByIdAsc(clientId).stream()
+-                .filter(i -> !i.isDraft())
++                .filter(i -> !i.isDraft() && !i.isVoid())
+                 .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                         .thenComparing(Invoice::getId))
+                 .toList();
+@@ -285,6 +318,9 @@ public class InvoiceService {
+             if (invoice.isDraft()) {
+                 throw new InvoiceRejectedException("Send " + number + " before recording a payment against it.");
+             }
++            if (invoice.isVoid()) {
++                throw new InvoiceRejectedException(number + " is void and takes no payments.");
++            }
+             BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
+             if (part.getAmount().compareTo(due) > 0) {
+                 throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index a9465ce..8018ba2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -5,7 +5,9 @@ package net.officefloor.hq.app.invoices;
+  * part paid while some of it has been paid and some is still due, and paid once nothing is due;
+  * those two follow from its payments and are never stored. A sent invoice with something still due
+  * after its due date is overdue, part paid or not; that follows from the date and is never stored.
++ * A sent invoice with no payments can be voided: it is then void for good, owes nothing and takes no
++ * payments or changes.
+  */
+ public enum InvoiceStatus {
+-    DRAFT, SENT, PART_PAID, PAID, OVERDUE
++    DRAFT, SENT, PART_PAID, PAID, OVERDUE, VOID
+ }
