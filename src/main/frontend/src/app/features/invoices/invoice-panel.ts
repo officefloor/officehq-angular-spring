@@ -178,7 +178,7 @@ function problemWith(line: NewLine): string {
 // percentage or fixed discount, can have lines removed (refused when what is left would be less than a
 // fixed discount), and can be sent; a change to a sent invoice with no payments puts it back to
 // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
-// until nothing is due, less than $1.00 left being written off; the panel lists them with what has
+// until nothing is due, less than $2.00 (and no more than 1% of the grand total) left being written off; the panel lists them with what has
 // been paid, what is still due and what was written off. The
 // server refuses a payment on a draft, or dated after today or before the issue date; what a payment
 // pays beyond what is due is held on the client's account as credit.
@@ -460,7 +460,7 @@ function problemWith(line: NewLine): string {
             }
             <tr>
               <th scope="row" colspan="4">
-                {{ inv.writtenOffOn === null ? 'Written off (worth under $1.00 left)' : 'Written off as a bad debt' }}
+                {{ inv.writtenOffOn === null ? 'Written off (small balance left)' : 'Written off as a bad debt' }}
               </th>
               <td data-testid="invoice-written-off">{{ amount(inv.writtenOff) }}</td>
             </tr>

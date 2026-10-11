@@ -33,8 +33,14 @@ public class Invoice {
     /** A due date set by hand can be at most this many days after the issue date. */
     public static final int MAX_DUE_DAYS = 120;
 
-    /** Payments that leave less than this many US dollars' worth still due have the rest written off. */
-    public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("1.00");
+    /**
+     * Payments that leave less than this many US dollars' worth still due, and no more than
+     * {@link #WRITE_OFF_SHARE} of the grand total, have the rest written off.
+     */
+    public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("2.00");
+
+    /** The most of the grand total that can be written off as a small balance after a payment. */
+    public static final BigDecimal WRITE_OFF_SHARE = new BigDecimal("0.01");
 
     /** A part payment must be at least this share of the grand total, unless it settles the invoice. */
     public static final BigDecimal MINIMUM_PART_SHARE = new BigDecimal("0.10");
@@ -327,16 +333,20 @@ public class Invoice {
     }
 
     /**
-     * Whether what is left is worth less than {@link #WRITE_OFF_LIMIT} US dollars at the workspace rate
-     * on the day of the latest payment.
+     * Whether what is left is small enough to write off (see {@link #isSmallEnoughToWriteOff(BigDecimal,
+     * LocalDate, BigDecimal)}) at the workspace rate on the day of the latest payment.
      */
-    private boolean isSmallEnoughToWriteOff(BigDecimal left) {
-        return isSmallEnoughToWriteOff(left, lastPaidOn);
+    private boolean isSmallEnoughToWriteOff(BigDecimal left, BigDecimal taxRate) {
+        return isSmallEnoughToWriteOff(left, lastPaidOn, taxRate);
     }
 
-    /** Whether what is left is worth less than {@link #WRITE_OFF_LIMIT} US dollars at the rate on the date. */
-    private boolean isSmallEnoughToWriteOff(BigDecimal left, LocalDate on) {
-        return left.multiply(usdPerOn(on)).compareTo(WRITE_OFF_LIMIT) < 0;
+    /**
+     * Whether what is left is worth less than {@link #WRITE_OFF_LIMIT} US dollars at the rate on the date
+     * and is no more than {@link #WRITE_OFF_SHARE} of the grand total at the tax rate.
+     */
+    private boolean isSmallEnoughToWriteOff(BigDecimal left, LocalDate on, BigDecimal taxRate) {
+        return left.multiply(usdPerOn(on)).compareTo(WRITE_OFF_LIMIT) < 0
+                && left.compareTo(total(taxRate).multiply(WRITE_OFF_SHARE)) <= 0;
     }
 
     /**
@@ -1286,7 +1296,7 @@ public class Invoice {
         BigDecimal sum = BigDecimal.ZERO;
         for (Part p : inOrder) {
             sum = sum.add(p.amount());
-            if (sum.signum() > 0 && isSmallEnoughToWriteOff(total.subtract(sum), p.on())) {
+            if (sum.signum() > 0 && isSmallEnoughToWriteOff(total.subtract(sum), p.on(), taxRate)) {
                 return p.on();
             }
         }
@@ -1296,7 +1306,8 @@ public class Invoice {
     /**
      * What is still due once the given amount has been paid: the grand total less it, less what credit
      * notes have credited, less the retention still held, less anything written off — so nothing once
-     * payments leave less than {@link #WRITE_OFF_LIMIT}. A credit note itself, and a written-off
+     * payments leave less than {@link #WRITE_OFF_LIMIT} that is no more than {@link #WRITE_OFF_SHARE}
+     * of the grand total. A credit note itself, and a written-off
      * invoice, have nothing due.
      */
     public BigDecimal amountDue(BigDecimal paid, BigDecimal taxRate) {
@@ -1308,7 +1319,8 @@ public class Invoice {
 
     /**
      * What is written off once the given amount has been paid: when payments leave less than
-     * {@link #WRITE_OFF_LIMIT} still due, all of what is left; otherwise nothing. Once the invoice is
+     * {@link #WRITE_OFF_LIMIT} still due that is no more than {@link #WRITE_OFF_SHARE} of the grand
+     * total, all of what is left; otherwise nothing. Once the invoice is
      * written off as a bad debt, everything it still owed then, late charges and retention included.
      */
     public BigDecimal writtenOff(BigDecimal paid, BigDecimal taxRate) {
@@ -1317,7 +1329,7 @@ public class Invoice {
                     .setScale(scale(), RoundingMode.HALF_UP);
         }
         BigDecimal left = payable(taxRate).subtract(paid);
-        return !isCreditNote() && paid.signum() > 0 && left.signum() > 0 && isSmallEnoughToWriteOff(left)
+        return !isCreditNote() && paid.signum() > 0 && left.signum() > 0 && isSmallEnoughToWriteOff(left, taxRate)
                 ? left.setScale(scale(), RoundingMode.HALF_UP)
                 : zero();
     }
