@@ -36,6 +36,13 @@ export interface InvoiceDetail {
   total: string;
 }
 
+// A line to add to a draft: quantity and unit price as entered, checked again by the server.
+export interface NewLine {
+  description: string;
+  qty: string;
+  unitPrice: string;
+}
+
 // The invoices REST API.
 @Injectable({ providedIn: 'root' })
 export class InvoiceService {
@@ -52,5 +59,10 @@ export class InvoiceService {
 
   open(id: number): Observable<InvoiceDetail> {
     return this.http.get<InvoiceDetail>(`/api/invoices/${id}`);
+  }
+
+  // Adds a line to a draft invoice; answers the invoice with its new lines and totals.
+  addLine(invoiceId: number, line: NewLine): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines`, line);
   }
 }

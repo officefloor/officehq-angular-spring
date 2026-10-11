@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.invoices;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -8,7 +9,7 @@ import net.officefloor.hq.app.clients.ClientRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Lists a client's invoices, opens one, and starts new drafts. */
+/** Lists a client's invoices, opens one, starts new drafts and adds lines to them. */
 @Service
 public class InvoiceService {
 
@@ -43,5 +44,22 @@ public class InvoiceService {
         }
         LocalDate issued = today.date();
         return Optional.of(invoices.save(Invoice.draft(clientId, issued, issued.plusDays(PAYMENT_TERMS_DAYS))));
+    }
+
+    /**
+     * Adds a line to a draft invoice; empty if no such invoice. The line has already been checked;
+     * a sent invoice refuses it.
+     */
+    @Transactional
+    public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice) {
+        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        found.ifPresent(invoice -> {
+            if (!invoice.isDraft()) {
+                throw new InvoiceRejectedException("Only a draft invoice can take new lines.");
+            }
+            invoice.addLine(new InvoiceLine(description, qty, unitPrice));
+            invoices.saveAndFlush(invoice);
+        });
+        return found;
     }
 }

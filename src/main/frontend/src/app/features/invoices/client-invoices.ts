@@ -1,5 +1,5 @@
 import { Component, effect, inject, input, signal } from '@angular/core';
-import { InvoiceService, InvoiceSummary } from './invoice.service';
+import { InvoiceDetail, InvoiceService, InvoiceSummary } from './invoice.service';
 import { InvoicePanel } from './invoice-panel';
 import { money, statusLabel } from './invoice-format';
 
@@ -75,7 +75,7 @@ import { money, statusLabel } from './invoice-format';
     </section>
 
     @if (selectedId(); as id) {
-      <app-invoice-panel [invoiceId]="id" />
+      <app-invoice-panel [invoiceId]="id" (changed)="totalChanged($event)" />
     }
   `,
 })
@@ -111,5 +111,12 @@ export class ClientInvoices {
       },
       error: () => this.creating.set(false),
     });
+  }
+
+  // An invoice changed in the panel: show its new total in the list.
+  protected totalChanged(detail: InvoiceDetail): void {
+    this.invoices.update((list) =>
+      list.map((i) => (i.id === detail.id ? { ...i, total: detail.total } : i)),
+    );
   }
 }

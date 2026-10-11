@@ -28,6 +28,12 @@ public class InvoiceLine {
     protected InvoiceLine() {
     }
 
+    public InvoiceLine(String description, BigDecimal qty, BigDecimal unitPrice) {
+        this.description = description;
+        this.qty = qty;
+        this.unitPrice = unitPrice;
+    }
+
     public Long getId() {
         return id;
     }

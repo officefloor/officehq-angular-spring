@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.invoices;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -37,8 +38,8 @@ public class Invoice {
     @Column(name = "due_date")
     private LocalDate dueDate;
 
-    @OneToMany
-    @JoinColumn(name = "invoice_id")
+    @OneToMany(cascade = CascadeType.ALL)
+    @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
     private List<InvoiceLine> lines = new ArrayList<>();
 
@@ -77,6 +78,16 @@ public class Invoice {
 
     public List<InvoiceLine> getLines() {
         return lines;
+    }
+
+    /** Whether lines can still be added: only a draft is still being written. */
+    public boolean isDraft() {
+        return status == InvoiceStatus.DRAFT;
+    }
+
+    /** Adds a line to the end of the invoice. */
+    public void addLine(InvoiceLine line) {
+        lines.add(line);
     }
 
     /**

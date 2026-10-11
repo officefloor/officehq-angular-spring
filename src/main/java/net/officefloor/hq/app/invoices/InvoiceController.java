@@ -1,5 +1,11 @@
 package net.officefloor.hq.app.invoices;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -7,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -45,6 +52,21 @@ public class InvoiceController {
         }
     }
 
+    /** A line to add: a description, a quantity above zero and a unit price of at least $0.01. */
+    public record NewLine(
+            @NotBlank(message = "Enter a description.")
+            @Size(max = 255, message = "The description must be at most 255 characters.")
+            String description,
+            @NotNull(message = "Enter a quantity.")
+            @DecimalMin(value = "0", inclusive = false, message = "The quantity must be more than zero.")
+            @Digits(integer = 10, fraction = 2, message = "The quantity can have at most two decimals.")
+            BigDecimal qty,
+            @NotNull(message = "Enter a unit price.")
+            @DecimalMin(value = "0.01", message = "The unit price must be at least $0.01.")
+            @Digits(integer = 17, fraction = 2, message = "The unit price can have at most two decimals.")
+            BigDecimal unitPrice) {
+    }
+
     private final InvoiceService invoices;
 
     public InvoiceController(InvoiceService invoices) {
@@ -66,6 +88,14 @@ public class InvoiceController {
     @GetMapping("/api/invoices/{id}")
     public InvoiceDetail open(@PathVariable Long id) {
         return invoices.find(id).map(InvoiceDetail::of)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    @PostMapping("/api/invoices/{id}/lines")
+    @ResponseStatus(HttpStatus.CREATED)
+    public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
+        return invoices.addLine(id, body.description().trim(), body.qty(), body.unitPrice())
+                .map(InvoiceDetail::of)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 }
