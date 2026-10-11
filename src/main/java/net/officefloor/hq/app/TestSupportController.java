@@ -34,7 +34,7 @@ public class TestSupportController {
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "allocations");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
@@ -111,11 +111,12 @@ public class TestSupportController {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
-                    percent(row.get("discountPct"), "invoices[].discountPct"));
+                    percent(row.get("discountPct"), "invoices[].discountPct"),
+                    money(row.get("discountAmount"), "invoices[].discountAmount"));
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 insert("invoice_line", line.get("id"),
@@ -182,7 +183,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date, discount_pct FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -191,6 +192,7 @@ public class TestSupportController {
                     row.put("issueDate", r.get("ISSUE_DATE") == null ? null : r.get("ISSUE_DATE").toString());
                     row.put("dueDate", r.get("DUE_DATE") == null ? null : r.get("DUE_DATE").toString());
                     row.put("discountPct", r.get("DISCOUNT_PCT"));
+                    row.put("discountAmount", r.get("DISCOUNT_AMOUNT"));
                     row.put("lineItems", jdbc.queryForList(
                             "SELECT id, description, qty, unit_price, tax_exempt, discount_pct FROM invoice_line WHERE invoice_id = ? ORDER BY id",
                             r.get("ID")).stream().map(l -> {
@@ -304,6 +306,18 @@ public class TestSupportController {
         BigDecimal number = cents(value, field);
         if (number.signum() < 0 || number.compareTo(BigDecimal.valueOf(100)) > 0) {
             throw refuse(field + " must be from 0 to 100, not " + value);
+        }
+        return number;
+    }
+
+    /** An optional amount of money, not negative and to the cent; 0 when left out. */
+    private static BigDecimal money(Object value, String field) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal number = cents(value, field);
+        if (number.signum() < 0) {
+            throw refuse(field + " cannot be negative, not " + value);
         }
         return number;
     }

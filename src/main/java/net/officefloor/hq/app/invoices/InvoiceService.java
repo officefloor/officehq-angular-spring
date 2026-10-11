@@ -94,15 +94,21 @@ public class InvoiceService {
     }
 
     /**
-     * Gives an invoice a percentage discount; empty if no such invoice. The percentage has already
-     * been checked. A sent invoice with no payments goes back to draft; one with a payment refuses it.
+     * Gives an invoice a percentage discount, or a fixed amount off when one is given; the one given
+     * clears the other. Empty if no such invoice. The values have already been checked; a fixed amount
+     * over the subtotal is refused. A sent invoice with no payments goes back to draft; one with a
+     * payment refuses it.
      */
     @Transactional
-    public Optional<Invoice> setDiscount(Long invoiceId, BigDecimal discountPct) {
+    public Optional<Invoice> setDiscount(Long invoiceId, BigDecimal discountPct, BigDecimal discountAmount) {
         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
         found.ifPresent(invoice -> {
             boolean reopened = reopenForChange(invoice, "A paid invoice cannot be given a discount.");
-            invoice.setDiscountPct(discountPct);
+            if (discountAmount != null) {
+                invoice.setDiscountAmount(discountAmount);
+            } else {
+                invoice.setDiscountPct(discountPct);
+            }
             invoices.saveAndFlush(invoice);
             if (reopened) {
                 audit.record("INVOICE_REOPENED id=" + invoice.getId());

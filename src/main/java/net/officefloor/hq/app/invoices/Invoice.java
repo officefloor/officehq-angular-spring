@@ -44,6 +44,9 @@ public class Invoice {
     @Column(name = "discount_pct")
     private BigDecimal discountPct = BigDecimal.ZERO;
 
+    @Column(name = "discount_amount")
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
     @OneToMany(cascade = CascadeType.ALL)
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
@@ -87,9 +90,28 @@ public class Invoice {
         return discountPct;
     }
 
-    /** Sets the percentage taken off the subtotal; it has already been checked. */
+    /** The fixed amount taken off the subtotal, to the cent; 0 when the discount is a percentage. */
+    public BigDecimal getDiscountAmount() {
+        return discountAmount;
+    }
+
+    /** Sets the percentage taken off the subtotal, clearing any fixed amount; it has already been checked. */
     public void setDiscountPct(BigDecimal discountPct) {
         this.discountPct = discountPct;
+        this.discountAmount = BigDecimal.ZERO;
+    }
+
+    /**
+     * Sets a fixed amount taken off the subtotal, clearing any percentage; it has already been checked
+     * as money. An amount over the subtotal is refused.
+     */
+    public void setDiscountAmount(BigDecimal discountAmount) {
+        if (discountAmount.compareTo(subtotal()) > 0) {
+            throw new InvoiceRejectedException("The discount cannot be more than the subtotal of "
+                    + subtotal().toPlainString() + ".");
+        }
+        this.discountAmount = discountAmount;
+        this.discountPct = BigDecimal.ZERO;
     }
 
     public List<InvoiceLine> getLines() {
@@ -158,8 +180,15 @@ public class Invoice {
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** The amount taken off: the discount percentage of the subtotal, rounded half up to the cent. */
+    /**
+     * The amount taken off: the fixed amount when there is one (never more than the subtotal, should
+     * lines have been changed since), otherwise the discount percentage of the subtotal, rounded half
+     * up to the cent.
+     */
     public BigDecimal discount() {
+        if (discountAmount.signum() > 0) {
+            return discountAmount.min(subtotal()).setScale(2, RoundingMode.HALF_UP);
+        }
         return subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100))
                 .setScale(2, RoundingMode.HALF_UP);
     }

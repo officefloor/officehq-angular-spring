@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.invoices;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -87,8 +88,8 @@ public class InvoiceController {
      * RF payment reference in groups of four.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
-            LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discount,
-            String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue) {
+            LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+            String discount, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -100,7 +101,8 @@ public class InvoiceController {
                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
                     i.statusWhenPaid(paid, taxRate, today), i.getIssueDate(), i.getDueDate(),
                     lines, i.subtotal().toPlainString(),
-                    i.getDiscountPct().stripTrailingZeros().toPlainString(), i.discount().toPlainString(),
+                    i.getDiscountPct().stripTrailingZeros().toPlainString(),
+                    i.getDiscountAmount().setScale(2).toPlainString(), i.discount().toPlainString(),
                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
                     i.total(taxRate).toPlainString(),
                     payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
@@ -108,13 +110,23 @@ public class InvoiceController {
         }
     }
 
-    /** A discount to give: a percentage from 0 to 100 with at most two decimals. */
+    /**
+     * A discount to give: a percentage from 0 to 100 with at most two decimals, or a fixed amount
+     * of money, not negative and to the cent. Exactly one of them.
+     */
     public record NewDiscount(
-            @NotNull(message = "Enter a discount percentage.")
             @DecimalMin(value = "0", message = "The discount must be from 0 to 100 percent.")
             @DecimalMax(value = "100", message = "The discount must be from 0 to 100 percent.")
             @Digits(integer = 3, fraction = 2, message = "The discount can have at most two decimals.")
-            BigDecimal discountPct) {
+            BigDecimal discountPct,
+            @DecimalMin(value = "0", message = "The discount amount cannot be negative.")
+            @Digits(integer = 10, fraction = 2, message = "The discount amount can have at most two decimals.")
+            BigDecimal discountAmount) {
+
+        @AssertTrue(message = "Enter either a discount percentage or a discount amount.")
+        public boolean isDiscountGiven() {
+            return (discountPct == null) != (discountAmount == null);
+        }
     }
 
     /**
@@ -263,7 +275,7 @@ public class InvoiceController {
 
     @PutMapping("/api/invoices/{id}/discount")
     public InvoiceDetail setDiscount(@PathVariable Long id, @Valid @RequestBody NewDiscount body) {
-        return invoices.setDiscount(id, body.discountPct())
+        return invoices.setDiscount(id, body.discountPct(), body.discountAmount())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

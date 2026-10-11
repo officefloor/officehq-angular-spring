@@ -6,6 +6,7 @@ import {
   InvoiceService,
   InvoiceSummary,
   NewAllocation,
+  NewDiscount,
   NewLine,
 } from './invoice.service';
 import { TWO_DECIMALS, money, statusLabel } from './invoice-format';
@@ -13,9 +14,6 @@ import { PaymentForm } from './payment-form';
 
 // A percentage from 0 to 100 with at most two decimals, e.g. 15 or 12.5; the server checks it again.
 function problemWithDiscount(pct: string): string {
-  if (!pct) {
-    return 'Enter a discount percentage.';
-  }
   if (!/^-?\d+(\.\d+)?$/.test(pct)) {
     return 'The discount must be a number, like 15 or 12.5.';
   }
@@ -26,6 +24,32 @@ function problemWithDiscount(pct: string): string {
     return 'The discount can have at most two decimals.';
   }
   return '';
+}
+
+// A fixed amount of money, not negative and to the cent, e.g. 25 or 12.50; the server checks it is
+// no more than the subtotal.
+function problemWithDiscountAmount(amount: string): string {
+  if (!/^-?\d+(\.\d+)?$/.test(amount)) {
+    return 'The discount amount must be a number, like 25 or 12.50.';
+  }
+  if (Number(amount) < 0) {
+    return 'The discount amount cannot be negative.';
+  }
+  if (!TWO_DECIMALS.test(amount)) {
+    return 'The discount amount can have at most two decimals.';
+  }
+  return '';
+}
+
+// Either a percentage or a fixed amount, not both: the one given replaces the other.
+function problemWithDiscountForm(pct: string, amount: string): string {
+  if (!pct && !amount) {
+    return 'Enter a discount percentage or a discount amount.';
+  }
+  if (pct && amount) {
+    return 'Enter either a discount percentage or a discount amount, not both.';
+  }
+  return pct ? problemWithDiscount(pct) : problemWithDiscountAmount(amount);
 }
 
 // What is wrong with a line, or '' when it can be added.
@@ -62,7 +86,7 @@ function problemWith(line: NewLine): string {
 
 // One opened invoice: its status, its lines and its totals. A line may carry its own percentage
 // discount, shown on the line, with its amount after it, and its own tax. A draft takes new lines and a
-// percentage discount, and can be sent; a change to a sent invoice with no payments puts it back to
+// percentage or fixed discount, and can be sent; a change to a sent invoice with no payments puts it back to
 // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
 // until nothing is due; the panel lists them with what has been paid and what is still due. The
 // server refuses a payment on a draft, over what is due, or dated after today or before the issue date.
@@ -119,7 +143,13 @@ function problemWith(line: NewLine): string {
               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="7">Discount ({{ inv.discountPct }}%)</th>
+              <th scope="row" colspan="7">
+                @if (+inv.discountAmount > 0) {
+                  Discount (fixed)
+                } @else {
+                  Discount ({{ inv.discountPct }}%)
+                }
+              </th>
               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
             </tr>
             <tr>
@@ -256,7 +286,13 @@ function problemWith(line: NewLine): string {
             data-testid="discount-form-pct"
             inputmode="decimal"
             formControlName="pct"
-            required
+          />
+          <label for="discount-amount">or amount ($)</label>
+          <input
+            id="discount-amount"
+            data-testid="discount-form-amount"
+            inputmode="decimal"
+            formControlName="amount"
           />
           <button type="submit" data-testid="discount-form-submit" [disabled]="savingDiscount()">
             Apply discount
@@ -302,6 +338,7 @@ export class InvoicePanel {
 
   protected readonly discountForm = new FormGroup({
     pct: new FormControl('', { nonNullable: true }),
+    amount: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -357,8 +394,10 @@ export class InvoicePanel {
   }
 
   protected setDiscount(invoiceId: number): void {
-    const pct = this.discountForm.getRawValue().pct.trim().replace(/%$/, '').trim();
-    const problem = problemWithDiscount(pct);
+    const raw = this.discountForm.getRawValue();
+    const pct = raw.pct.trim().replace(/%$/, '').trim();
+    const amount = raw.amount.trim().replace(/^\$/, '').trim();
+    const problem = problemWithDiscountForm(pct, amount);
     if (problem) {
       this.discountForm.markAllAsTouched();
       this.discountError.set(problem);
@@ -366,7 +405,8 @@ export class InvoicePanel {
     }
     this.savingDiscount.set(true);
     this.discountError.set('');
-    this.service.setDiscount(invoiceId, pct).subscribe({
+    const discount: NewDiscount = pct ? { discountPct: pct } : { discountAmount: amount };
+    this.service.setDiscount(invoiceId, discount).subscribe({
       next: (detail) => {
         this.invoice.set(detail);
         this.changed.emit(detail);

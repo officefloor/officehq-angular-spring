@@ -52,7 +52,8 @@ export interface InvoicePaymentView {
 }
 
 // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
-// percentage taken off the subtotal, without trailing zeros ("12.5"); `discount` is the amount it
+// percentage taken off the subtotal, without trailing zeros ("12.5"), and `discountAmount` the fixed
+// amount taken off instead ("0.00" when the discount is a percentage); `discount` is the amount it
 // takes off, rounded half up to the cent; `taxRate` is the workspace's tax percentage (without
 // trailing zeros, "0" when none is set) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
 // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
@@ -69,6 +70,7 @@ export interface InvoiceDetail {
   lines: InvoiceLineView[];
   subtotal: string;
   discountPct: string;
+  discountAmount: string;
   discount: string;
   taxRate: string;
   tax: string;
@@ -106,6 +108,9 @@ export interface NewLine {
   taxExempt: boolean;
   discountPct?: string;
 }
+
+// A discount to give: either a percentage or a fixed amount, as entered.
+export type NewDiscount = { discountPct: string } | { discountAmount: string };
 
 // What a client still owes across its sent invoices (drafts do not count), after discounts, tax and
 // payments, and how much of that is overdue; decimal strings to the cent, worked out by the server.
@@ -148,10 +153,11 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines`, line);
   }
 
-  // Gives a draft invoice a percentage discount (0 to 100, up to two decimals); answers the
-  // invoice with its new totals.
-  setDiscount(invoiceId: number, discountPct: string): Observable<InvoiceDetail> {
-    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/discount`, { discountPct });
+  // Gives a draft invoice a discount — a percentage (0 to 100, up to two decimals) or a fixed amount
+  // (to the cent, at most the subtotal); the one given clears the other. Answers the invoice with
+  // its new totals.
+  setDiscount(invoiceId: number, discount: NewDiscount): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/discount`, discount);
   }
 
   // Sends a draft invoice, keeping its issue and due dates; refused (409) when it has no lines.
