@@ -20,6 +20,7 @@ import net.officefloor.hq.app.ExchangeRates;
 import net.officefloor.hq.app.FxFee;
 import net.officefloor.hq.app.LateInterestRate;
 import net.officefloor.hq.app.PriceList;
+import net.officefloor.hq.app.RegionTerms;
 import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
 import net.officefloor.hq.app.clients.Client;
@@ -52,9 +53,13 @@ public class InvoiceService {
 
     private final FxFee fxFee;
 
+    private final RegionTerms regionTerms;
+
     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
-            LateInterestRate lateInterestRate, CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList) {
+            LateInterestRate lateInterestRate, CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList,
+            RegionTerms regionTerms) {
+        this.regionTerms = regionTerms;
         this.priceList = priceList;
         this.cardSurcharge = cardSurcharge;
         this.fxFee = fxFee;
@@ -203,12 +208,13 @@ public class InvoiceService {
     }
 
     /**
-     * An invoice for a client with payment terms is due that many days after it is issued; otherwise
-     * as {@link #dueDateFor(LocalDate)}.
+     * An invoice for a client with payment terms is due that many days after it is issued; for a
+     * client without, in a region with standard terms, the region's days after; otherwise as
+     * {@link #dueDateFor(LocalDate)}.
      */
     private LocalDate dueDateFor(Long clientId, LocalDate issued) {
         return clients.findById(clientId)
-                .map(Client::getTermsDays)
+                .flatMap(c -> Optional.ofNullable(c.getTermsDays()).or(() -> regionTerms.forRegion(c.getRegion())))
                 .map(days -> issued.plusDays(days))
                 .orElseGet(() -> dueDateFor(issued));
     }
