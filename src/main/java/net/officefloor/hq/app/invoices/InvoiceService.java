@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.List;
 import java.util.Map;
@@ -930,28 +932,8 @@ public class InvoiceService {
             named.removeAll(stated);
             candidates = ofClient.stream().filter(i -> named.contains(i.getId())).toList();
         }
-        List<Invoice> unordered = candidates.stream()
-                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote())
-                .toList();
-        Map<Long, BigDecimal> paid = paid(unordered);
-        LocalDate now = today.date();
         Map<Long, BigDecimal> dues = new HashMap<>();
-        Set<Long> overdue = new HashSet<>();
-        for (Invoice invoice : unordered) {
-            BigDecimal invoicePaid = paid.get(invoice.getId());
-            dues.put(invoice.getId(), invoice.amountDue(invoicePaid, taxRate.percent()));
-            if (invoice.statusWhenPaid(invoicePaid, taxRate.percent(), now) == InvoiceStatus.OVERDUE) {
-                overdue.add(invoice.getId());
-            }
-        }
-        // Overdue first, oldest due date first; then the rest, largest amount due first; lower id on a tie.
-        Comparator<Invoice> byPriority = Comparator.<Invoice, Boolean>comparing(i -> !overdue.contains(i.getId()))
-                .thenComparing(i -> overdue.contains(i.getId()) ? i.getDueDate() : null,
-                        Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(i -> overdue.contains(i.getId()) ? BigDecimal.ZERO : dues.get(i.getId()),
-                        Comparator.reverseOrder())
-                .thenComparing(Invoice::getId);
-        List<Invoice> sent = unordered.stream().sorted(byPriority).toList();
+        List<Invoice> sent = inPaymentOrder(candidates, dues);
         for (Invoice invoice : sent) {
             BigDecimal due = dues.get(invoice.getId());
             if (due.signum() <= 0) {
@@ -969,6 +951,91 @@ public class InvoiceService {
         }
         String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
         return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts);
+    }
+
+    /**
+     * The sent invoices among these (not drafts, void invoices or credit notes) in the payment order:
+     * the overdue ones first, earliest due date first, then the rest from the largest amount due to the
+     * smallest; lower id first on a tie. Fills in what each has due.
+     */
+    private List<Invoice> inPaymentOrder(List<Invoice> candidates, Map<Long, BigDecimal> dues) {
+        List<Invoice> unordered = candidates.stream()
+                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote())
+                .toList();
+        Map<Long, BigDecimal> paid = paid(unordered);
+        LocalDate now = today.date();
+        Set<Long> overdue = new HashSet<>();
+        for (Invoice invoice : unordered) {
+            BigDecimal invoicePaid = paid.get(invoice.getId());
+            dues.put(invoice.getId(), invoice.amountDue(invoicePaid, taxRate.percent()));
+            if (invoice.statusWhenPaid(invoicePaid, taxRate.percent(), now) == InvoiceStatus.OVERDUE) {
+                overdue.add(invoice.getId());
+            }
+        }
+        // Overdue first, oldest due date first; then the rest, largest amount due first; lower id on a tie.
+        Comparator<Invoice> byPriority = Comparator.<Invoice, Boolean>comparing(i -> !overdue.contains(i.getId()))
+                .thenComparing(i -> overdue.contains(i.getId()) ? i.getDueDate() : null,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(i -> overdue.contains(i.getId()) ? BigDecimal.ZERO : dues.get(i.getId()),
+                        Comparator.reverseOrder())
+                .thenComparing(Invoice::getId);
+        return unordered.stream().sorted(byPriority).toList();
+    }
+
+    /**
+     * Uses the client's unused credit now on what they owe: the oldest payment's credit first (lower id
+     * first on the same date), never a deposit held for one of the client's drafts, spread over their
+     * sent invoices in the payment order (see {@link #inPaymentOrder}), each paid off before the next;
+     * each part applied today and recorded in the audit. Empty if no such client. Refused when the
+     * client has no credit to use or owes nothing.
+     */
+    @Transactional
+    public Optional<Long> applyCreditNow(Long clientId) {
+        Optional<Client> client = clients.findById(clientId);
+        if (client.isEmpty()) {
+            return Optional.empty();
+        }
+        Map<String, Long> drafts = draftsByReference(clientId);
+        List<Payment> usable = payments.findForClient(clientId).stream()
+                .filter(p -> heldFor(p, drafts) == null && p.credit().signum() > 0)
+                .toList();
+        if (usable.isEmpty()) {
+            throw new InvoiceRejectedException("The client has no unused credit to apply.");
+        }
+        Map<Long, BigDecimal> dues = new HashMap<>();
+        List<Invoice> owing = inPaymentOrder(loadForClient(clientId), dues).stream()
+                .filter(i -> dues.get(i.getId()).signum() > 0)
+                .toList();
+        if (owing.isEmpty()) {
+            throw new InvoiceRejectedException("The client owes nothing to apply credit to.");
+        }
+        LocalDate now = today.date();
+        Set<Invoice> reached = new LinkedHashSet<>();
+        Iterator<Payment> from = usable.iterator();
+        Payment payment = from.next();
+        BigDecimal credit = payment.credit();
+        for (Invoice invoice : owing) {
+            BigDecimal due = dues.get(invoice.getId());
+            while (due.signum() > 0 && credit != null) {
+                BigDecimal part = credit.min(due);
+                payment.apply(invoice.getId(), part, now);
+                payments.saveAndFlush(payment);
+                audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
+                        + part.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
+                reached.add(invoice);
+                due = due.subtract(part);
+                credit = credit.subtract(part);
+                if (credit.signum() <= 0) {
+                    payment = from.hasNext() ? from.next() : null;
+                    credit = payment == null ? null : payment.credit();
+                }
+            }
+            if (credit == null) {
+                break;
+            }
+        }
+        reached.forEach(this::recordWriteOff);
+        return Optional.of(clientId);
     }
 
     /**

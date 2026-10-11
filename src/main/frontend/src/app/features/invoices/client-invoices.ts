@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { InvoiceDetail, InvoiceService, InvoiceSummary } from './invoice.service';
 import { PaymentForm } from './payment-form';
@@ -10,7 +11,8 @@ import { Currency, money, statusLabel } from './invoice-format';
 // An invoice looked up by its number is opened as soon as its client's invoices are shown.
 // A payment recorded in the panel goes to the open invoice; one recorded below the list when no invoice
 // is open goes to the invoices its references name, or is spread automatically.
-// The client's unused credit can be refunded from the refund form below the list.
+// The client's unused credit can be refunded from the refund form below the list, or applied now to
+// what they owe with Apply credit.
 @Component({
   selector: 'app-client-invoices',
   imports: [InvoicePanel, PaymentForm, RefundForm],
@@ -43,6 +45,12 @@ import { Currency, money, statusLabel } from './invoice-format';
       <button type="button" data-testid="invoice-send-all" [disabled]="sendingAll()" (click)="sendAllDrafts()">
         Send all drafts
       </button>
+      <button type="button" data-testid="client-apply-credit" [disabled]="applying()" (click)="applyCredit()">
+        Apply credit
+      </button>
+      @if (applyError()) {
+        <p role="alert" data-testid="client-apply-credit-error">{{ applyError() }}</p>
+      }
       <table data-testid="invoice-list">
         <thead>
           <tr>
@@ -124,6 +132,8 @@ export class ClientInvoices {
   protected readonly selectedId = signal<number | null>(null);
   protected readonly creating = signal(false);
   protected readonly sendingAll = signal(false);
+  protected readonly applying = signal(false);
+  protected readonly applyError = signal('');
   // Bumped to make the invoice panel load its invoice again.
   protected readonly reloadPanel = signal(0);
   protected readonly statusLabel = statusLabel;
@@ -133,6 +143,7 @@ export class ClientInvoices {
     effect((onCleanup) => {
       const id = this.clientId();
       this.invoices.set([]);
+      this.applyError.set('');
       const open = untracked(this.openInvoice);
       this.selectedId.set(open?.clientId === id ? open.id : null);
       const sub = this.service.forClient(id).subscribe((list) => this.invoices.set(list));
@@ -178,6 +189,26 @@ export class ClientInvoices {
         this.changed.emit();
       },
       error: () => this.sendingAll.set(false),
+    });
+  }
+
+  // Applies the client's unused credit to what they owe: show the invoices' new statuses, and load
+  // the open invoice again so the panel shows its payments.
+  protected applyCredit(): void {
+    this.applying.set(true);
+    this.applyError.set('');
+    this.service.applyCredit(this.clientId()).subscribe({
+      next: (list) => {
+        this.invoices.set(list);
+        this.reloadPanel.update((n) => n + 1);
+        this.applying.set(false);
+        this.changed.emit();
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.applyError.set(typeof detail === 'string' && detail ? detail : 'The credit could not be applied.');
+        this.applying.set(false);
+      },
     });
   }
 

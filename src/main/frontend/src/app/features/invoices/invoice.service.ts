@@ -301,6 +301,13 @@ export class InvoiceService {
     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/invoices/send-drafts`, null);
   }
 
+  // Applies the client's unused credit now to what they owe: the oldest payment's credit first, to their
+  // sent invoices in the payment order, never a deposit held for a draft; refused (409) when there is no
+  // credit to use or nothing owed. Answers the client's invoices with their new statuses.
+  applyCredit(clientId: number): Observable<InvoiceSummary[]> {
+    return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/apply-credit`, null);
+  }
+
   // Copies an invoice into a new draft for the same client: its lines and invoice discount, issued
   // today and due as any new invoice; payments are not copied. Answers the new draft.
   duplicate(invoiceId: number): Observable<InvoiceDetail> {

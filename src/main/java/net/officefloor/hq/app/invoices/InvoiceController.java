@@ -604,6 +604,14 @@ public class InvoiceController {
         return forClient(clientId);
     }
 
+    /** Applies the client's unused credit now to what they owe, in the payment order; answers the client's invoices. */
+    @PostMapping("/api/clients/{clientId}/apply-credit")
+    public List<InvoiceSummary> applyCredit(@PathVariable Long clientId) {
+        invoices.applyCreditNow(clientId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+        return forClient(clientId);
+    }
+
     @PostMapping("/api/invoices/{id}/payments")
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
