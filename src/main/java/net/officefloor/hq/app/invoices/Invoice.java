@@ -266,6 +266,13 @@ public class Invoice {
     @Formula("(SELECT c.grace_days FROM client c WHERE c.id = client_id)")
     private Integer clientGraceDays;
 
+    /**
+     * The workspace's late-interest threshold in US dollars, as stored (the {@code interest_threshold}
+     * setting); null when none is set.
+     */
+    @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'interest_threshold')")
+    private String interestThresholdUsd;
+
     /** The client's own annual late-interest rate, a percentage; null for the workspace's. Read from the client. */
     @Formula("(SELECT c.interest_rate FROM client c WHERE c.id = client_id)")
     private BigDecimal clientInterestRate;
@@ -830,6 +837,23 @@ public class Invoice {
         }
         accrueInvoiceInterest(payments, taxRate, annualRate, today);
         accrueRetentionInterest(payments, taxRate, annualRate, today);
+        if (getLateInterest().add(getLateWaived()).compareTo(interestThreshold()) < 0) {
+            this.lateInterest = BigDecimal.ZERO;
+            this.lateWaived = BigDecimal.ZERO;
+            this.retentionInterest = BigDecimal.ZERO;
+        }
+    }
+
+    /**
+     * The late interest an invoice without a plan must add up to before any of it is charged: the
+     * workspace's threshold in US dollars converted at the issue date's rate, rounded down to the step;
+     * 0 when none is set.
+     */
+    private BigDecimal interestThreshold() {
+        if (interestThresholdUsd == null) {
+            return zero();
+        }
+        return currency().divideDownToStep(new BigDecimal(interestThresholdUsd.trim()), usdPerOn(issueDate));
     }
 
     /** The late interest charged on the invoice itself, released retention left out (see {@link #accrueLateInterest}). */
