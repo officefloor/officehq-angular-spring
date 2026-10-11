@@ -45,6 +45,16 @@ public class Invoice {
     protected Invoice() {
     }
 
+    /** A new, empty draft for a client, issued and due on the given dates. */
+    public static Invoice draft(Long clientId, LocalDate issueDate, LocalDate dueDate) {
+        Invoice invoice = new Invoice();
+        invoice.clientId = clientId;
+        invoice.status = InvoiceStatus.DRAFT;
+        invoice.issueDate = issueDate;
+        invoice.dueDate = dueDate;
+        return invoice;
+    }
+
     public Long getId() {
         return id;
     }

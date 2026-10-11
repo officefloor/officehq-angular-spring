@@ -14,6 +14,28 @@ export interface InvoiceSummary {
   dueDate: string | null;
 }
 
+// One line of an opened invoice. `qty` is as entered, without trailing zeros ("1.5"); money is a
+// decimal string to the cent.
+export interface InvoiceLineView {
+  id: number;
+  description: string;
+  qty: string;
+  unitPrice: string;
+  amount: string;
+}
+
+// An opened invoice with its lines and totals, all worked out by the server.
+export interface InvoiceDetail {
+  id: number;
+  clientId: number;
+  status: InvoiceStatus;
+  issueDate: string | null;
+  dueDate: string | null;
+  lines: InvoiceLineView[];
+  subtotal: string;
+  total: string;
+}
+
 // The invoices REST API.
 @Injectable({ providedIn: 'root' })
 export class InvoiceService {
@@ -21,5 +43,14 @@ export class InvoiceService {
 
   forClient(clientId: number): Observable<InvoiceSummary[]> {
     return this.http.get<InvoiceSummary[]>(`/api/clients/${clientId}/invoices`);
+  }
+
+  // Starts an empty draft for the client, issued today and due 30 days later.
+  newDraft(clientId: number): Observable<InvoiceSummary> {
+    return this.http.post<InvoiceSummary>(`/api/clients/${clientId}/invoices`, null);
+  }
+
+  open(id: number): Observable<InvoiceDetail> {
+    return this.http.get<InvoiceDetail>(`/api/invoices/${id}`);
   }
 }
