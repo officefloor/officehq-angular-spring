@@ -1,0 +1,519 @@
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index f2c5e1b..a92a625 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -74,7 +74,8 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+               <span data-testid="client-email">{{ c.email }}</span>
+               <span>
+                 Owes <span data-testid="client-balance">{{ money(balanceOf(c.id).balance) }}</span>,
+-                overdue <span data-testid="client-overdue">{{ money(balanceOf(c.id).overdue) }}</span>
++                overdue <span data-testid="client-overdue">{{ money(balanceOf(c.id).overdue) }}</span>,
++                credit <span data-testid="client-credit">{{ money(balanceOf(c.id).credit) }}</span>
+               </span>
+             </button>
+           </li>
+@@ -181,7 +182,7 @@ export class Clients {
+   }
+ 
+   protected balanceOf(clientId: number): ClientBalance {
+-    return this.balances().get(clientId) ?? { clientId, balance: '0', overdue: '0' };
++    return this.balances().get(clientId) ?? { clientId, balance: '0', overdue: '0', credit: '0' };
+   }
+ 
+   // Fetches what every client owes again, after a payment or other change to an invoice.
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index 502b2fe..31919b7 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -112,6 +112,7 @@ import { money, statusLabel } from './invoice-format';
+         [clientId]="clientId()"
+         [allocations]="allocations()"
+         (split)="splitRecorded($event)"
++        (deposited)="splitRecorded($event)"
+       />
+     }
+   `,
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 6e54b91..fe59a34 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -292,6 +292,7 @@ function problemWith(line: NewLine): string {
+             [allocations]="allocations()"
+             (paid)="paymentRecorded($event)"
+             (split)="splitRecorded(inv.id, $event)"
++            (deposited)="splitRecorded(inv.id, $event)"
+           />
+         }
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 2db44e8..ebcab96 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -128,11 +128,13 @@ export interface NewLine {
+ export type NewDiscount = ({ discountPct: string } | { discountAmount: string }) & { discountCap?: string; discountReason?: string };
+ 
+ // What a client still owes across its sent invoices (drafts do not count), after discounts, tax and
+-// payments, and how much of that is overdue; decimal strings to the cent, worked out by the server.
++// payments, less the client's unused credit (so it can be below zero), how much of what is due is
++// overdue, and the unused credit; decimal strings to the cent, worked out by the server.
+ export interface ClientBalance {
+   clientId: number;
+   balance: string;
+   overdue: string;
++  credit: string;
+ }
+ 
+ // The invoices REST API.
+@@ -235,6 +237,13 @@ export class InvoiceService {
+     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment);
+   }
+ 
++  // Records a deposit: the whole amount held on the client's account as credit, applied to no invoice
++  // until one of the client's invoices is sent; refused (409) when dated after today. Answers the
++  // client's invoices.
++  recordDeposit(clientId: number, deposit: { amount: string; date: string }): Observable<InvoiceSummary[]> {
++    return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/deposits`, deposit);
++  }
++
+   // Reverses a payment (a bounced cheque) on every invoice it was applied to; refused (409) when it
+   // has already been reversed. Answers the opened invoice with its payments and new status.
+   reversePayment(invoiceId: number, paymentId: number): Observable<InvoiceDetail> {
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index de730e1..888163d 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -104,6 +104,8 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
+ // payment is spread over those invoices instead, and the parts must add up to it. The server refuses a payment on a draft, over what is due, or dated after today
+ // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
+ // invoice number may be quoted instead: it must pass its Luhn check and stands for that invoice's reference.
++// Ticking Deposit instead holds the whole amount on the client's account as credit, applied to no
++// invoice even when one is open; the client's credit is used when one of its invoices is sent.
+ @Component({
+   selector: 'app-payment-form',
+   imports: [ReactiveFormsModule],
+@@ -139,6 +141,13 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
+         autocapitalize="characters"
+         placeholder="RF16 0000 075"
+       />
++      <input
++        id="payment-deposit"
++        type="checkbox"
++        data-testid="payment-form-deposit"
++        formControlName="deposit"
++      />
++      <label for="payment-deposit">Deposit (hold as credit on the client's account)</label>
+       <button type="submit" data-testid="payment-form-submit" [disabled]="saving()">
+         Record payment
+       </button>
+@@ -159,6 +168,8 @@ export class PaymentForm {
+   readonly paid = output<InvoiceDetail>();
+   // The client's invoices after a payment spread over several of them.
+   readonly split = output<InvoiceSummary[]>();
++  // The client's invoices after a deposit held as credit.
++  readonly deposited = output<InvoiceSummary[]>();
+ 
+   protected readonly saving = signal(false);
+   protected readonly error = signal('');
+@@ -167,6 +178,7 @@ export class PaymentForm {
+     amount: new FormControl('', { nonNullable: true }),
+     date: new FormControl('', { nonNullable: true }),
+     reference: new FormControl('', { nonNullable: true }),
++    deposit: new FormControl(false, { nonNullable: true }),
+   });
+ 
+   protected record(): void {
+@@ -176,6 +188,10 @@ export class PaymentForm {
+       date: raw.date.trim(),
+       reference: raw.reference.replace(/\s/g, '').toUpperCase(),
+     };
++    if (raw.deposit) {
++      this.recordDeposit(payment);
++      return;
++    }
+     const allocations = this.allocations();
+     const invoiceId = this.invoiceId();
+     let problem = problemWithPayment(payment, allocations.length === 0 && invoiceId === null);
+@@ -222,4 +238,30 @@ export class PaymentForm {
+         });
+     }
+   }
++
++  // Records the whole payment as a deposit, credit on the client's account; any reference is not kept.
++  private recordDeposit(payment: NewPayment): void {
++    const problem = problemWithPayment({ ...payment, reference: '' }, false);
++    if (problem) {
++      this.form.markAllAsTouched();
++      this.error.set(problem);
++      return;
++    }
++    this.saving.set(true);
++    this.error.set('');
++    this.service.recordDeposit(this.clientId(), { amount: payment.amount, date: payment.date }).subscribe({
++      next: (list) => {
++        this.form.reset();
++        this.saving.set(false);
++        this.deposited.emit(list);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.error.set(
++          typeof detail === 'string' && detail ? detail : 'The deposit could not be recorded.',
++        );
++        this.saving.set(false);
++      },
++    });
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 8f0b90b..62a5b7b 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -37,7 +37,7 @@ public class TestSupportController {
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "allocations");
+-    private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
++    private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID");
+ 
+     private final Audit audit;
+@@ -146,9 +146,10 @@ public class TestSupportController {
+                 if (allocation.get("invoiceId") == null) {
+                     throw refuse("payments[].allocations[].invoiceId is required");
+                 }
+-                jdbc.update("INSERT INTO payment_allocation (payment_id, invoice_id, amount) VALUES (?, ?, ?)",
++                jdbc.update("INSERT INTO payment_allocation (payment_id, invoice_id, amount, applied_date) VALUES (?, ?, ?, ?)",
+                         paymentId, id(allocation.get("invoiceId")),
+-                        cents(allocation.get("amount"), "payments[].allocations[].amount"));
++                        cents(allocation.get("amount"), "payments[].allocations[].amount"),
++                        allocation.get("date") == null ? null : date(allocation.get("date"), "payments[].allocations[].date"));
+             }
+         }
+         // Keep generated ids clear of the seeded ones.
+@@ -233,11 +234,14 @@ public class TestSupportController {
+                     row.put("reference", r.get("REFERENCE"));
+                     row.put("reversed", r.get("REVERSED"));
+                     row.put("allocations", jdbc.queryForList(
+-                            "SELECT invoice_id, amount FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
++                            "SELECT invoice_id, amount, applied_date FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
+                             r.get("ID")).stream().map(a -> {
+                                 Map<String, Object> allocation = new LinkedHashMap<>();
+                                 allocation.put("invoiceId", a.get("INVOICE_ID"));
+                                 allocation.put("amount", a.get("AMOUNT"));
++                                if (a.get("APPLIED_DATE") != null) {
++                                    allocation.put("date", a.get("APPLIED_DATE").toString());
++                                }
+                                 return allocation;
+                             }).toList());
+                     return row;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 9ac7c32..cfc4f91 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -281,20 +281,25 @@ public class Invoice {
+ 
+     /**
+      * The date the invoice was fully paid: the date of the payment that cleared its grand total at the
+-     * tax rate, taking the payments (not reversed) in date order; null while something is still due.
++     * tax rate, taking the parts of payments (not reversed) in the order they were applied (credit used
++     * counts on the day it was applied); null while something is still due.
+      */
+     public LocalDate paidOn(List<Payment> payments, BigDecimal taxRate) {
+         BigDecimal total = total(taxRate);
+         if (status != InvoiceStatus.SENT || total.signum() <= 0) {
+             return null;
+         }
+-        List<Payment> inOrder = payments.stream().filter(p -> !p.isReversed())
+-                .sorted(Comparator.comparing(Payment::getDate).thenComparing(Payment::getId)).toList();
++        record Part(LocalDate on, Long paymentId, BigDecimal amount) {
++        }
++        List<Part> inOrder = payments.stream().filter(p -> !p.isReversed())
++                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
++                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
++                .sorted(Comparator.comparing(Part::on).thenComparing(Part::paymentId)).toList();
+         BigDecimal sum = BigDecimal.ZERO;
+-        for (Payment p : inOrder) {
+-            sum = sum.add(p.amountTo(id));
++        for (Part p : inOrder) {
++            sum = sum.add(p.amount());
+             if (sum.signum() > 0 && total.subtract(sum).compareTo(WRITE_OFF_LIMIT) < 0) {
+-                return p.getDate();
++                return p.on();
+             }
+         }
+         return null;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index dbf7f61..6e0fc97 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -47,9 +47,10 @@ public class InvoiceController {
+ 
+     /**
+      * What a client still owes across its sent invoices (drafts do not count), after discounts, tax
+-     * and payments, and how much of that is overdue; decimal strings to the cent.
++     * and payments, less the client's unused credit (so it can be below zero), how much of what is due
++     * is overdue, and the unused credit; decimal strings to the cent.
+      */
+-    public record ClientBalance(Long clientId, String balance, String overdue) {
++    public record ClientBalance(Long clientId, String balance, String overdue, String credit) {
+     }
+ 
+     /**
+@@ -191,6 +192,16 @@ public class InvoiceController {
+             String reference) {
+     }
+ 
++    /** A deposit to hold as credit: an amount more than zero with at most two decimals, and the date it was paid. */
++    public record NewDeposit(
++            @NotNull(message = "Enter an amount.")
++            @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
++            @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
++            BigDecimal amount,
++            @NotNull(message = "Enter the date it was paid.")
++            LocalDate date) {
++    }
++
+     /** A due date to set on a draft by hand. */
+     public record NewDueDate(
+             @NotNull(message = "Enter the due date.")
+@@ -250,7 +261,10 @@ public class InvoiceController {
+         return list.stream().map(i -> InvoiceSummary.of(i, rate, paid.get(i.getId()), paidOn.get(i.getId()), on)).toList();
+     }
+ 
+-    /** The balance of each client that has a sent invoice; a client not listed owes nothing. Void invoices do not count. */
++    /**
++     * The balance of each client that has a sent invoice or credit; a client not listed owes nothing and
++     * has no credit. Void invoices do not count.
++     */
+     @GetMapping("/api/clients/balances")
+     public List<ClientBalance> balances() {
+         BigDecimal rate = taxRate.percent();
+@@ -267,8 +281,14 @@ public class InvoiceController {
+                 sums[1] = sums[1].add(due);
+             }
+         }
+-        return owed.entrySet().stream().map(e -> new ClientBalance(e.getKey(),
+-                e.getValue()[0].toPlainString(), e.getValue()[1].toPlainString())).toList();
++        Map<Long, BigDecimal> credits = invoices.credits();
++        credits.keySet().forEach(clientId -> owed.computeIfAbsent(clientId,
++                k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) }));
++        return owed.entrySet().stream().map(e -> {
++            BigDecimal credit = credits.getOrDefault(e.getKey(), BigDecimal.ZERO).setScale(2);
++            return new ClientBalance(e.getKey(), e.getValue()[0].subtract(credit).toPlainString(),
++                    e.getValue()[1].toPlainString(), credit.toPlainString());
++        }).toList();
+     }
+ 
+     @PostMapping("/api/clients/{clientId}/invoices")
+@@ -412,6 +432,15 @@ public class InvoiceController {
+                 .toList();
+     }
+ 
++    /** Records a deposit held on the client's account as credit; answers the client's invoices. */
++    @PostMapping("/api/clients/{clientId}/deposits")
++    @ResponseStatus(HttpStatus.CREATED)
++    public List<InvoiceSummary> recordDeposit(@PathVariable Long clientId, @Valid @RequestBody NewDeposit body) {
++        invoices.recordDeposit(clientId, body.amount(), body.date())
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
++        return forClient(clientId);
++    }
++
+     @PostMapping("/api/invoices/{id}/payments")
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index d39c5c2..e76efeb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -288,13 +288,79 @@ public class InvoiceService {
+                 .forEach(this::markSent);
+     }
+ 
+-    /** Issues the draft today, due on the client's terms, and records it in the audit. */
++    /**
++     * Issues the draft today, due on the client's terms, and records it in the audit; then uses the
++     * client's credit on it (see {@link #applyCredit}).
++     */
+     private void markSent(Invoice invoice) {
+         LocalDate issued = today.date();
+         invoice.markSent(issued, dueDateFor(invoice.getClientId(), issued));
+         invoices.saveAndFlush(invoice);
+         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
+                 + " total=" + invoice.total(taxRate.percent()).toPlainString());
++        applyCredit(invoice);
++    }
++
++    /**
++     * Uses the client's credit on the invoice just sent, up to what it has due: the oldest payment's
++     * credit first (lower id first on the same date), each part applied today and recorded in the audit.
++     */
++    private void applyCredit(Invoice invoice) {
++        BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
++        LocalDate now = today.date();
++        boolean used = false;
++        for (Payment payment : payments.findForClient(invoice.getClientId())) {
++            if (due.signum() <= 0) {
++                break;
++            }
++            BigDecimal credit = payment.credit();
++            if (credit.signum() <= 0) {
++                continue;
++            }
++            BigDecimal part = credit.min(due);
++            payment.apply(invoice.getId(), part, now);
++            payments.saveAndFlush(payment);
++            audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
++                    + part.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++            due = due.subtract(part);
++            used = true;
++        }
++        if (used) {
++            recordWriteOff(invoice);
++        }
++    }
++
++    /**
++     * Records a deposit of the amount on the date from the client: the whole amount is held on the
++     * client's account as credit, applied to no invoice, and recorded in the audit; empty if no such
++     * client. The amount has already been checked; a date after today is refused.
++     */
++    @Transactional
++    public Optional<Payment> recordDeposit(Long clientId, BigDecimal amount, LocalDate date) {
++        if (clients.findById(clientId).isEmpty()) {
++            return Optional.empty();
++        }
++        LocalDate now = today.date();
++        if (date.isAfter(now)) {
++            throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
++        }
++        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date));
++        audit.record("DEPOSIT_RECORDED id=" + payment.getId() + " client=" + clientId + " amount="
++                + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++        return Optional.of(payment);
++    }
++
++    /** The unused credit of each client that has any, by client id. */
++    @Transactional(readOnly = true)
++    public Map<Long, BigDecimal> credits() {
++        Map<Long, BigDecimal> credits = new HashMap<>();
++        for (Payment payment : payments.findNotReversed()) {
++            BigDecimal credit = payment.credit();
++            if (credit.signum() > 0) {
++                credits.merge(payment.getClientId(), credit, BigDecimal::add);
++            }
++        }
++        return credits;
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index 05bd540..128533d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -70,6 +70,15 @@ public class Payment {
+         return payment;
+     }
+ 
++    /** A deposit: the whole amount held on the client's account as credit, applied to no invoice. */
++    public static Payment deposit(Long clientId, BigDecimal amount, LocalDate date) {
++        Payment payment = new Payment();
++        payment.clientId = clientId;
++        payment.amount = amount;
++        payment.date = date;
++        return payment;
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -103,6 +112,20 @@ public class Payment {
+         return allocations;
+     }
+ 
++    /** The part of this payment applied to no invoice: credit on the client's account; none once reversed. */
++    public BigDecimal credit() {
++        if (reversed) {
++            return BigDecimal.ZERO;
++        }
++        return amount.subtract(allocations.stream().map(PaymentAllocation::getAmount)
++                .reduce(BigDecimal.ZERO, BigDecimal::add));
++    }
++
++    /** Applies part of this payment's credit to the invoice on the day. */
++    public void apply(Long invoiceId, BigDecimal part, LocalDate on) {
++        allocations.add(new PaymentAllocation(invoiceId, part, on));
++    }
++
+     /** How much of this payment goes to the invoice. */
+     public BigDecimal amountTo(Long invoiceId) {
+         return allocations.stream().filter(a -> a.getInvoiceId().equals(invoiceId))
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/PaymentAllocation.java b/src/main/java/net/officefloor/hq/app/invoices/PaymentAllocation.java
+index 82bb31a..dc2c06f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/PaymentAllocation.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/PaymentAllocation.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.invoices;
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Embeddable;
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ 
+ /** The part of a payment that goes to one invoice. */
+ @Embeddable
+@@ -13,9 +14,19 @@ public class PaymentAllocation {
+ 
+     private BigDecimal amount;
+ 
++    /** The day this part was applied, when later than the payment (credit used); null for the payment's date. */
++    @Column(name = "applied_date")
++    private LocalDate date;
++
+     protected PaymentAllocation() {
+     }
+ 
++    /** A part of a payment applied on the given day rather than the day it was paid. */
++    public PaymentAllocation(Long invoiceId, BigDecimal amount, LocalDate date) {
++        this(invoiceId, amount);
++        this.date = date;
++    }
++
+     public PaymentAllocation(Long invoiceId, BigDecimal amount) {
+         this.invoiceId = invoiceId;
+         this.amount = amount;
+@@ -28,4 +39,9 @@ public class PaymentAllocation {
+     public BigDecimal getAmount() {
+         return amount;
+     }
++
++    /** The day this part was applied, or null when on the payment's own date. */
++    public LocalDate getDate() {
++        return date;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java
+index c1613a7..890b08f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java
+@@ -16,6 +16,14 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
+     @Query("SELECT DISTINCT p FROM Payment p LEFT JOIN FETCH p.allocations WHERE p.reversed = false AND p.id IN (SELECT q.id FROM Payment q JOIN q.allocations a WHERE a.invoiceId IN :invoiceIds) ORDER BY p.date, p.id")
+     List<Payment> findForInvoices(@Param("invoiceIds") Collection<Long> invoiceIds);
+ 
++    /** The client's payments not reversed, with their allocations, oldest first (lower id first on the same date). */
++    @Query("SELECT DISTINCT p FROM Payment p LEFT JOIN FETCH p.allocations WHERE p.reversed = false AND p.clientId = :clientId ORDER BY p.date, p.id")
++    List<Payment> findForClient(@Param("clientId") Long clientId);
++
++    /** Every payment not reversed, with its allocations. */
++    @Query("SELECT DISTINCT p FROM Payment p LEFT JOIN FETCH p.allocations WHERE p.reversed = false")
++    List<Payment> findNotReversed();
++
+     /** For each of the invoices that has been paid something, its id and the amount paid to it by payments not reversed. */
+     @Query("SELECT a.invoiceId, SUM(a.amount) FROM Payment p JOIN p.allocations a WHERE p.reversed = false AND a.invoiceId IN :invoiceIds GROUP BY a.invoiceId")
+     List<Object[]> paidTo(@Param("invoiceIds") Collection<Long> invoiceIds);
+diff --git a/src/main/resources/db/migration/V17__allocation_date.sql b/src/main/resources/db/migration/V17__allocation_date.sql
+new file mode 100644
+index 0000000..0440896
+--- /dev/null
++++ b/src/main/resources/db/migration/V17__allocation_date.sql
+@@ -0,0 +1,3 @@
++-- The day a part of a payment was applied to its invoice, when later than the payment itself (credit
++-- held on the client's account used when an invoice is sent); null means the payment's own date.
++ALTER TABLE payment_allocation ADD COLUMN applied_date DATE;
