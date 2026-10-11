@@ -689,14 +689,14 @@ public class Invoice {
      * them as part of what is payable. The fee is never more than 10% of the grand total (see
      * {@link #lateFeeCap}). The fee is charged once, on the day the invoice becomes overdue
      * ({@link #graceDays()} days after its due date), when something is still owed then; it earns no
-     * interest, and a payment from then on pays it first. A sent invoice not
+     * interest, and a payment from then on pays it once the invoice itself is paid. A sent invoice not
      * spread over instalments, with something still owed more than {@link #graceDays()} days after its
      * due date, earns interest from the end of its grace period ({@link #graceDays()} days after its due
      * date), compounded daily at rate / 360 (Actual/360): a balance B owing for
      * d days earns B x ((1 + rate / 100 / 360)^d - 1), rounded half up to the cent. Each payment after
      * the grace period ends a period; every period earns interest on what the invoice still owed during it
-     * (earlier interest, the fee and retention left out), and a payment pays the fee, then the interest
-     * earned so far, then the invoice. An invoice spread over instalments instead earns interest
+     * (earlier interest, the fee and retention left out), and a payment pays the invoice, then the fee,
+     * then the interest earned so far. An invoice spread over instalments instead earns interest
      * instalment by instalment and is charged the late fee once on each instalment (see
      * {@link #accrueInstalmentInterest}). On the day the
      * charges were waived (after the day's payments), the fee and interest still unpaid are written off
@@ -775,18 +775,20 @@ public class Invoice {
                 unpaidFee = fee;
                 feeCharged = true;
             }
-            BigDecimal toFee = part.amount().min(unpaidFee).max(BigDecimal.ZERO);
-            unpaidFee = unpaidFee.subtract(toFee);
-            BigDecimal rest = part.amount().subtract(toFee);
             if (earnsInterest && part.on().isAfter(from) && owed.signum() > 0) {
                 BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
                 charged = charged.add(earned);
                 unpaidInterest = unpaidInterest.add(earned);
                 from = part.on();
             }
+            BigDecimal toOwed = part.amount().min(owed).max(BigDecimal.ZERO);
+            BigDecimal rest = part.amount().subtract(toOwed);
+            BigDecimal toFee = rest.min(unpaidFee).max(BigDecimal.ZERO);
+            unpaidFee = unpaidFee.subtract(toFee);
+            rest = rest.subtract(toFee);
             BigDecimal toInterest = rest.min(unpaidInterest).max(BigDecimal.ZERO);
             unpaidInterest = unpaidInterest.subtract(toInterest);
-            owed = owed.subtract(rest.subtract(toInterest));
+            owed = owed.subtract(toOwed).subtract(rest.subtract(toInterest));
         }
         if (waiveOn != null) {
             if (earnsInterest && owed.signum() > 0) {
@@ -810,8 +812,8 @@ public class Invoice {
      * Works out the late fee and late interest each instalment of the plan has been charged by the given
      * day, at the late fee (in US dollars) and annual rate (a percentage), from the payments (those not
      * reversed count; what credit notes took off has already come off the schedule). Payments, in the
-     * order they were made, pay each instalment's fee, then its interest earned so far and then the
-     * instalment itself, earliest instalment first. An instalment still not paid off more than
+     * order they were made, pay each instalment itself, then its fee and then its interest earned
+     * so far, earliest instalment first. An instalment still not paid off more than
      * {@link #graceDays()} days after its due date is charged the late fee once, on the day it becomes
      * overdue, never more than 10% of the instalment (rounded down to the cent), and earns interest by the
      * same rule as an invoice: from the end of its own grace period, compounded daily at rate / 360 (Actual/360), on
@@ -874,20 +876,21 @@ public class Invoice {
                     unpaidFee = fee;
                     feeCharged = true;
                 }
-                BigDecimal toFee = left[j].min(unpaidFee).max(BigDecimal.ZERO);
-                unpaidFee = unpaidFee.subtract(toFee);
-                left[j] = left[j].subtract(toFee);
                 if (earnsInterest && late && part.on().isAfter(from) && owed.signum() > 0) {
                     BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
                     charged = charged.add(earned);
                     unpaidInterest = unpaidInterest.add(earned);
                     from = part.on();
                 }
+                BigDecimal toOwed = left[j].min(owed).max(BigDecimal.ZERO);
+                owed = owed.subtract(toOwed);
+                left[j] = left[j].subtract(toOwed);
+                BigDecimal toFee = left[j].min(unpaidFee).max(BigDecimal.ZERO);
+                unpaidFee = unpaidFee.subtract(toFee);
+                left[j] = left[j].subtract(toFee);
                 BigDecimal toInterest = left[j].min(unpaidInterest).max(BigDecimal.ZERO);
                 unpaidInterest = unpaidInterest.subtract(toInterest);
-                BigDecimal toOwed = left[j].subtract(toInterest).min(owed).max(BigDecimal.ZERO);
-                owed = owed.subtract(toOwed);
-                left[j] = left[j].subtract(toInterest).subtract(toOwed);
+                left[j] = left[j].subtract(toInterest);
             }
             if (earnsInterest && late && owed.signum() > 0) {
                 charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
@@ -1148,7 +1151,7 @@ public class Invoice {
     /**
      * Each instalment of the plan at the tax rate once the given amount has been paid, on the given
      * day: payments (with anything written off) pay the instalments in
-     * order, each its late fee, its late interest and then itself, each paid off before the next. An instalment not
+     * order, each itself, its late fee and then its late interest, each paid off before the next. An instalment not
      * paid off more than {@link #graceDays()} days after its due date is overdue; empty when there is no
      * plan.
      */
@@ -1158,6 +1161,9 @@ public class Invoice {
         List<Instalment> schedule = schedule(taxRate);
         for (int k = 0; k < schedule.size(); k++) {
             Instalment instalment = schedule.get(k);
+            BigDecimal part = left.min(instalment.payment()).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
+            left = left.subtract(part);
+            BigDecimal unpaid = instalment.payment().subtract(part);
             BigDecimal fee = k < instalmentFees.size() ? instalmentFees.get(k) : zero();
             BigDecimal toFee = left.min(fee).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
             left = left.subtract(toFee);
@@ -1166,9 +1172,6 @@ public class Invoice {
             BigDecimal toInterest = left.min(interest).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
             left = left.subtract(toInterest);
             BigDecimal interestUnpaid = interest.subtract(toInterest);
-            BigDecimal part = left.min(instalment.payment()).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
-            left = left.subtract(part);
-            BigDecimal unpaid = instalment.payment().subtract(part);
             Instalment.Status status;
             if (unpaid.signum() <= 0 && feeUnpaid.signum() <= 0 && interestUnpaid.signum() <= 0) {
                 status = Instalment.Status.PAID;

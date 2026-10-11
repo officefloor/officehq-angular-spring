@@ -170,7 +170,7 @@ export interface InvoiceDetail {
 
 // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
 // interest, principal and the balance left after it, decimal strings to the cent; what has been paid
-// off it (payments pay the instalments in order, each its late interest first), the late interest it
+// off it (payments pay the instalments in order, each itself first, then its late fee and late interest), the late interest it
 // has been charged ("0.00" when none) and its status.
 export type InstalmentStatus = 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE';
 
