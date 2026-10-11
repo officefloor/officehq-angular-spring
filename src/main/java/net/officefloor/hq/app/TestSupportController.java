@@ -35,7 +35,7 @@ public class TestSupportController {
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt");
+    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "allocations");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
@@ -119,11 +119,12 @@ public class TestSupportController {
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 insert("invoice_line", line.get("id"),
-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt"},
+                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt", "discount_pct"},
                         invoiceId, text(line, "description"),
                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
                         cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"),
-                        flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"));
+                        flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"),
+                        percent(line.get("discountPct"), "invoices[].lineItems[].discountPct"));
             }
         }
         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
@@ -191,7 +192,7 @@ public class TestSupportController {
                     row.put("dueDate", r.get("DUE_DATE") == null ? null : r.get("DUE_DATE").toString());
                     row.put("discountPct", r.get("DISCOUNT_PCT"));
                     row.put("lineItems", jdbc.queryForList(
-                            "SELECT id, description, qty, unit_price, tax_exempt FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                            "SELECT id, description, qty, unit_price, tax_exempt, discount_pct FROM invoice_line WHERE invoice_id = ? ORDER BY id",
                             r.get("ID")).stream().map(l -> {
                                 Map<String, Object> line = new LinkedHashMap<>();
                                 line.put("id", l.get("ID"));
@@ -199,6 +200,7 @@ public class TestSupportController {
                                 line.put("qty", l.get("QTY"));
                                 line.put("unitPrice", l.get("UNIT_PRICE"));
                                 line.put("taxExempt", l.get("TAX_EXEMPT"));
+                                line.put("discountPct", l.get("DISCOUNT_PCT"));
                                 return line;
                             }).toList());
                     return row;

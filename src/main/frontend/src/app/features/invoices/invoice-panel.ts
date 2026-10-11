@@ -79,10 +79,20 @@ function problemWith(line: NewLine): string {
   } else if (Number(line.unitPrice) < 0.01) {
     problems.push('The unit price must be at least $0.01.');
   }
+  if (line.discountPct !== undefined) {
+    if (!/^-?\d+(\.\d+)?$/.test(line.discountPct)) {
+      problems.push('The line discount must be a number, like 15 or 12.5.');
+    } else if (Number(line.discountPct) < 0 || Number(line.discountPct) > 100) {
+      problems.push('The line discount must be from 0 to 100 percent.');
+    } else if (!TWO_DECIMALS.test(line.discountPct)) {
+      problems.push('The line discount can have at most two decimals.');
+    }
+  }
   return problems.join(' ');
 }
 
-// One opened invoice: its status, its lines and its totals. A draft takes new lines and a
+// One opened invoice: its status, its lines and its totals. A line may carry its own percentage
+// discount, shown on the line, with its amount after it. A draft takes new lines and a
 // percentage discount, and can be sent; a change to a sent invoice with no payments puts it back to
 // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
 // until nothing is due; the panel lists them with what has been paid and what is still due. The
@@ -106,6 +116,7 @@ function problemWith(line: NewLine): string {
               <th scope="col">Description</th>
               <th scope="col">Qty</th>
               <th scope="col">Unit price</th>
+              <th scope="col">Line discount</th>
               <th scope="col">Amount</th>
               <th scope="col">Discount share</th>
               <th scope="col">Tax</th>
@@ -117,31 +128,32 @@ function problemWith(line: NewLine): string {
                 <td data-testid="line-description">{{ l.description }}</td>
                 <td data-testid="line-qty">{{ l.qty }}</td>
                 <td data-testid="line-unit-price">{{ money(l.unitPrice) }}</td>
+                <td data-testid="line-discount">{{ money(l.discount) }}</td>
                 <td data-testid="line-amount">{{ money(l.amount) }}</td>
                 <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
               </tr>
             } @empty {
               <tr>
-                <td colspan="6" data-testid="line-empty">No lines yet.</td>
+                <td colspan="7" data-testid="line-empty">No lines yet.</td>
               </tr>
             }
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row" colspan="5">Subtotal</th>
+              <th scope="row" colspan="6">Subtotal</th>
               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="5">Discount ({{ inv.discountPct }}%)</th>
+              <th scope="row" colspan="6">Discount ({{ inv.discountPct }}%)</th>
               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="5">Tax ({{ inv.taxRate }}%)</th>
+              <th scope="row" colspan="6">Tax ({{ inv.taxRate }}%)</th>
               <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="5">Total</th>
+              <th scope="row" colspan="6">Total</th>
               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
             </tr>
           </tfoot>
@@ -255,6 +267,13 @@ function problemWith(line: NewLine): string {
             formControlName="unitPrice"
             required
           />
+          <label for="line-discount-pct">Line discount (%, optional)</label>
+          <input
+            id="line-discount-pct"
+            data-testid="line-form-discount-pct"
+            inputmode="decimal"
+            formControlName="discountPct"
+          />
           <input
             id="line-exempt"
             type="checkbox"
@@ -319,6 +338,7 @@ export class InvoicePanel {
     qty: new FormControl('', { nonNullable: true }),
     unitPrice: new FormControl('', { nonNullable: true }),
     taxExempt: new FormControl(false, { nonNullable: true }),
+    discountPct: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly paymentForm = new FormGroup({
@@ -355,6 +375,10 @@ export class InvoicePanel {
       unitPrice: raw.unitPrice.trim().replace(/^\$/, ''),
       taxExempt: raw.taxExempt,
     };
+    const discountPct = raw.discountPct.trim().replace(/%$/, '').trim();
+    if (discountPct) {
+      line.discountPct = discountPct;
+    }
     const problem = problemWith(line);
     if (problem) {
       this.form.markAllAsTouched();

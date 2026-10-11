@@ -130,7 +130,7 @@ public class Invoice {
     }
 
     /**
-     * The sum of the line amounts, each already rounded half up to the cent — so the subtotal
+     * The sum of the line amounts, each after its own discount and already to the cent — so the subtotal
      * matches what a client gets by adding up the lines shown.
      */
     public BigDecimal subtotal() {
