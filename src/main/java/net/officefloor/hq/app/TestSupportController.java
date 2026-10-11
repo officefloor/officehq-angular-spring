@@ -34,7 +34,7 @@ public class TestSupportController {
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "lineItems");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "allocations");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
@@ -105,13 +105,14 @@ public class TestSupportController {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
                     percent(row.get("discountPct"), "invoices[].discountPct"),
                     money(row.get("discountAmount"), "invoices[].discountAmount"),
-                    row.get("discountCap") == null ? null : money(row.get("discountCap"), "invoices[].discountCap"));
+                    row.get("discountCap") == null ? null : money(row.get("discountCap"), "invoices[].discountCap"),
+                    row.get("discountReason") == null ? null : row.get("discountReason").toString());
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 insert("invoice_line", line.get("id"),
@@ -183,7 +184,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -195,6 +196,9 @@ public class TestSupportController {
                     row.put("discountAmount", r.get("DISCOUNT_AMOUNT"));
                     if (r.get("DISCOUNT_CAP") != null) {
                         row.put("discountCap", r.get("DISCOUNT_CAP"));
+                    }
+                    if (r.get("DISCOUNT_REASON") != null) {
+                        row.put("discountReason", r.get("DISCOUNT_REASON"));
                     }
                     row.put("lineItems", jdbc.queryForList(
                             "SELECT id, description, qty, unit_price, tax_exempt, discount_pct, tax_rate FROM invoice_line WHERE invoice_id = ? ORDER BY id",

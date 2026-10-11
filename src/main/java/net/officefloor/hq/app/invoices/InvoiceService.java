@@ -148,12 +148,13 @@ public class InvoiceService {
     /**
      * Gives an invoice a percentage discount, or a fixed amount off when one is given; the one given
      * clears the other, and the cap (null for none) limits everything taken off, line discounts included. Empty if no such invoice. The values have already been checked; a fixed amount
-     * over the subtotal is refused. A sent invoice with no payments goes back to draft; one with a
+     * over the subtotal is refused, as is a discount taking off more than a fifth of the subtotal
+     * (after the cap) without a reason. A sent invoice with no payments goes back to draft; one with a
      * payment refuses it.
      */
     @Transactional
     public Optional<Invoice> setDiscount(Long invoiceId, BigDecimal discountPct, BigDecimal discountAmount,
-            BigDecimal discountCap) {
+            BigDecimal discountCap, String discountReason) {
         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
         found.ifPresent(invoice -> {
             boolean reopened = reopenForChange(invoice, "A paid invoice cannot be given a discount.");
@@ -163,6 +164,11 @@ public class InvoiceService {
                 invoice.setDiscountPct(discountPct);
             }
             invoice.setDiscountCap(discountCap);
+            invoice.setDiscountReason(discountReason);
+            if (invoice.discountLacksReason()) {
+                throw new InvoiceRejectedException(
+                        "A discount of more than 20% of the subtotal needs a reason.");
+            }
             invoices.saveAndFlush(invoice);
             if (reopened) {
                 audit.record("INVOICE_REOPENED id=" + invoice.getId());
@@ -192,7 +198,7 @@ public class InvoiceService {
 
     /**
      * Sends a draft invoice, issuing it today and making it due on the client's terms, and records it in the audit; empty if
-     * no such invoice. An invoice already sent, or with no lines, is refused.
+     * no such invoice. An invoice already sent, with no lines, or whose discount needs a reason but has none, is refused.
      */
     @Transactional
     public Optional<Invoice> send(Long invoiceId) {
@@ -207,6 +213,10 @@ public class InvoiceService {
             if (invoice.getLines().isEmpty()) {
                 throw new InvoiceRejectedException("Add at least one line before sending the invoice.");
             }
+            if (invoice.discountLacksReason()) {
+                throw new InvoiceRejectedException(
+                        "The discount is more than 20% of the subtotal; give it a reason before sending the invoice.");
+            }
             markSent(invoice);
         });
         return found;
@@ -214,12 +224,12 @@ public class InvoiceService {
 
     /**
      * Sends each of the client's drafts that has at least one line, lowest id first, as {@link #send}
-     * would; drafts with no lines stay drafts.
+     * would; drafts with no lines, or whose discount needs a reason but has none, stay drafts.
      */
     @Transactional
     public void sendAllDrafts(Long clientId) {
         invoices.findByClientIdOrderByIdAsc(clientId).stream()
-                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty())
+                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty() && !invoice.discountLacksReason())
                 .forEach(this::markSent);
     }
 

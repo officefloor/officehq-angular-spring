@@ -59,7 +59,7 @@ export interface InvoicePaymentView {
 // amount taken off instead ("0.00" when the discount is a percentage); `discountCap` is the most taken
 // off in all, line discounts included (null when uncapped); `discount` is the amount the invoice
 // discount takes off, rounded half up to the cent and shrunk so the total taken off stays within the cap; `taxRate` is the workspace's tax percentage (without
-// trailing zeros, "0" when none is set) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
+// trailing zeros, "0" when none is set); `discountReason` is why the discount was given (null when none) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
 // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
 // `amountDue` is the total less that and less `writtenOff`: when payments leave less than $1.00 due,
 // the rest is written off ("0.00" when nothing is). `reference` is its ISO 11649 RF payment reference, made from
@@ -78,6 +78,7 @@ export interface InvoiceDetail {
   discountAmount: string;
   discountCap: string | null;
   discount: string;
+  discountReason: string | null;
   taxRate: string;
   tax: string;
   total: string;
@@ -120,8 +121,8 @@ export interface NewLine {
 }
 
 // A discount to give: either a percentage or a fixed amount, as entered, with an optional cap on
-// what a percentage takes off.
-export type NewDiscount = ({ discountPct: string } | { discountAmount: string }) & { discountCap?: string };
+// what a percentage takes off and an optional reason, needed when it takes off more than a fifth of the subtotal.
+export type NewDiscount = ({ discountPct: string } | { discountAmount: string }) & { discountCap?: string; discountReason?: string };
 
 // What a client still owes across its sent invoices (drafts do not count), after discounts, tax and
 // payments, and how much of that is overdue; decimal strings to the cent, worked out by the server.

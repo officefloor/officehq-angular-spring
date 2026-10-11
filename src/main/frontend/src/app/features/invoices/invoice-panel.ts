@@ -200,6 +200,12 @@ function problemWith(line: NewLine): string {
               </th>
               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
             </tr>
+            @if (inv.discountReason) {
+              <tr>
+                <th scope="row" colspan="8">Discount reason</th>
+                <td data-testid="invoice-discount-reason">{{ inv.discountReason }}</td>
+              </tr>
+            }
             <tr>
               <th scope="row" colspan="8">Tax (lines at their own rate, otherwise {{ inv.taxRate }}%)</th>
               <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
@@ -385,6 +391,13 @@ function problemWith(line: NewLine): string {
             inputmode="decimal"
             formControlName="cap"
           />
+          <label for="discount-reason">reason (needed over 20% of the subtotal)</label>
+          <input
+            id="discount-reason"
+            data-testid="discount-form-reason"
+            maxlength="500"
+            formControlName="reason"
+          />
           <button type="submit" data-testid="discount-form-submit" [disabled]="savingDiscount()">
             Apply discount
           </button>
@@ -440,6 +453,7 @@ export class InvoicePanel {
     pct: new FormControl('', { nonNullable: true }),
     amount: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
+    reason: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -536,6 +550,10 @@ export class InvoicePanel {
     const discount: NewDiscount = pct ? { discountPct: pct } : { discountAmount: amount };
     if (cap) {
       discount.discountCap = cap;
+    }
+    const reason = raw.reason.trim();
+    if (reason) {
+      discount.discountReason = reason;
     }
     this.service.setDiscount(invoiceId, discount).subscribe({
       next: (detail) => {

@@ -94,7 +94,7 @@ public class InvoiceController {
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
-            String discountCap, String discount, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate) {
+            String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -110,7 +110,7 @@ public class InvoiceController {
                     i.getDiscountPct().stripTrailingZeros().toPlainString(),
                     i.getDiscountAmount().setScale(2).toPlainString(),
                     i.getDiscountCap() == null ? null : i.getDiscountCap().setScale(2).toPlainString(),
-                    i.discount().toPlainString(),
+                    i.discount().toPlainString(), i.getDiscountReason(),
                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
                     i.total(taxRate).toPlainString(),
                     payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
@@ -122,6 +122,7 @@ public class InvoiceController {
      * A discount to give: a percentage from 0 to 100 with at most two decimals, or a fixed amount
      * of money, not negative and to the cent. Exactly one of them. Optionally a cap, money not
      * negative and to the cent, that everything taken off, line discounts included, never comes to more than.
+     * Optionally a reason, needed when the discount takes off more than a fifth of the subtotal.
      */
     public record NewDiscount(
             @DecimalMin(value = "0", message = "The discount must be from 0 to 100 percent.")
@@ -133,7 +134,9 @@ public class InvoiceController {
             BigDecimal discountAmount,
             @DecimalMin(value = "0", message = "The discount cap cannot be negative.")
             @Digits(integer = 10, fraction = 2, message = "The discount cap can have at most two decimals.")
-            BigDecimal discountCap) {
+            BigDecimal discountCap,
+            @Size(max = 500, message = "The discount reason can be at most 500 characters.")
+            String discountReason) {
 
         @AssertTrue(message = "Enter either a discount percentage or a discount amount.")
         public boolean isDiscountGiven() {
@@ -308,7 +311,7 @@ public class InvoiceController {
 
     @PutMapping("/api/invoices/{id}/discount")
     public InvoiceDetail setDiscount(@PathVariable Long id, @Valid @RequestBody NewDiscount body) {
-        return invoices.setDiscount(id, body.discountPct(), body.discountAmount(), body.discountCap())
+        return invoices.setDiscount(id, body.discountPct(), body.discountAmount(), body.discountCap(), body.discountReason())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

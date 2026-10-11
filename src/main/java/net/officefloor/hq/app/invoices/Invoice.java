@@ -53,6 +53,9 @@ public class Invoice {
     @Column(name = "discount_cap")
     private BigDecimal discountCap;
 
+    @Column(name = "discount_reason")
+    private String discountReason;
+
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
@@ -80,6 +83,7 @@ public class Invoice {
         copy.discountPct = discountPct;
         copy.discountAmount = discountAmount;
         copy.discountCap = discountCap;
+        copy.discountReason = discountReason;
         lines.forEach(line -> copy.lines.add(line.copy()));
         return copy;
     }
@@ -117,6 +121,26 @@ public class Invoice {
     /** The most taken off the invoice in all, line discounts included, to the cent; null when there is no cap. */
     public BigDecimal getDiscountCap() {
         return discountCap;
+    }
+
+    /** Why the discount was given; null when no reason was given. */
+    public String getDiscountReason() {
+        return discountReason;
+    }
+
+    /** Sets why the discount was given; blank is no reason. */
+    public void setDiscountReason(String discountReason) {
+        this.discountReason = discountReason == null || discountReason.isBlank() ? null : discountReason.strip();
+    }
+
+    /** Whether the discount takes off more than a fifth of the subtotal, after any cap, and so needs a reason. */
+    public boolean discountNeedsReason() {
+        return discount().multiply(BigDecimal.valueOf(5)).compareTo(subtotal()) > 0;
+    }
+
+    /** Whether the discount needs a reason but has none. */
+    public boolean discountLacksReason() {
+        return discountNeedsReason() && discountReason == null;
     }
 
     /** Sets the percentage taken off the subtotal, clearing any fixed amount; it has already been checked. */
