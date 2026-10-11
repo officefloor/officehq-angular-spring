@@ -867,17 +867,26 @@ public class InvoiceService {
      * invoices with those references, applied in the same order; one that is not the reference of any
      * of the client's invoices is refused; what is paid beyond what those invoices owe together is held
      * as credit.
+     * A reference may state the amount it gets: that amount goes to that invoice, and only the rest of
+     * the payment is applied, in the same order, to the references without one. The amounts stated must
+     * each be more than zero and together no more than the payment; each must be no more than its
+     * invoice has due and at least its minimum part payment (both checked with the other parts).
      * The payment keeps the reference of the first invoice it reaches.
      */
     @Transactional
     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
-            List<String> references) {
-        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId), date);
+            List<QuotedReference> references) {
+        Currency currency = currencyOf(clientId);
+        BigDecimal amount = converted(paidAmount, paidIn, currency, date);
         List<Invoice> ofClient = loadForClient(clientId);
         List<Invoice> candidates = ofClient;
+        List<PaymentAllocation> parts = new ArrayList<>();
+        BigDecimal left = amount;
         if (!references.isEmpty()) {
             Set<Long> named = new HashSet<>();
-            for (String reference : references) {
+            Set<Long> stated = new HashSet<>();
+            for (QuotedReference quoted : references) {
+                String reference = quoted.reference();
                 Invoice invoice = ofClient.stream()
                         .filter(i -> reference.equals(PaymentReference.of(i.getId())))
                         .findFirst()
@@ -893,8 +902,25 @@ public class InvoiceService {
                 if (invoice.isCreditNote()) {
                     throw new InvoiceRejectedException(invoice.number() + " is a credit note and takes no payments.");
                 }
-                named.add(invoice.getId());
+                if (quoted.amount() == null) {
+                    named.add(invoice.getId());
+                    continue;
+                }
+                if (quoted.amount().signum() <= 0) {
+                    throw new InvoiceRejectedException("The amount for " + number + " must be more than zero.");
+                }
+                if (!stated.add(invoice.getId())) {
+                    throw new InvoiceRejectedException("State only one amount for " + number + ".");
+                }
+                parts.add(new PaymentAllocation(invoice.getId(), quoted.amount()));
+                left = left.subtract(quoted.amount());
             }
+            if (left.signum() < 0) {
+                BigDecimal sum = amount.subtract(left);
+                throw new InvoiceRejectedException("The amounts stated for the invoices add up to "
+                        + currency.format(sum) + ", more than the " + currency.format(amount) + " paid.");
+            }
+            named.removeAll(stated);
             candidates = ofClient.stream().filter(i -> named.contains(i.getId())).toList();
         }
         List<Invoice> unordered = candidates.stream()
@@ -919,22 +945,18 @@ public class InvoiceService {
                         Comparator.reverseOrder())
                 .thenComparing(Invoice::getId);
         List<Invoice> sent = unordered.stream().sorted(byPriority).toList();
-        BigDecimal owed = BigDecimal.ZERO;
-        BigDecimal left = amount;
-        List<PaymentAllocation> parts = new ArrayList<>();
         for (Invoice invoice : sent) {
             BigDecimal due = dues.get(invoice.getId());
             if (due.signum() <= 0) {
                 continue;
             }
-            owed = owed.add(due);
             if (left.signum() > 0) {
                 BigDecimal part = left.min(due);
                 parts.add(new PaymentAllocation(invoice.getId(), part));
                 left = left.subtract(part);
             }
         }
-        if (owed.signum() <= 0) {
+        if (parts.isEmpty()) {
             throw new InvoiceRejectedException(references.isEmpty() ? "The client has no unpaid invoices to pay."
                     : "Those invoices have already been paid.");
         }

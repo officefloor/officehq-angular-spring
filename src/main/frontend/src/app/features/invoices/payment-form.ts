@@ -53,7 +53,8 @@ function quotedReferenceChecks(reference: string): boolean {
 }
 
 // What is wrong with a payment, or '' when it can be recorded. With `several` the reference box may
-// hold several references separated by commas, each checked on its own.
+// hold several references separated by commas, each checked on its own, and each may state the amount
+// it gets after an equals sign (INV-0000018=50): a number more than zero with at most two decimals.
 function problemWithPayment(payment: NewPayment, several: boolean): string {
   const problems: string[] = [];
   if (!payment.amount) {
@@ -71,7 +72,7 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
     : payment.reference
       ? [payment.reference]
       : [];
-  const mistyped = quoted.filter((r) => !quotedReferenceChecks(r));
+  const mistyped = quoted.filter((r) => !quotedReferenceChecks(several ? r.split('=')[0] : r));
   if (mistyped.length > 0) {
     problems.push(
       quoted.length > 1
@@ -79,12 +80,22 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
         : 'The payment reference is mistyped: check it against the invoice.',
     );
   }
+  const stated = several ? quoted.filter((r) => r.includes('=')) : [];
+  for (const r of stated) {
+    const amount = r.slice(r.indexOf('=') + 1).replace(/^\$/, '');
+    if (!TWO_DECIMALS.test(amount)) {
+      problems.push(`The amount for ${r.split('=')[0]} must be a number with at most two decimals.`);
+    } else if (Number(amount) <= 0) {
+      problems.push(`The amount for ${r.split('=')[0]} must be more than zero.`);
+    }
+  }
   return problems.join(' ');
 }
 
 // Records a payment. It goes to the open invoice (`invoiceId`), or, when none is open, to the client's
 // invoices whose references are quoted (several may be, separated by commas: RF references or invoice
-// numbers, applied overdue first, then largest due first), or without one to the client's unpaid
+// numbers, applied overdue first, then largest due first; one may state the amount it gets after an
+// equals sign, INV-0000018=50, and only the rest goes to those without one), or without one to the client's unpaid
 // invoices in that order. What is paid beyond
 // what is due is held on the client's account as credit. The server refuses a payment on a draft, or dated after today
 // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
@@ -121,7 +132,7 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
       />
       <label for="payment-reference">
         @if (invoiceId() === null) {
-          References or invoice numbers quoted, separated by commas (optional)
+          References or invoice numbers quoted, separated by commas, each optionally with =amount (optional)
         } @else {
           Reference or invoice number quoted (optional)
         }

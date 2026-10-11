@@ -543,17 +543,42 @@ public class InvoiceController {
 
     /**
      * The references quoted, separated by commas, each without spaces and in the order typed (an
-     * invoice number standing for its RF reference); empty when none was. A mistyped one is refused.
+     * invoice number standing for its RF reference), each with the amount stated after an equals sign
+     * (INV-0000018=50) or none; empty when none was. A mistyped reference, or an amount that is not a
+     * number with at most two decimals, is refused.
      */
-    private static List<String> references(String typed) {
+    private static List<QuotedReference> references(String typed) {
         if (typed == null || typed.isBlank()) {
             return List.of();
         }
         return Arrays.stream(typed.split(","))
                 .filter(part -> !part.isBlank())
-                .map(InvoiceController::reference)
+                .map(InvoiceController::quoted)
                 .distinct()
                 .toList();
+    }
+
+    private static QuotedReference quoted(String part) {
+        int equals = part.indexOf('=');
+        if (equals < 0) {
+            return new QuotedReference(reference(part), null);
+        }
+        String reference = reference(part.substring(0, equals));
+        if (reference == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Quote a reference before the amount in "
+                    + part.trim() + ".");
+        }
+        String stated = part.substring(equals + 1).replaceAll("\\s", "").replaceFirst("^\\$", "");
+        if (!stated.matches("-?\\d+(\\.\\d+)?")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The amount in " + part.trim()
+                    + " must be a number.");
+        }
+        BigDecimal amount = new BigDecimal(stated);
+        if (amount.scale() > 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The amount in " + part.trim()
+                    + " can have at most two decimals.");
+        }
+        return new QuotedReference(reference, amount);
     }
 
     /** Records a deposit held on the client's account as credit; answers the client's invoices. */
