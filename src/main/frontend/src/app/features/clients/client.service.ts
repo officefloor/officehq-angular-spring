@@ -8,6 +8,8 @@ export interface Client {
   email: string;
   // Payment terms in days; null means due at the end of the month after issue.
   termsDays: number | null;
+  // The standard percentage discount new invoices for the client start with; 0 is none.
+  discountPct: number;
 }
 
 export type NewClient = Omit<Client, 'id'>;

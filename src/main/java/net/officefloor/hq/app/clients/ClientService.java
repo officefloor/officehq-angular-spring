@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.clients;
 
+import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -29,11 +30,11 @@ public class ClientService {
     }
 
     @Transactional
-    public Client add(String name, String email, Integer termsDays) {
+    public Client add(String name, String email, Integer termsDays, BigDecimal discountPct) {
         String address = email.trim();
         if (clients.existsByEmailIgnoreCase(address)) {
             throw new ClientRejectedException("Another client already has the email " + address + ".");
         }
-        return clients.save(new Client(name.trim(), address, termsDays));
+        return clients.save(new Client(name.trim(), address, termsDays, discountPct));
     }
 }

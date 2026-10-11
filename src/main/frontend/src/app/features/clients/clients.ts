@@ -105,6 +105,17 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
           step="1"
           formControlName="terms"
         />
+        <label for="client-discount">Standard discount % (optional)</label>
+        <input
+          id="client-discount"
+          data-testid="client-form-discount-pct"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          max="100"
+          step="0.01"
+          formControlName="discountPct"
+        />
         <button type="submit" data-testid="client-form-submit" [disabled]="saving()">
           Add client
         </button>
@@ -153,6 +164,7 @@ export class Clients {
       validators: [Validators.required, Validators.pattern(PROPER_EMAIL)],
     }),
     terms: new FormControl<number | null>(null),
+    discountPct: new FormControl<number | null>(null),
   });
 
   constructor() {
@@ -176,8 +188,10 @@ export class Clients {
     const email = this.form.controls.email.value.trim();
     const terms = this.form.controls.terms.value;
     const termsDays = terms === null || (terms as unknown) === '' ? null : Number(terms);
-    this.form.setValue({ name, email, terms: termsDays });
-    const problem = this.problemWith(name, email, termsDays);
+    const discount = this.form.controls.discountPct.value;
+    const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
+    this.form.setValue({ name, email, terms: termsDays, discountPct });
+    const problem = this.problemWith(name, email, termsDays, discountPct);
     if (problem) {
       this.form.markAllAsTouched();
       this.error.set(problem);
@@ -185,7 +199,7 @@ export class Clients {
     }
     this.saving.set(true);
     this.error.set('');
-    this.service.add({ name, email, termsDays }).subscribe({
+    this.service.add({ name, email, termsDays, discountPct: discountPct ?? 0 }).subscribe({
       next: (created) => {
         this.clients.update((list) => [...list, created].sort(byName));
         this.form.reset();
@@ -234,7 +248,12 @@ export class Clients {
 
   // What is wrong with the client, or '' when it can be saved. A duplicate email is checked here
   // for a quick answer; the server is the authority.
-  private problemWith(name: string, email: string, termsDays: number | null): string {
+  private problemWith(
+    name: string,
+    email: string,
+    termsDays: number | null,
+    discountPct: number | null,
+  ): string {
     const problems: string[] = [];
     if (!name) {
       problems.push("Enter the client's name.");
@@ -248,6 +267,13 @@ export class Clients {
     }
     if (termsDays !== null && !(Number.isInteger(termsDays) && termsDays >= 1 && termsDays <= 365)) {
       problems.push('Payment terms must be from 1 to 365 days.');
+    }
+    if (discountPct !== null) {
+      if (!(Number.isFinite(discountPct) && discountPct >= 0 && discountPct <= 100)) {
+        problems.push('The standard discount must be from 0 to 100 percent.');
+      } else if (Math.abs(Math.round(discountPct * 100) - discountPct * 100) > 1e-6) {
+        problems.push('The standard discount can have at most two decimals.');
+      }
     }
     return problems.join(' ');
   }

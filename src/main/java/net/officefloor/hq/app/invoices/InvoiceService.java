@@ -59,14 +59,18 @@ public class InvoiceService {
         return invoices.findWithLinesById(id);
     }
 
-    /** An empty draft for the client, issued today and due on the client's terms; empty if no such client. */
+    /**
+     * An empty draft for the client, issued today, due on the client's terms and starting with the
+     * client's standard discount; empty if no such client.
+     */
     @Transactional
     public Optional<Invoice> newDraft(Long clientId) {
-        if (!clients.existsById(clientId)) {
-            return Optional.empty();
-        }
-        LocalDate issued = today.date();
-        return Optional.of(invoices.save(Invoice.draft(clientId, issued, dueDateFor(clientId, issued))));
+        return clients.findById(clientId).map(client -> {
+            LocalDate issued = today.date();
+            Invoice draft = Invoice.draft(clientId, issued, dueDateFor(clientId, issued));
+            draft.setDiscountPct(client.getDiscountPct());
+            return invoices.save(draft);
+        });
     }
 
     /**
