@@ -1,0 +1,330 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 35efc67..77fe1b2 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -6,6 +6,8 @@ export interface Client {
+   id: number;
+   name: string;
+   email: string;
++  // Payment terms in days; null means due at the end of the month after issue.
++  termsDays: number | null;
+ }
+ 
+ export type NewClient = Omit<Client, 'id'>;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 5b82832..1564a21 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -94,6 +94,17 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+           formControlName="email"
+           required
+         />
++        <label for="client-terms">Payment terms in days (optional)</label>
++        <input
++          id="client-terms"
++          data-testid="client-form-terms"
++          type="number"
++          inputmode="numeric"
++          min="1"
++          max="365"
++          step="1"
++          formControlName="terms"
++        />
+         <button type="submit" data-testid="client-form-submit" [disabled]="saving()">
+           Add client
+         </button>
+@@ -141,6 +152,7 @@ export class Clients {
+       nonNullable: true,
+       validators: [Validators.required, Validators.pattern(PROPER_EMAIL)],
+     }),
++    terms: new FormControl<number | null>(null),
+   });
+ 
+   constructor() {
+@@ -162,8 +174,10 @@ export class Clients {
+   protected add(): void {
+     const name = this.form.controls.name.value.trim();
+     const email = this.form.controls.email.value.trim();
+-    this.form.setValue({ name, email });
+-    const problem = this.problemWith(name, email);
++    const terms = this.form.controls.terms.value;
++    const termsDays = terms === null || (terms as unknown) === '' ? null : Number(terms);
++    this.form.setValue({ name, email, terms: termsDays });
++    const problem = this.problemWith(name, email, termsDays);
+     if (problem) {
+       this.form.markAllAsTouched();
+       this.error.set(problem);
+@@ -171,7 +185,7 @@ export class Clients {
+     }
+     this.saving.set(true);
+     this.error.set('');
+-    this.service.add({ name, email }).subscribe({
++    this.service.add({ name, email, termsDays }).subscribe({
+       next: (created) => {
+         this.clients.update((list) => [...list, created].sort(byName));
+         this.form.reset();
+@@ -220,7 +234,7 @@ export class Clients {
+ 
+   // What is wrong with the client, or '' when it can be saved. A duplicate email is checked here
+   // for a quick answer; the server is the authority.
+-  private problemWith(name: string, email: string): string {
++  private problemWith(name: string, email: string, termsDays: number | null): string {
+     const problems: string[] = [];
+     if (!name) {
+       problems.push("Enter the client's name.");
+@@ -232,6 +246,9 @@ export class Clients {
+     } else if (this.clients().some((c) => c.email.toLowerCase() === email.toLowerCase())) {
+       problems.push(`Another client already has the email ${email}.`);
+     }
++    if (termsDays !== null && !(Number.isInteger(termsDays) && termsDays >= 1 && termsDays <= 365)) {
++      problems.push('Payment terms must be from 1 to 365 days.');
++    }
+     return problems.join(' ');
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 3c50bf5..26c2178 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -32,7 +32,7 @@ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+@@ -92,14 +92,8 @@ public class TestSupportController {
+         }
+         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
+             only(row, CLIENT_FIELDS, "clients[]");
+-            Object id = row.get("id");
+-            if (id == null) {
+-                jdbc.update("INSERT INTO client (name, email) VALUES (?, ?)",
+-                        text(row, "name"), text(row, "email"));
+-            } else {
+-                jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
+-                        id(id), text(row, "name"), text(row, "email"));
+-            }
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days"},
++                    text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"));
+         }
+         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+             only(row, INVOICE_FIELDS, "invoices[]");
+@@ -177,12 +171,15 @@ public class TestSupportController {
+         if (!taxRate.isEmpty()) {
+             out.put("settings", Map.of("taxRate", new BigDecimal(taxRate.get(0))));
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+                     row.put("name", r.get("NAME"));
+                     row.put("email", r.get("EMAIL"));
++                    if (r.get("TERMS_DAYS") != null) {
++                        row.put("termsDays", r.get("TERMS_DAYS"));
++                    }
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+@@ -253,6 +250,22 @@ public class TestSupportController {
+         return jdbc.queryForObject("SELECT MAX(id) FROM " + table, Long.class);
+     }
+ 
++    /** A whole number of days, not negative; null when left out. */
++    private static Integer days(Object value, String field) {
++        if (value == null) {
++            return null;
++        }
++        try {
++            int days = new BigDecimal(value.toString()).intValueExact();
++            if (days < 0) {
++                throw refuse(field + " cannot be negative, not " + value);
++            }
++            return days;
++        } catch (NumberFormatException | ArithmeticException e) {
++            throw refuse(field + " must be a whole number of days, not " + value);
++        }
++    }
++
+     /** A true/false flag; false when left out. */
+     private static boolean flag(Object value, String where) {
+         if (value == null) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 8a3f0ee..27a19ff 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -19,12 +19,16 @@ public class Client {
+ 
+     private String email;
+ 
++    /** Payment terms in days; null means the usual end of the following month. */
++    private Integer termsDays;
++
+     protected Client() {
+     }
+ 
+-    public Client(String name, String email) {
++    public Client(String name, String email, Integer termsDays) {
+         this.name = name;
+         this.email = email;
++        this.termsDays = termsDays;
+     }
+ 
+     public Long getId() {
+@@ -38,4 +42,8 @@ public class Client {
+     public String getEmail() {
+         return email;
+     }
++
++    public Integer getTermsDays() {
++        return termsDays;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index d7fd274..026ec46 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.clients;
+ 
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.Email;
++import jakarta.validation.constraints.Max;
++import jakarta.validation.constraints.Min;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+@@ -18,9 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/clients")
+ public class ClientController {
+ 
+-    public record ClientView(Long id, String name, String email) {
++    public record ClientView(Long id, String name, String email, Integer termsDays) {
+         static ClientView of(Client c) {
+-            return new ClientView(c.getId(), c.getName(), c.getEmail());
++            return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays());
+         }
+     }
+ 
+@@ -32,7 +34,10 @@ public class ClientController {
+             @Email(regexp = PROPER_EMAIL,
+                     message = "Enter a proper email address, like name@company.com.")
+             @Size(max = 255, message = "The email must be at most 255 characters.")
+-            String email) {
++            String email,
++            @Min(value = 1, message = "Payment terms must be from 1 to 365 days.")
++            @Max(value = 365, message = "Payment terms must be from 1 to 365 days.")
++            Integer termsDays) {
+     }
+ 
+     /**
+@@ -55,6 +60,6 @@ public class ClientController {
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClientView add(@Valid @RequestBody NewClient body) {
+-        return ClientView.of(clients.add(body.name(), body.email()));
++        return ClientView.of(clients.add(body.name(), body.email(), body.termsDays()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 38c14c2..aa01f0d 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -29,11 +29,11 @@ public class ClientService {
+     }
+ 
+     @Transactional
+-    public Client add(String name, String email) {
++    public Client add(String name, String email, Integer termsDays) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+-        return clients.save(new Client(name.trim(), address));
++        return clients.save(new Client(name.trim(), address, termsDays));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index d16e108..08ce8d2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -14,6 +14,7 @@ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.TaxRate;
+ import net.officefloor.hq.app.Today;
++import net.officefloor.hq.app.clients.Client;
+ import net.officefloor.hq.app.clients.ClientRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -58,14 +59,14 @@ public class InvoiceService {
+         return invoices.findWithLinesById(id);
+     }
+ 
+-    /** An empty draft for the client, issued today and due on the last day of the following month; empty if no such client. */
++    /** An empty draft for the client, issued today and due on the client's terms; empty if no such client. */
+     @Transactional
+     public Optional<Invoice> newDraft(Long clientId) {
+         if (!clients.existsById(clientId)) {
+             return Optional.empty();
+         }
+         LocalDate issued = today.date();
+-        return Optional.of(invoices.save(Invoice.draft(clientId, issued, dueDateFor(issued))));
++        return Optional.of(invoices.save(Invoice.draft(clientId, issued, dueDateFor(clientId, issued))));
+     }
+ 
+     /**
+@@ -77,13 +78,24 @@ public class InvoiceService {
+     public Optional<Invoice> duplicate(Long invoiceId) {
+         return invoices.findWithLinesById(invoiceId).map(original -> {
+             LocalDate issued = today.date();
+-            Invoice copy = invoices.saveAndFlush(original.duplicate(issued, dueDateFor(issued)));
++            Invoice copy = invoices.saveAndFlush(original.duplicate(issued, dueDateFor(original.getClientId(), issued)));
+             audit.record("INVOICE_DUPLICATED from=" + InvoiceNumber.of(original.getId())
+                     + " to=" + InvoiceNumber.of(copy.getId()));
+             return copy;
+         });
+     }
+ 
++    /**
++     * An invoice for a client with payment terms is due that many days after it is issued; otherwise
++     * as {@link #dueDateFor(LocalDate)}.
++     */
++    private LocalDate dueDateFor(Long clientId, LocalDate issued) {
++        return clients.findById(clientId)
++                .map(Client::getTermsDays)
++                .map(days -> issued.plusDays(days))
++                .orElseGet(() -> dueDateFor(issued));
++    }
++
+     /** A new invoice is due on the last day of the month after the month it is issued in. */
+     static LocalDate dueDateFor(LocalDate issued) {
+         LocalDate nextMonth = issued.plusMonths(1);
+@@ -179,8 +191,7 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Sends a draft invoice, issuing it today and making it due on the last day of the following
+-     * month, and records it in the audit; empty if
++     * Sends a draft invoice, issuing it today and making it due on the client's terms, and records it in the audit; empty if
+      * no such invoice. An invoice already sent, or with no lines, is refused.
+      */
+     @Transactional
+@@ -197,7 +208,7 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException("Add at least one line before sending the invoice.");
+             }
+             LocalDate issued = today.date();
+-            invoice.markSent(issued, dueDateFor(issued));
++            invoice.markSent(issued, dueDateFor(invoice.getClientId(), issued));
+             invoices.saveAndFlush(invoice);
+             audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + InvoiceNumber.of(invoice.getId())
+                     + " total=" + invoice.total(taxRate.percent()).toPlainString());
+diff --git a/src/main/resources/db/migration/V12__client_terms.sql b/src/main/resources/db/migration/V12__client_terms.sql
+new file mode 100644
+index 0000000..7ca2e04
+--- /dev/null
++++ b/src/main/resources/db/migration/V12__client_terms.sql
+@@ -0,0 +1,2 @@
++-- A client's own payment terms in days; NULL means invoices are due at the end of the following month.
++ALTER TABLE client ADD COLUMN terms_days INT;
