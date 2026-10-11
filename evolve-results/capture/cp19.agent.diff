@@ -1,0 +1,351 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 23c9e00..37494a2 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -79,10 +79,20 @@ function problemWith(line: NewLine): string {
+   } else if (Number(line.unitPrice) < 0.01) {
+     problems.push('The unit price must be at least $0.01.');
+   }
++  if (line.discountPct !== undefined) {
++    if (!/^-?\d+(\.\d+)?$/.test(line.discountPct)) {
++      problems.push('The line discount must be a number, like 15 or 12.5.');
++    } else if (Number(line.discountPct) < 0 || Number(line.discountPct) > 100) {
++      problems.push('The line discount must be from 0 to 100 percent.');
++    } else if (!TWO_DECIMALS.test(line.discountPct)) {
++      problems.push('The line discount can have at most two decimals.');
++    }
++  }
+   return problems.join(' ');
+ }
+ 
+-// One opened invoice: its status, its lines and its totals. A draft takes new lines and a
++// One opened invoice: its status, its lines and its totals. A line may carry its own percentage
++// discount, shown on the line, with its amount after it. A draft takes new lines and a
+ // percentage discount, and can be sent; a change to a sent invoice with no payments puts it back to
+ // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
+ // until nothing is due; the panel lists them with what has been paid and what is still due. The
+@@ -106,6 +116,7 @@ function problemWith(line: NewLine): string {
+               <th scope="col">Description</th>
+               <th scope="col">Qty</th>
+               <th scope="col">Unit price</th>
++              <th scope="col">Line discount</th>
+               <th scope="col">Amount</th>
+               <th scope="col">Discount share</th>
+               <th scope="col">Tax</th>
+@@ -117,31 +128,32 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="line-description">{{ l.description }}</td>
+                 <td data-testid="line-qty">{{ l.qty }}</td>
+                 <td data-testid="line-unit-price">{{ money(l.unitPrice) }}</td>
++                <td data-testid="line-discount">{{ money(l.discount) }}</td>
+                 <td data-testid="line-amount">{{ money(l.amount) }}</td>
+                 <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
+                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
+               </tr>
+             } @empty {
+               <tr>
+-                <td colspan="6" data-testid="line-empty">No lines yet.</td>
++                <td colspan="7" data-testid="line-empty">No lines yet.</td>
+               </tr>
+             }
+           </tbody>
+           <tfoot>
+             <tr>
+-              <th scope="row" colspan="5">Subtotal</th>
++              <th scope="row" colspan="6">Subtotal</th>
+               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="5">Discount ({{ inv.discountPct }}%)</th>
++              <th scope="row" colspan="6">Discount ({{ inv.discountPct }}%)</th>
+               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="5">Tax ({{ inv.taxRate }}%)</th>
++              <th scope="row" colspan="6">Tax ({{ inv.taxRate }}%)</th>
+               <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="5">Total</th>
++              <th scope="row" colspan="6">Total</th>
+               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
+             </tr>
+           </tfoot>
+@@ -255,6 +267,13 @@ function problemWith(line: NewLine): string {
+             formControlName="unitPrice"
+             required
+           />
++          <label for="line-discount-pct">Line discount (%, optional)</label>
++          <input
++            id="line-discount-pct"
++            data-testid="line-form-discount-pct"
++            inputmode="decimal"
++            formControlName="discountPct"
++          />
+           <input
+             id="line-exempt"
+             type="checkbox"
+@@ -319,6 +338,7 @@ export class InvoicePanel {
+     qty: new FormControl('', { nonNullable: true }),
+     unitPrice: new FormControl('', { nonNullable: true }),
+     taxExempt: new FormControl(false, { nonNullable: true }),
++    discountPct: new FormControl('', { nonNullable: true }),
+   });
+ 
+   protected readonly paymentForm = new FormGroup({
+@@ -355,6 +375,10 @@ export class InvoicePanel {
+       unitPrice: raw.unitPrice.trim().replace(/^\$/, ''),
+       taxExempt: raw.taxExempt,
+     };
++    const discountPct = raw.discountPct.trim().replace(/%$/, '').trim();
++    if (discountPct) {
++      line.discountPct = discountPct;
++    }
+     const problem = problemWith(line);
+     if (problem) {
+       this.form.markAllAsTouched();
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index bae6475..be74454 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -21,12 +21,16 @@ export interface InvoiceSummary {
+ // One line of an opened invoice. `qty` is as entered, without trailing zeros ("1.5"); money is a
+ // decimal string to the cent. `discountShare` is the line's share of the invoice discount, split in
+ // cents in proportion to the line amounts by the server; the shares add up to the discount. A
+-// `taxExempt` line (postage, say) is left out of the taxed amount.
++// `taxExempt` line (postage, say) is left out of the taxed amount. `discountPct` is the line's own
++// discount (without trailing zeros), `discount` what it takes off quantity x unit price, and
++// `amount` is after it.
+ export interface InvoiceLineView {
+   id: number;
+   description: string;
+   qty: string;
+   unitPrice: string;
++  discountPct: string;
++  discount: string;
+   amount: string;
+   discountShare: string;
+   taxExempt: boolean;
+@@ -77,12 +81,14 @@ export interface NewPayment {
+   reference: string;
+ }
+ 
+-// A line to add to a draft: quantity and unit price as entered, checked again by the server.
++// A line to add to a draft: quantity, unit price and the line's own discount percentage as entered
++// (left out when none), checked again by the server.
+ export interface NewLine {
+   description: string;
+   qty: string;
+   unitPrice: string;
+   taxExempt: boolean;
++  discountPct?: string;
+ }
+ 
+ // The invoices REST API.
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 6b60793..32bfaa8 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -35,7 +35,7 @@ public class TestSupportController {
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
+-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt");
++    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "allocations");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
+@@ -119,11 +119,12 @@ public class TestSupportController {
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 insert("invoice_line", line.get("id"),
+-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt"},
++                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt", "discount_pct"},
+                         invoiceId, text(line, "description"),
+                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
+                         cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"),
+-                        flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"));
++                        flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"),
++                        percent(line.get("discountPct"), "invoices[].lineItems[].discountPct"));
+             }
+         }
+         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
+@@ -191,7 +192,7 @@ public class TestSupportController {
+                     row.put("dueDate", r.get("DUE_DATE") == null ? null : r.get("DUE_DATE").toString());
+                     row.put("discountPct", r.get("DISCOUNT_PCT"));
+                     row.put("lineItems", jdbc.queryForList(
+-                            "SELECT id, description, qty, unit_price, tax_exempt FROM invoice_line WHERE invoice_id = ? ORDER BY id",
++                            "SELECT id, description, qty, unit_price, tax_exempt, discount_pct FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+                                 Map<String, Object> line = new LinkedHashMap<>();
+                                 line.put("id", l.get("ID"));
+@@ -199,6 +200,7 @@ public class TestSupportController {
+                                 line.put("qty", l.get("QTY"));
+                                 line.put("unitPrice", l.get("UNIT_PRICE"));
+                                 line.put("taxExempt", l.get("TAX_EXEMPT"));
++                                line.put("discountPct", l.get("DISCOUNT_PCT"));
+                                 return line;
+                             }).toList());
+                     return row;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 53734e4..88e6ffe 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -130,7 +130,7 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The sum of the line amounts, each already rounded half up to the cent — so the subtotal
++     * The sum of the line amounts, each after its own discount and already to the cent — so the subtotal
+      * matches what a client gets by adding up the lines shown.
+      */
+     public BigDecimal subtotal() {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 81ad391..05cad28 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -53,14 +53,17 @@ public class InvoiceController {
+     /**
+      * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
+      * money is a decimal string to the cent. {@code discountShare} is the line's share of the
+-     * invoice discount; {@code taxExempt} lines are left out of the taxed amount.
++     * invoice discount; {@code taxExempt} lines are left out of the taxed amount. {@code discountPct}
++     * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
++     * {@code amount} is after it.
+      */
+-    public record LineView(Long id, String description, String qty, String unitPrice, String amount,
+-            String discountShare, boolean taxExempt) {
++    public record LineView(Long id, String description, String qty, String unitPrice, String discountPct,
++            String discount, String amount, String discountShare, boolean taxExempt) {
+         static LineView of(InvoiceLine l, BigDecimal discountShare) {
+             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
+-                    l.getUnitPrice().setScale(2).toPlainString(), l.amount().toPlainString(),
+-                    discountShare.toPlainString(), l.isTaxExempt());
++                    l.getUnitPrice().setScale(2).toPlainString(),
++                    l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount().toPlainString(),
++                    l.amount().toPlainString(), discountShare.toPlainString(), l.isTaxExempt());
+         }
+     }
+ 
+@@ -104,7 +107,8 @@ public class InvoiceController {
+ 
+     /**
+      * A line to add: a description, a quantity above zero and a unit price of at least $0.01, and
+-     * whether it is tax exempt (taxable when left out).
++     * whether it is tax exempt (taxable when left out), and its own discount percentage from 0 to 100
++     * with at most two decimals (none when left out).
+      */
+     public record NewLine(
+             @NotBlank(message = "Enter a description.")
+@@ -118,7 +122,11 @@ public class InvoiceController {
+             @DecimalMin(value = "0.01", message = "The unit price must be at least $0.01.")
+             @Digits(integer = 17, fraction = 2, message = "The unit price can have at most two decimals.")
+             BigDecimal unitPrice,
+-            Boolean taxExempt) {
++            Boolean taxExempt,
++            @DecimalMin(value = "0", message = "The line discount must be from 0 to 100 percent.")
++            @DecimalMax(value = "100", message = "The line discount must be from 0 to 100 percent.")
++            @Digits(integer = 3, fraction = 2, message = "The line discount can have at most two decimals.")
++            BigDecimal discountPct) {
+     }
+ 
+     /**
+@@ -187,7 +195,8 @@ public class InvoiceController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
+         return invoices.addLine(id, body.description().trim(), body.qty(), body.unitPrice(),
+-                Boolean.TRUE.equals(body.taxExempt()))
++                Boolean.TRUE.equals(body.taxExempt()),
++                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct())
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index f2f768d..31116c3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -9,7 +9,10 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ 
+-/** One line of an invoice: a quantity (up to two decimals) times a unit price. */
++/**
++ * One line of an invoice: a quantity (up to two decimals) times a unit price, less the line's own
++ * percentage discount.
++ */
+ @Entity
+ @Table(name = "invoice_line")
+ public class InvoiceLine {
+@@ -29,14 +32,20 @@ public class InvoiceLine {
+     @Column(name = "tax_exempt")
+     private boolean taxExempt;
+ 
++    /** The line's own percentage discount, 0 to 100 with up to two decimals; 0 is none. */
++    @Column(name = "discount_pct")
++    private BigDecimal discountPct = BigDecimal.ZERO;
++
+     protected InvoiceLine() {
+     }
+ 
+-    public InvoiceLine(String description, BigDecimal qty, BigDecimal unitPrice, boolean taxExempt) {
++    public InvoiceLine(String description, BigDecimal qty, BigDecimal unitPrice, boolean taxExempt,
++            BigDecimal discountPct) {
+         this.description = description;
+         this.qty = qty;
+         this.unitPrice = unitPrice;
+         this.taxExempt = taxExempt;
++        this.discountPct = discountPct;
+     }
+ 
+     public Long getId() {
+@@ -59,8 +68,23 @@ public class InvoiceLine {
+         return taxExempt;
+     }
+ 
+-    /** Quantity times unit price, rounded half up to the cent. */
+-    public BigDecimal amount() {
++    public BigDecimal getDiscountPct() {
++        return discountPct;
++    }
++
++    /** Quantity times unit price, rounded half up to the cent, before the line's discount. */
++    public BigDecimal grossAmount() {
+         return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+     }
++
++    /** The line's discount: its percentage of the gross amount, rounded half up to the cent. */
++    public BigDecimal discount() {
++        return grossAmount().multiply(discountPct).divide(BigDecimal.valueOf(100))
++                .setScale(2, RoundingMode.HALF_UP);
++    }
++
++    /** The line amount: the gross amount less the line's discount. */
++    public BigDecimal amount() {
++        return grossAmount().subtract(discount());
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 1483379..0b3e2c0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -70,11 +70,11 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice,
+-            boolean taxExempt) {
++            boolean taxExempt, BigDecimal discountPct) {
+         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+         found.ifPresent(invoice -> {
+             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
+-            invoice.addLine(new InvoiceLine(description, qty, unitPrice, taxExempt));
++            invoice.addLine(new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct));
+             invoices.saveAndFlush(invoice);
+             if (reopened) {
+                 audit.record("INVOICE_REOPENED id=" + invoice.getId());
+diff --git a/src/main/resources/db/migration/V7__line_discount.sql b/src/main/resources/db/migration/V7__line_discount.sql
+new file mode 100644
+index 0000000..8b78e8f
+--- /dev/null
++++ b/src/main/resources/db/migration/V7__line_discount.sql
+@@ -0,0 +1,2 @@
++-- A line's own percentage discount off its quantity times unit price, 0 to 100 with up to two decimals; 0 is none.
++ALTER TABLE invoice_line ADD COLUMN discount_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
