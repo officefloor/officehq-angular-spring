@@ -1,0 +1,95 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 0544ddf..d296e7f 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -31,8 +31,8 @@ function problemWithPayment(payment: NewPayment): string {
+     problems.push('Enter an amount.');
+   } else if (!TWO_DECIMALS.test(payment.amount)) {
+     problems.push('The amount must be a number with at most two decimals.');
+-  } else if (Number(payment.amount) < 0.01) {
+-    problems.push('The amount must be at least $0.01.');
++  } else if (Number(payment.amount) <= 0) {
++    problems.push('The amount must be more than zero.');
+   }
+   if (!/^\d{4}-\d{2}-\d{2}$/.test(payment.date)) {
+     problems.push('Enter the date it was paid.');
+@@ -66,7 +66,8 @@ function problemWith(line: NewLine): string {
+ // One opened invoice: its status, its lines and its totals. A draft takes new lines and a
+ // percentage discount, and can be sent; a change to a sent invoice with no payments puts it back to
+ // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
+-// until nothing is due; the panel lists them with what has been paid and what is still due.
++// until nothing is due; the panel lists them with what has been paid and what is still due. The
++// server refuses a payment on a draft, over what is due, or dated after today or before the issue date.
+ @Component({
+   selector: 'app-invoice-panel',
+   imports: [ReactiveFormsModule],
+@@ -157,7 +158,7 @@ function problemWith(line: NewLine): string {
+           </table>
+         }
+ 
+-        @if (inv.status === 'SENT' || inv.status === 'PART_PAID') {
++        @if (inv.status !== 'PAID') {
+           <form
+             [formGroup]="paymentForm"
+             (ngSubmit)="recordPayment(inv.id)"
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 3ec8680..2fb39f2 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -121,8 +121,8 @@ export class InvoiceService {
+   }
+ 
+   // Records a payment against a sent invoice that still has something due; refused (409) when it
+-  // is a draft, already paid, or the amount is more than is due. Answers the invoice with its
+-  // payments and new status.
++  // is a draft, already paid, the amount is more than is due, or the date is after today or before
++  // the issue date. Answers the invoice with its payments and new status.
+   recordPayment(invoiceId: number, payment: NewPayment): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments`, payment);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 309356a..6dedae3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -115,10 +115,10 @@ public class InvoiceController {
+             Boolean taxExempt) {
+     }
+ 
+-    /** A payment to record: an amount of at least $0.01 and the date it was paid. */
++    /** A payment to record: an amount more than zero with at most two decimals, and the date it was paid. */
+     public record NewPayment(
+             @NotNull(message = "Enter an amount.")
+-            @DecimalMin(value = "0.01", message = "The amount must be at least $0.01.")
++            @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
+             @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
+             BigDecimal amount,
+             @NotNull(message = "Enter the date it was paid.")
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index c4c445f..a1ba660 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -161,7 +161,8 @@ public class InvoiceService {
+     /**
+      * Records a payment of the amount on the date against a sent invoice that still has something
+      * due, and records it in the audit; empty if no such invoice. The amount has already been
+-     * checked; a draft, an invoice already paid, or an amount over what is due is refused.
++     * checked; a draft, an invoice already paid, an amount over what is due, or a date after today
++     * or before the invoice's issue date is refused.
+      */
+     @Transactional
+     public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal amount, LocalDate date) {
+@@ -177,6 +178,14 @@ public class InvoiceService {
+             if (amount.compareTo(due) > 0) {
+                 throw new InvoiceRejectedException("The payment is more than the $" + due.toPlainString() + " due.");
+             }
++            LocalDate now = today.date();
++            if (date.isAfter(now)) {
++                throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
++            }
++            if (invoice.getIssueDate() != null && date.isBefore(invoice.getIssueDate())) {
++                throw new InvoiceRejectedException(
++                        "The payment date cannot be before the invoice's issue date (" + invoice.getIssueDate() + ").");
++            }
+             Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, date));
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
+                     + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
