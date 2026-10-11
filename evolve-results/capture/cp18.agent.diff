@@ -1,0 +1,461 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index d296e7f..23c9e00 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -24,6 +24,22 @@ function problemWithDiscount(pct: string): string {
+   return '';
+ }
+ 
++// Whether a reference passes the ISO 11649 check: its first four characters moved to the end,
++// letters as numbers (A=10 up to Z=35), mod 97 is 1. Spaces and capitals are ignored by the caller.
++function referenceChecks(reference: string): boolean {
++  if (!/^RF\d{2}[A-Z0-9]{1,21}$/.test(reference)) {
++    return false;
++  }
++  const moved = reference.slice(4) + reference.slice(0, 4);
++  let rest = 0;
++  for (const c of moved) {
++    for (const d of String(parseInt(c, 36))) {
++      rest = (rest * 10 + Number(d)) % 97;
++    }
++  }
++  return rest === 1;
++}
++
+ // What is wrong with a payment, or '' when it can be recorded.
+ function problemWithPayment(payment: NewPayment): string {
+   const problems: string[] = [];
+@@ -37,6 +53,9 @@ function problemWithPayment(payment: NewPayment): string {
+   if (!/^\d{4}-\d{2}-\d{2}$/.test(payment.date)) {
+     problems.push('Enter the date it was paid.');
+   }
++  if (payment.reference && !referenceChecks(payment.reference)) {
++    problems.push('The payment reference is mistyped: check it against the invoice.');
++  }
+   return problems.join(' ');
+ }
+ 
+@@ -68,6 +87,8 @@ function problemWith(line: NewLine): string {
+ // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
+ // until nothing is due; the panel lists them with what has been paid and what is still due. The
+ // server refuses a payment on a draft, over what is due, or dated after today or before the issue date.
++// The panel shows the invoice's RF payment reference; a payment may quote one, which must pass the
++// ISO 11649 check and be this invoice's.
+ @Component({
+   selector: 'app-invoice-panel',
+   imports: [ReactiveFormsModule],
+@@ -78,6 +99,7 @@ function problemWith(line: NewLine): string {
+       </h2>
+       @if (invoice(); as inv) {
+         <p>Status: <span data-testid="invoice-panel-status">{{ statusLabel(inv.status) }}</span></p>
++        <p>Payment reference: <span data-testid="invoice-reference">{{ inv.reference }}</span></p>
+         <table>
+           <thead>
+             <tr>
+@@ -131,6 +153,7 @@ function problemWith(line: NewLine): string {
+               <tr>
+                 <th scope="col">Paid on</th>
+                 <th scope="col">Amount</th>
++                <th scope="col">Reference</th>
+               </tr>
+             </thead>
+             <tbody>
+@@ -138,20 +161,21 @@ function problemWith(line: NewLine): string {
+                 <tr [attr.data-testid]="'payment-row-' + p.id">
+                   <td data-testid="payment-date">{{ p.date }}</td>
+                   <td data-testid="payment-amount">{{ money(p.amount) }}</td>
++                  <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
+                 </tr>
+               } @empty {
+                 <tr>
+-                  <td colspan="2" data-testid="payment-empty">No payments yet.</td>
++                  <td colspan="3" data-testid="payment-empty">No payments yet.</td>
+                 </tr>
+               }
+             </tbody>
+             <tfoot>
+               <tr>
+-                <th scope="row">Paid</th>
++                <th scope="row" colspan="2">Paid</th>
+                 <td data-testid="invoice-paid">{{ money(inv.paid) }}</td>
+               </tr>
+               <tr>
+-                <th scope="row">Amount due</th>
++                <th scope="row" colspan="2">Amount due</th>
+                 <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
+               </tr>
+             </tfoot>
+@@ -181,6 +205,14 @@ function problemWith(line: NewLine): string {
+               formControlName="date"
+               required
+             />
++            <label for="payment-reference">Reference quoted (optional)</label>
++            <input
++              id="payment-reference"
++              data-testid="payment-form-reference"
++              formControlName="reference"
++              autocapitalize="characters"
++              placeholder="RF16 0000 075"
++            />
+             <button type="submit" data-testid="payment-form-submit" [disabled]="savingPayment()">
+               Record payment
+             </button>
+@@ -292,6 +324,7 @@ export class InvoicePanel {
+   protected readonly paymentForm = new FormGroup({
+     amount: new FormControl('', { nonNullable: true }),
+     date: new FormControl('', { nonNullable: true }),
++    reference: new FormControl('', { nonNullable: true }),
+   });
+ 
+   protected readonly discountForm = new FormGroup({
+@@ -379,6 +412,7 @@ export class InvoicePanel {
+     const payment: NewPayment = {
+       amount: raw.amount.trim().replace(/^\$/, ''),
+       date: raw.date.trim(),
++      reference: raw.reference.replace(/\s/g, '').toUpperCase(),
+     };
+     const problem = problemWithPayment(payment);
+     if (problem) {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 2fb39f2..bae6475 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -33,11 +33,12 @@ export interface InvoiceLineView {
+ }
+ 
+ // A payment made to an opened invoice: the amount that went to it, a decimal string to the cent,
+-// and the date it was paid (yyyy-mm-dd).
++// the date it was paid (yyyy-mm-dd) and the RF reference it quoted in groups of four (null when none).
+ export interface InvoicePaymentView {
+   id: number;
+   amount: string;
+   date: string;
++  reference: string | null;
+ }
+ 
+ // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
+@@ -46,10 +47,12 @@ export interface InvoicePaymentView {
+ // trailing zeros, "0" when none is set) and `tax` is that rate on the taxable lines' amounts less
+ // their discount shares, rounded half up to the cent; `total` is the subtotal less the discount plus the tax.
+ // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
+-// `amountDue` is the total less that.
++// `amountDue` is the total less that. `reference` is its ISO 11649 RF payment reference, made from
++// the seven digits of its number, in groups of four (RF16 0000 075).
+ export interface InvoiceDetail {
+   id: number;
+   number: string;
++  reference: string;
+   clientId: number;
+   status: InvoiceStatus;
+   issueDate: string | null;
+@@ -66,11 +69,12 @@ export interface InvoiceDetail {
+   amountDue: string;
+ }
+ 
+-// A payment to record against a sent invoice: the amount as entered and the date (yyyy-mm-dd),
+-// checked again by the server.
++// A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
++// RF reference the client quoted ('' when none), checked again by the server.
+ export interface NewPayment {
+   amount: string;
+   date: string;
++  reference: string;
+ }
+ 
+ // A line to add to a draft: quantity and unit price as entered, checked again by the server.
+@@ -122,7 +126,7 @@ export class InvoiceService {
+ 
+   // Records a payment against a sent invoice that still has something due; refused (409) when it
+   // is a draft, already paid, the amount is more than is due, or the date is after today or before
+-  // the issue date. Answers the invoice with its payments and new status.
++  // the issue date, or the reference is mistyped (400) or another invoice's (409). Answers the invoice with its payments and new status.
+   recordPayment(invoiceId: number, payment: NewPayment): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments`, payment);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index b1ddec1..6b60793 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -36,7 +36,7 @@ public class TestSupportController {
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt");
+-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "allocations");
++    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "allocations");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
+ 
+@@ -134,9 +134,10 @@ public class TestSupportController {
+             if (row.get("date") == null) {
+                 throw refuse("payments[].date is required");
+             }
+-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date"},
++            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference"},
+                     id(row.get("clientId")), cents(row.get("amount"), "payments[].amount"),
+-                    date(row.get("date"), "payments[].date"));
++                    date(row.get("date"), "payments[].date"),
++                    row.get("reference") == null ? null : row.get("reference").toString());
+             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
+                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
+                 if (allocation.get("invoiceId") == null) {
+@@ -202,13 +203,14 @@ public class TestSupportController {
+                             }).toList());
+                     return row;
+                 }).toList());
+-        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date FROM payment ORDER BY id")
++        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference FROM payment ORDER BY id")
+                 .stream().map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+                     row.put("clientId", r.get("CLIENT_ID"));
+                     row.put("amount", r.get("AMOUNT"));
+                     row.put("date", r.get("PAYMENT_DATE").toString());
++                    row.put("reference", r.get("REFERENCE"));
+                     row.put("allocations", jdbc.queryForList(
+                             "SELECT invoice_id, amount FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
+                             r.get("ID")).stream().map(a -> {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 6dedae3..81ad391 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -39,10 +39,14 @@ public class InvoiceController {
+         }
+     }
+ 
+-    /** A payment made to an opened invoice: the amount that went to it (to the cent) and its date. */
+-    public record PaymentView(Long id, String amount, LocalDate date) {
++    /**
++     * A payment made to an opened invoice: the amount that went to it (to the cent), its date and the
++     * reference it quoted in groups of four (null when none).
++     */
++    public record PaymentView(Long id, String amount, LocalDate date, String reference) {
+         static PaymentView of(Payment p, Long invoiceId) {
+-            return new PaymentView(p.getId(), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate());
++            return new PaymentView(p.getId(), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
++                    p.getReference() == null ? null : PaymentReference.grouped(p.getReference()));
+         }
+     }
+ 
+@@ -65,9 +69,10 @@ public class InvoiceController {
+      * the amount it takes off, the tax rate (without trailing zeros) and the tax charged on the taxable
+      * lines less their discount shares, and the
+      * grand total; the payments made to it, what they add up to and what is still due (money as
+-     * decimal strings to the cent). Its status follows what has been paid.
++     * decimal strings to the cent). Its status follows what has been paid. {@code reference} is its
++     * RF payment reference in groups of four.
+      */
+-    public record InvoiceDetail(Long id, String number, Long clientId, InvoiceStatus status, LocalDate issueDate,
++    public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discount,
+             String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments) {
+@@ -76,7 +81,8 @@ public class InvoiceController {
+             List<BigDecimal> shares = i.discountShares();
+             List<LineView> lines = IntStream.range(0, shares.size())
+                     .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n))).toList();
+-            return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()), i.getClientId(),
++            return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()),
++                    PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
+                     i.statusWhenPaid(paid, taxRate), i.getIssueDate(), i.getDueDate(),
+                     lines, i.subtotal().toPlainString(),
+                     i.getDiscountPct().stripTrailingZeros().toPlainString(), i.discount().toPlainString(),
+@@ -115,14 +121,19 @@ public class InvoiceController {
+             Boolean taxExempt) {
+     }
+ 
+-    /** A payment to record: an amount more than zero with at most two decimals, and the date it was paid. */
++    /**
++     * A payment to record: an amount more than zero with at most two decimals, the date it was paid,
++     * and the reference the client quoted (optional).
++     */
+     public record NewPayment(
+             @NotNull(message = "Enter an amount.")
+             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
+             @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
+             BigDecimal amount,
+             @NotNull(message = "Enter the date it was paid.")
+-            LocalDate date) {
++            LocalDate date,
++            @Size(max = 64, message = "The reference must be at most 64 characters.")
++            String reference) {
+     }
+ 
+     private final InvoiceService invoices;
+@@ -198,7 +209,12 @@ public class InvoiceController {
+     @PostMapping("/api/invoices/{id}/payments")
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
+-        return invoices.recordPayment(id, body.amount(), body.date())
++        String reference = null;
++        if (body.reference() != null && !body.reference().isBlank()) {
++            reference = PaymentReference.parse(body.reference()).orElseThrow(() -> new ResponseStatusException(
++                    HttpStatus.BAD_REQUEST, body.reference().trim() + " is mistyped: check the payment reference."));
++        }
++        return invoices.recordPayment(id, body.amount(), body.date(), reference)
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+index 97b4c64..51073a7 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RestControllerAdvice(assignableTypes = InvoiceController.class)
+ public class InvoiceErrors {
+ 
+-    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "amount", "date");
++    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice", "discountPct", "amount", "date", "reference");
+ 
+     @ExceptionHandler(MethodArgumentNotValidException.class)
+     public ProblemDetail invalid(MethodArgumentNotValidException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index a1ba660..1483379 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -162,10 +162,11 @@ public class InvoiceService {
+      * Records a payment of the amount on the date against a sent invoice that still has something
+      * due, and records it in the audit; empty if no such invoice. The amount has already been
+      * checked; a draft, an invoice already paid, an amount over what is due, or a date after today
+-     * or before the invoice's issue date is refused.
++     * or before the invoice's issue date is refused. The reference (null when none was quoted) has
++     * already been checked; one that belongs to a different invoice is refused.
+      */
+     @Transactional
+-    public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal amount, LocalDate date) {
++    public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal amount, LocalDate date, String reference) {
+         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isDraft()) {
+@@ -186,7 +187,12 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException(
+                         "The payment date cannot be before the invoice's issue date (" + invoice.getIssueDate() + ").");
+             }
+-            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, date));
++            if (reference != null && !reference.equals(PaymentReference.of(invoice.getId()))) {
++                throw new InvoiceRejectedException(PaymentReference.grouped(reference)
++                        + " is the reference of a different invoice; this invoice's is "
++                        + PaymentReference.grouped(PaymentReference.of(invoice.getId())) + ".");
++            }
++            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, date, reference));
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
+                     + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+         });
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index a4050fc..ac821a9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -31,6 +31,9 @@ public class Payment {
+     @Column(name = "payment_date")
+     private LocalDate date;
+ 
++    /** The payment reference the client quoted, or null when none was. */
++    private String reference;
++
+     @ElementCollection
+     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
+     private List<PaymentAllocation> allocations = new ArrayList<>();
+@@ -38,12 +41,13 @@ public class Payment {
+     protected Payment() {
+     }
+ 
+-    /** A payment made wholly against one invoice. */
+-    public static Payment against(Invoice invoice, BigDecimal amount, LocalDate date) {
++    /** A payment made wholly against one invoice, quoting the reference (null when none). */
++    public static Payment against(Invoice invoice, BigDecimal amount, LocalDate date, String reference) {
+         Payment payment = new Payment();
+         payment.clientId = invoice.getClientId();
+         payment.amount = amount;
+         payment.date = date;
++        payment.reference = reference;
+         payment.allocations.add(new PaymentAllocation(invoice.getId(), amount));
+         return payment;
+     }
+@@ -64,6 +68,10 @@ public class Payment {
+         return date;
+     }
+ 
++    public String getReference() {
++        return reference;
++    }
++
+     public List<PaymentAllocation> getAllocations() {
+         return allocations;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/PaymentReference.java b/src/main/java/net/officefloor/hq/app/invoices/PaymentReference.java
+new file mode 100644
+index 0000000..a609ca4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/PaymentReference.java
+@@ -0,0 +1,64 @@
++package net.officefloor.hq.app.invoices;
++
++import java.math.BigInteger;
++import java.util.Optional;
++
++/**
++ * An invoice's ISO 11649 "RF" creditor reference, made from the seven digits of its number (leading
++ * zeros kept): RF, two check digits, then the digits, so invoice 7 (INV-0000075) is RF160000075,
++ * shown in groups of four as RF16 0000 075.
++ */
++public final class PaymentReference {
++
++    private static final BigInteger NINETY_SEVEN = BigInteger.valueOf(97);
++
++    private PaymentReference() {
++    }
++
++    /** The reference of the invoice with this id, without spaces. */
++    public static String of(long id) {
++        String digits = InvoiceNumber.of(id).substring("INV-".length());
++        int check = 98 - mod97(digits + "RF00");
++        return String.format("RF%02d", check) + digits;
++    }
++
++    /** The reference in groups of four, e.g. RF16 0000 075. */
++    public static String grouped(String reference) {
++        String compact = compact(reference);
++        StringBuilder out = new StringBuilder();
++        for (int i = 0; i < compact.length(); i += 4) {
++            if (i > 0) {
++                out.append(' ');
++            }
++            out.append(compact, i, Math.min(i + 4, compact.length()));
++        }
++        return out.toString();
++    }
++
++    /**
++     * A typed reference without spaces and in capitals. Empty when it is not RF, two digits and up to
++     * 21 letters or digits, or it fails the check (its first four characters moved to the end,
++     * letters as numbers, mod 97 must be 1) — the reference was mistyped.
++     */
++    public static Optional<String> parse(String typed) {
++        String compact = compact(typed);
++        if (!compact.matches("RF\\d{2}[A-Z0-9]{1,21}")
++                || mod97(compact.substring(4) + compact.substring(0, 4)) != 1) {
++            return Optional.empty();
++        }
++        return Optional.of(compact);
++    }
++
++    private static String compact(String reference) {
++        return reference.replaceAll("\\s", "").toUpperCase();
++    }
++
++    /** Letters as numbers (A=10 up to Z=35), then the whole number mod 97. */
++    private static int mod97(String text) {
++        StringBuilder number = new StringBuilder();
++        for (char c : text.toCharArray()) {
++            number.append(Character.getNumericValue(c));
++        }
++        return new BigInteger(number.toString()).mod(NINETY_SEVEN).intValue();
++    }
++}
+diff --git a/src/main/resources/db/migration/V6__payment_reference.sql b/src/main/resources/db/migration/V6__payment_reference.sql
+new file mode 100644
+index 0000000..cbf8bd3
+--- /dev/null
++++ b/src/main/resources/db/migration/V6__payment_reference.sql
+@@ -0,0 +1,2 @@
++-- The payment reference the client quoted, if any; null when none was given.
++ALTER TABLE payment ADD COLUMN reference VARCHAR(64);
