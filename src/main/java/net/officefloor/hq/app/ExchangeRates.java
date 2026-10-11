@@ -1,8 +1,10 @@
 package net.officefloor.hq.app;
 
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import net.officefloor.hq.app.clients.Currency;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -30,5 +32,25 @@ public class ExchangeRates {
                 .forEach(r -> rates.put(((String) r.get("NAME")).substring(USD_PER.length()),
                         new BigDecimal((String) r.get("SETTING_VALUE"))));
         return rates;
+    }
+
+    /** The US dollars one unit of the currency is worth: one for the dollar or a currency with no rate set. */
+    public BigDecimal usdPer(Currency currency) {
+        if (currency == Currency.USD) {
+            return BigDecimal.ONE;
+        }
+        return jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class, USD_PER + currency.name())
+                .stream().findFirst().map(v -> new BigDecimal(v.trim())).orElse(BigDecimal.ONE);
+    }
+
+    /**
+     * The amount paid in one currency converted into another through US dollars: amount x (dollars per
+     * unit paid) / (dollars per unit of the other), rounded half up to the other's step.
+     */
+    public BigDecimal convert(BigDecimal amount, Currency from, Currency to) {
+        if (from == to) {
+            return amount.setScale(to.scale());
+        }
+        return to.roundToStep(amount.multiply(usdPer(from)).divide(usdPer(to), MathContext.DECIMAL128));
     }
 }

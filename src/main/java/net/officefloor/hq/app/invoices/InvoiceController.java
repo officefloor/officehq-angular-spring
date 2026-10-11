@@ -60,13 +60,15 @@ public class InvoiceController {
     }
 
     /**
-     * A payment made to an opened invoice: the whole amount paid and how much of it went to this
-     * invoice (to the cent), its date and the reference it quoted in groups of four (null when none).
+     * A payment made to an opened invoice: the whole amount paid in the {@code currency} it was paid in,
+     * how much of it went to this invoice (to the cent) in the client's currency, its date and the
+     * reference it quoted in groups of four (null when none).
      */
-    public record PaymentView(Long id, String amount, String allocated, LocalDate date, String reference) {
-        static PaymentView of(Payment p, Long invoiceId) {
-            return new PaymentView(p.getId(), p.getAmount().setScale(2).toPlainString(),
-                    p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
+    public record PaymentView(Long id, String amount, Currency currency, String allocated, LocalDate date,
+            String reference) {
+        static PaymentView of(Payment p, Long invoiceId, Currency clientCurrency) {
+            return new PaymentView(p.getId(), p.paidAmount().setScale(2).toPlainString(),
+                    p.paidCurrency(clientCurrency), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
                     p.getReference() == null ? null : PaymentReference.grouped(p.getReference()));
         }
     }
@@ -137,7 +139,7 @@ public class InvoiceController {
                     i.discount().toPlainString(), i.getDiscountReason(),
                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
                     i.total(taxRate).toPlainString(),
-                    payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
+                    payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency())).toList(), paid.toPlainString(),
                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
                     i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
                     i.getRetentionPct().stripTrailingZeros().toPlainString(), i.retention(taxRate).toPlainString(),
@@ -213,6 +215,8 @@ public class InvoiceController {
             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
             @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
             BigDecimal amount,
+            // The currency it was paid in; the client's own when left out.
+            Currency currency,
             @NotNull(message = "Enter the date it was paid.")
             LocalDate date,
             @Size(max = 64, message = "The reference must be at most 64 characters.")
@@ -225,6 +229,8 @@ public class InvoiceController {
             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
             @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
             BigDecimal amount,
+            // The currency it was paid in; the client's own when left out.
+            Currency currency,
             @NotNull(message = "Enter the date it was paid.")
             LocalDate date) {
     }
@@ -301,6 +307,8 @@ public class InvoiceController {
             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
             @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
             BigDecimal amount,
+            // The currency it was paid in; the client's own when left out.
+            Currency currency,
             @NotNull(message = "Enter the date it was paid.")
             LocalDate date,
             @Size(max = 255, message = "The references must be at most 255 characters.")
@@ -500,9 +508,9 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
         if (body.allocations().isEmpty()) {
-            invoices.recordAutoPayment(clientId, body.amount(), body.date(), references(body.reference()));
+            invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()));
         } else {
-            invoices.recordSplitPayment(clientId, body.amount(), body.date(), reference(body.reference()),
+            invoices.recordSplitPayment(clientId, body.amount(), body.currency(), body.date(), reference(body.reference()),
                     body.allocations().stream().map(a -> new PaymentAllocation(a.invoiceId(), a.amount())).toList());
         }
         return forClient(clientId);
@@ -542,7 +550,7 @@ public class InvoiceController {
     @PostMapping("/api/clients/{clientId}/deposits")
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> recordDeposit(@PathVariable Long clientId, @Valid @RequestBody NewDeposit body) {
-        invoices.recordDeposit(clientId, body.amount(), body.date())
+        invoices.recordDeposit(clientId, body.amount(), body.currency(), body.date())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
         return forClient(clientId);
     }
@@ -559,7 +567,7 @@ public class InvoiceController {
     @PostMapping("/api/invoices/{id}/payments")
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
-        return invoices.recordPayment(id, body.amount(), body.date(), reference(body.reference()))
+        return invoices.recordPayment(id, body.amount(), body.currency(), body.date(), reference(body.reference()))
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

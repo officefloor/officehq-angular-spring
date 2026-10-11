@@ -41,7 +41,7 @@ public class TestSupportController {
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations");
+    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
 
@@ -191,13 +191,26 @@ public class TestSupportController {
             if (row.get("date") == null) {
                 throw refuse("payments[].date is required");
             }
-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note"},
-                    id(row.get("clientId")), cents(row.get("amount"), "payments[].amount"),
+            // An amount paid in another currency than the client's is applied converted into the client's.
+            Currency clientCurrency = Currency.orUsd(jdbc.queryForList("SELECT currency FROM client WHERE id = ?",
+                    String.class, id(row.get("clientId"))).stream().findFirst().orElse(null));
+            Currency paidIn = clientCurrency;
+            if (row.get("currency") != null) {
+                paidIn = Currency.of(row.get("currency").toString());
+                if (paidIn == null) {
+                    throw refuse("unsupported value of payments[].currency: " + row.get("currency"));
+                }
+            }
+            BigDecimal paidAmount = cents(row.get("amount"), "payments[].amount");
+            boolean foreign = paidIn != clientCurrency && paidAmount != null;
+            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount"},
+                    id(row.get("clientId")), foreign ? exchangeRates.convert(paidAmount, paidIn, clientCurrency) : paidAmount,
                     date(row.get("date"), "payments[].date"),
                     row.get("reference") == null ? null : row.get("reference").toString(),
                     flag(row.get("reversed"), "payments[].reversed"),
                     money(row.get("refunded"), "payments[].refunded"),
-                    row.get("creditNote") == null ? null : id(row.get("creditNote")));
+                    row.get("creditNote") == null ? null : id(row.get("creditNote")),
+                    foreign ? paidIn.name() : null, foreign ? paidAmount : null);
             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
                 if (allocation.get("invoiceId") == null) {
@@ -322,12 +335,14 @@ public class TestSupportController {
                             }).toList());
                     return row;
                 }).toList());
-        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference, reversed, refunded, credit_note FROM payment ORDER BY id")
+        out.put("payments", jdbc.queryForList("SELECT p.id, p.client_id, p.amount, p.payment_date, p.reference, p.reversed, p.refunded, p.credit_note, "
+                + "p.paid_currency, p.paid_amount, c.currency FROM payment p LEFT JOIN client c ON c.id = p.client_id ORDER BY p.id")
                 .stream().map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
                     row.put("clientId", r.get("CLIENT_ID"));
-                    row.put("amount", r.get("AMOUNT"));
+                    row.put("amount", r.get("PAID_CURRENCY") == null ? r.get("AMOUNT") : r.get("PAID_AMOUNT"));
+                    row.put("currency", r.get("PAID_CURRENCY") == null ? r.get("CURRENCY") : r.get("PAID_CURRENCY"));
                     row.put("date", r.get("PAYMENT_DATE").toString());
                     row.put("reference", r.get("REFERENCE"));
                     row.put("reversed", r.get("REVERSED"));

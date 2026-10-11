@@ -31,6 +31,15 @@ public enum Currency {
         return amount.stripTrailingZeros().scale() <= scale;
     }
 
+    /**
+     * The amount rounded half up to this currency's step: whole yen, 0.05 for Swiss francs, otherwise
+     * the cent.
+     */
+    public BigDecimal roundToStep(BigDecimal amount) {
+        BigDecimal step = this == CHF ? new BigDecimal("0.05") : BigDecimal.ONE.movePointLeft(scale);
+        return amount.divide(step, 0, RoundingMode.HALF_UP).multiply(step).setScale(scale);
+    }
+
     /** The amount with its symbol and thousands separators, e.g. €1,234.50 or ¥1,235. */
     public String format(BigDecimal amount) {
         DecimalFormat number = new DecimalFormat(scale == 0 ? "#,##0" : "#,##0.00",

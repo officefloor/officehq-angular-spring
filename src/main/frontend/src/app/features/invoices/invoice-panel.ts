@@ -332,7 +332,7 @@ function problemWith(line: NewLine): string {
             @for (p of inv.payments; track p.id) {
               <tr [attr.data-testid]="'payment-row-' + p.id">
                 <td data-testid="payment-date">{{ p.date }}</td>
-                <td data-testid="payment-amount">{{ amount(p.amount) }}</td>
+                <td data-testid="payment-amount">{{ money(p.amount, p.currency) }}</td>
                 <td data-testid="payment-allocated">{{ amount(p.allocated) }}</td>
                 <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
                 <td>
@@ -637,6 +637,8 @@ export class InvoicePanel {
   protected readonly reversing = signal(false);
   protected readonly reverseError = signal('');
   protected readonly statusLabel = statusLabel;
+  // A payment's amount is shown in the currency it was paid in.
+  protected readonly money = money;
   protected readonly instalmentStatusLabel = instalmentStatusLabel;
   // An amount shown in the currency of the open invoice's client.
   protected amount(value: string): string {

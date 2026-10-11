@@ -64,9 +64,12 @@ export interface InvoiceLineView {
 // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
 // this invoice, decimal strings to the cent; the date it was paid (yyyy-mm-dd) and the RF reference it
 // quoted in groups of four (null when none).
+// A payment to an opened invoice: `amount` is in the `currency` it was paid in, `allocated` (the
+// part applied to this invoice) in the client's currency.
 export interface InvoicePaymentView {
   id: number;
   amount: string;
+  currency: Currency;
   allocated: string;
   date: string;
   reference: string | null;
@@ -153,8 +156,10 @@ export interface InstalmentView {
 
 // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
 // RF reference the client quoted ('' when none), checked again by the server.
+// `currency` is the currency it was paid in; the server converts it into the client's currency.
 export interface NewPayment {
   amount: string;
+  currency: Currency;
   date: string;
   reference: string;
 }
@@ -321,7 +326,7 @@ export class InvoiceService {
   // Records a deposit: the whole amount held on the client's account as credit, applied to no invoice
   // until one of the client's invoices is sent; refused (409) when dated after today. Answers the
   // client's invoices.
-  recordDeposit(clientId: number, deposit: { amount: string; date: string }): Observable<InvoiceSummary[]> {
+  recordDeposit(clientId: number, deposit: { amount: string; currency: Currency; date: string }): Observable<InvoiceSummary[]> {
     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/deposits`, deposit);
   }
 

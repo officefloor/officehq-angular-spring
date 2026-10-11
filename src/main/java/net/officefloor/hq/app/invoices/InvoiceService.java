@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.ExchangeRates;
 import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
 import net.officefloor.hq.app.clients.Client;
@@ -35,9 +36,11 @@ public class InvoiceService {
     private final TaxRate taxRate;
     private final Audit audit;
     private final EntityManager entityManager;
+    private final ExchangeRates exchangeRates;
 
     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
-            Today today, TaxRate taxRate, Audit audit, EntityManager entityManager) {
+            Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates) {
+        this.exchangeRates = exchangeRates;
         this.entityManager = entityManager;
         this.invoices = invoices;
         this.payments = payments;
@@ -507,18 +510,18 @@ public class InvoiceService {
      * client. The amount has already been checked; a date after today is refused.
      */
     @Transactional
-    public Optional<Payment> recordDeposit(Long clientId, BigDecimal amount, LocalDate date) {
+    public Optional<Payment> recordDeposit(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date) {
         Optional<Client> client = clients.findById(clientId);
         if (client.isEmpty()) {
             return Optional.empty();
         }
         Currency currency = client.get().getCurrency();
-        requireWhole(currency, amount, "The amount");
+        BigDecimal amount = converted(paidAmount, paidIn, currency);
         LocalDate now = today.date();
         if (date.isAfter(now)) {
             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
         }
-        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date));
+        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date).paidIn(paidIn, paidAmount, currency));
         audit.record("DEPOSIT_RECORDED id=" + payment.getId() + " client=" + clientId + " amount="
                 + amount.setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
         return Optional.of(payment);
@@ -667,7 +670,8 @@ public class InvoiceService {
      * already been checked; one that belongs to a different invoice is refused.
      */
     @Transactional
-    public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal amount, LocalDate date, String reference) {
+    public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+            String reference) {
         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isDraft()) {
@@ -679,7 +683,7 @@ public class InvoiceService {
             if (invoice.isCreditNote()) {
                 throw new InvoiceRejectedException("A credit note takes no payments.");
             }
-            requireWhole(invoice.currency(), amount, "The amount");
+            BigDecimal amount = converted(paidAmount, paidIn, invoice.currency());
             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
             if (due.signum() <= 0) {
@@ -709,7 +713,8 @@ public class InvoiceService {
                         + " is the reference of a different invoice; this invoice's is "
                         + PaymentReference.grouped(PaymentReference.of(invoice.getId())) + ".");
             }
-            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, applied, date, reference));
+            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, applied, date, reference)
+                    .paidIn(paidIn, paidAmount, invoice.currency()));
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
                     + applied.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
             recordWriteOff(invoice);
@@ -731,8 +736,9 @@ public class InvoiceService {
      * The payment keeps the reference of the first invoice it reaches.
      */
     @Transactional
-    public Payment recordAutoPayment(Long clientId, BigDecimal amount, LocalDate date, List<String> references) {
-        requireWhole(currencyOf(clientId), amount, "The amount");
+    public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+            List<String> references) {
+        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId));
         List<Invoice> ofClient = invoices.findByClientIdOrderByIdAsc(clientId);
         List<Invoice> candidates = ofClient;
         if (!references.isEmpty()) {
@@ -783,7 +789,7 @@ public class InvoiceService {
                     : "Those invoices have already been paid.");
         }
         String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
-        return recordSpread(clientId, amount, date, reference, parts, true);
+        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, true);
     }
 
     /**
@@ -795,9 +801,10 @@ public class InvoiceService {
      * be the reference of one of the invoices.
      */
     @Transactional
-    public Payment recordSplitPayment(Long clientId, BigDecimal amount, LocalDate date, String reference,
-            List<PaymentAllocation> parts) {
-        return recordSpread(clientId, amount, date, reference, parts, false);
+    public Payment recordSplitPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+            String reference, List<PaymentAllocation> parts) {
+        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId));
+        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, false);
     }
 
     /**
@@ -805,8 +812,8 @@ public class InvoiceService {
      * credit may be held the parts may add up to less than the payment: the rest is held on the
      * client's account as credit and recorded in the audit.
      */
-    private Payment recordSpread(Long clientId, BigDecimal amount, LocalDate date, String reference,
-            List<PaymentAllocation> parts, boolean holdCredit) {
+    private Payment recordSpread(Long clientId, BigDecimal amount, BigDecimal paidAmount, Currency paidIn,
+            LocalDate date, String reference, List<PaymentAllocation> parts, boolean holdCredit) {
         if (parts.isEmpty()) {
             throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
         }
@@ -869,7 +876,8 @@ public class InvoiceService {
             throw new InvoiceRejectedException(PaymentReference.grouped(reference)
                     + " is not the reference of any of the invoices being paid.");
         }
-        Payment payment = payments.saveAndFlush(Payment.split(clientId, amount, date, reference, parts));
+        Payment payment = payments.saveAndFlush(Payment.split(clientId, amount, date, reference, parts)
+                .paidIn(paidIn, paidAmount, currency));
         for (PaymentAllocation part : parts) {
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + part.getInvoiceId() + " amount="
                     + part.getAmount().setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
@@ -877,6 +885,22 @@ public class InvoiceService {
         spreadOver.forEach(this::recordWriteOff);
         recordCreditHeld(payment);
         return payment;
+    }
+
+    /**
+     * The amount paid in the currency (null for the client's own) converted into the client's currency
+     * through US dollars at the workspace rates; this is what is applied and checked. The amount must be
+     * whole in the currency it was paid in, and must still be more than zero once converted.
+     */
+    private BigDecimal converted(BigDecimal paidAmount, Currency paidIn, Currency clientCurrency) {
+        Currency from = paidIn == null ? clientCurrency : paidIn;
+        requireWhole(from, paidAmount, "The amount");
+        BigDecimal amount = exchangeRates.convert(paidAmount, from, clientCurrency);
+        if (amount.signum() <= 0) {
+            throw new InvoiceRejectedException("The amount is worth nothing once converted into "
+                    + clientCurrency.name() + ".");
+        }
+        return amount;
     }
 
     /** The currency the client is billed in; US dollars when there is no such client. */

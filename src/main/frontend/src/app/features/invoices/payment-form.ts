@@ -1,4 +1,5 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, effect, inject, input, output, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import {
@@ -8,7 +9,7 @@ import {
   NewAllocation,
   NewPayment,
 } from './invoice.service';
-import { Currency, TWO_DECIMALS, cents, symbolOf } from './invoice-format';
+import { CURRENCIES, Currency, TWO_DECIMALS, cents, symbolOf } from './invoice-format';
 
 // Whether a reference passes the ISO 11649 check: its first four characters moved to the end,
 // letters as numbers (A=10 up to Z=35), mod 97 is 1. Spaces and capitals are ignored by the caller.
@@ -83,8 +84,9 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
 }
 
 // What is wrong with the parts of a split payment, or '' when they fit it. Whether each part is no
-// more than its invoice has due is checked by the server.
-function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[]): string {
+// more than its invoice has due is checked by the server, as is whether they add up to a payment made
+// in another currency than the client's (`currency`) once converted.
+function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[], currency: Currency): string {
   if (allocations.some((a) => !TWO_DECIMALS.test(a.amount))) {
     return "Each invoice's part must be a number with at most two decimals.";
   }
@@ -92,7 +94,7 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
     return "Each invoice's part must be more than zero.";
   }
   const sum = allocations.reduce((total, a) => total + cents(a.amount), 0);
-  if (TWO_DECIMALS.test(payment.amount) && sum !== cents(payment.amount)) {
+  if (payment.currency === currency && TWO_DECIMALS.test(payment.amount) && sum !== cents(payment.amount)) {
     return `The parts add up to $${(sum / 100).toFixed(2)}, not the $${(cents(payment.amount) / 100).toFixed(2)} paid.`;
   }
   return '';
@@ -112,7 +114,13 @@ function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[
   imports: [ReactiveFormsModule],
   template: `
     <form [formGroup]="form" (ngSubmit)="record()" aria-label="Record a payment" novalidate>
-      <label for="payment-amount">Amount ({{ symbolOf(currency()) }})</label>
+      <label for="payment-currency">Paid in</label>
+      <select id="payment-currency" data-testid="payment-form-currency" formControlName="currency">
+        @for (c of currencies; track c) {
+          <option [value]="c">{{ c }}</option>
+        }
+      </select>
+      <label for="payment-amount">Amount ({{ symbolOf(paidIn()) }})</label>
       <input
         id="payment-amount"
         data-testid="payment-form-amount"
@@ -162,9 +170,11 @@ export class PaymentForm {
   private readonly service = inject(InvoiceService);
 
   readonly clientId = input.required<number>();
-  // The currency the client is billed in, which the payment is in (whole yen for yen; the server checks).
+  // The currency the client is billed in: the payment's by default. A payment in another currency is
+  // converted into it by the server at the workspace rates (whole yen for yen; the server checks).
   readonly currency = input<Currency>('USD');
   protected readonly symbolOf = symbolOf;
+  protected readonly currencies = CURRENCIES;
   // The open invoice, which takes the payment when no parts are filled in; null when none is open.
   readonly invoiceId = input<number | null>(null);
   readonly allocations = input<NewAllocation[]>([]);
@@ -183,12 +193,27 @@ export class PaymentForm {
     date: new FormControl('', { nonNullable: true }),
     reference: new FormControl('', { nonNullable: true }),
     deposit: new FormControl(false, { nonNullable: true }),
+    currency: new FormControl<Currency>('USD', { nonNullable: true }),
   });
+  // The currency picked to pay in, as a signal for the amount's label.
+  protected readonly paidIn = toSignal(this.form.controls.currency.valueChanges, {
+    initialValue: this.form.controls.currency.value,
+  });
+
+  constructor() {
+    // Each new client (or invoice) starts with its own currency picked.
+    effect(() => this.resetCurrency(this.currency()));
+  }
+
+  private resetCurrency(currency: Currency): void {
+    this.form.controls.currency.setValue(currency);
+  }
 
   protected record(): void {
     const raw = this.form.getRawValue();
     const payment: NewPayment = {
       amount: raw.amount.trim().replace(/^\$/, ''),
+      currency: raw.currency,
       date: raw.date.trim(),
       reference: raw.reference.replace(/\s/g, '').toUpperCase(),
     };
@@ -200,7 +225,7 @@ export class PaymentForm {
     const invoiceId = this.invoiceId();
     let problem = problemWithPayment(payment, allocations.length === 0 && invoiceId === null);
     if (allocations.length > 0) {
-      problem = [problem, problemWithAllocations(payment, allocations)].filter((p) => p).join(' ');
+      problem = [problem, problemWithAllocations(payment, allocations, this.currency())].filter((p) => p).join(' ');
     }
     if (problem) {
       this.form.markAllAsTouched();
@@ -210,7 +235,7 @@ export class PaymentForm {
     this.saving.set(true);
     this.error.set('');
     const done = () => {
-      this.form.reset();
+      this.form.reset({ currency: this.currency() });
       this.saving.set(false);
     };
     const failed = (e: HttpErrorResponse) => {
@@ -253,9 +278,9 @@ export class PaymentForm {
     }
     this.saving.set(true);
     this.error.set('');
-    this.service.recordDeposit(this.clientId(), { amount: payment.amount, date: payment.date }).subscribe({
+    this.service.recordDeposit(this.clientId(), { amount: payment.amount, currency: payment.currency, date: payment.date }).subscribe({
       next: (list) => {
-        this.form.reset();
+        this.form.reset({ currency: this.currency() });
         this.saving.set(false);
         this.deposited.emit(list);
       },

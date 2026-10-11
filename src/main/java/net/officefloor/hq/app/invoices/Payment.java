@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import net.officefloor.hq.app.clients.Currency;
 
 /** A payment received from a client on a date, allocated to its invoices. */
 @Entity
@@ -43,6 +44,14 @@ public class Payment {
 
     /** How much of the payment's unused credit has been refunded to the client; it is no longer credit. */
     private BigDecimal refunded = BigDecimal.ZERO;
+
+    /** The currency the payment was paid in when not the client's own; null when it was the client's. */
+    @Column(name = "paid_currency")
+    private String paidCurrency;
+
+    /** The amount paid in {@link #paidCurrency}; the amount is it converted into the client's currency. */
+    @Column(name = "paid_amount")
+    private BigDecimal paidAmount;
 
     @ElementCollection
     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
@@ -99,6 +108,28 @@ public class Payment {
         Payment payment = deposit(note.getClientId(), amount, note.getIssueDate());
         payment.creditNote = note.getId();
         return payment;
+    }
+
+    /**
+     * Notes that the payment was paid as the amount in the currency (null for the client's own, which
+     * is then nothing to note); its amount is that converted into the client's currency.
+     */
+    public Payment paidIn(Currency currency, BigDecimal paid, Currency clientCurrency) {
+        if (currency != null && currency != clientCurrency) {
+            paidCurrency = currency.name();
+            paidAmount = paid;
+        }
+        return this;
+    }
+
+    /** The currency the payment was paid in: the given client's currency unless it was paid in another. */
+    public Currency paidCurrency(Currency clientCurrency) {
+        return paidCurrency == null ? clientCurrency : Currency.orUsd(paidCurrency);
+    }
+
+    /** The amount paid, in the currency it was paid in. */
+    public BigDecimal paidAmount() {
+        return paidAmount == null ? amount : paidAmount;
     }
 
     /** The credit note whose rest this payment holds as credit; null for a payment from the client. */
