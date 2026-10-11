@@ -1,0 +1,85 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 8a6ff1a..9768366 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -532,7 +532,7 @@ function problemWith(line: NewLine): string {
+             </tr>
+             @if (inv.creditOf === null) {
+               <tr>
+-                <th scope="row" colspan="5">Amount due in cash (to the nearest coin)</th>
++                <th scope="row" colspan="5">Amount due in cash (rounded down to the coin below)</th>
+                 <td data-testid="invoice-cash-due">{{ amount(inv.cashDue) }}</td>
+               </tr>
+               <tr>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index e3a68b6..8a1a7b8 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -198,7 +198,7 @@ export interface InvoiceDetail {
+   // What the client withholds for its tax office: its withholding percentage of the amount before tax,
+   // rounded down to the cent ("0.00" when none). Never owed, so left out of the amount due.
+   withholding: string;
+-  // The amount due rounded half up to the nearest cash coin (0.05, or whole yen), and the difference
++  // The amount due rounded down to the cash coin below (0.05, or whole yen), and the difference
+   // that makes (signed); once settled in cash, the cash rounding it was settled with.
+   cashDue: string;
+   cashRounding: string;
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index 7cfa460..f47643a 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -137,7 +137,7 @@ function problemWithCash(payment: NewPayment, invoiceOpen: boolean, clientCurren
+       <label for="payment-method">Paid by</label>
+       <select id="payment-method" data-testid="payment-form-method" formControlName="method">
+         <option value="BANK">Bank transfer</option>
+-        <option value="CASH">Cash (to the nearest 0.05)</option>
++        <option value="CASH">Cash (rounded down to 0.05)</option>
+         <option value="CARD">Card (the card surcharge is taken out of it)</option>
+       </select>
+       <label for="payment-amount">Amount ({{ symbolOf(paidIn()) }})</label>
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Currency.java b/src/main/java/net/officefloor/hq/app/clients/Currency.java
+index e5102d6..d6b00c8 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Currency.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Currency.java
+@@ -41,10 +41,13 @@ public enum Currency {
+         return this == JPY ? BigDecimal.ONE : new BigDecimal("0.05");
+     }
+ 
+-    /** The amount rounded half up to the nearest {@link #cashStep()}: what it comes to in cash. */
++    /**
++     * The amount rounded down to the {@link #cashStep()} below: what it comes to in cash, always in the
++     * client's favour.
++     */
+     public BigDecimal toCash(BigDecimal amount) {
+         BigDecimal step = cashStep();
+-        return amount.divide(step, 0, RoundingMode.HALF_UP).multiply(step).setScale(scale);
++        return amount.divide(step, 0, RoundingMode.FLOOR).multiply(step).setScale(scale);
+     }
+ 
+     /** Whether the amount can be counted out in cash: a whole number of {@link #cashStep()}s. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index ead0e87..25a322a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1237,7 +1237,7 @@ public class Invoice {
+         this.cashRounding = getCashRounding().add(rounding);
+     }
+ 
+-    /** What is due once the given amount has been paid, in cash: rounded half up to the nearest coin. */
++    /** What is due once the given amount has been paid, in cash: rounded down to the coin below. */
+     public BigDecimal cashDue(BigDecimal paid, BigDecimal taxRate) {
+         return currency().toCash(amountDue(paid, taxRate));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 692b511..c4bcbfc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -135,7 +135,7 @@ public class InvoiceController {
+      * {@code writtenOffOn} is the day it was written off as a bad debt (null when it was not); everything
+      * it still owed then is in {@code writtenOff}, and nothing is due. {@code net} is the amount before tax; when
+      * {@code pricesIncludeTax} the tax is inside the subtotal less the discount, which is then the grand total.
+-     * {@code cashDue} is the amount due rounded half up to the nearest cash coin (0.05, or whole yen) and
++     * {@code cashDue} is the amount due rounded down to the cash coin below (0.05, or whole yen) and
+      * {@code cashRounding} the difference (signed): once settled in cash, the cash rounding it was settled with.
+      * {@code surchargePct} (without trailing zeros) is the rush surcharge percentage and {@code surcharge} that share of
+      * the subtotal less the discount, rounded down to the cent; it counts towards the {@code minimumCharge}.
