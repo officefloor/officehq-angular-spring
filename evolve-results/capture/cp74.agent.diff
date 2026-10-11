@@ -1,0 +1,342 @@
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index fe0183d..4f0e1dd 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -174,7 +174,8 @@ export class PaymentForm {
+ 
+   readonly clientId = input.required<number>();
+   // The currency the client is billed in: the payment's by default. A payment in another currency is
+-  // converted into it by the server at the workspace rates (whole yen for yen; the server checks).
++  // converted into it by the server at the workspace rates in force on the payment date (whole yen
++  // for yen; the server checks).
+   readonly currency = input<Currency>('USD');
+   protected readonly symbolOf = symbolOf;
+   protected readonly currencies = CURRENCIES;
+diff --git a/src/main/java/net/officefloor/hq/app/ExchangeRates.java b/src/main/java/net/officefloor/hq/app/ExchangeRates.java
+index ff8500d..466fd50 100644
+--- a/src/main/java/net/officefloor/hq/app/ExchangeRates.java
++++ b/src/main/java/net/officefloor/hq/app/ExchangeRates.java
+@@ -2,7 +2,10 @@ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
+ import java.math.MathContext;
++import java.sql.Date;
++import java.time.LocalDate;
+ import java.util.LinkedHashMap;
++import java.util.List;
+ import java.util.Map;
+ import net.officefloor.hq.app.clients.Currency;
+ import org.springframework.jdbc.core.JdbcTemplate;
+@@ -11,7 +14,9 @@ import org.springframework.stereotype.Service;
+ /**
+  * The workspace's exchange rates: the US dollars one unit of each currency is worth, stored as the
+  * {@code usd_per_<code>} settings. A US dollar is worth one; a currency with no rate set is taken
+- * at par. Invoices read their client's rate themselves (see Invoice).
++ * at par. Dated rates (the {@code fx_rate} table) take over from their date on: something converted on
++ * a date uses the latest dated rate on or before it, or the standing rate before any. Invoices read
++ * their client's rates themselves (see Invoice).
+  */
+ @Service
+ public class ExchangeRates {
+@@ -34,6 +39,34 @@ public class ExchangeRates {
+         return rates;
+     }
+ 
++    /** A dated rate: from the date on, the US dollars one unit of the currency is worth. */
++    public record Dated(LocalDate from, Currency currency, BigDecimal usdPer) {
++    }
++
++    /** Every dated rate, by date then currency. */
++    public List<Dated> dated() {
++        return jdbc.query("SELECT from_date, currency, usd_per FROM fx_rate ORDER BY from_date, currency, id",
++                (rs, n) -> new Dated(rs.getDate(1).toLocalDate(), Currency.of(rs.getString(2)), rs.getBigDecimal(3)));
++    }
++
++    /** Adds a dated rate. */
++    public void addDated(LocalDate from, Currency currency, BigDecimal usdPer) {
++        jdbc.update("INSERT INTO fx_rate (from_date, currency, usd_per) VALUES (?, ?, ?)", Date.valueOf(from),
++                currency.name(), usdPer);
++    }
++
++    /**
++     * The US dollars one unit of the currency is worth on the date: the latest dated rate on or before
++     * it, otherwise the standing rate (see {@link #usdPer(Currency)}).
++     */
++    public BigDecimal usdPer(Currency currency, LocalDate on) {
++        if (currency == Currency.USD) {
++            return BigDecimal.ONE;
++        }
++        return jdbc.queryForList("SELECT usd_per FROM fx_rate WHERE currency = ? AND from_date <= ? ORDER BY from_date DESC, id DESC LIMIT 1",
++                BigDecimal.class, currency.name(), Date.valueOf(on)).stream().findFirst().orElseGet(() -> usdPer(currency));
++    }
++
+     /** The US dollars one unit of the currency is worth: one for the dollar or a currency with no rate set. */
+     public BigDecimal usdPer(Currency currency) {
+         if (currency == Currency.USD) {
+@@ -45,12 +78,13 @@ public class ExchangeRates {
+ 
+     /**
+      * The amount paid in one currency converted into another through US dollars: amount x (dollars per
+-     * unit paid) / (dollars per unit of the other), rounded half up to the other's step.
++     * unit paid) / (dollars per unit of the other), at the rates in force on the date, rounded half up
++     * to the other's step.
+      */
+-    public BigDecimal convert(BigDecimal amount, Currency from, Currency to) {
++    public BigDecimal convert(BigDecimal amount, Currency from, Currency to, LocalDate on) {
+         if (from == to) {
+             return amount.setScale(to.scale());
+         }
+-        return to.roundToStep(amount.multiply(usdPer(from)).divide(usdPer(to), MathContext.DECIMAL128));
++        return to.roundToStep(amount.multiply(usdPer(from, on)).divide(usdPer(to, on), MathContext.DECIMAL128));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 4cee891..590416e 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -36,7 +36,8 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "lateInterestRate", "lateFee");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee");
++    private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "interestWaivedOn", "lineItems");
+@@ -70,6 +71,7 @@ public class TestSupportController {
+     public void reset() {
+         audit.clear();
+         jdbc.execute("DELETE FROM app_setting");
++        jdbc.execute("DELETE FROM fx_rate");
+         jdbc.execute("DELETE FROM payment_allocation");
+         for (String table : List.of("payment", "invoice_line", "invoice", "client")) {
+             jdbc.execute("DELETE FROM " + table);
+@@ -137,6 +139,26 @@ public class TestSupportController {
+                             ExchangeRates.USD_PER + code, usdPer.toPlainString());
+                 }
+             }
++            for (Map<String, Object> rate : rows(values.get("fxRates"), "settings.fxRates")) {
++                only(rate, FX_RATE_FIELDS, "settings.fxRates[]");
++                if (rate.get("from") == null || rate.get("currency") == null || rate.get("usdPer") == null) {
++                    throw refuse("settings.fxRates[] needs from, currency and usdPer");
++                }
++                Currency currency = Currency.of(rate.get("currency").toString());
++                if (currency == null) {
++                    throw refuse("unsupported value of settings.fxRates[].currency: " + rate.get("currency"));
++                }
++                BigDecimal usdPer;
++                try {
++                    usdPer = new BigDecimal(String.valueOf(rate.get("usdPer")));
++                } catch (NumberFormatException ex) {
++                    throw refuse("settings.fxRates[].usdPer must be a number, not " + rate.get("usdPer"));
++                }
++                if (usdPer.signum() <= 0) {
++                    throw refuse("settings.fxRates[].usdPer must be more than zero, not " + rate.get("usdPer"));
++                }
++                exchangeRates.addDated(date(rate.get("from"), "settings.fxRates[].from"), currency, usdPer);
++            }
+         }
+         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
+             only(row, CLIENT_FIELDS, "clients[]");
+@@ -218,7 +240,7 @@ public class TestSupportController {
+             BigDecimal paidAmount = cents(row.get("amount"), "payments[].amount");
+             boolean foreign = paidIn != clientCurrency && paidAmount != null;
+             Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount"},
+-                    id(row.get("clientId")), foreign ? exchangeRates.convert(paidAmount, paidIn, clientCurrency) : paidAmount,
++                    id(row.get("clientId")), foreign ? exchangeRates.convert(paidAmount, paidIn, clientCurrency, date(row.get("date"), "payments[].date")) : paidAmount,
+                     date(row.get("date"), "payments[].date"),
+                     row.get("reference") == null ? null : row.get("reference").toString(),
+                     flag(row.get("reversed"), "payments[].reversed"),
+@@ -295,6 +317,16 @@ public class TestSupportController {
+         if (!rates.isEmpty()) {
+             settings.put("usdPer", rates);
+         }
++        List<Map<String, Object>> fxRates = exchangeRates.dated().stream().map(r -> {
++            Map<String, Object> row = new LinkedHashMap<>();
++            row.put("from", r.from().toString());
++            row.put("currency", r.currency().name());
++            row.put("usdPer", r.usdPer());
++            return row;
++        }).toList();
++        if (!fxRates.isEmpty()) {
++            settings.put("fxRates", fxRates);
++        }
+         if (!settings.isEmpty()) {
+             out.put("settings", settings);
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 2a9e99f..5ced31c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -120,6 +120,17 @@ public class Invoice {
+     @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'usd_per_' || c.currency)")
+     private String usdPer;
+ 
++    /**
++     * The dated rates of the client's currency, as "from date=US dollars per unit" joined by commas in
++     * date order; null when there are none. Read from the workspace's dated rates.
++     */
++    @Formula("(SELECT LISTAGG(CAST(r.from_date AS VARCHAR) || '=' || CAST(r.usd_per AS VARCHAR), ',') WITHIN GROUP (ORDER BY r.from_date, r.id) FROM fx_rate r, client c WHERE c.id = client_id AND r.currency = c.currency)")
++    private String datedRates;
++
++    /** The latest day a payment (not reversed) was applied to the invoice; null when none was. */
++    @Formula("(SELECT MAX(COALESCE(a.applied_date, p.payment_date)) FROM payment_allocation a, payment p WHERE a.invoice_id = id AND p.id = a.payment_id AND p.reversed = FALSE)")
++    private LocalDate lastPaidOn;
++
+     /** The client's early-payment discount, a percentage of the grand total; read from the client. */
+     @Formula("(SELECT c.early_pay_pct FROM client c WHERE c.id = client_id)")
+     private BigDecimal earlyPayPct;
+@@ -268,10 +279,39 @@ public class Invoice {
+         return BigDecimal.ZERO.setScale(scale());
+     }
+ 
+-    /** Whether what is left is worth less than {@link #WRITE_OFF_LIMIT} US dollars at the workspace rates. */
+-    private boolean isSmallEnoughToWriteOff(BigDecimal left) {
++    /**
++     * The US dollars one unit of the invoice's currency is worth on the date: the latest dated rate on
++     * or before it, otherwise the standing rate (at par when none is set, or when there is no date).
++     */
++    private BigDecimal usdPerOn(LocalDate on) {
++        if (currency() == Currency.USD) {
++            return BigDecimal.ONE;
++        }
+         BigDecimal rate = usdPer == null ? BigDecimal.ONE : new BigDecimal(usdPer.trim());
+-        return left.multiply(rate).compareTo(WRITE_OFF_LIMIT) < 0;
++        if (datedRates == null || on == null) {
++            return rate;
++        }
++        for (String entry : datedRates.split(",")) {
++            String[] parts = entry.split("=");
++            if (LocalDate.parse(parts[0].trim()).isAfter(on)) {
++                break;
++            }
++            rate = new BigDecimal(parts[1].trim());
++        }
++        return rate;
++    }
++
++    /**
++     * Whether what is left is worth less than {@link #WRITE_OFF_LIMIT} US dollars at the workspace rate
++     * on the day of the latest payment.
++     */
++    private boolean isSmallEnoughToWriteOff(BigDecimal left) {
++        return isSmallEnoughToWriteOff(left, lastPaidOn);
++    }
++
++    /** Whether what is left is worth less than {@link #WRITE_OFF_LIMIT} US dollars at the rate on the date. */
++    private boolean isSmallEnoughToWriteOff(BigDecimal left, LocalDate on) {
++        return left.multiply(usdPerOn(on)).compareTo(WRITE_OFF_LIMIT) < 0;
+     }
+ 
+     /** Whether this is a credit note against another invoice. */
+@@ -503,14 +543,14 @@ public class Invoice {
+ 
+     /**
+      * The late fee in the invoice's currency: the fee in US dollars converted as a payment in another
+-     * currency is, through the workspace rate, rounded half up to the currency's step.
++     * currency is, through the workspace rate on the day it is charged, rounded half up to the
++     * currency's step.
+      */
+-    private BigDecimal lateFeeIn(BigDecimal feeUsd) {
++    private BigDecimal lateFeeIn(BigDecimal feeUsd, LocalDate on) {
+         if (currency() == Currency.USD) {
+             return feeUsd.setScale(scale(), RoundingMode.HALF_UP);
+         }
+-        BigDecimal rate = usdPer == null ? BigDecimal.ONE : new BigDecimal(usdPer.trim());
+-        return currency().roundToStep(feeUsd.divide(rate, MathContext.DECIMAL128));
++        return currency().roundToStep(feeUsd.divide(usdPerOn(on), MathContext.DECIMAL128));
+     }
+ 
+     /**
+@@ -546,7 +586,7 @@ public class Invoice {
+             return;
+         }
+         boolean earnsInterest = annualRate != null && annualRate.signum() > 0;
+-        BigDecimal fee = lateFeeUsd == null || lateFeeUsd.signum() <= 0 ? zero() : lateFeeIn(lateFeeUsd);
++        BigDecimal fee = lateFeeUsd == null || lateFeeUsd.signum() <= 0 ? zero() : lateFeeIn(lateFeeUsd, dueDate.plusDays(GRACE_DAYS + 1));
+         if (!earnsInterest && fee.signum() <= 0) {
+             return;
+         }
+@@ -1113,7 +1153,7 @@ public class Invoice {
+         BigDecimal sum = BigDecimal.ZERO;
+         for (Part p : inOrder) {
+             sum = sum.add(p.amount());
+-            if (sum.signum() > 0 && isSmallEnoughToWriteOff(total.subtract(sum))) {
++            if (sum.signum() > 0 && isSmallEnoughToWriteOff(total.subtract(sum), p.on())) {
+                 return p.on();
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 77e6a71..ec9958e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -611,7 +611,7 @@ public class InvoiceService {
+                     + " is not the reference of any of this client's drafts, so the deposit cannot be held for it.");
+         }
+         Currency currency = client.get().getCurrency();
+-        BigDecimal amount = converted(paidAmount, paidIn, currency);
++        BigDecimal amount = converted(paidAmount, paidIn, currency, date);
+         LocalDate now = today.date();
+         if (date.isAfter(now)) {
+             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+@@ -793,7 +793,7 @@ public class InvoiceService {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException("A credit note takes no payments.");
+             }
+-            BigDecimal amount = converted(paidAmount, paidIn, invoice.currency());
++            BigDecimal amount = converted(paidAmount, paidIn, invoice.currency(), date);
+             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+             if (due.signum() <= 0) {
+@@ -871,7 +871,7 @@ public class InvoiceService {
+     @Transactional
+     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+             List<String> references) {
+-        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId));
++        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId), date);
+         List<Invoice> ofClient = loadForClient(clientId);
+         List<Invoice> candidates = ofClient;
+         if (!references.isEmpty()) {
+@@ -952,7 +952,7 @@ public class InvoiceService {
+     @Transactional
+     public Payment recordSplitPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+             String reference, List<PaymentAllocation> parts) {
+-        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId));
++        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId), date);
+         return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, false);
+     }
+ 
+@@ -1038,13 +1038,14 @@ public class InvoiceService {
+ 
+     /**
+      * The amount paid in the currency (null for the client's own) converted into the client's currency
+-     * through US dollars at the workspace rates; this is what is applied and checked. The amount must be
++     * through US dollars at the workspace rates in force on the date paid (today when none is given);
++     * this is what is applied and checked. The amount must be
+      * whole in the currency it was paid in, and must still be more than zero once converted.
+      */
+-    private BigDecimal converted(BigDecimal paidAmount, Currency paidIn, Currency clientCurrency) {
++    private BigDecimal converted(BigDecimal paidAmount, Currency paidIn, Currency clientCurrency, LocalDate date) {
+         Currency from = paidIn == null ? clientCurrency : paidIn;
+         requireWhole(from, paidAmount, "The amount");
+-        BigDecimal amount = exchangeRates.convert(paidAmount, from, clientCurrency);
++        BigDecimal amount = exchangeRates.convert(paidAmount, from, clientCurrency, date == null ? today.date() : date);
+         if (amount.signum() <= 0) {
+             throw new InvoiceRejectedException("The amount is worth nothing once converted into "
+                     + clientCurrency.name() + ".");
+diff --git a/src/main/resources/db/migration/V28__fx_rate.sql b/src/main/resources/db/migration/V28__fx_rate.sql
+new file mode 100644
+index 0000000..479d00b
+--- /dev/null
++++ b/src/main/resources/db/migration/V28__fx_rate.sql
+@@ -0,0 +1,9 @@
++-- Dated exchange rates: from a date on, the US dollars one unit of the currency is worth. Something
++-- converted on a date uses the latest dated rate on or before it, or the standing usd_per_<code>
++-- setting before any.
++CREATE TABLE fx_rate (
++    id        BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    from_date DATE           NOT NULL,
++    currency  VARCHAR(3)     NOT NULL,
++    usd_per   DECIMAL(19, 8) NOT NULL
++);
