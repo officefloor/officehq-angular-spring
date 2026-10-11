@@ -1,0 +1,358 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index 31919b7..4846c2e 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -1,6 +1,7 @@
+ import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+ import { InvoiceDetail, InvoiceService, InvoiceSummary, NewAllocation } from './invoice.service';
+ import { PaymentForm } from './payment-form';
++import { RefundForm } from './refund-form';
+ import { InvoicePanel } from './invoice-panel';
+ import { money, statusLabel } from './invoice-format';
+ 
+@@ -9,9 +10,10 @@ import { money, statusLabel } from './invoice-format';
+ // An invoice looked up by its number is opened as soon as its client's invoices are shown.
+ // Every sent invoice that is not void has a box for its part of a payment; once any is filled, the payment recorded
+ // (in the panel, or below the list when no invoice is open) is spread over those invoices.
++// The client's unused credit can be refunded from the refund form below the list.
+ @Component({
+   selector: 'app-client-invoices',
+-  imports: [InvoicePanel, PaymentForm],
++  imports: [InvoicePanel, PaymentForm, RefundForm],
+   styles: `
+     :host {
+       display: flex;
+@@ -96,6 +98,7 @@ import { money, statusLabel } from './invoice-format';
+           }
+         </tbody>
+       </table>
++      <app-refund-form [clientId]="clientId()" (refunded)="splitRecorded($event)" />
+     </section>
+ 
+     @if (selectedId(); as id) {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 53d552a..843aac9 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -244,8 +244,15 @@ export class InvoiceService {
+     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/deposits`, deposit);
+   }
+ 
++  // Refunds the client's unused credit, the oldest payment's first; refused (409) when dated after
++  // today or before a payment it would come from, or more than the client's credit. Answers the
++  // client's invoices.
++  refundCredit(clientId: number, refund: { amount: string; date: string }): Observable<InvoiceSummary[]> {
++    return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/refunds`, refund);
++  }
++
+   // Reverses a payment (a bounced cheque) on every invoice it was applied to; refused (409) when it
+-  // has already been reversed. Answers the opened invoice with its payments and new status.
++  // has already been reversed or has had credit refunded. Answers the opened invoice with its payments and new status.
+   reversePayment(invoiceId: number, paymentId: number): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments/${paymentId}/reverse`, null);
+   }
+diff --git a/src/main/frontend/src/app/features/invoices/refund-form.ts b/src/main/frontend/src/app/features/invoices/refund-form.ts
+new file mode 100644
+index 0000000..a8bf627
+--- /dev/null
++++ b/src/main/frontend/src/app/features/invoices/refund-form.ts
+@@ -0,0 +1,82 @@
++import { Component, inject, input, output, signal } from '@angular/core';
++import { HttpErrorResponse } from '@angular/common/http';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { InvoiceService, InvoiceSummary } from './invoice.service';
++import { TWO_DECIMALS } from './invoice-format';
++
++// Refunds the client's unused credit: an amount more than zero with at most two decimals, and the
++// date it was refunded. It comes out of the oldest payment's credit first; the server refuses a
++// date after today or before a payment it would come from, or more than the client's credit.
++@Component({
++  selector: 'app-refund-form',
++  imports: [ReactiveFormsModule],
++  template: `
++    <form [formGroup]="form" (ngSubmit)="refund()" aria-label="Refund unused credit" novalidate>
++      <label for="refund-amount">Refund ($)</label>
++      <input
++        id="refund-amount"
++        data-testid="refund-form-amount"
++        inputmode="decimal"
++        formControlName="amount"
++        required
++      />
++      <label for="refund-date">Refunded on</label>
++      <input id="refund-date" type="date" data-testid="refund-form-date" formControlName="date" required />
++      <button type="submit" data-testid="refund-form-submit" [disabled]="saving()">Refund credit</button>
++      @if (error()) {
++        <p role="alert" data-testid="refund-form-error">{{ error() }}</p>
++      }
++    </form>
++  `,
++})
++export class RefundForm {
++  private readonly service = inject(InvoiceService);
++
++  readonly clientId = input.required<number>();
++  // The client's invoices after a refund.
++  readonly refunded = output<InvoiceSummary[]>();
++
++  protected readonly saving = signal(false);
++  protected readonly error = signal('');
++
++  protected readonly form = new FormGroup({
++    amount: new FormControl('', { nonNullable: true }),
++    date: new FormControl('', { nonNullable: true }),
++  });
++
++  protected refund(): void {
++    const raw = this.form.getRawValue();
++    const amount = raw.amount.trim().replace(/^\$/, '');
++    const date = raw.date.trim();
++    const problems: string[] = [];
++    if (!amount) {
++      problems.push('Enter an amount.');
++    } else if (!TWO_DECIMALS.test(amount)) {
++      problems.push('The amount must be a number with at most two decimals.');
++    } else if (Number(amount) <= 0) {
++      problems.push('The amount must be more than zero.');
++    }
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
++      problems.push('Enter the date it was refunded.');
++    }
++    if (problems.length > 0) {
++      this.form.markAllAsTouched();
++      this.error.set(problems.join(' '));
++      return;
++    }
++    this.saving.set(true);
++    this.error.set('');
++    this.service.refundCredit(this.clientId(), { amount, date }).subscribe({
++      next: (list) => {
++        this.form.reset();
++        this.saving.set(false);
++        this.refunded.emit(list);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.error.set(typeof detail === 'string' && detail ? detail : 'The refund could not be made.');
++        this.saving.set(false);
++      },
++    });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 62a5b7b..f740d59 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -36,7 +36,7 @@ public class TestSupportController {
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "allocations");
++    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "allocations");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID");
+ 
+@@ -136,11 +136,12 @@ public class TestSupportController {
+             if (row.get("date") == null) {
+                 throw refuse("payments[].date is required");
+             }
+-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed"},
++            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded"},
+                     id(row.get("clientId")), cents(row.get("amount"), "payments[].amount"),
+                     date(row.get("date"), "payments[].date"),
+                     row.get("reference") == null ? null : row.get("reference").toString(),
+-                    flag(row.get("reversed"), "payments[].reversed"));
++                    flag(row.get("reversed"), "payments[].reversed"),
++                    money(row.get("refunded"), "payments[].refunded"));
+             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
+                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
+                 if (allocation.get("invoiceId") == null) {
+@@ -224,7 +225,7 @@ public class TestSupportController {
+                             }).toList());
+                     return row;
+                 }).toList());
+-        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference, reversed FROM payment ORDER BY id")
++        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference, reversed, refunded FROM payment ORDER BY id")
+                 .stream().map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -233,6 +234,7 @@ public class TestSupportController {
+                     row.put("date", r.get("PAYMENT_DATE").toString());
+                     row.put("reference", r.get("REFERENCE"));
+                     row.put("reversed", r.get("REVERSED"));
++                    row.put("refunded", r.get("REFUNDED"));
+                     row.put("allocations", jdbc.queryForList(
+                             "SELECT invoice_id, amount, applied_date FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
+                             r.get("ID")).stream().map(a -> {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 6e0fc97..ba69a71 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -202,6 +202,16 @@ public class InvoiceController {
+             LocalDate date) {
+     }
+ 
++    /** A refund of unused credit: an amount more than zero with at most two decimals, and the date it was refunded. */
++    public record NewRefund(
++            @NotNull(message = "Enter an amount.")
++            @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
++            @Digits(integer = 17, fraction = 2, message = "The amount can have at most two decimals.")
++            BigDecimal amount,
++            @NotNull(message = "Enter the date it was refunded.")
++            LocalDate date) {
++    }
++
+     /** A due date to set on a draft by hand. */
+     public record NewDueDate(
+             @NotNull(message = "Enter the due date.")
+@@ -441,6 +451,15 @@ public class InvoiceController {
+         return forClient(clientId);
+     }
+ 
++    /** Refunds the client's unused credit, oldest payment's first; answers the client's invoices. */
++    @PostMapping("/api/clients/{clientId}/refunds")
++    @ResponseStatus(HttpStatus.CREATED)
++    public List<InvoiceSummary> refundCredit(@PathVariable Long clientId, @Valid @RequestBody NewRefund body) {
++        invoices.refundCredit(clientId, body.amount(), body.date())
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
++        return forClient(clientId);
++    }
++
+     @PostMapping("/api/invoices/{id}/payments")
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 6866d9d..9246805 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -350,6 +350,57 @@ public class InvoiceService {
+         return Optional.of(payment);
+     }
+ 
++    /**
++     * Refunds the amount of the client's unused credit on the date: the oldest payment's credit first
++     * (lower id first on the same date), then the next, each part recorded in the audit; empty if no
++     * such client. The amount has already been checked; a date after today or before a payment it
++     * would come from, or an amount more than the client's credit, is refused.
++     */
++    @Transactional
++    public Optional<Long> refundCredit(Long clientId, BigDecimal amount, LocalDate date) {
++        if (clients.findById(clientId).isEmpty()) {
++            return Optional.empty();
++        }
++        LocalDate now = today.date();
++        if (date.isAfter(now)) {
++            throw new InvoiceRejectedException("The refund date cannot be after today (" + now + ").");
++        }
++        List<Payment> from = new ArrayList<>();
++        List<BigDecimal> parts = new ArrayList<>();
++        BigDecimal left = amount;
++        BigDecimal credit = BigDecimal.ZERO;
++        for (Payment payment : payments.findForClient(clientId)) {
++            BigDecimal unused = payment.credit();
++            if (unused.signum() <= 0) {
++                continue;
++            }
++            credit = credit.add(unused);
++            if (left.signum() <= 0) {
++                continue;
++            }
++            BigDecimal part = unused.min(left);
++            if (date.isBefore(payment.getDate())) {
++                throw new InvoiceRejectedException("The refund cannot be dated before the payment of "
++                        + payment.getDate() + " it would come from.");
++            }
++            from.add(payment);
++            parts.add(part);
++            left = left.subtract(part);
++        }
++        if (left.signum() > 0) {
++            throw new InvoiceRejectedException("The refund cannot be more than the client's unused credit of $"
++                    + credit.setScale(2, RoundingMode.UNNECESSARY).toPlainString() + ".");
++        }
++        for (int i = 0; i < from.size(); i++) {
++            Payment payment = from.get(i);
++            payment.refund(parts.get(i));
++            payments.saveAndFlush(payment);
++            audit.record("CREDIT_REFUNDED payment=" + payment.getId() + " amount="
++                    + parts.get(i).setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++        }
++        return Optional.of(clientId);
++    }
++
+     /** The unused credit of each client that has any, by client id. */
+     @Transactional(readOnly = true)
+     public Map<Long, BigDecimal> credits() {
+@@ -638,7 +689,8 @@ public class InvoiceService {
+ 
+     /**
+      * Reverses the payment (a bounced cheque), undoing it on every invoice it was applied to, and
+-     * records it in the audit; empty if no such payment. A payment already reversed is refused.
++     * records it in the audit; empty if no such payment. A payment already reversed, or one that has
++     * had any of its credit refunded, is refused.
+      */
+     @Transactional
+     public Optional<Payment> reversePayment(Long paymentId) {
+@@ -647,6 +699,9 @@ public class InvoiceService {
+             if (payment.isReversed()) {
+                 throw new InvoiceRejectedException("This payment has already been reversed.");
+             }
++            if (payment.getRefunded().signum() > 0) {
++                throw new InvoiceRejectedException("This payment has had credit refunded, so it cannot be reversed.");
++            }
+             payment.reverse();
+             payments.saveAndFlush(payment);
+             audit.record("PAYMENT_REVERSED id=" + payment.getId() + " amount="
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index 8d20710..1f60930 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -37,6 +37,9 @@ public class Payment {
+     /** Whether the payment has been reversed (a bounced cheque): it then no longer counts. */
+     private boolean reversed;
+ 
++    /** How much of the payment's unused credit has been refunded to the client; it is no longer credit. */
++    private BigDecimal refunded = BigDecimal.ZERO;
++
+     @ElementCollection
+     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
+     private List<PaymentAllocation> allocations = new ArrayList<>();
+@@ -113,16 +116,28 @@ public class Payment {
+         reversed = true;
+     }
+ 
++    public BigDecimal getRefunded() {
++        return refunded;
++    }
++
++    /** Refunds part of this payment's unused credit to the client. */
++    public void refund(BigDecimal part) {
++        refunded = refunded.add(part);
++    }
++
+     public List<PaymentAllocation> getAllocations() {
+         return allocations;
+     }
+ 
+-    /** The part of this payment applied to no invoice: credit on the client's account; none once reversed. */
++    /**
++     * The part of this payment applied to no invoice and not refunded: credit on the client's account;
++     * none once reversed.
++     */
+     public BigDecimal credit() {
+         if (reversed) {
+             return BigDecimal.ZERO;
+         }
+-        return amount.subtract(allocations.stream().map(PaymentAllocation::getAmount)
++        return amount.subtract(refunded).subtract(allocations.stream().map(PaymentAllocation::getAmount)
+                 .reduce(BigDecimal.ZERO, BigDecimal::add));
+     }
+ 
+diff --git a/src/main/resources/db/migration/V18__payment_refunded.sql b/src/main/resources/db/migration/V18__payment_refunded.sql
+new file mode 100644
+index 0000000..e047029
+--- /dev/null
++++ b/src/main/resources/db/migration/V18__payment_refunded.sql
+@@ -0,0 +1,2 @@
++-- How much of a payment's unused credit has been refunded to the client: it can no longer be used.
++ALTER TABLE payment ADD COLUMN refunded DECIMAL(19, 2) DEFAULT 0 NOT NULL;
