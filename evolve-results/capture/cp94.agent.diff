@@ -1,0 +1,56 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 6739609..bb9d6ba 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -39,6 +39,9 @@ public class Invoice {
+      */
+     public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("2.00");
+ 
++    /** A plan's monthly instalment must be worth at least this many US dollars. */
++    public static final BigDecimal MIN_INSTALMENT_USD = new BigDecimal("25.00");
++
+     /** The most of the grand total that can be written off as a small balance after a payment. */
+     public static final BigDecimal WRITE_OFF_SHARE = new BigDecimal("0.01");
+ 
+@@ -978,6 +981,16 @@ public class Invoice {
+         this.planDownPct = planDownPct;
+     }
+ 
++    /**
++     * Whether the plan's monthly instalment (its first after any down payment) at the tax rate is worth
++     * less than {@link #MIN_INSTALMENT_USD} US dollars at the rate on the date; false without a plan.
++     */
++    public boolean isInstalmentTooSmall(BigDecimal taxRate, LocalDate on) {
++        return schedule(taxRate).stream().filter(i -> i.number() >= 1).findFirst()
++                .map(i -> i.payment().multiply(usdPerOn(on)).compareTo(MIN_INSTALMENT_USD) < 0)
++                .orElse(false);
++    }
++
+     /** The plan's down payment at the tax rate: its percentage of the grand total, rounded down to the cent. */
+     private BigDecimal downPayment(BigDecimal taxRate) {
+         return total(taxRate).multiply(planDownPct).divide(BigDecimal.valueOf(100), scale(), RoundingMode.FLOOR);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index a6b8ff9..dd48e83 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -363,7 +363,8 @@ public class InvoiceService {
+      * Spreads a draft over the number of monthly instalments at the annual interest rate, after a down
+      * payment of the percentage of the grand total; empty if no
+      * such invoice. Both have already been checked; any invoice that is not a draft, a credit note, or
+-     * one holding back retention is refused.
++     * one holding back retention is refused, as is a plan whose monthly instalment would be worth less
++     * than {@link Invoice#MIN_INSTALMENT_USD} US dollars at today's rates.
+      */
+     @Transactional
+     public Optional<Invoice> setPlan(Long invoiceId, int instalments, BigDecimal instalmentRate,
+@@ -380,6 +381,10 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException("An invoice holding back retention cannot also be spread over instalments.");
+             }
+             invoice.setPlan(instalments, instalmentRate, planDownPct);
++            if (invoice.isInstalmentTooSmall(taxRate.percent(), today.date())) {
++                throw new InvoiceRejectedException("The monthly instalment must be worth at least $"
++                        + Invoice.MIN_INSTALMENT_USD.toPlainString() + " at today's exchange rates.");
++            }
+             invoices.saveAndFlush(invoice);
+         });
+         return found;
