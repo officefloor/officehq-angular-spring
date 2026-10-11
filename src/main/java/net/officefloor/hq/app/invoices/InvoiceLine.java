@@ -4,7 +4,10 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -54,6 +57,11 @@ public class InvoiceLine {
      * null when it has a single unit price. A tiered line keeps its first band's price as its unit price.
      */
     private String tiers;
+
+    /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
+    private Invoice invoice;
 
     protected InvoiceLine() {
     }
@@ -105,6 +113,11 @@ public class InvoiceLine {
         this.taxRate = taxRate;
     }
 
+    /** Puts the line on the given invoice. */
+    void placeOn(Invoice invoice) {
+        this.invoice = invoice;
+    }
+
     public Long getId() {
         return id;
     }
@@ -130,6 +143,11 @@ public class InvoiceLine {
         return tiers != null;
     }
 
+    /** The stored tiers the line is priced in (see {@link RateTiers}); null when it has a single unit price. */
+    String tiers() {
+        return tiers;
+    }
+
     public boolean isTaxExempt() {
         return taxExempt;
     }
@@ -152,13 +170,14 @@ public class InvoiceLine {
     }
 
     /**
-     * Quantity times unit price — or, for a tiered line, the total of its bands starting from the
-     * first — rounded half up to the given number of decimals (2, the cent; 0 for whole yen), before
+     * Quantity times unit price — or, for a tiered line, the charge for its units at the bands they
+     * fall in, carrying on from where the invoice's earlier lines of its unit type stopped — rounded half up to the given number of decimals (2, the cent; 0 for whole yen), before
      * the line's discount.
      */
     public BigDecimal grossAmount(int scale) {
         if (tiers != null) {
-            return RateTiers.parse(tiers).total(qty, scale);
+            BigDecimal before = invoice == null ? BigDecimal.ZERO : invoice.tieredUnitsBefore(this);
+            return RateTiers.parse(tiers).charge(before, qty, scale);
         }
         return qty.multiply(unitPrice).setScale(scale, RoundingMode.HALF_UP);
     }

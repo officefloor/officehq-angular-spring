@@ -46,6 +46,20 @@ public record RateTiers(List<Band> bands) {
      * price, rounded half up to the given number of decimals (2, the cent; 0 for whole yen).
      */
     public BigDecimal total(BigDecimal qty, int scale) {
+        return charge(BigDecimal.ZERO, qty, scale);
+    }
+
+    /**
+     * What the given quantity costs when the given number of units have already gone through the
+     * bands before it: each of its units at the price of the band it falls in, the exact charge
+     * rounded half up to the given number of decimals.
+     */
+    public BigDecimal charge(BigDecimal before, BigDecimal qty, int scale) {
+        return exact(before.add(qty)).subtract(exact(before)).setScale(scale, RoundingMode.HALF_UP);
+    }
+
+    /** What the given quantity costs from the first band, unrounded. */
+    private BigDecimal exact(BigDecimal qty) {
         BigDecimal left = qty;
         BigDecimal total = BigDecimal.ZERO;
         for (int i = 0; i < bands.size() && left.signum() > 0; i++) {
@@ -55,6 +69,6 @@ public record RateTiers(List<Band> bands) {
             total = total.add(units.multiply(band.unitPrice()));
             left = left.subtract(units);
         }
-        return total.setScale(scale, RoundingMode.HALF_UP);
+        return total;
     }
 }

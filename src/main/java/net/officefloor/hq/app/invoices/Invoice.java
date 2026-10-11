@@ -22,6 +22,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Objects;
 import java.util.List;
 import net.officefloor.hq.app.clients.Currency;
 import net.officefloor.hq.app.clients.TaxNumber;
@@ -365,7 +366,7 @@ public class Invoice {
         copy.instalments = instalments;
         copy.instalmentRate = instalmentRate;
         copy.planDownPct = planDownPct;
-        lines.forEach(line -> copy.lines.add(line.copy()));
+        lines.forEach(line -> copy.addLine(line.copy()));
         return copy;
     }
 
@@ -1723,7 +1724,28 @@ public class Invoice {
 
     /** Adds a line to the end of the invoice. */
     public void addLine(InvoiceLine line) {
+        line.placeOn(this);
         lines.add(line);
+    }
+
+    /**
+     * How many units of the given tiered line's unit type the invoice's earlier lines take through the
+     * bands before it: the tiered lines of that unit type before it in line order (lower id first, lines
+     * not yet saved last in the order they were added).
+     */
+    BigDecimal tieredUnitsBefore(InvoiceLine line) {
+        List<InvoiceLine> ordered = new ArrayList<>(lines);
+        ordered.sort(Comparator.comparing(InvoiceLine::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+        BigDecimal before = BigDecimal.ZERO;
+        for (InvoiceLine other : ordered) {
+            if (other == line) {
+                return before;
+            }
+            if (other.isTiered() && Objects.equals(other.getUnitType(), line.getUnitType())) {
+                before = before.add(other.getQty());
+            }
+        }
+        return BigDecimal.ZERO;
     }
 
     /** Whether the invoice has the line with the given id. */
@@ -1740,13 +1762,16 @@ public class Invoice {
         if (line == null) {
             return false;
         }
-        BigDecimal left = subtotal().subtract(line.amount(scale()));
+        int index = lines.indexOf(line);
+        lines.remove(line);
+        // Removing a tiered line reprices the others of its unit type, so what is left is worked out without it.
+        BigDecimal left = subtotal();
         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
+            lines.add(index, line);
             throw new InvoiceRejectedException("This line cannot be removed: the "
                     + currency().format(left) + " left would be less than the "
                     + currency().format(discountAmount) + " discount.");
         }
-        lines.remove(line);
         return true;
     }
 
@@ -1760,15 +1785,17 @@ public class Invoice {
         if (line == null) {
             return false;
         }
-        BigDecimal changed = new InvoiceLine(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate)
-                .amount(scale());
-        BigDecimal left = subtotal().subtract(line.amount(scale())).add(changed);
+        InvoiceLine was = line.copy();
+        line.update(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate);
+        // Changing a tiered line reprices the others of its unit type, so the subtotal is worked out with it changed.
+        BigDecimal left = subtotal();
         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
+            line.update(was.getDescription(), was.getQty(), was.getUnitType(), was.getUnitPrice(), was.tiers(),
+                    was.isTaxExempt(), was.getDiscountPct(), was.getTaxRate());
             throw new InvoiceRejectedException("This line cannot be changed: the "
                     + currency().format(left) + " subtotal would be less than the "
                     + currency().format(discountAmount) + " discount.");
         }
-        line.update(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate);
         return true;
     }
 
