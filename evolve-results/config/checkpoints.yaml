@@ -1,0 +1,2758 @@
+# The ordered, cumulative checkpoint stream: 250 plain-English change requests that grow ONE
+# application from a near-empty base, all on ONE screen — the invoice workspace at `/` — over
+# THREE entities: the client, the invoice (with its lines) and the payment (with its allocations).
+#
+# The problem is deliberately concentrated so the solution must be too: no request adds a page or a
+# fourth entity, every addition adds a rule the existing ones must account for, every fourth request
+# mutates complexity already in place, and every act adds at least three concentrated algorithms.
+# The design, vocabulary and authoring rules are in acceptance/WORKSPACE.md; the reasoning is in
+# docs/STREAM_RESTRUCTURE_PLAN.md. Earlier streams are in git history.
+#
+#   Act I   (cp1-50)    build the spine fast
+#   Act II  (cp51-100)  money over time
+#   Act III (cp101-150) rules that interact
+#   Act IV  (cp151-200) cross-cutting states
+#   Act V   (cp201-250) keep loading
+#
+# EACH CHECKPOINT:
+#   request   : what a user looking at the workspace would type (given to the agent; self-contained,
+#               no checkpoint numbers).
+#   test      : the Playwright spec, the objective gate, also shown to the agent.
+#   type      : additive | mutative (mutative exactly when the checkpoint number is a multiple of 4).
+#   mutates   : (mutative) earlier checkpoint numbers whose behaviour it changes; updated copies of
+#               their specs ship in acceptance/specs/cp<NN>/ and replace them from here on.
+#   retires   : (optional) tests a copy deliberately drops, as "<spec basename>::<test title>".
+#   algorithm : (optional) the concentrated algorithm this checkpoint adds or revises
+#               (acceptance/WORKSPACE.md §5; reference: acceptance/reference/algorithms.py).
+#
+# BLIND: each checkpoint runs a fresh agent with no memory and without the earlier specs; only the
+# code, its request and its own spec. Run harness.checkpoint_lint before paying for a run.
+checkpoints:
+  # ===================================================================== Act I: build the spine fast
+  - id: cp01_workspace_clients
+    type: additive
+    test: acceptance/specs/cp01_workspace_clients.spec.ts
+    request: |
+      Turn the home page into my invoice workspace. Start with my clients: list them by name from
+      A to Z, ignoring capital letters, each with their email, and let me add a client with a name
+      and an email. A new client should appear in its place in that order straight away.
+
+  - id: cp02_client_validation
+    type: additive
+    test: acceptance/specs/cp02_client_validation.spec.ts
+    request: |
+      Check clients before saving them. A client needs a name and a proper email address like
+      name@company.com; something like name@company, with nothing after the company name, is a typo.
+      Two clients can't share an email address, and capitals don't make it a different one. If
+      something is wrong, tell me what and add nothing.
+
+  - id: cp03_client_invoices
+    type: additive
+    test: acceptance/specs/cp03_client_invoices.spec.ts
+    request: |
+      When I click a client, list that client's invoices beside the clients, each with its status
+      (Draft or Sent), its total and its due date. An invoice is made of lines, each a quantity
+      times a unit price, and quantities can have up to two decimals (1.25 hours, say). Work the
+      total out by adding up every line's quantity times unit price exactly, then round once, half
+      up, to the cent.
+
+  - id: cp04_line_rounding
+    type: mutative
+    mutates: [3]
+    test: acceptance/specs/cp04_line_rounding.spec.ts
+    request: |
+      My clients add up the lines on my invoices and get a different total from mine. Round each
+      line's quantity times unit price to the cent first (half up), and make the invoice total the
+      sum of those rounded line amounts.
+
+  - id: cp05_invoice_panel
+    type: additive
+    test: acceptance/specs/cp05_invoice_panel.spec.ts
+    request: |
+      Clicking an invoice in the list should open it in an invoice panel on the same screen: its
+      status, its lines (description, quantity, unit price and amount), its subtotal and its grand
+      total. Show quantities as entered, without trailing zeros (2, 1.5). Also show each invoice's
+      issue date in the list, and give me a New invoice button for the selected client: it creates
+      an empty draft, issued today and due 30 days later, adds it to the list and opens it. New
+      records carry on numbering from the highest existing id.
+
+  - id: cp06_line_form
+    type: additive
+    test: acceptance/specs/cp06_line_form.spec.ts
+    request: |
+      Let me add a line to a draft invoice in the panel: description, quantity and unit price. The
+      description is required, the quantity must be more than zero with at most two decimals, and
+      the unit price must be at least $0.01 with at most two decimals. If anything breaks a rule,
+      tell me and add nothing. The subtotal, grand total and the invoice's total in the list should
+      update as soon as the line is added.
+
+  - id: cp07_invoice_number
+    type: additive
+    algorithm: luhn-invoice-number
+    test: acceptance/specs/cp07_invoice_number.spec.ts
+    request: |
+      Give every invoice a number made from its id: INV-, then the id padded to six digits, then a
+      Luhn check digit worked out over those six digits. For the check digit, start from the
+      rightmost digit and double every second digit (the rightmost, the third from the right, and
+      so on), subtract 9 from any doubled result over 9, add all the digits up, and the check digit
+      is whatever brings the total up to the next multiple of ten (0 if it already is one). So
+      invoice 7 is INV-0000075. Show the number in the invoice list and at the top of the panel.
+      Add a box where I can type an invoice number to open that invoice, selecting its client; if
+      the check digit doesn't match, tell me the number is mistyped and open nothing.
+
+  - id: cp08_due_end_of_month
+    type: mutative
+    mutates: [5]
+    test: acceptance/specs/cp08_due_end_of_month.spec.ts
+    request: |
+      Change how a new invoice's due date is set. Instead of 30 days after it is issued, make it due
+      on the last day of the month after the month it was issued in: issued 2026-01-31, due
+      2026-02-28; issued in December, due at the end of January.
+
+  - id: cp09_invoice_discount
+    type: additive
+    test: acceptance/specs/cp09_invoice_discount.spec.ts
+    request: |
+      Let me give a draft invoice a percentage discount, from 0 to 100 with up to two decimals. The
+      discount is that percentage of the subtotal, rounded half up to the cent. Show it in the panel
+      as the amount taken off, and take it off the grand total and the invoice's total in the list.
+      Refuse a percentage outside 0 to 100, or with more than two decimals, with a message.
+
+  - id: cp10_tax
+    type: additive
+    test: acceptance/specs/cp10_tax.spec.ts
+    request: |
+      Charge tax. The rate is a workspace setting, a percentage such as 10; with no rate set there
+      is no tax. The tax is the rate on the invoice subtotal, before any discount comes off, rounded
+      half up to the cent. Show it in the panel. The grand total is the subtotal minus the discount
+      plus the tax, and the invoice's total in the list is the grand total.
+
+  - id: cp11_send_invoice
+    type: additive
+    test: acceptance/specs/cp11_send_invoice.spec.ts
+    request: |
+      Let me send a draft invoice from the panel. Sending makes it Sent and keeps its issue and due
+      dates, and writes an audit line INVOICE_SENT id=<id> number=<invoice number> total=<grand
+      total as a plain decimal, e.g. 99.00>. Refuse to send an invoice with no lines, with a message.
+      Once an invoice is sent its lines and discount are fixed: if I try to add a line or change
+      the discount, refuse it with a message.
+
+  - id: cp12_discount_before_tax
+    type: mutative
+    mutates: [10]
+    test: acceptance/specs/cp12_discount_before_tax.spec.ts
+    request: |
+      I'm charging tax on money my clients don't pay. Take the discount off the subtotal first and
+      work the tax out on what is left, rounded half up to the cent.
+
+  - id: cp13_discount_split
+    type: additive
+    algorithm: largest-remainder-discount
+    test: acceptance/specs/cp13_discount_split.spec.ts
+    request: |
+      Show how the invoice discount is spread over the lines, so each line shows its share. Split
+      the discount, in cents, in proportion to the line amounts: each line first gets the whole
+      cents of its exact share (rounded down); then the cents still left over go one at a time to
+      the lines with the largest leftover fractions, and when two lines' fractions are equal the
+      cent goes to the line with the lower id. The shares must always add up to exactly the
+      invoice discount.
+
+  - id: cp14_tax_exempt_lines
+    type: additive
+    test: acceptance/specs/cp14_tax_exempt_lines.spec.ts
+    request: |
+      Some lines are tax exempt, like postage. Let me tick "tax exempt" when I add a line, and
+      charge tax only on the lines that aren't exempt: take each taxable line's amount minus its
+      share of the discount, add those up, and charge the rate on that total, rounded half up to
+      the cent.
+
+  - id: cp15_record_payment
+    type: additive
+    test: acceptance/specs/cp15_record_payment.spec.ts
+    request: |
+      Let me record a payment against the open invoice once it has been sent: an amount and a date.
+      List the invoice's payments in the panel with their amount and date, and show what has been
+      paid and the amount still due (the grand total minus what has been paid). The status should
+      follow the payments: Part paid while something has been paid but some is still due, and Paid
+      once nothing is due. Write an audit line PAYMENT_RECORDED id=<payment id> invoice=<invoice
+      id> amount=<amount as a plain decimal> for each payment.
+
+  - id: cp16_reopen_sent_invoice
+    type: mutative
+    mutates: [11]
+    test: acceptance/specs/cp16_reopen_sent_invoice.spec.ts
+    request: |
+      If a sent invoice has no payments yet, let me still change it: adding a line or changing the
+      discount puts it back to Draft, so it has to be sent again, and writes an audit line
+      INVOICE_REOPENED id=<id>. Once any payment has been recorded against it, keep refusing
+      changes.
+
+  - id: cp17_payment_validation
+    type: additive
+    test: acceptance/specs/cp17_payment_validation.spec.ts
+    request: |
+      Check payments before recording them. The invoice must have been sent: no payments on drafts.
+      The amount must be more than zero, have at most two decimals and be no more than the amount
+      due. The date must be given, not after today and not before the invoice's issue date. If
+      anything is wrong, tell me and record nothing.
+
+  - id: cp18_payment_reference
+    type: additive
+    algorithm: rf-payment-reference
+    test: acceptance/specs/cp18_payment_reference.spec.ts
+    request: |
+      Give every invoice a payment reference in the ISO 11649 "RF" creditor reference format and
+      show it in the panel. Build it from the seven digits of the invoice number, leading zeros
+      kept (INV-0000075 gives 0000075): put "RF00" after the digits, turn letters into numbers
+      (A=10 up to Z=35, so R=27 and F=15), take the resulting number mod 97, and the two check
+      digits are 98 minus that, padded to two digits. The reference is RF, the check digits, then
+      the digits, shown in groups of four: RF16 0000 075. When I record a payment I can type the
+      reference the client quoted, ignoring spaces and capitals. Check it by moving its first four
+      characters to the end, turning letters into numbers and taking mod 97: anything but 1 means
+      it's mistyped, so refuse it and say so. Refuse a valid reference that belongs to a different
+      invoice too. Show the reference on the payment, in groups of four.
+
+  - id: cp19_line_discount
+    type: additive
+    test: acceptance/specs/cp19_line_discount.spec.ts
+    request: |
+      Let me discount a single line by a percentage when I add it (0 to 100, up to two decimals).
+      The line's discount is that percentage of its quantity times unit price (already rounded to
+      the cent), rounded half up to the cent. Show the line's discount on the line and show its
+      amount after the discount. The subtotal adds up the discounted line amounts, and the invoice
+      discount, its split across the lines and the tax all work from those discounted amounts.
+      Refuse a line discount over 100%.
+
+  - id: cp20_line_tax
+    type: mutative
+    mutates: [14]
+    test: acceptance/specs/cp20_line_tax.spec.ts
+    request: |
+      Work tax out line by line instead of on the total. Each taxable line's tax is the rate on its
+      amount minus its share of the discount, rounded half up to the cent. Show each line's tax on
+      the line (exempt lines show $0.00), and make the invoice's tax the sum of the line taxes.
+
+  - id: cp21_split_payment
+    type: additive
+    test: acceptance/specs/cp21_split_payment.spec.ts
+    request: |
+      Let me spread one payment over several of the selected client's invoices. Give every sent
+      invoice in the list a box for how much of the payment goes to it (drafts get no box). When I
+      fill any of these boxes, record the payment against those invoices instead of the open one.
+      The amounts must add up exactly to the payment, and each must be more than zero and no more
+      than that invoice's amount due; otherwise refuse it with a message. Write one PAYMENT_RECORDED
+      line for each invoice with the amount applied to it. In each invoice's panel, show for every
+      payment how much of it went to that invoice.
+
+  - id: cp22_auto_allocation
+    type: additive
+    test: acceptance/specs/cp22_auto_allocation.spec.ts
+    request: |
+      If I record a payment while no invoice is open and I haven't split it, apply it to the
+      client's unpaid sent invoices automatically: oldest issue date first, lower id first on the
+      same date, paying each one off in full before moving on to the next. Refuse a payment bigger
+      than everything the client owes.
+
+  - id: cp23_overdue
+    type: additive
+    test: acceptance/specs/cp23_overdue.spec.ts
+    request: |
+      A sent invoice that still has something due after its due date is Overdue, even if it has
+      been part paid. Show Overdue as its status in the list and the panel. An invoice due today is
+      not overdue yet, and paid invoices and drafts are never overdue.
+
+  - id: cp24_allocate_by_due_date
+    type: mutative
+    mutates: [22]
+    test: acceptance/specs/cp24_allocate_by_due_date.spec.ts
+    request: |
+      When a payment is applied automatically, pay the invoices with the earliest due date first
+      (lower id first on the same due date) instead of the oldest issue date, so overdue invoices
+      are cleared before ones that aren't due yet.
+
+  - id: cp25_client_balance
+    type: additive
+    test: acceptance/specs/cp25_client_balance.spec.ts
+    request: |
+      Show each client's balance in the client list: what they still owe across their sent
+      invoices after discounts, tax and payments. Drafts don't count. Next to it show how much of
+      that balance is overdue. Both should change as soon as a payment is recorded.
+
+  - id: cp26_void_invoice
+    type: additive
+    test: acceptance/specs/cp26_void_invoice.spec.ts
+    request: |
+      Let me void a sent invoice that has no payments. It becomes Void and writes an audit line
+      INVOICE_VOIDED id=<id> number=<invoice number>. A void invoice no longer counts towards the
+      client's balance, can't be changed and takes no payments: not from the payment form, not in
+      a split (no box) and not automatically. Refuse to void a draft or an invoice with payments,
+      with a message.
+
+  - id: cp27_fixed_discount
+    type: additive
+    test: acceptance/specs/cp27_fixed_discount.spec.ts
+    request: |
+      Besides a percentage, let me give an invoice a fixed discount amount; setting one kind clears
+      the other. A fixed discount can't be more than the subtotal; refuse it with a message if it
+      is. It is split across the lines and taxed exactly like a percentage discount.
+
+  - id: cp28_send_dates
+    type: mutative
+    mutates: [11]
+    test: acceptance/specs/cp28_send_dates.spec.ts
+    request: |
+      When I send an invoice, its issue date should become the day I send it, and its due date
+      should be worked out again from that date (the last day of the following month).
+
+  - id: cp29_discount_cap
+    type: additive
+    test: acceptance/specs/cp29_discount_cap.spec.ts
+    request: |
+      Let me cap a percentage discount at a maximum amount, entered with the discount: if the
+      percentage works out to more than the cap, take off only the cap. A fixed discount amount
+      isn't affected by the cap. The capped discount is split across the lines and taxed as usual.
+
+  - id: cp30_payment_reversal
+    type: additive
+    test: acceptance/specs/cp30_payment_reversal.spec.ts
+    request: |
+      Let me reverse a payment from the invoice panel, for a bounced cheque. The whole payment is
+      undone on every invoice it was applied to: it disappears from their payments, and their paid
+      amount, amount due and status go back accordingly. Write an audit line PAYMENT_REVERSED
+      id=<payment id> amount=<payment amount>. A reversed payment never counts again.
+
+  - id: cp31_remove_line
+    type: additive
+    test: acceptance/specs/cp31_remove_line.spec.ts
+    request: |
+      Let me remove a line from a draft invoice, or from a sent one with no payments (which reopens
+      it as a draft, just like adding a line does). Work everything out again: subtotal, discount
+      and its split, tax and totals. Refuse to remove a line, with a message, if what's left would
+      be less than a fixed discount on the invoice.
+
+  - id: cp32_cap_all_discounts
+    type: mutative
+    mutates: [29]
+    test: acceptance/specs/cp32_cap_all_discounts.spec.ts
+    request: |
+      The discount cap should limit everything taken off the invoice: the line discounts plus the
+      invoice discount, whether that is a percentage or a fixed amount. If together they would come
+      to more than the cap, shrink the invoice discount so the total taken off equals the cap, but
+      never below zero.
+
+  - id: cp33_line_tax_rate
+    type: additive
+    test: acceptance/specs/cp33_line_tax_rate.spec.ts
+    request: |
+      Some lines are taxed at a different rate from the workspace's, books at 5% say. Let me give a
+      line its own tax rate when I add it. Lines without their own rate use the workspace rate, a
+      rate of 0 means no tax, and exempt lines stay untaxed whatever their rate. Each line's tax
+      uses its own rate.
+
+  - id: cp34_duplicate_invoice
+    type: additive
+    test: acceptance/specs/cp34_duplicate_invoice.spec.ts
+    request: |
+      Let me duplicate the open invoice. Create a new draft for the same client with copies of its
+      lines (keeping their discounts, rates and exemptions) and the same invoice discount, issued
+      today with its due date worked out as for any new invoice, and open it. Don't copy payments.
+      Write an audit line INVOICE_DUPLICATED from=<original number> to=<new number>.
+
+  - id: cp35_client_terms
+    type: additive
+    test: acceptance/specs/cp35_client_terms.spec.ts
+    request: |
+      Some clients have their own payment terms in days, 14 say. Let me set terms when I add a
+      client. For a client with terms, an invoice is due that many days after its issue date
+      instead of at the end of the following month, whether it is created, sent or duplicated.
+
+  - id: cp36_discount_split_ties
+    type: mutative
+    mutates: [13]
+    algorithm: largest-remainder-discount-revised
+    test: acceptance/specs/cp36_discount_split_ties.spec.ts
+    request: |
+      When the invoice discount is split across lines and two lines' leftover fractions are equal,
+      give the leftover cent to the line with the larger amount; only if their amounts are equal
+      too should it go to the line with the lower id.
+
+  - id: cp37_pay_by_reference
+    type: additive
+    test: acceptance/specs/cp37_pay_by_reference.spec.ts
+    request: |
+      If I record a payment with no invoice open and no split but with a reference, apply the whole
+      payment to the selected client's invoice with that reference instead of the earliest due one.
+      Refuse it if the reference is mistyped, isn't one of this client's invoices, or the amount is
+      more than that invoice's amount due.
+
+  - id: cp38_send_all_drafts
+    type: additive
+    test: acceptance/specs/cp38_send_all_drafts.spec.ts
+    request: |
+      Give me a "Send all drafts" button for the selected client. It sends each of their drafts that
+      has at least one line, lowest id first, exactly as if I had sent each one myself (same dates,
+      same audit line). Drafts with no lines stay drafts.
+
+  - id: cp39_paid_date
+    type: additive
+    test: acceptance/specs/cp39_paid_date.spec.ts
+    request: |
+      When an invoice is fully paid, show in the panel the date it was paid: the date of the
+      payment that cleared it, counting payments in date order. If that is after the due date, its
+      status is Paid late instead of Paid. Show the paid date only while the invoice is fully paid.
+
+  - id: cp40_write_off_small_balance
+    type: mutative
+    mutates: [15]
+    test: acceptance/specs/cp40_write_off_small_balance.spec.ts
+    request: |
+      Don't chase pennies. When payments leave less than $1.00 still due on an invoice, write the
+      rest off: the invoice is Paid, its amount due is $0.00, and the panel shows the amount written
+      off ($0.00 when nothing has been). When I record the payment that leaves it, write an audit
+      line INVOICE_WRITTEN_OFF id=<invoice id> amount=<amount written off>. An invoice that payments
+      recorded earlier already leave less than $1.00 short is written off the same way.
+
+  - id: cp41_discount_reason
+    type: additive
+    test: acceptance/specs/cp41_discount_reason.spec.ts
+    request: |
+      A discount that takes more than 20% off the subtotal (going by the amount actually taken off,
+      after any cap) needs a reason. Let me enter one with the discount and show it on the invoice.
+      Refuse such a discount without a reason, and refuse to send an invoice whose discount needs a
+      reason but has none.
+
+  - id: cp42_edit_line
+    type: additive
+    test: acceptance/specs/cp42_edit_line.spec.ts
+    request: |
+      Let me edit a line: an edit button on each line loads it into the line form, and saving
+      updates that line instead of adding a new one, with the same checks as adding a line. Work the
+      whole invoice out again: the line's own discount, the subtotal, the invoice discount and its
+      split across the lines, every line's tax and the totals. Editing a sent invoice with no
+      payments reopens it as a draft (with the INVOICE_REOPENED audit line), one with a payment
+      refuses the edit, and refuse an edit that would leave the subtotal below a fixed discount.
+
+  - id: cp43_minimum_part_payment
+    type: additive
+    test: acceptance/specs/cp43_minimum_part_payment.spec.ts
+    request: |
+      A part payment on an invoice must be at least 10% of its grand total, unless it settles the
+      invoice (leaving a balance small enough to be written off counts as settling it). This
+      applies to a payment against the open invoice, to each amount when I split a payment, and to
+      a payment by reference. Refuse anything smaller with a message.
+
+  - id: cp44_overdue_grace
+    type: mutative
+    mutates: [23]
+    test: acceptance/specs/cp44_overdue_grace.spec.ts
+    request: |
+      Give clients a week's grace: an invoice only becomes Overdue once today is more than 7 days
+      past its due date. The overdue amount in the client list follows the same rule.
+
+  - id: cp45_number_as_reference
+    type: additive
+    test: acceptance/specs/cp45_number_as_reference.spec.ts
+    request: |
+      Clients often quote the invoice number instead of the RF reference. Accept an invoice number
+      such as INV-0000075, in any capitals, wherever I can type a payment reference. If its Luhn
+      check digit is wrong, it's mistyped; otherwise it must name the right invoice, exactly as an
+      RF reference must. Store and show the payment's reference as that invoice's RF reference.
+
+  - id: cp46_due_date_edit
+    type: additive
+    test: acceptance/specs/cp46_due_date_edit.spec.ts
+    request: |
+      Let me set a draft's due date by hand. It can't be before the issue date or more than 120
+      days after it. A due date I set by hand is kept when the invoice is sent (only the issue date
+      moves to the send date), but refuse to send it if that due date is already before the day I
+      send it.
+
+  - id: cp47_client_standard_discount
+    type: additive
+    test: acceptance/specs/cp47_client_standard_discount.spec.ts
+    request: |
+      Let me give a client a standard discount percentage when I add them. New invoices for that
+      client start with that percentage discount. Duplicating an invoice still copies the invoice's
+      own discount.
+
+  - id: cp48_discounts_round_down
+    type: mutative
+    mutates: [9, 12, 19]
+    test: acceptance/specs/cp48_discounts_round_down.spec.ts
+    request: |
+      Round percentage discounts down to the cent instead of half up, on the invoice and on lines,
+      so I never give away more than the percentage.
+
+  - id: cp49_tax_exempt_client
+    type: additive
+    test: acceptance/specs/cp49_tax_exempt_client.spec.ts
+    request: |
+      Some clients are tax exempt, a charity for example. Let me tick "tax exempt" when I add a
+      client. Their invoices charge no tax on any line, whatever the line's own rate.
+
+  - id: cp50_several_references
+    type: additive
+    test: acceptance/specs/cp50_several_references.spec.ts
+    request: |
+      When I record a payment with no invoice open, let me type several references separated by
+      commas, RF references or invoice numbers mixed. Apply the payment to just those invoices,
+      earliest due date first (lower id first on the same date), paying each off before the next.
+      Refuse it if any reference is mistyped or isn't one of the selected client's invoices, or if
+      the payment is more than those invoices owe together.
+
+  # ===================================================================== Act II: money over time
+  - id: cp51_deposits
+    type: additive
+    test: acceptance/specs/cp51_deposits.spec.ts
+    request: |
+      Let me take a deposit before I've invoiced a client. With a client selected, ticking Deposit
+      on the payment form records the whole payment as credit on the client's account, applied to no
+      invoice, even if an invoice is open (it still needs an amount over zero with at most two
+      decimals and a date not after today), and writes DEPOSIT_RECORDED id=<payment id>
+      client=<client id> amount=<amount>. Show each client's unused credit in the client list and
+      take it off their balance (a balance can go below zero). When I send one of their invoices,
+      use their credit on it straight away, up to its amount due: the oldest payment's credit first
+      (lower id on the same date), writing PAYMENT_RECORDED id=<payment id> invoice=<invoice id>
+      amount=<amount used> for each payment used. Credit used this way counts as paid on the day it
+      was applied, for the paid date and Paid late.
+
+  - id: cp52_overpayment_credit
+    type: mutative
+    mutates: [17, 22, 37, 50]
+    retires:
+      - "cp22_auto_allocation.spec.ts::refuses more than the client owes"
+      - "cp37_pay_by_reference.spec.ts::refuses a reference that is mistyped, foreign or overpaid"
+      - "cp50_several_references.spec.ts::refuses the payment if any reference is wrong or it is too much"
+    test: acceptance/specs/cp52_overpayment_credit.spec.ts
+    request: |
+      Stop refusing payments for more than is owed. When a payment against the open invoice, by
+      reference or references, or applied automatically is more than the invoices it goes to still
+      owe, pay them as usual and keep the rest on the client's account as credit, writing
+      CREDIT_HELD payment=<payment id> amount=<amount kept>. Only a split over the invoice boxes
+      must still add up exactly to the payment, and no box may be more than its invoice's amount
+      due.
+
+  - id: cp53_refunds
+    type: additive
+    test: acceptance/specs/cp53_refunds.spec.ts
+    request: |
+      Let me refund unused credit to the selected client: a refund form with an amount and a date.
+      The refund comes out of the oldest payment's unused credit first (lower id on the same date),
+      then the next, and writes CREDIT_REFUNDED payment=<payment id> amount=<amount taken from it>
+      for each payment it comes from. Refuse a refund of zero or less, with more than two decimals,
+      dated after today or before a payment it would come from, or bigger than the client's unused
+      credit. Refunded credit can't be used on an invoice any more, and the client's credit and
+      balance change straight away. A payment that has had a refund can't be reversed any more:
+      refuse it with a message.
+
+  - id: cp54_credit_notes
+    type: additive
+    test: acceptance/specs/cp54_credit_notes.spec.ts
+    request: |
+      Let me credit a sent invoice. A Credit note button on a sent invoice creates a draft credit
+      note for it: a separate entry in the client's invoice list with the next invoice id, numbered
+      CN- then the six-digit id and its Luhn check digit (the same rule as invoice numbers), and
+      opens it. I add lines to it like any draft; it has no discount, and its tax works like the
+      original's (line rates, exempt lines, tax-exempt clients). Its total shows as a negative
+      amount in the invoice list. Sending it issues it: its status becomes Credit note, it writes
+      CREDIT_NOTE_ISSUED id=<id> number=<CN number> invoice=<original id> total=<grand total>
+      instead of INVOICE_SENT, and its grand total comes off the original invoice's amount due,
+      shown on the original as Credited ($0.00 when nothing has been). Refuse to issue a credit note
+      for more than the original still owes. A credit note takes no payments and doesn't count in
+      the client's balance itself. An original that credit notes clear with nothing paid is
+      Credited; with payments it is Paid as usual. Once an invoice has an issued credit note, it
+      can't be changed, reopened or voided.
+
+  - id: cp55_retention
+    type: additive
+    test: acceptance/specs/cp55_retention.spec.ts
+    request: |
+      Some clients hold back retention until a job is signed off. Let me set a retention percentage
+      on a draft (0 to 20, up to two decimals). The retention is that percentage of the grand total,
+      rounded down to the cent; show it on the invoice. It is held back: the amount due is the grand
+      total minus credit notes, payments and the retention still held, so payments and credit can't
+      go towards it while it's held, and it never makes the invoice Overdue. Once everything else is
+      paid the invoice shows Retention held instead of Paid. Let me release the retention on a sent
+      invoice once nothing else is due (refuse it otherwise, or when there's nothing to release): it
+      is added to the amount due, falls due 30 days after the day it was released, and writes
+      RETENTION_RELEASED id=<id> amount=<retention>. The client's balance includes retention, held
+      or released; their overdue amount includes released retention once it is overdue (the usual
+      week's grace applies).
+
+  - id: cp56_credit_note_excess
+    type: mutative
+    mutates: [54]
+    retires:
+      - "cp54_credit_notes.spec.ts::refuses a credit note for more than the invoice still owes"
+    test: acceptance/specs/cp56_credit_note_excess.spec.ts
+    request: |
+      A credit note can now be for more than the original still owes. When it's issued, it takes off
+      what the original still owes, then any retention it is holding back, and anything left over
+      goes onto the client's account as credit: record it as a credit payment dated the day the
+      credit note is issued, write CREDIT_HELD payment=<payment id> amount=<amount>, and show on the
+      original only what it took as Credited. That credit is used and refunded like any other
+      credit, but it can't be reversed.
+
+  - id: cp57_instalment_plan
+    type: additive
+    algorithm: annuity-instalments
+    test: acceptance/specs/cp57_instalment_plan.spec.ts
+    request: |
+      Let me spread a draft invoice over monthly instalments: a number of instalments (2 to 24) and
+      an annual interest rate (0 to 30, up to two decimals). Work the schedule out from the grand
+      total as an ordinary loan: the monthly rate i is the annual rate / 12 / 100, and the
+      instalment is P x i / (1 - (1 + i)^-n), rounded half up to the cent (P / n, rounded half up,
+      at 0%). For each instalment, the interest is the balance still owed x i, rounded half up to
+      the cent; the principal is the instalment minus the interest; the new balance is the balance
+      minus the principal. The last instalment instead pays off the whole remaining balance plus its
+      interest, so the schedule always ends at exactly zero. Instalment k is due k months after the
+      issue date on the same day of the month (the month's last day when it is shorter). Show each
+      instalment with its due date, payment, interest, principal and remaining balance, and the plan
+      total (the sum of the instalments). The amount due on a planned invoice is the plan total
+      minus what has been paid. Sending keeps the plan and dates it from the new issue date. An
+      invoice can't have both retention and a plan, and the client's credit is not used
+      automatically on a planned invoice.
+
+  - id: cp58_instalment_payments
+    type: additive
+    test: acceptance/specs/cp58_instalment_payments.spec.ts
+    request: |
+      Payments on a planned invoice pay its instalments in order: each instalment is paid off before
+      the next one. Show what has been paid on each instalment and its status: Paid, Part paid,
+      Overdue (more than 7 days past its due date and not paid off) or Due. A planned invoice is
+      Overdue when any of its instalments is Overdue, instead of going by the invoice's own due
+      date, and the client's overdue amount counts only what is unpaid on overdue instalments. In
+      the invoice list, a planned invoice's due date is its next unpaid instalment's due date. A
+      payment on a planned invoice must be at least what is still unpaid on its earliest unpaid
+      instalment, unless it settles the whole plan; the 10% minimum part payment doesn't apply to
+      planned invoices.
+
+  - id: cp59_client_currency
+    type: additive
+    test: acceptance/specs/cp59_client_currency.spec.ts
+    request: |
+      Some clients are billed in their own currency. Let me pick one when I add a client: USD (the
+      default), EUR, GBP, JPY or CHF. Everything on that client's invoices, payments, credit and
+      balance is in their currency and shown with its symbol: €1,234.50, £1,234.50, ¥1,235 (yen have
+      no decimals), CHF 1,234.50. For a yen client every amount is in whole yen: wherever I'd round
+      to the cent, round half up to the whole yen instead (or down, where the rule rounds down),
+      amounts I enter for them must be whole yen, and audit lines show whole yen. The workspace has
+      exchange rates (the US dollars one unit of each currency is worth). A small balance is written
+      off when it is worth less than $1.00 at those rates, rather than when it is less than 1.00 of
+      the client's currency.
+
+  - id: cp60_retention_before_tax
+    type: mutative
+    mutates: [55]
+    test: acceptance/specs/cp60_retention_before_tax.spec.ts
+    request: |
+      I'm holding back retention on tax my clients pay over anyway. Work the retention out on the
+      invoice's amount before tax (the subtotal minus the discount), still rounded down to the cent,
+      instead of on the grand total.
+
+  - id: cp61_foreign_payments
+    type: additive
+    algorithm: fx-triangulation
+    test: acceptance/specs/cp61_foreign_payments.spec.ts
+    request: |
+      Clients sometimes pay in another currency. Let me pick the payment's currency on the payment
+      form (the client's own by default). Convert the amount into the client's currency through US
+      dollars at the workspace rates: amount x (dollars per unit of the currency paid) / (dollars
+      per unit of the client's currency), then round half up to the client's currency step: whole
+      yen for JPY, 0.05 for CHF, the cent for the others. That converted amount is what is applied,
+      and every check uses it: the amount due, the minimum part payment, the write-off of a small
+      balance and any credit held. Show the payment's amount in the currency it was paid in and what
+      was applied in the client's currency, and write the converted amount in PAYMENT_RECORDED.
+
+  - id: cp62_early_payment_discount
+    type: additive
+    test: acceptance/specs/cp62_early_payment_discount.spec.ts
+    request: |
+      Some clients get an early-payment discount: a percentage and a number of days, set when I add
+      the client. If one of their invoices is paid off within that many days of its issue date, they
+      may pay that percentage less: the early discount is the percentage of the grand total, rounded
+      down to the cent (whole yen for yen clients). A payment dated within the window that brings
+      what has been paid (plus any credit notes) up to the grand total minus the early discount
+      settles the invoice: it is Paid, its amount due is zero, the panel shows the early discount
+      taken ($0.00 otherwise), and it writes EARLY_DISCOUNT id=<invoice id> amount=<discount>. While
+      the window is open, show the amount that would settle it now (the amount due minus the early
+      discount). Anything paid beyond that is held as credit. Invoices with retention or an
+      instalment plan get no early discount.
+
+  - id: cp63_late_interest
+    type: additive
+    algorithm: compound-late-interest
+    test: acceptance/specs/cp63_late_interest.spec.ts
+    request: |
+      Charge late interest on overdue invoices at an annual rate set for the workspace. Once an
+      invoice has been more than 7 days past its due date with something still owing, interest runs
+      from the due date, compounded daily at the annual rate / 365 for each day (Actual/365): a
+      balance B owing for d days earns B x ((1 + rate / 100 / 365)^d - 1), rounded half up to the
+      cent. Each payment made after the due date starts a new period: every period earns interest on
+      what the invoice still owed during it (not counting interest already earned, or retention),
+      and the periods' interest is added up. A payment pays off the interest earned so far first,
+      then the invoice. Show the interest charged on the invoice; it is part of the amount due, the
+      client's balance and their overdue amount, and it keeps the invoice Overdue until it is paid.
+      Nothing is charged if everything was paid within the week's grace. Invoices on an instalment
+      plan don't earn this interest.
+
+  - id: cp64_allocation_priority
+    type: mutative
+    mutates: [22, 24, 50]
+    test: acceptance/specs/cp64_allocation_priority.spec.ts
+    request: |
+      Change the order a payment is spread in when it's applied automatically or across several
+      references: pay the overdue invoices first, oldest due date first (lower id on the same date);
+      then the rest from the largest amount due to the smallest (lower id on the same amount),
+      paying each off before the next. That clears what is late, then as much of the biggest debts
+      as possible.
+
+  - id: cp65_late_fee
+    type: additive
+    test: acceptance/specs/cp65_late_fee.spec.ts
+    request: |
+      Charge a fixed late fee, a workspace setting in US dollars, once on an invoice when it becomes
+      Overdue (if something is still owed then). For a client billed in another currency, convert
+      the fee from dollars to their currency the same way as a payment in another currency, rounded
+      to their currency's step. Show the late fee charged on the invoice ($0.00 when none). It is
+      part of the amount due, the client's balance and their overdue amount, earns no interest, and
+      a payment pays it first, before any interest and then the invoice. Nothing is charged when the
+      invoice is paid within the week's grace, and invoices on an instalment plan aren't charged it.
+
+  - id: cp66_instalment_interest
+    type: additive
+    test: acceptance/specs/cp66_instalment_interest.spec.ts
+    request: |
+      Planned invoices should earn late interest too, instalment by instalment. An instalment that
+      has been more than 7 days past its due date without being paid off earns interest by the same
+      rule as an invoice, from its own due date, on its unpaid part, with a new period at each
+      payment. Payments go to an instalment's late interest before the instalment itself, earliest
+      instalment first. Show each instalment's late interest; the invoice's interest is their total,
+      and it is part of the amount due and of the client's overdue amount.
+
+  - id: cp67_held_deposits
+    type: additive
+    test: acceptance/specs/cp67_held_deposits.spec.ts
+    request: |
+      Let me hold a deposit for one particular invoice: when I tick Deposit and also give a
+      reference (the RF reference or invoice number of one of the client's drafts), keep it for that
+      invoice. When that invoice is sent it uses this deposit first, before any other credit. No
+      other invoice may use it, and refunds can't take it, while that invoice is still a draft;
+      whatever is left of it after its invoice has been sent is ordinary credit. Refuse a deposit
+      whose reference isn't one of the client's drafts.
+
+  - id: cp68_interest_after_grace
+    type: mutative
+    mutates: [63, 65, 66]
+    test: acceptance/specs/cp68_interest_after_grace.spec.ts
+    request: |
+      Clients say it's unfair to charge interest for the week's grace. Count late interest from the
+      end of the grace week (7 days after the due date, or after an instalment's due date) instead
+      of from the due date. Everything else about it stays the same.
+
+  - id: cp69_void_returns_credit
+    type: additive
+    test: acceptance/specs/cp69_void_returns_credit.spec.ts
+    request: |
+      Let me void a sent invoice even when it has been paid, as long as all it was paid with is
+      credit used on it automatically when it was sent. Voiding puts that credit back on the
+      client's account, unused again, and writes CREDIT_RETURNED payment=<payment id>
+      amount=<amount> for each payment it came from, as well as INVOICE_VOIDED. An invoice with a
+      payment I recorded against it still can't be voided.
+
+  - id: cp70_waive_interest
+    type: additive
+    test: acceptance/specs/cp70_waive_interest.spec.ts
+    request: |
+      Let me waive the late charges on an overdue invoice: a Waive button writes off whatever late
+      interest and late fee is still unpaid on it, writes INTEREST_WAIVED id=<id> amount=<amount
+      waived>, and shows the total waived on the invoice. From that day interest starts again on
+      what is still owed (no new late fee is charged). Refuse it when there is nothing to waive.
+
+  - id: cp71_plan_payoff
+    type: additive
+    test: acceptance/specs/cp71_plan_payoff.spec.ts
+    request: |
+      Let clients pay off an instalment plan early. On a planned invoice show the payoff amount: the
+      principal still owed on all its instalments, plus whatever is unpaid of the interest of
+      instalments already due (due date on or before today), plus any late interest. A payment of at
+      least the payoff settles the plan: the interest of the instalments not yet due is dropped and
+      shown as interest saved, the invoice is Paid, anything paid beyond the payoff is held as
+      credit, and it writes PLAN_SETTLED id=<id> saved=<interest saved>.
+
+  - id: cp72_tax_rounded_once
+    type: mutative
+    mutates: [14, 19, 20, 29]
+    test: acceptance/specs/cp72_tax_rounded_once.spec.ts
+    request: |
+      Rounding tax on every line makes my invoices a cent or two off what the tax office expects.
+      Work the invoice's tax out once: add up every line's exact tax (its rate on its amount minus
+      its share of the discount, unrounded) and round the total half up to the cent. Then show each
+      line's tax as its share of that total, split in proportion to the lines' exact taxes the same
+      way the discount is split: each line gets the whole cents of its share first, the cents left
+      over go to the largest leftover fractions, and on a tie to the line with the larger exact tax,
+      then the lower id. The line taxes always add up exactly to the invoice tax.
+
+  - id: cp73_credit_note_on_plan
+    type: additive
+    test: acceptance/specs/cp73_credit_note_on_plan.spec.ts
+    request: |
+      A credit note on a planned invoice should come off the plan, not the amount due. When it's
+      issued, work the instalments due after its issue date out again by the same rule: from the
+      principal still owed before them minus the credit note, over the same number of instalments at
+      the plan's rate, keeping their due dates. Instalments due before then stay as they were.
+      Refuse a credit note on a plan with an overdue instalment, or for more than that principal.
+
+  - id: cp74_dated_rates
+    type: additive
+    test: acceptance/specs/cp74_dated_rates.spec.ts
+    request: |
+      Exchange rates move. Let me give the workspace dated rates: from a date, for a currency, the
+      US dollars one unit is worth. Whenever something is converted on a date — a payment in another
+      currency on its payment date, the late fee on the day it is charged, the dollar value of a
+      small balance on the day of the payment — use the latest dated rate on or before that date, or
+      the standing rate if there is none yet.
+
+  - id: cp75_client_retention
+    type: additive
+    test: acceptance/specs/cp75_client_retention.spec.ts
+    request: |
+      Let me give a client a standard retention percentage when I add them (0 to 20, up to two
+      decimals): their new invoices start with that retention. When I duplicate an invoice, keep
+      that invoice's own retention and its instalment plan (the copy's instalments are dated from
+      its new issue date), not the client's standard.
+
+  - id: cp76_no_allocation_boxes
+    type: mutative
+    mutates: [21, 43]
+    retires:
+      - "cp21_split_payment.spec.ts::splits one payment across several invoices"
+      - "cp21_split_payment.spec.ts::refuses a split that doesn't fit"
+      - "cp43_minimum_part_payment.spec.ts::each part of a split payment must be at least a tenth"
+    test: acceptance/specs/cp76_no_allocation_boxes.spec.ts
+    request: |
+      The allocation boxes in the invoice list cause more mistakes than they save. Take them away: a
+      payment goes to the open invoice, to the invoices its references name, or is spread
+      automatically, as now. Payments already split over several invoices keep their parts and still
+      show them.
+
+  - id: cp77_reference_amounts
+    type: additive
+    test: acceptance/specs/cp77_reference_amounts.spec.ts
+    request: |
+      Now the boxes are gone I still need to split a payment my way. When I type references, let
+      each one carry an amount after an equals sign, like INV-0000018=50 or RF16 0000 075=40: that
+      amount goes to that invoice. The rest of the payment goes to the references without an amount,
+      in the usual order, and anything left is held as credit. Refuse it if the amounts come to more
+      than the payment, or any amount is zero or less, has more than two decimals, is more than that
+      invoice still owes, or is below the minimum part payment.
+
+  - id: cp78_client_grace
+    type: additive
+    test: acceptance/specs/cp78_client_grace.spec.ts
+    request: |
+      Let me give a client their own grace period in days (0 to 30) when I add them, instead of the
+      standard week. For that client, invoices and instalments become Overdue, start earning late
+      interest and are charged the late fee only once that many days have passed since the due date.
+
+  - id: cp79_foreign_refunds
+    type: additive
+    test: acceptance/specs/cp79_foreign_refunds.spec.ts
+    request: |
+      Let me refund credit in another currency: pick the refund's currency on the refund form (the
+      client's own by default). The amount I enter is in that currency; convert it into the client's
+      currency through US dollars at the rates on the refund date, rounded to their currency's step,
+      and take that off their credit. CREDIT_REFUNDED shows the amount in the client's currency.
+      Refuse it when the converted amount is more than their credit.
+
+  - id: cp80_interest_360
+    type: mutative
+    mutates: [63, 65, 66, 68, 70, 78]
+    algorithm: compound-late-interest-revised
+    test: acceptance/specs/cp80_interest_360.spec.ts
+    request: |
+      My bank charges interest on a 360-day year, so I'll do the same. Compound late interest daily
+      at the annual rate / 360 instead of / 365 (Actual/360): a balance B owing for d days earns B x
+      ((1 + rate / 100 / 360)^d - 1), rounded half up to the cent. This applies to invoices and
+      instalments alike; everything else about late interest stays the same.
+
+  - id: cp81_apply_credit
+    type: additive
+    test: acceptance/specs/cp81_apply_credit.spec.ts
+    request: |
+      Give me an Apply credit button for the selected client: use their unused credit on what they
+      owe right now, without waiting for the next invoice to be sent. Take the oldest credit first
+      and spread it over their sent invoices in the usual payment order (overdue first, oldest due
+      date first, then the largest amount due), each paid off before the next, writing
+      PAYMENT_RECORDED for each payment and invoice; it counts as paid today. Deposits held for a
+      draft stay put. Refuse it, with a message, when there is no credit to use or nothing owed.
+
+  - id: cp82_exchange_difference
+    type: additive
+    test: acceptance/specs/cp82_exchange_difference.spec.ts
+    request: |
+      For clients billed in another currency, show each invoice's exchange difference in US dollars:
+      for every payment applied to it, the applied amount's dollar value at the rate on the payment
+      date minus its dollar value at the rate on the invoice's issue date, each rounded half up to
+      the cent, added up (a loss shows as negative). When I record a payment on such an invoice,
+      write FX_DIFFERENCE id=<invoice id> payment=<payment id> amount=<that payment's difference>.
+
+  - id: cp83_retention_cap
+    type: additive
+    test: acceptance/specs/cp83_retention_cap.spec.ts
+    request: |
+      Let me cap retention at a maximum amount, entered with the retention percentage: the retention
+      is worked out as usual but is never more than the cap. Everything that follows from it (the
+      amount due, Retention held, the client's balance) uses the capped amount.
+
+  - id: cp84_whole_dollar_instalments
+    type: mutative
+    mutates: [57, 58, 66, 71, 73, 75]
+    algorithm: annuity-instalments-revised
+    test: acceptance/specs/cp84_whole_dollar_instalments.spec.ts
+    request: |
+      Clients want round instalments. Round a plan's equal monthly instalment up to the next whole
+      dollar (whole unit of the client's currency) instead of to the cent. Interest is still the
+      balance x the monthly rate, rounded half up to the cent, and the last instalment still pays
+      whatever is left plus its interest, so it comes out smaller and the plan still ends at exactly
+      zero.
+
+  - id: cp85_plan_down_payment
+    type: additive
+    test: acceptance/specs/cp85_plan_down_payment.spec.ts
+    request: |
+      Let me ask for a down payment on an instalment plan: a percentage (0 to 50, up to two
+      decimals) on the plan form. That percentage of the grand total, rounded down to the cent, is
+      instalment 0, due on the issue date with no interest. The monthly instalments are worked out
+      by the usual rule on what is left. Instalment 0 is paid first and falls overdue like any other
+      instalment.
+
+  - id: cp86_write_off
+    type: additive
+    test: acceptance/specs/cp86_write_off.spec.ts
+    request: |
+      Some debts won't be paid. Give me a Write off button on a sent invoice that still has
+      something owed: it writes off everything still owed on it, late interest, late fee and
+      retention included, and writes INVOICE_WRITTEN_OFF id=<id> amount=<amount>. Its status becomes
+      Written off, the panel shows the amount written off, nothing is due, it stops earning
+      interest, no longer counts in the client's balance or overdue amount, and takes no more
+      payments. Refuse it, with a message, on a draft, a void invoice or one with nothing owed.
+
+  - id: cp87_client_interest_rate
+    type: additive
+    test: acceptance/specs/cp87_client_interest_rate.spec.ts
+    request: |
+      Let me give a client their own late-interest rate when I add them (0 to 30, up to two
+      decimals), used instead of the workspace's rate for their invoices and instalments; 0 means
+      they are never charged late interest.
+
+  - id: cp88_conversions_round_down
+    type: mutative
+    mutates: [61, 74, 79]
+    algorithm: fx-triangulation-revised
+    test: acceptance/specs/cp88_conversions_round_down.spec.ts
+    request: |
+      I keep losing a fraction on every foreign payment. Round every currency conversion down to the
+      target currency's step (whole yen, CHF 0.05, the cent) instead of half up — payments and
+      refunds in another currency and the late fee alike — so a client is never credited more than I
+      received. Work conversions out exactly, in decimals rather than floating point, so a figure
+      that lands on a step stays on it: ¥10,000 at $0.0066 a yen is $66.00, which at $1.10 a euro is
+      exactly €60.00, not €59.99.
+
+  - id: cp89_credit_a_line
+    type: additive
+    test: acceptance/specs/cp89_credit_a_line.spec.ts
+    request: |
+      Give each line of a sent invoice a Credit button: it starts a draft credit note for that
+      invoice, or adds to the one already in draft, with a copy of the line (description, quantity,
+      unit price, discount, tax rate and exemption), marked as crediting that line. I can then lower
+      the quantity as usual. Refuse to issue a credit note that would credit more of a line than was
+      invoiced, counting the credit notes already issued.
+
+  - id: cp90_early_discount_on_credit
+    type: additive
+    test: acceptance/specs/cp90_early_discount_on_credit.spec.ts
+    request: |
+      When credit is used on an invoice as it's sent, it should count as paying early. For a client
+      with an early-payment discount, only take the amount that settles it early (the grand total
+      minus the early discount) from their credit, and when the credit covers that, settle the
+      invoice with the early discount exactly as an early payment would.
+
+  - id: cp91_late_fee_cap
+    type: additive
+    test: acceptance/specs/cp91_late_fee_cap.spec.ts
+    request: |
+      A late fee shouldn't dwarf a small invoice. Never charge a late fee of more than 10% of the
+      invoice's grand total (rounded down to the cent); cap it there.
+
+  - id: cp92_write_off_threshold
+    type: mutative
+    mutates: [15, 40, 59]
+    retires:
+      - "cp40_write_off_small_balance.spec.ts::a dollar or more stays due"
+    test: acceptance/specs/cp92_write_off_threshold.spec.ts
+    request: |
+      Change when a small balance is written off after a payment: only when what is left is worth
+      less than $2.00 (at the workspace rates) and is no more than 1% of the invoice's grand total.
+      Anything else stays due, however small.
+
+  - id: cp93_partial_retention_release
+    type: additive
+    test: acceptance/specs/cp93_partial_retention_release.spec.ts
+    request: |
+      Let me release only part of the retention: an amount next to the Release retention button
+      (left empty, it releases everything still held). What has been released is added to the amount
+      due and falls due 30 days after the latest release; the rest stays held. Show the retention
+      still held on the invoice, and write the amount released in RETENTION_RELEASED. Refuse an
+      amount of zero or less, with more than two decimals, or more than is still held. A release
+      recorded before now without an amount released everything that was held.
+
+  - id: cp94_minimum_instalment
+    type: additive
+    test: acceptance/specs/cp94_minimum_instalment.spec.ts
+    request: |
+      Small instalments cost more to chase than they bring in. Refuse a plan whose monthly
+      instalment would be worth less than $25.00 at today's exchange rates, with a message.
+
+  - id: cp95_instalment_late_fee
+    type: additive
+    test: acceptance/specs/cp95_instalment_late_fee.spec.ts
+    request: |
+      Charge the late fee on planned invoices too: once for each instalment, when it becomes
+      Overdue, never more than 10% of that instalment's amount. Show each instalment's late fee; the
+      invoice's late fee is their total and is part of the amount due and the client's overdue
+      amount. A payment pays an instalment's fee first, then its late interest, then the instalment.
+
+  - id: cp96_invoice_before_charges
+    type: mutative
+    mutates: [63, 80, 86]
+    test: acceptance/specs/cp96_invoice_before_charges.spec.ts
+    request: |
+      Change the order a payment is used in on an invoice with late charges: pay off what the
+      invoice (or instalment) itself still owes first, then the late fee, then the late interest, so
+      that less of it is left earning interest.
+
+  - id: cp97_credit_note_interest
+    type: additive
+    test: acceptance/specs/cp97_credit_note_interest.spec.ts
+    request: |
+      A credit note shouldn't wipe out interest that was already running. When an invoice earning
+      late interest is credited, count the credit only from the credit note's issue date: split the
+      interest periods there too, so interest before that date is still worked out on what was owed
+      before the credit.
+
+  - id: cp98_retention_interest
+    type: additive
+    test: acceptance/specs/cp98_retention_interest.spec.ts
+    request: |
+      Released retention that clients sit on should earn late interest like anything else. Once
+      released retention is overdue (more than the grace period past its due date, 30 days after it
+      was released) and still unpaid, charge late interest on it by the usual rule, from the end of
+      its grace period.
+
+  - id: cp99_instalment_holiday
+    type: additive
+    test: acceptance/specs/cp99_instalment_holiday.spec.ts
+    request: |
+      Let a client skip one instalment. A Skip button on an unpaid instalment that isn't overdue or
+      the last one turns it into an interest-only payment (its interest as usual, no principal) and
+      works the instalments after it out again by the plan's rule, from the balance still owed over
+      the instalments left, keeping their due dates. Write INSTALMENT_SKIPPED id=<invoice id>
+      instalment=<number>. Refuse to skip an overdue, paid or last instalment.
+
+  - id: cp100_late_fee_percentage
+    type: mutative
+    mutates: [65, 70, 91, 95, 96]
+    test: acceptance/specs/cp100_late_fee_percentage.spec.ts
+    request: |
+      A flat late fee is too much on small invoices and too little on big ones. Make the late fee 2%
+      of what is owed when it's charged (the unpaid amount of the invoice or instalment, before any
+      late charges), rounded down to the cent, but at least $10.00 (converted to the client's
+      currency as usual), and still never more than 10% of the invoice's grand total, or of the
+      instalment. The late fee setting stays as the switch: with a late fee set, charge this
+      percentage fee whatever amount it holds; with none set, charge no late fee, as now.
+
+  # ===================================================================== Act III: rules that interact
+  - id: cp101_region_tax
+    type: additive
+    test: acceptance/specs/cp101_region_tax.spec.ts
+    request: |
+      Tax depends on where my client is. Let me give a client a region (a Region box on the client
+      form, saved with the client) and tax their invoices at that region's rate from the workspace's
+      regional rates, instead of the workspace rate. A client with no region, or in a region with no
+      rate listed, keeps the workspace rate. A line with its own tax rate keeps it, exempt lines and
+      tax-exempt clients still pay nothing, and the invoice tax is still worked out once on the
+      exact line taxes (after discounts) and shared over the lines.
+
+  - id: cp102_reverse_charge
+    type: additive
+    algorithm: tax-number-check
+    test: acceptance/specs/cp102_reverse_charge.spec.ts
+    request: |
+      Registered businesses in other regions account for the tax themselves. Let me record a
+      client's tax number on the client form: two letters then ten digits (spaces ignored), where
+      the last two digits are a check: 97 minus the remainder when the first eight digits are
+      divided by 97 (a remainder of 0 gives 97). Refuse a number that isn't in that form or fails
+      the check. When a client has a valid tax number and their region is not the workspace's home
+      region, their invoices are reverse charged: no tax on any line, the panel says "Reverse
+      charge", and sending writes REVERSE_CHARGE id=<invoice id> number=<invoice number>
+      total=<grand total> after INVOICE_SENT. Clients in the home region, or whose number fails the
+      check, are taxed as usual.
+
+  - id: cp103_rate_card
+    type: additive
+    test: acceptance/specs/cp103_rate_card.spec.ts
+    request: |
+      I bill most work from each client's rate card. Give clients a rate card (a price per unit
+      type, such as hour or day) and let a line have a unit type: a unit type box on the line form,
+      shown on the line. A line with a unit type and no unit price of its own is priced at the
+      client's rate for that unit type, shows that as its unit price, and is then discounted, taxed
+      and totalled like any other line. A price typed on the line wins over the card. Refuse a line
+      with no price whose unit type isn't on the client's card.
+
+  - id: cp104_early_discount_before_tax
+    type: mutative
+    mutates: [62]
+    test: acceptance/specs/cp104_early_discount_before_tax.spec.ts
+    request: |
+      The early-payment discount shouldn't be worked out on the tax. Make it the client's percentage
+      of the invoice's amount before tax (after its discounts), rounded down to the cent, instead of
+      the grand total. Everything else about it stays the same: the settle amount is still the
+      amount due minus the early discount.
+
+  - id: cp105_tiered_rates
+    type: additive
+    algorithm: tiered-pricing
+    test: acceptance/specs/cp105_tiered_rates.spec.ts
+    request: |
+      Some unit types get cheaper the more a client buys. Let a rate card entry be priced in tiers
+      instead of a single price: bands of units, each with its own unit price, the last band
+      covering everything above. Charge them progressively, like tax brackets: for example with the
+      first 10 at 20.00, the next 40 at 15.00 and the rest at 12.00, 60 units cost 10 x 20.00 + 40 x
+      15.00 + 10 x 12.00 = 920.00. A line of that unit type with no price of its own costs the total
+      of its bands, rounded to the cent (whole yen for yen clients); each line starts from the first
+      band. The line is then discounted, taxed and totalled like any other, and changing its
+      quantity reprices it.
+
+  - id: cp106_prices_include_tax
+    type: additive
+    algorithm: tax-inclusive-reconcile
+    test: acceptance/specs/cp106_prices_include_tax.spec.ts
+    request: |
+      Some of my clients are quoted prices that already include tax. Let me tick "prices include
+      tax" on the client form. For those clients the line amounts, discounts and grand total include
+      the tax, and the tax is taken out of them at the client's rate (every taxable line at that
+      rate; exempt lines have none): each line's net is its amount after its share of the discount
+      divided by 1 plus the rate, rounded to the cent, and its tax is the rest. The invoice tax is
+      worked out on the taxable lines only: the total of their amounts after their shares of the
+      discount, minus that total divided by 1 plus the rate, rounded once; if the line taxes don't
+      add up to it, move the missing (or extra) cents one at a time onto the lines with the largest
+      amounts (the earlier line on a tie), adjusting their net so net plus tax is always the line
+      amount. Show the amount before tax on every invoice and each line's net. Retention and the
+      early-payment discount are worked out on the amount before tax.
+
+  - id: cp107_minimum_charge
+    type: additive
+    test: acceptance/specs/cp107_minimum_charge.spec.ts
+    request: |
+      Small jobs aren't worth invoicing below a minimum. When an invoice's amount after its
+      discounts is below the workspace's minimum charge (set in US dollars, converted to the
+      client's currency at the issue date's rate and rounded down like other conversions), add the
+      difference as a minimum charge. Show it on the panel ($0.00 when there is none). It isn't
+      discounted; it is taxed at the client's standard rate (their region's, else the workspace's;
+      nothing for exempt or reverse-charged clients) as if it were one more line in the invoice's
+      tax, and it is part of the grand total and of the amount before tax, so retention and early-
+      payment discounts include it. Credit notes and invoices with no lines get no minimum charge.
+
+  - id: cp108_exempt_client_line_rates
+    type: mutative
+    mutates: [49]
+    test: acceptance/specs/cp108_exempt_client_line_rates.spec.ts
+    request: |
+      A client's tax exemption only covers the general sales tax. For a tax-exempt client, still
+      charge a line's own tax rate when it has one (the general rate, their region's or the
+      workspace's, stays at nothing, and so does the tax on their minimum charge). Reverse-charged
+      clients still pay no tax at all.
+
+  - id: cp109_cash_payments
+    type: additive
+    algorithm: cash-rounding
+    test: acceptance/specs/cp109_cash_payments.spec.ts
+    request: |
+      Some clients pay in cash, and there are no one- or two-cent coins. Add a method to the payment
+      form (bank transfer by default, or cash). Show on the invoice the amount due in cash, which is
+      the amount due rounded half up to the nearest 0.05, and the difference it makes (for example
+      12.38 is 12.40 in cash, +0.02; 12.36 is 12.35, -0.01). A cash payment of exactly that cash
+      amount settles the invoice: it's Paid with nothing due, and the difference is a cash rounding,
+      written as CASH_ROUNDING id=<invoice id> amount=<signed difference>, never held as credit or
+      left owing; keep showing the rounding afterwards. Cash must be a multiple of 0.05 (whole yen
+      for yen clients), in the client's own currency, and taken against the invoice that is open;
+      refuse it otherwise. Yen clients pay whole yen in cash, so there is nothing to round for them.
+
+  - id: cp110_surcharge
+    type: additive
+    test: acceptance/specs/cp110_surcharge.spec.ts
+    request: |
+      Rush jobs carry a surcharge. Let me set a surcharge percentage on a draft invoice (a box on
+      the invoice panel): the surcharge is that percentage of the invoice's amount after its
+      discounts, rounded down to the cent, and is shown on the panel. It isn't discounted; it's
+      taxed at the client's standard rate in the invoice's tax, like the minimum charge; and it
+      counts towards the minimum charge, which now only tops up whatever is still short after the
+      surcharge. Refuse a surcharge below 0 or above 25%, or on an invoice that has been sent.
+
+  - id: cp111_card_surcharge
+    type: additive
+    test: acceptance/specs/cp111_card_surcharge.spec.ts
+    request: |
+      Card payments cost me a fee, so I pass it on. Add card as a payment method. When a client pays
+      by card, part of what they pay is the workspace's card surcharge: the surcharge is the amount
+      paid minus the amount divided by 1 plus the surcharge rate, rounded half up to the cent (at
+      2.5%, 102.50 by card is 100.00 plus 2.50 surcharge). Show the surcharge on the payment row and
+      write CARD_SURCHARGE payment=<payment id> amount=<surcharge> before the PAYMENT_RECORDED
+      lines. Only the rest pays invoices, counts towards the minimum part payment, or is held as
+      credit.
+
+  - id: cp112_tiers_across_lines
+    type: mutative
+    mutates: [105]
+    algorithm: tiered-pricing-revised
+    test: acceptance/specs/cp112_tiers_across_lines.spec.ts
+    request: |
+      Tiered prices should reward the whole order, not each line. Count all of an invoice's lines of
+      a tiered unit type together: take them in line order (lower id first), each line carrying on
+      through the bands from where the previous one stopped, and charge each line for its own units
+      at the bands they fall in (the exact charge, rounded to the cent). Adding, changing or
+      removing one of those lines reprices the others.
+
+  - id: cp113_price_list
+    type: additive
+    test: acceptance/specs/cp113_price_list.spec.ts
+    request: |
+      Keep a workspace price list for unit types a client's own card doesn't cover. It's in US
+      dollars, with a single price or tiers per unit type, just like a rate card. A line whose unit
+      type isn't on the client's card, with no price of its own, is priced from the price list: each
+      price, or each band's price, converted to the client's currency at the invoice's issue-date
+      rate and rounded down to the currency's step, like other conversions. A unit type on neither
+      is refused as before.
+
+  - id: cp114_billing_increments
+    type: additive
+    test: acceptance/specs/cp114_billing_increments.spec.ts
+    request: |
+      I bill time in quarter hours and licences in packs. Let a rate card entry have an increment
+      (such as 0.25 for hours, or 5 for licences): any line of that unit type, even one with its own
+      price, is billed on its quantity rounded up to the next whole increment. Show that billed
+      quantity on the line next to the quantity entered, and price the line on it, tiers included:
+      the billed units are what count through the bands.
+
+  - id: cp115_dated_tax_rates
+    type: additive
+    test: acceptance/specs/cp115_dated_tax_rates.spec.ts
+    request: |
+      Regional tax rates change. Let the workspace record a region's new rate and the date it takes
+      effect. Tax an invoice at the rate in force in its region on its issue date (the latest change
+      on or before that date, otherwise the regional rate). Sending a draft makes it issued today,
+      so its tax follows the rate in force today. A credit note is taxed at the rate of the invoice
+      it credits, whenever it is issued.
+
+  - id: cp116_tax_per_rate
+    type: mutative
+    mutates: [72, 101, 106]
+    algorithm: tax-inclusive-reconcile-revised
+    test: acceptance/specs/cp116_tax_per_rate.spec.ts
+    request: |
+      The tax office wants the tax rounded per rate, not over the whole invoice. Work the tax out
+      once for each rate: add up the exact taxes of the lines (and charges) taxed at that rate,
+      round that half up, and share it over those lines the same way as before; the invoice tax is
+      the total of the rates. For clients whose prices include tax, use a line's own rate when it
+      has one, and take the tax out of each rate's lines on their own: the tax inside those lines'
+      total, with any missing cents going to the largest of them.
+
+  - id: cp117_withholding
+    type: additive
+    test: acceptance/specs/cp117_withholding.spec.ts
+    request: |
+      Some clients have to withhold part of what they pay me and hand it to their tax office. Let me
+      set a withholding percentage on the client form. Their invoices show the withholding: that
+      percentage of the amount before tax, rounded down to the cent. The client never pays it: leave
+      it out of the amount due, the client's balance and everything worked out from what's owed
+      (late charges, instalment plans, the small-balance write-off), so the invoice is Paid once the
+      rest is paid. Sending writes WITHHOLDING id=<invoice id> amount=<withheld>. Credit notes have
+      no withholding.
+
+  - id: cp118_minimum_units
+    type: additive
+    test: acceptance/specs/cp118_minimum_units.spec.ts
+    request: |
+      Some work has a minimum: a call-out is at least two hours, a licence order at least five. Let
+      a rate card entry have minimum units: a line of that unit type is billed at least that many
+      units, after rounding its quantity up to the increment. Show it as the billed quantity, and
+      price the line, and count it through the tiers, on that.
+
+  - id: cp119_net_prices_reverse_charge
+    type: additive
+    test: acceptance/specs/cp119_net_prices_reverse_charge.spec.ts
+    request: |
+      A reverse-charged client shouldn't pay tax that's built into my prices. When a client whose
+      prices include tax is reverse charged, take the tax out of the prices exactly as usual (at
+      their region's rate, reconciled to the cent) but don't charge it: they pay only the net. The
+      lines show their net and no tax, the invoice tax is zero, and the grand total is the amount
+      before tax.
+
+  - id: cp120_cash_rounds_down
+    type: mutative
+    mutates: [109]
+    algorithm: cash-rounding-revised
+    test: acceptance/specs/cp120_cash_rounds_down.spec.ts
+    request: |
+      Rounding cash up upsets my clients. From now on round the amount due in cash down to the 0.05
+      below, always in the client's favour (12.38 is 12.35 in cash, 12.34 is 12.30). Paying exactly
+      that in cash still settles the invoice, with the cash rounding written as before.
+
+  - id: cp121_overtime
+    type: additive
+    test: acceptance/specs/cp121_overtime.spec.ts
+    request: |
+      Work out of hours costs time and a half. Add an overtime box on the line form. An overtime
+      line's unit price is 1.5 times its price (from the rate card, the price list or typed in),
+      rounded half up to the cent; for a tiered unit type, each band's price is 1.5 times, and
+      overtime units still count through the bands together with the other lines of that unit type.
+      Discounts, tax and totals then work on the overtime amount.
+
+  - id: cp122_interest_cap
+    type: additive
+    test: acceptance/specs/cp122_interest_cap.spec.ts
+    request: |
+      Some regions cap the interest I can charge. Let the workspace record a region's legal maximum
+      annual rate. Late interest for a client in that region (on invoices, overdue instalments and
+      released retention) is worked out at the lower of their usual rate (their own, else the
+      workspace's) and that cap, by the usual daily compounding.
+
+  - id: cp123_volume_discount
+    type: additive
+    test: acceptance/specs/cp123_volume_discount.spec.ts
+    request: |
+      Big orders get a volume discount. Let the workspace list thresholds with a percentage, for
+      example over 1,000.00 3% and over 5,000.00 6% (in US dollars, converted to the client's
+      currency at the issue date's rate and rounded down). An invoice whose subtotal is over a
+      threshold gets the percentage of the highest threshold it passes, rounded down to the cent, as
+      its discount whenever that is more than the invoice's own discount. It then works like any
+      invoice discount: held to the discount cap, shared over the lines, and taken off before tax.
+
+  - id: cp124_reverse_charge_region_number
+    type: mutative
+    mutates: [102, 117]
+    test: acceptance/specs/cp124_reverse_charge_region_number.spec.ts
+    request: |
+      Tighten the reverse charge. A client only counts as registered in their region when their tax
+      number's two letters are that region's code (and the number passes its check), so a California
+      client quoting a New York number is taxed in California as usual. And a reverse-charged
+      invoice carries no withholding: the client pays it all.
+
+  - id: cp125_client_minimum_charge
+    type: additive
+    test: acceptance/specs/cp125_client_minimum_charge.spec.ts
+    request: |
+      Let me set a client's own minimum charge on the client form. It's in the client's own currency
+      (no conversion) and replaces the workspace minimum for their invoices; a minimum of 0 means
+      they never get a minimum charge.
+
+  - id: cp126_rate_form
+    type: additive
+    test: acceptance/specs/cp126_rate_form.spec.ts
+    request: |
+      Let me edit a client's rate card on the workspace: with a client selected, a rate form with a
+      unit type and a price adds that rate to their card, or replaces the price for that unit type.
+      Their draft invoices' lines priced from the card are repriced straight away, with everything
+      that follows from them (discounts, charges, tax, totals). An invoice that has been sent keeps
+      the prices it was sent with: sending fixes each card price on its line. Refuse a rate with no
+      unit type, or a price that isn't above zero with at most two decimals.
+
+  - id: cp127_unit_type_tax_rate
+    type: additive
+    test: acceptance/specs/cp127_unit_type_tax_rate.spec.ts
+    request: |
+      Some things I sell are taxed at a reduced rate. Let a rate card entry carry its own tax rate:
+      lines of that unit type are taxed at it instead of the client's regional or workspace rate,
+      unless the line has a rate of its own. It's a rate like any other when the tax is worked out
+      per rate, and when the tax is taken out of prices that include it.
+
+  - id: cp128_no_late_fees
+    type: mutative
+    mutates: [65, 70, 91, 95, 96, 100]
+    retires:
+      - "cp65_late_fee.spec.ts::charges a late fee once an invoice is overdue"
+      - "cp70_waive_interest.spec.ts::waives the late interest and fee charged so far"
+      - "cp91_late_fee_cap.spec.ts::never charges a late fee of more than a tenth of the invoice"
+      - "cp95_instalment_late_fee.spec.ts::charges the late fee on an overdue instalment"
+      - "cp100_late_fee_percentage.spec.ts::charges 2% of what is owed, at least $10.00"
+    test: acceptance/specs/cp128_no_late_fees.spec.ts
+    request: |
+      Late fees cause more arguments than they bring in. Stop charging them altogether, on invoices
+      and on instalments: remove the late fee from the invoice panel and the instalment rows, and
+      drop the late fee setting. Late interest stays exactly as it is. A payment now pays what the
+      invoice (or instalment) itself owes first and then its late interest, and waiving writes off
+      the unpaid interest.
+
+  - id: cp129_interest_threshold
+    type: additive
+    test: acceptance/specs/cp129_interest_threshold.spec.ts
+    request: |
+      Now that late interest is the only late charge, don't bother with tiny amounts of it. Set a
+      threshold in US dollars (converted to the client's currency at the invoice's issue-date rate,
+      rounded down). Until an invoice's late interest adds up to the threshold, it shows no interest
+      and none is owed, so paying what the invoice itself owes settles it and the interest is never
+      collected. Once its interest reaches the threshold, all of it is owed as usual. This is for
+      invoices without an instalment plan.
+
+  - id: cp130_conversion_fee
+    type: additive
+    test: acceptance/specs/cp130_conversion_fee.spec.ts
+    request: |
+      My bank charges me for converting foreign payments, so pass it on. When a client pays in a
+      currency other than their own, take the workspace's conversion fee off it: that percentage of
+      the converted amount, rounded half up (whole yen for yen clients). Show the fee on the payment
+      row and write FX_FEE payment=<payment id> amount=<fee> before its PAYMENT_RECORDED lines. Only
+      the rest pays invoices, counts towards the minimum part payment, or is held as credit. A
+      foreign card payment loses both: the card surcharge is worked out on the converted amount too.
+
+  - id: cp131_dated_rates
+    type: additive
+    test: acceptance/specs/cp131_dated_rates.spec.ts
+    request: |
+      My rates go up from time to time. Let a rate card or price list entry take effect from a date
+      (an entry without a date has always applied). Price a line at the entry for its unit type in
+      force on the invoice's issue date: the latest one from on or before that date, single price or
+      tiers. Since sending a draft makes it issued today, sending prices it at today's rates, and
+      the sent invoice keeps them.
+
+  - id: cp132_rates_not_discounted
+    type: mutative
+    mutates: [103, 105, 121, 127]
+    test: acceptance/specs/cp132_rates_not_discounted.spec.ts
+    request: |
+      Rate-card prices are already negotiated, so don't discount them again. The invoice discount,
+      whether a percentage, a fixed amount or the volume discount, is now worked out on the lines
+      that are not priced from a rate card or the price list, and shared over those lines only. A
+      line's own discount still applies, and the volume thresholds still look at the whole subtotal.
+
+  - id: cp133_monthly_volume
+    type: additive
+    test: acceptance/specs/cp133_monthly_volume.spec.ts
+    request: |
+      Volume pricing should reward a client's whole month, not one invoice. When pricing a tiered
+      unit type, count first the units of it already billed on the client's other sent invoices
+      issued earlier in the same calendar month (on the same date, the lower invoice id first); this
+      invoice's lines then carry on through the bands from there. Drafts, void invoices and credit
+      notes don't count, and remember that sending a draft dates it today.
+
+  - id: cp134_rate_discount
+    type: additive
+    test: acceptance/specs/cp134_rate_discount.spec.ts
+    request: |
+      Some clients have negotiated a discount on my rates. Let me set a rate discount percentage on
+      the client form: every price a line takes from their rate card or the price list, each tier
+      band's price included, is reduced by that percentage, rounded half up to the cent (whole yen
+      for yen clients) per unit, after converting a price-list price to their currency and before
+      any overtime. A price typed on the line is not reduced, and these lines still take no invoice
+      discount.
+
+  - id: cp135_exemption_expiry
+    type: additive
+    test: acceptance/specs/cp135_exemption_expiry.spec.ts
+    request: |
+      Tax exemption certificates expire. Let me give a tax-exempt client an exemption end date on
+      the client form (refuse an end date if the client isn't marked exempt). The client is exempt
+      only on invoices issued on or before that date; later invoices are taxed as usual. Sending a
+      draft dates it today, so a draft sent after the end date is taxed. A credit note is treated
+      like the invoice it credits.
+
+  - id: cp136_minimum_part_of_due
+    type: mutative
+    mutates: [43]
+    test: acceptance/specs/cp136_minimum_part_of_due.spec.ts
+    request: |
+      The minimum part payment is too high once an invoice is mostly paid. Make it 10% of what the
+      invoice still owes (its amount due when the payment arrives) instead of 10% of its grand
+      total. A payment that settles the invoice is still always accepted, and what counts is what
+      reaches the invoice, after any card surcharge or conversion fee.
+
+  - id: cp137_place_of_supply
+    type: additive
+    test: acceptance/specs/cp137_place_of_supply.spec.ts
+    request: |
+      When I do work on site in another region, that region's tax applies. Let me set the place of
+      supply on a draft invoice (a region box on the panel). The invoice is then taxed at that
+      region's rate instead of the client's, and the reverse charge depends on that region: work
+      done in the home region is taxed even for a registered client, and the client's tax number
+      must be for the region of supply. Without a place of supply, the client's region applies as
+      before.
+
+  - id: cp138_credit_note_surcharge
+    type: additive
+    test: acceptance/specs/cp138_credit_note_surcharge.spec.ts
+    request: |
+      When I credit part of a surcharged invoice, give back the surcharge on that part too. A credit
+      note against an invoice with a surcharge carries the same surcharge percentage on what it
+      credits (rounded down to the cent, and taxed at the same rate as the original's surcharge).
+      Credit notes still never get a minimum charge.
+
+  - id: cp139_region_grace
+    type: additive
+    test: acceptance/specs/cp139_region_grace.spec.ts
+    request: |
+      Some regions require a longer, or allow a shorter, grace period. Let the workspace set a grace
+      period per region. A client in that region who has no grace period of their own gets the
+      region's instead of the usual 7 days: it decides when their invoices, instalments and released
+      retention become overdue and when late interest starts.
+
+  - id: cp140_write_off_under_five_cents
+    type: mutative
+    mutates: [40, 43, 61, 92]
+    retires:
+      - "cp40_write_off_small_balance.spec.ts::writes off less than a dollar left due"
+      - "cp92_write_off_threshold.spec.ts::writes off less than $2.00 that is no more than 1% of the total"
+    test: acceptance/specs/cp140_write_off_under_five_cents.spec.ts
+    request: |
+      Writing off up to $2.00 is costing me money. From now on, after a payment, only write off
+      what's left when it is worth less than $0.05 at the workspace rates (and still no more than 1%
+      of the grand total). Anything more stays due.
+
+  - id: cp141_withholding_threshold
+    type: additive
+    test: acceptance/specs/cp141_withholding_threshold.spec.ts
+    request: |
+      Withholding only applies above a certain size of invoice. Let the workspace set a withholding
+      threshold in US dollars (converted to the client's currency at the issue date's rate, rounded
+      down): an invoice whose amount before tax is below it has nothing withheld, and the client
+      pays all of it. At or above the threshold, withholding works as before.
+
+  - id: cp142_region_terms
+    type: additive
+    test: acceptance/specs/cp142_region_terms.spec.ts
+    request: |
+      Payment terms differ by region. Let the workspace set standard terms in days for a region. For
+      a client in that region with no terms of their own, an invoice is due that many days after its
+      issue date, both when it's created and when sending re-dates it, instead of the end of the
+      next month. A client's own terms still win.
+
+  - id: cp143_plan_fee
+    type: additive
+    test: acceptance/specs/cp143_plan_fee.spec.ts
+    request: |
+      Instalment plans cost me admin, so charge a plan fee. When a plan is set up, add the
+      workspace's plan fee (in US dollars, converted to the client's currency at the issue date's
+      rate, rounded down) to the amount spread over the instalments, after any down payment. Show
+      the fee on the invoice. It earns the plan's interest like the rest, and counts in the plan
+      total, the payoff amount and the minimum instalment check.
+
+  - id: cp144_drafts_at_todays_rates
+    type: mutative
+    mutates: [115, 131, 135]
+    test: acceptance/specs/cp144_drafts_at_todays_rates.spec.ts
+    request: |
+      A draft shouldn't show last month's prices and tax when it will be dated today once I send it.
+      Price and tax a draft as of today, whatever date it carries: the rate card or price list entry
+      in force today, today's exchange rates for anything converted from US dollars (price-list
+      prices, the minimum charge, volume thresholds, the plan fee), this month's volume for tiered
+      prices, the region's tax rate in force today, and the client's tax exemption as it stands
+      today. Sent invoices and their credit notes keep the rates of their issue date.
+
+  - id: cp145_credit_tiered_lines
+    type: additive
+    test: acceptance/specs/cp145_credit_tiered_lines.spec.ts
+    request: |
+      When I credit some units of a line priced in tiers, give back its last units first, not the
+      most expensive ones. Price the credited line at the exact charge of the top units of the bands
+      the original line used (crediting 15 of 60 licences gives back units 46 to 60), rounded to the
+      cent and then taxed like the original.
+
+  - id: cp146_region_round_down
+    type: additive
+    test: acceptance/specs/cp146_region_round_down.spec.ts
+    request: |
+      Some regions require tax to be rounded down. Let the workspace list those regions. On an
+      invoice taxed in one of them, round each rate's tax down to the cent instead of half up; for
+      prices that include tax, round the tax inside them down too before sharing it over the lines.
+
+  - id: cp147_card_surcharge_cap
+    type: additive
+    test: acceptance/specs/cp147_card_surcharge_cap.spec.ts
+    request: |
+      The card surcharge on big payments is out of proportion. Cap it: the surcharge on one card
+      payment is never more than the workspace cap (in US dollars, converted to the client's
+      currency at the payment date's rate and rounded down). Everything above that pays the invoices
+      as usual.
+
+  - id: cp148_plan_rate_cap
+    type: mutative
+    mutates: [122]
+    test: acceptance/specs/cp148_plan_rate_cap.spec.ts
+    request: |
+      The regional interest cap applies to my instalment plans too. For a client in a region with a
+      legal maximum rate, work an instalment plan out at the lower of the plan's rate and that cap.
+
+  - id: cp149_plan_interest_threshold
+    type: additive
+    test: acceptance/specs/cp149_plan_interest_threshold.spec.ts
+    request: |
+      Apply the late interest threshold to instalment plans as well. Until the late interest of all
+      of a plan's overdue instalments adds up to the threshold, show none and collect none, so
+      paying an instalment's own amount clears it. Once the plan's late interest reaches the
+      threshold, all of it is owed as usual.
+
+  - id: cp150_tax_report
+    type: additive
+    test: acceptance/specs/cp150_tax_report.spec.ts
+    request: |
+      My accountant needs the tax broken down by rate. When an invoice is sent, write after
+      INVOICE_SENT one line for each tax rate on it, lowest rate first: TAX_CHARGED id=<invoice id>
+      rate=<rate as a plain number, e.g. 8.875> net=<amount before tax at that rate> tax=<tax at
+      that rate>. The amount is that of the lines, surcharge and minimum charge taxed at that rate,
+      after discounts (the net for prices that include tax), and the tax is that rate's tax as
+      worked out on the invoice. Untaxed lines and charges go under rate 0, and a reverse-charged
+      invoice reports everything under rate 0.
+
+  # ===================================================================== Act IV: cross-cutting states
+  - id: cp151_approval_limit
+    type: additive
+    test: acceptance/specs/cp151_approval_limit.spec.ts
+    request: |
+      Big invoices need a second look before they go out. Add an approval limit to the workspace (in
+      US dollars). A draft whose grand total, before any withholding, is over the limit (converted
+      to the client's currency at the invoice's date rate, rounded down) needs approval: show on the
+      invoice whether approval is "Not needed", "Needs approval" or "Approved", refuse to send it
+      while it needs approval, and give me an Approve button that approves it and writes
+      INVOICE_APPROVED id=<invoice id> total=<grand total>. Refuse to approve an invoice that
+      doesn't need it. Keep the approved total: the approval stands while the grand total is no
+      higher, but a change that takes the total above what was approved needs approving again.
+      Credit notes never need approval.
+
+  - id: cp152_discount_approval
+    type: mutative
+    mutates: [41]
+    retires:
+      - "cp41_discount_reason.spec.ts::a discount over a fifth of the subtotal needs a reason"
+      - "cp41_discount_reason.spec.ts::refuses to send an invoice whose discount needs a reason"
+    test: acceptance/specs/cp152_discount_approval.spec.ts
+    request: |
+      Typing a reason for a big discount proves nothing. Stop requiring a reason: accept any
+      discount with or without one (keep and show a reason when one is given). Instead, an invoice
+      whose discount takes off more than a fifth of the subtotal (what is actually taken off, after
+      any cap) needs approval before it can be sent, whatever its total, just like an invoice over
+      the approval limit. Exactly a fifth needs no approval.
+
+  - id: cp153_credit_limit
+    type: additive
+    test: acceptance/specs/cp153_credit_limit.spec.ts
+    request: |
+      I need to stop extending credit to clients who already owe too much. Let me give a client a
+      credit limit in their currency (a box on the client form) and show in the client list how much
+      is still available: the limit minus their balance. Refuse to send an invoice when the client's
+      balance plus what the invoice adds to it (its grand total less any withholding) would go over
+      the limit. Send all drafts sends what it can, lowest id first, judging each on the balance
+      after the ones before it, and leaves the others as drafts.
+
+  - id: cp154_client_hold
+    type: additive
+    test: acceptance/specs/cp154_client_hold.spec.ts
+    request: |
+      Sometimes I have to stop dealing with a client until things are sorted out. Give each client
+      row a Hold button that puts the client on hold or lifts it, show the client's status (Active
+      or On hold), and write CLIENT_HELD id=<client id> or CLIENT_RELEASED id=<client id>. While a
+      client is on hold, refuse to send their invoices (Send all drafts sends none), refuse Apply
+      credit, and don't let their payments pay anything: whatever invoice is open or referenced, the
+      whole payment is held as credit, written as CREDIT_HELD payment=<payment id> amount=<amount>.
+      Lifting the hold doesn't apply anything by itself.
+
+  - id: cp155_calendar_proration
+    type: additive
+    algorithm: calendar-proration
+    test: acceptance/specs/cp155_calendar_proration.spec.ts
+    request: |
+      I bill support plans by the month, but they rarely start on the first. Let a line have a
+      service period (a start and an end date on the line form, shown on the line as "<start> to
+      <end>"). For such a line the quantity x unit price is the price of a whole month, and the line
+      is charged for its period by calendar month: for each month the period touches, the monthly
+      price x the days of the period in that month / the days in that month (both ends of the period
+      count). Add the parts up exactly and round half up to the cent (whole yen for yen clients)
+      only once at the end. So 450.00 a month from 2026-01-20 to 2026-02-10 is 450 x 12/31 + 450 x
+      10/28 = 334.91, and a whole month costs exactly the monthly price. The line's own discount,
+      the invoice discount, tax and totals then work on that amount as usual. Refuse a period that
+      ends before it starts.
+
+  - id: cp156_approval_changes
+    type: mutative
+    mutates: [151]
+    test: acceptance/specs/cp156_approval_changes.spec.ts
+    request: |
+      An approved invoice shouldn't change behind the approver's back. Make an approval good only
+      for the exact grand total that was approved: any change to the total afterwards, up or down,
+      needs approving again. And approvals don't last forever: record the day it was approved, and
+      once more than 30 days have passed since then (approved on 2026-02-08, it is still good on
+      2026-03-10 but not the day after) the invoice needs approval again.
+
+  - id: cp157_recurring_invoices
+    type: additive
+    test: acceptance/specs/cp157_recurring_invoices.spec.ts
+    request: |
+      My support plans repeat every month. Let me mark an invoice as recurring (a Recurring box on
+      the invoice) and give a sent recurring invoice a Generate button that creates the next
+      period's draft for the same client, dated today with the usual due date. It copies every line
+      that has a service period, with the period moved to the whole calendar month after the latest
+      period end on the invoice; lines without a period are one-off charges and aren't copied. Keep
+      the invoice's percentage discount and surcharge, make the new draft recurring too, and
+      remember which invoice it came from. Write INVOICE_GENERATED from=<invoice number> to=<new
+      invoice number>. Refuse to generate from a draft, from an invoice that isn't recurring or has
+      no line with a period, or from one that has already generated its next period. The new draft
+      is priced, taxed and needs approval like any other.
+
+  - id: cp158_disputes
+    type: additive
+    test: acceptance/specs/cp158_disputes.spec.ts
+    request: |
+      Clients sometimes dispute an invoice, and while they do I can't chase it. Give a sent invoice
+      that still has something due a Dispute button (refuse it on drafts and on invoices with
+      nothing due) that writes INVOICE_DISPUTED id=<invoice id> amount=<amount due>. While it is
+      disputed show its status as Disputed, stop its late interest (keep what had built up before),
+      leave it out of the client's overdue amount (it still counts in their balance), refuse
+      payments made with it open, and have automatic payments and Apply credit pass over it. A
+      Resolve button ends the dispute and writes DISPUTE_RESOLVED id=<invoice id>: from that day
+      interest runs again on what is still owed and its status goes back to normal.
+
+  - id: cp159_remittance_matching
+    type: additive
+    algorithm: remittance-matching
+    test: acceptance/specs/cp159_remittance_matching.spec.ts
+    request: |
+      Clients pay with their own wording on the remittance, usually something like their purchase
+      order. Let me keep the client's purchase order number on an invoice (a PO box on the invoice)
+      and type the remittance text on the payment form. When a payment has remittance text and no
+      invoice is open and no reference is given, pay first the client's open invoice whose purchase
+      order is most like the text, using Jaro-Winkler similarity on the lower-cased strings: count
+      characters that match within a window of half the longer string's length minus one, halve the
+      transpositions, jaro = (m/len1 + m/len2 + (m - t)/m) / 3, then add the common prefix (up to 4
+      characters) x 0.1 x (1 - jaro). Only a similarity of at least 0.85 counts; if two invoices are
+      equally similar take the earlier due date, then the lower id. Whatever is left of the payment
+      is applied automatically as usual. Disputed invoices and invoices with nothing due aren't
+      candidates. Show on the payment row which invoice number it matched (blank if none) and the
+      similarity to three decimals, rounded half up.
+
+  - id: cp160_over_limit_hold
+    type: mutative
+    mutates: [154]
+    test: acceptance/specs/cp160_over_limit_hold.spec.ts
+    request: |
+      A client who owes more than their credit limit should be on hold without me having to
+      remember. Put a client on hold automatically while their balance is over their credit limit
+      (the Hold button can't lift that), and take them off once they are back within it. And a
+      payment from a client on hold shouldn't just sit there: let it pay their overdue invoices
+      first, oldest due date first (lower id on the same date), whatever invoice is open, and hold
+      only the rest as credit.
+
+  - id: cp161_payment_risk_score
+    type: additive
+    algorithm: payment-risk-score
+    test: acceptance/specs/cp161_payment_risk_score.spec.ts
+    request: |
+      I want to see at a glance who pays slowly. Give every client a payment risk score in the
+      client list: take each of their invoices that has been paid in full, the number of days from
+      its issue date to the date it was paid, and average them oldest payment first with an
+      exponential weight of 0.3 (start with the first; then each next one counts 0.3 and the average
+      so far 0.7), shown to one decimal rounded half up. Show the band next to it: LOW under 15
+      days, MEDIUM under 30, HIGH from 30. A client with nothing paid in full shows "-" and LOW.
+      Part-paid invoices, credit notes and invoices cleared without a payment don't count. Every
+      invoice of a HIGH client needs approval before it can be sent, whatever its size.
+
+  - id: cp162_risk_deposit
+    type: additive
+    test: acceptance/specs/cp162_risk_deposit.spec.ts
+    request: |
+      For a client in the HIGH risk band I want money up front. Only let me send one of their drafts
+      once the deposits held for it (taken with Deposit ticked and its reference) add up to at least
+      30% of its grand total, counting what the deposits are worth in the client's currency after
+      any conversion fee or card surcharge. Refuse to send it until then, even if it has been
+      approved. Once it is sent its deposits are used on it first, oldest first, as they are today.
+
+  - id: cp163_disputed_lines
+    type: additive
+    test: acceptance/specs/cp163_disputed_lines.spec.ts
+    request: |
+      Usually a client only queries one or two lines. Give each line of a sent invoice a Dispute
+      action that puts just that line in dispute (write INVOICE_DISPUTED id=<invoice id>
+      amount=<amount in dispute>) and show the amount in dispute on the invoice: the disputed lines
+      after their share of the invoice discount, plus their tax. From the dispute date that amount
+      earns no late interest and doesn't count as overdue (nor in the client's overdue amount); the
+      rest of the invoice stays owed, overdue and payable as usual. When only the disputed amount is
+      left, the invoice is Disputed. Resolving the dispute makes the whole invoice owed again, with
+      interest from that day.
+
+  - id: cp164_dispute_interest
+    type: mutative
+    mutates: [158, 163]
+    test: acceptance/specs/cp164_dispute_interest.spec.ts
+    request: |
+      A dispute shouldn't let a client off the interest if it turns out they owed the money all
+      along. Keep stopping late interest while an invoice (or a line) is in dispute, but when the
+      dispute is resolved, charge the interest it held back: the invoice then owes the interest it
+      would have earned had it never been disputed, the days in dispute included.
+
+  - id: cp165_recurring_until
+    type: additive
+    test: acceptance/specs/cp165_recurring_until.spec.ts
+    request: |
+      Recurring plans end. Let me give a recurring invoice an end date (a Recurring until box on the
+      invoice); the drafts it generates keep it. When the next period runs past the end date, the
+      generated line's period stops on the end date and is prorated as usual; once the next period
+      would start after the end date, refuse to generate. Also refuse to generate anything for a
+      client who is on hold.
+
+  - id: cp166_tier_limits
+    type: additive
+    test: acceptance/specs/cp166_tier_limits.spec.ts
+    request: |
+      Key accounts shouldn't need approval for routine invoices, and new clients should need it
+      sooner. Give each client a tier on the client form (STANDARD by default, KEY or NEW) and let
+      the workspace set an approval limit per tier in US dollars. A client whose tier has a limit
+      uses it instead of the workspace approval limit (converted to their currency the same way);
+      other clients keep the workspace limit.
+
+  - id: cp167_percent_complete
+    type: additive
+    test: acceptance/specs/cp167_percent_complete.spec.ts
+    request: |
+      For long jobs I bill by progress. Let a line carry a percent complete (a percent box on the
+      line form, shown on the line, e.g. "40%"; more than 0 and at most 100, refuse anything else).
+      Its amount is that percentage of its full amount, quantity x its price whether typed in or
+      from the rate card or price list, rounded half up to the cent. The line's own discount, the
+      invoice discount, tax, totals and the approval check then work on that amount.
+
+  - id: cp168_no_retention
+    type: mutative
+    mutates: [55, 56, 57, 60, 62, 63, 75, 83, 86, 93, 98, 106, 122, 139]
+    retires:
+      - "cp55_retention.spec.ts::holds retention back until it is released"
+      - "cp55_retention.spec.ts::releases only once the rest is paid, and released retention can fall overdue"
+      - "cp55_retention.spec.ts::refuses a retention outside 0 to 20"
+      - "cp56_credit_note_excess.spec.ts::a credit note takes held retention before it leaves credit"
+      - "cp60_retention_before_tax.spec.ts::works retention out before tax"
+      - "cp75_client_retention.spec.ts::new invoices start with the client's retention"
+      - "cp75_client_retention.spec.ts::duplicating keeps the plan and the retention"
+      - "cp75_client_retention.spec.ts::sets a standard retention when adding a client"
+      - "cp83_retention_cap.spec.ts::caps the retention at a maximum amount"
+      - "cp93_partial_retention_release.spec.ts::releases part of the retention"
+      - "cp93_partial_retention_release.spec.ts::refuses to release more than is still held"
+      - "cp98_retention_interest.spec.ts::released retention earns interest once overdue"
+      - "cp106_prices_include_tax.spec.ts::discounts, retention and exempt lines on prices that include tax"
+    test: acceptance/specs/cp168_no_retention.spec.ts
+    request: |
+      We've stopped holding back retention on our contracts, and it complicates everything. Remove
+      it completely: no standard retention on the client form, no retention box, retention figures
+      or release button on the invoice, and no Retention held status. Every invoice now owes its
+      whole amount once it is sent; payments, credit and credit notes apply to all of it (a credit
+      note bigger than what is owed puts the rest straight into credit), any invoice can have an
+      instalment plan or an early-payment discount, and late interest and overdue amounts are worked
+      out on the whole invoice. Drop the retention data too.
+
+  - id: cp169_milestones
+    type: additive
+    test: acceptance/specs/cp169_milestones.spec.ts
+    request: |
+      Without retention I need another way to hold back money on big jobs: bill them by milestones.
+      Let me add milestones to a draft (a description and a percentage each; refuse percentages that
+      are 0 or less or would take the total over 100) and refuse to send it unless they add up to
+      exactly 100. Each milestone is worth its percentage of what the client pays (grand total less
+      withholding), with the cents left over going one each to the largest remainders (lower id on a
+      tie) so they add up exactly; show each one's amount and status. Once sent, a milestone is owed
+      only when I mark it reached (a Reach button, written as MILESTONE_REACHED id=<invoice id>
+      milestone=<milestone id> amount=<amount>), and reaching it uses the client's credit on it just
+      like sending does. Pending milestones aren't due, aren't in the balance and can't be overdue;
+      reached ones are due on the invoice's due date and are paid in order. When nothing is owed yet
+      but milestones are still pending, show the invoice as Awaiting milestone.
+
+  - id: cp170_milestone_due
+    type: additive
+    test: acceptance/specs/cp170_milestone_due.spec.ts
+    request: |
+      A milestone reached in May can't have been due in March. Make each reached milestone fall due
+      the client's payment terms after the day it was reached (14 days if they have none) and show
+      its due date on its row. Once its grace period has passed with something unpaid it is overdue
+      and earns late interest on what is unpaid, by the usual rule; the invoice is Overdue while any
+      of its milestones is, the client's overdue amount counts the overdue milestones and their
+      interest, payments go to reached milestones in due-date order (each milestone's amount, then
+      its interest), and the invoice list shows the due date of the next milestone that still has
+      something owing.
+
+  - id: cp171_dispute_credit
+    type: additive
+    test: acceptance/specs/cp171_dispute_credit.spec.ts
+    request: |
+      When a client turns out to be right, I settle the dispute with a credit note. Give a disputed
+      invoice a Resolve with credit button: it issues a credit note dated today for the disputed
+      lines, each credited in full (all of the invoice's lines if the whole invoice was disputed),
+      taxed like the original and applied like any credit note (anything beyond what the invoice
+      owes becomes credit), and then resolves the dispute. Don't charge the interest that was held
+      back on the disputed amount while it was in dispute; the rest of the invoice is owed as usual.
+
+  - id: cp172_dispute_payment
+    type: mutative
+    mutates: [158]
+    test: acceptance/specs/cp172_dispute_payment.spec.ts
+    request: |
+      Clients do pay disputed invoices, and refusing their money is silly. Accept a payment made
+      with a disputed invoice open: it means they've accepted it, so resolve the dispute that day
+      (DISPUTE_RESOLVED, with the held-back interest owed again) and apply the payment as usual.
+      Automatic payments and Apply credit should still pay every undisputed invoice first, in the
+      usual order, but then put what's left on disputed invoices (oldest due date first, lower id on
+      ties), which stay disputed, rather than turning it into credit.
+
+  - id: cp173_progress_claims
+    type: additive
+    test: acceptance/specs/cp173_progress_claims.spec.ts
+    request: |
+      On long jobs I send a claim each month for the progress since the last one. Give a sent
+      invoice with percent-complete lines a Next claim button: it creates a draft for the same
+      client, dated today, with a copy of each percent-complete line showing the percentage already
+      billed (the line's percentage on the invoice it came from), and writes PROGRESS_CLAIM
+      from=<invoice number> to=<new invoice number>. When I raise a line's percentage, it bills the
+      new percentage of its full amount less the billed percentage of it, each rounded half up to
+      the cent separately. Refuse a percentage below what has already been billed, or over 100.
+      Lines without a percentage aren't copied, and claiming again from the same invoice, from a
+      draft or from an invoice with no percent-complete line is refused.
+
+  - id: cp174_risk_terms
+    type: additive
+    test: acceptance/specs/cp174_risk_terms.spec.ts
+    request: |
+      Slow payers shouldn't get long terms. When I send an invoice to a client in the MEDIUM risk
+      band, make it due no more than 21 days after the issue date; for a HIGH client, no more than 7
+      days. If their usual terms would give an earlier due date, keep that. LOW clients keep their
+      usual terms.
+
+  - id: cp175_recurring_autosend
+    type: additive
+    test: acceptance/specs/cp175_recurring_autosend.spec.ts
+    request: |
+      I don't want to click Send on every routine monthly invoice. When Generate creates the next
+      period's draft, send it straight away, exactly as if I had sent it myself (same dates, audit
+      lines and use of credit), whenever nothing would stop it: it needs no approval, the client
+      isn't on hold, it keeps them within their credit limit and no deposit is needed. Otherwise
+      leave it as a draft for me.
+
+  - id: cp176_proration_by_day
+    type: mutative
+    mutates: [155, 157, 165, 175]
+    algorithm: calendar-proration-revised
+    test: acceptance/specs/cp176_proration_by_day.spec.ts
+    request: |
+      My accountant wants service periods charged by the day, the same every month. Work out a day
+      rate of the monthly price x 12 / 365 and charge it for every day of the period, both ends
+      included, rounding half up to the cent (whole yen) once at the end. So 450.00 a month from
+      2026-01-20 to 2026-02-10 is 22 days x 14.794521 = 325.48, and a whole month is 28, 30 or 31
+      days' worth rather than exactly the monthly price. This applies everywhere a period is
+      charged, including generated recurring invoices.
+
+  - id: cp177_period_credit
+    type: additive
+    test: acceptance/specs/cp177_period_credit.spec.ts
+    request: |
+      When a client cancels part of a plan I credit the days they didn't use. When I credit a line
+      that has a service period, copy the period onto the credit line and let me shorten it with the
+      period boxes, so the credit is just those days, charged by the day like any period and taxed
+      like the original. Refuse a credit period that isn't inside the period the line billed.
+
+  - id: cp178_milestone_dispute
+    type: additive
+    test: acceptance/specs/cp178_milestone_dispute.spec.ts
+    request: |
+      Clients dispute milestones too ("that isn't finished"). Give each reached milestone a Dispute
+      action (write INVOICE_DISPUTED id=<invoice id> amount=<what the milestone owes>): it shows
+      Disputed, stops earning interest, doesn't count as overdue (nor in the client's overdue
+      amount) and takes no payments, which go to the other reached milestones instead. Show the
+      amount in dispute on the invoice, and show the invoice as Disputed when nothing else is owed.
+      Resolve ends it, with the held-back interest owed as for any dispute.
+
+  - id: cp179_risk_interest
+    type: additive
+    test: acceptance/specs/cp179_risk_interest.spec.ts
+    request: |
+      Slow payers cost me more to carry. Charge clients in the HIGH risk band late interest at 3
+      percentage points above their usual rate, on invoices, instalments and milestones alike; their
+      region's legal maximum still caps it. Judge the band for an invoice on the client's other
+      invoices, so an invoice's own late payment doesn't raise its own rate.
+
+  - id: cp180_approved_over_limit
+    type: mutative
+    mutates: [153]
+    test: acceptance/specs/cp180_approved_over_limit.spec.ts
+    request: |
+      Sometimes a trusted client needs to go over their credit limit. Instead of always refusing,
+      make a draft that would take the client over their limit need approval; once approved, let it
+      be sent even though it takes them over (they then go on hold for being over the limit as
+      usual). Send all drafts still leaves such drafts unless they've been approved.
+
+  - id: cp181_remittance_split
+    type: additive
+    test: acceptance/specs/cp181_remittance_split.spec.ts
+    request: |
+      One payment often covers several purchase orders, listed with semicolons. Match each part of
+      the remittance in turn, the same way as a whole remittance, against the open invoices not
+      already matched by an earlier part; pay the matched invoices in that order and apply the rest
+      automatically. Show on the payment row all the matched invoice numbers and their similarities,
+      comma separated, in order.
+
+  - id: cp182_two_approvals
+    type: additive
+    test: acceptance/specs/cp182_two_approvals.spec.ts
+    request: |
+      The biggest invoices need a second approver. When a draft's grand total is more than twice the
+      approval limit, require two approvals of that same total before it can be sent: show "Needs 2
+      approvals", then "Needs 1 more approval" after the first, then "Approved". Each approval
+      writes INVOICE_APPROVED as usual. A change to the total afterwards needs both approvals again.
+      An invoice approved before now, with no count of approvals kept, has one approval.
+
+  - id: cp183_dispute_credit_limit
+    type: additive
+    test: acceptance/specs/cp183_dispute_credit_limit.spec.ts
+    request: |
+      A client shouldn't lose their credit because of an invoice they're disputing. Keep amounts in
+      dispute (whole invoices, lines or milestones) in their balance, but leave them out of
+      everything to do with the credit limit: the amount available, the check when sending and the
+      automatic hold all work on the balance less what is in dispute.
+
+  - id: cp184_remittance_revised
+    type: mutative
+    mutates: [159, 181]
+    algorithm: remittance-matching-revised
+    test: acceptance/specs/cp184_remittance_revised.spec.ts
+    request: |
+      The remittance matching picks the wrong invoice too often. Only count a purchase order as
+      matched at a similarity of 0.90 or more, and when invoices are equally similar pay the one
+      with the larger amount due first (then the earlier due date, then the lower id).
+
+  - id: cp185_milestone_deposits
+    type: additive
+    test: acceptance/specs/cp185_milestone_deposits.spec.ts
+    request: |
+      I take deposits against milestone jobs. When an invoice billed by milestones is sent, nothing
+      is owed, so don't use any credit then, and keep a deposit held for it held for it. Each time a
+      milestone is reached, use the deposits held for that invoice on it first (oldest first) and
+      then the client's other credit, just as sending an invoice does.
+
+  - id: cp186_recurring_uplift
+    type: additive
+    test: acceptance/specs/cp186_recurring_uplift.spec.ts
+    request: |
+      Plans go up once a year. Let me set a yearly price rise for a client (a percentage on the
+      client form). A recurring invoice remembers when its plan began (the first period's start when
+      I make it recurring; the drafts it generates keep it). When Generate makes a period starting
+      on or after the next anniversary of that date, raise each typed unit price on the copied lines
+      by the client's percentage, rounded half up to the cent, and move the plan date on a year.
+      Lines priced from a rate card or the price list keep that price.
+
+  - id: cp187_early_discount_low_risk
+    type: additive
+    test: acceptance/specs/cp187_early_discount_low_risk.spec.ts
+    request: |
+      Early-payment discounts are wasted on slow payers. Only give the early-payment discount to
+      clients in the LOW risk band; for MEDIUM and HIGH clients show no settle amount and expect the
+      full amount however early they pay. Judge the band for an invoice on the client's other
+      invoices.
+
+  - id: cp188_smallest_first
+    type: mutative
+    mutates: [22, 24, 50, 64, 81, 159]
+    retires:
+      - "cp64_allocation_priority.spec.ts::pays overdue invoices first, then the largest"
+    test: acceptance/specs/cp188_smallest_first.spec.ts
+    request: |
+      I'd rather close invoices than leave lots of them part paid. When a payment is spread
+      automatically, across several references, or by Apply credit, still pay overdue invoices first
+      (oldest due date first), but then pay the smallest amount due first instead of the largest
+      (lower id on equal amounts), each paid off before the next. Disputed invoices still come last.
+
+  - id: cp189_plan_approval
+    type: additive
+    test: acceptance/specs/cp189_plan_approval.spec.ts
+    request: |
+      An instalment plan can collect a good deal more than the invoice. For a draft with a plan,
+      check the approval limit against the plan total (interest and plan fee included) rather than
+      the grand total, and approve that plan total (INVOICE_APPROVED total=<plan total>), so
+      changing the plan needs approving again.
+
+  - id: cp190_committed_credit
+    type: additive
+    test: acceptance/specs/cp190_committed_credit.spec.ts
+    request: |
+      An approved draft is as good as sent, so count it against the client's credit limit: take what
+      each approved draft will add to the balance (grand total less withholding) off the amount
+      available, and include it when judging whether another draft would take the client over their
+      limit. Once an approved draft is sent it simply moves from committed to owed.
+
+  - id: cp191_approval_expiry_tier
+    type: additive
+    test: acceptance/specs/cp191_approval_expiry_tier.spec.ts
+    request: |
+      Approvals for key accounts lapse too quickly, and new clients' too slowly. Let an approval
+      last 90 days for a KEY client and only 7 days for a NEW client; everyone else keeps 30 days,
+      counted from the day it was given.
+
+  - id: cp192_risk_days_late
+    type: mutative
+    mutates: [161, 162, 174, 179, 187]
+    algorithm: payment-risk-score-revised
+    test: acceptance/specs/cp192_risk_days_late.spec.ts
+    request: |
+      Days to pay punishes clients I give long terms to. Base the risk score on how late each
+      invoice paid in full was paid instead: its paid date less its due date, 0 if paid on time.
+      Average them oldest payment first with a weight of 0.5 (start with the first; then each next
+      one counts half and the average so far half), to one decimal rounded half up, and band them
+      LOW under 5 days late, MEDIUM under 15, HIGH from 15. Everything that uses the band uses the
+      new one.
+
+  - id: cp193_risk_write_offs
+    type: additive
+    test: acceptance/specs/cp193_risk_write_offs.spec.ts
+    request: |
+      A client whose invoice I had to write off shouldn't look like a good payer. Count an invoice
+      written off by hand in the risk score as if it had been paid on the day it was written off.
+
+  - id: cp194_medium_risk_limit
+    type: additive
+    test: acceptance/specs/cp194_medium_risk_limit.spec.ts
+    request: |
+      Clients in the MEDIUM risk band should need approval sooner. Halve their approval limit (the
+      workspace's or their tier's, halved in US dollars before converting it to their currency).
+
+  - id: cp195_disputed_part_last
+    type: additive
+    test: acceptance/specs/cp195_disputed_part_last.spec.ts
+    request: |
+      An invoice with one disputed line shouldn't hold up the rest. When a payment is spread
+      automatically or by Apply credit, pay the undisputed part of a partly disputed invoice in the
+      usual order, and leave its disputed part with the disputed invoices, to be paid only after
+      everything undisputed. Write a PAYMENT_RECORDED for each part paid.
+
+  - id: cp196_milestone_rounding
+    type: mutative
+    mutates: [169]
+    test: acceptance/specs/cp196_milestone_rounding.spec.ts
+    request: |
+      My client's accounts team checks milestone amounts with a calculator and the stray cent
+      confuses them. Work each milestone out as its percentage of what the client pays, rounded down
+      to the cent, and let the last milestone take whatever is left so they still add up exactly.
+
+  - id: cp197_recurring_cancel_credit
+    type: additive
+    test: acceptance/specs/cp197_recurring_cancel_credit.spec.ts
+    request: |
+      When a client cancels mid-month I owe them the rest of the month. If I set a recurring
+      invoice's end date before the end of a period it has already billed, issue a credit note dated
+      today for the days after the end date: each line with a service period credited for the part
+      of its period after that date, charged by the day and taxed like the original (one-off lines
+      aren't credited). Issue it like any credit note, with anything beyond what the invoice owes
+      held as credit, and the plan ends there.
+
+  - id: cp198_high_risk_limit
+    type: additive
+    test: acceptance/specs/cp198_high_risk_limit.spec.ts
+    request: |
+      I don't want a slow payer running up as much as a good one. For a client in the HIGH risk
+      band, count their credit limit as half of what I set (rounded down to the cent): for what is
+      available, the check when sending and the automatic hold.
+
+  - id: cp199_dispute_hold
+    type: additive
+    test: acceptance/specs/cp199_dispute_hold.spec.ts
+    request: |
+      A dispute dragging on for a month means something is wrong with the relationship. Put a client
+      on hold automatically while any of their disputes (a whole invoice, some lines or a milestone)
+      has been open for more than 30 days, and lift it once that dispute is resolved.
+
+  - id: cp200_two_approvals_sooner
+    type: mutative
+    mutates: [162, 174, 182, 193, 198]
+    test: acceptance/specs/cp200_two_approvals_sooner.spec.ts
+    request: |
+      Two approvers should look at more invoices. Require two approvals once a draft's total (its
+      plan total if it has a plan) is more than one and a half times the approval limit rather than
+      twice, and for every invoice of a client in the HIGH risk band, whatever its size.
+
+  # ===================================================================== Act V: keep loading
+  - id: cp201_sent_snapshot
+    type: additive
+    test: acceptance/specs/cp201_sent_snapshot.spec.ts
+    request: |
+      Once an invoice has gone out, its figures must not move. When an invoice is sent, keep the
+      grand total and tax it was sent with, and from then on treat the invoice as worth exactly
+      that, even if prices, tax rates or the client's details change later: its grand total, tax and
+      amount before tax, and everything worked out from them (withholding, the amount due, late
+      interest, the client's balance), use the sent figures. Show the sent total on a sent invoice,
+      and when the rules today would give a different grand total, show that as the current total
+      too (otherwise don't show one). Drafts carry on being worked out with today's rules.
+
+  - id: cp202_duplicate_fingerprint
+    type: additive
+    algorithm: duplicate-fingerprint
+    test: acceptance/specs/cp202_duplicate_fingerprint.spec.ts
+    request: |
+      I nearly billed a client twice for the same work last month. Give every invoice a fingerprint
+      and show its first 8 characters in capitals: the SHA-256 hash (in hex) of the client's id,
+      then '|', then the invoice's lines sorted and joined with ';', each line written as
+      description,quantity,unit price in cents, with the description lower-cased, runs of spaces
+      collapsed to one and trimmed, the quantity without trailing zeros (2, 1.5) and the unit price
+      the line is charged at (0 for a line priced in bands). Add a duplicate window in days to the
+      workspace. A draft whose fingerprint matches an invoice of the same client sent within that
+      many days before today is a possible duplicate: name that invoice on the draft and make the
+      draft need approval before it can be sent. If it matches more than one, name them all by
+      number, lowest id first, separated by a comma and a space. Check again whenever a line is
+      added, edited or removed.
+
+  - id: cp203_credit_and_rebill
+    type: additive
+    test: acceptance/specs/cp203_credit_and_rebill.spec.ts
+    request: |
+      When an invoice went out wrong I want to cancel it and send a corrected one. Give a sent
+      invoice a Rebill button: it issues a credit note for exactly what the invoice was sent for
+      (the next id, dated today, written up like any credit note) and creates a new draft, with the
+      id after that, for the same client with the same lines, percentage discount, surcharge and
+      purchase order number, worked out with today's prices and tax. Whatever had been paid on the
+      old invoice comes off it and is held as credit for the new one, used on it first when it's
+      sent. Show on each which one it replaces or was replaced by, write INVOICE_REBILLED from=<old
+      number> to=<new number>, and don't treat a rebilled or fully credited invoice as something a
+      draft can duplicate. Refuse to rebill a draft, a void or written-off invoice, a credit note,
+      or one already credited.
+
+  - id: cp204_sent_line_adjustments
+    type: mutative
+    mutates: [11, 16, 31, 42, 201]
+    retires:
+      - "cp11_send_invoice.spec.ts::refuses new lines and discount changes on a sent invoice"
+      - "cp16_reopen_sent_invoice.spec.ts::changing an unpaid sent invoice puts it back to draft"
+      - "cp16_reopen_sent_invoice.spec.ts::an invoice with a payment stays fixed"
+      - "cp31_remove_line.spec.ts::removing a line from an unpaid sent invoice reopens it"
+      - "cp42_edit_line.spec.ts::editing a line of an unpaid sent invoice reopens it"
+      - "cp201_sent_snapshot.spec.ts::reopening a sent invoice lets it be sent again at today's figures"
+    test: acceptance/specs/cp204_sent_line_adjustments.spec.ts
+    request: |
+      Reopening a sent invoice to change it rewrites history the client has already seen. Stop doing
+      that: when I add, edit or remove a line on a sent invoice (paid or not), leave the invoice and
+      its lines as sent and issue an adjustment note for the change instead, a new entry for the
+      same client dated today and numbered ADJ- with the six-digit id and check digit. An added line
+      goes on a debit note; a removed line comes off on a credit note (the line with a negative
+      quantity); changing only the quantity is one note for the difference; any other edit takes the
+      old line off on a credit note and puts the new line on a debit note. Price and tax the notes'
+      lines exactly like the invoice's own (its date, region and tax rules), with no discount or
+      charges. Send a debit note straight away like any invoice sent today; a credit note comes off
+      what the invoice owes like a credit note, with anything beyond that held as credit. Write
+      ADJUSTMENT_ISSUED id=<id> number=<ADJ number> invoice=<invoice id> total=<total, negative for
+      a credit>, show a credit note's total as negative in the list, and show on the invoice the sum
+      of its adjustment notes. Refuse to change a sent invoice's discount. Invoices that are void,
+      written off, credit notes or already credited still can't be changed.
+
+  - id: cp205_adjustment_terms
+    type: additive
+    test: acceptance/specs/cp205_adjustment_terms.spec.ts
+    request: |
+      An adjustment note should be billed on the same terms as its invoice. Take the invoice's
+      percentage discount off the note's lines (rounded down and split over them as usual) and add
+      the invoice's surcharge percentage. And judge withholding on the invoice and its notes
+      together: the threshold applies to their amounts before tax added up (credit notes taken off);
+      a debit note withholds its percentage of its own amount before tax (writing WITHHOLDING when
+      issued), and the invoice withholds on its own amount before tax less its credit notes', so a
+      credit note gives back the share that was withheld.
+
+  - id: cp206_adjustment_payments
+    type: additive
+    test: acceptance/specs/cp206_adjustment_payments.spec.ts
+    request: |
+      A client paying an invoice means to pay its adjustment notes too. When a payment is made with
+      an invoice open, or names an invoice's number or reference, pay the invoice and then its debit
+      adjustment notes, oldest first, before holding anything as credit. When a payment is spread
+      automatically or by Apply credit, pay each debit note straight after its invoice, wherever
+      that invoice comes in the order, whatever the note's own due date or amount.
+
+  - id: cp207_adjusted_duplicates
+    type: additive
+    test: acceptance/specs/cp207_adjusted_duplicates.spec.ts
+    request: |
+      Adjusting an invoice can turn it into a copy of another. Work a sent invoice's fingerprint out
+      over its lines as adjusted (lines its debit notes added count, lines its credit notes took off
+      don't), refuse a line change on a sent invoice that would give it the same fingerprint as
+      another of the client's invoices sent within the duplicate window (issue no note), and treat a
+      draft matching an invoice as adjusted as a possible duplicate of it.
+
+  - id: cp208_fingerprint_merges_lines
+    type: mutative
+    mutates: [202]
+    algorithm: duplicate-fingerprint-revised
+    test: acceptance/specs/cp208_fingerprint_merges_lines.spec.ts
+    request: |
+      Splitting the same work over two lines gets past the duplicate check. Before taking a
+      fingerprint, merge lines that have the same description (lower-cased, spaces collapsed and
+      trimmed) and the same unit price into one line, adding their quantities. And check drafts
+      against each other too: a draft with the same fingerprint as an earlier draft (lower id) of
+      the same client is a possible duplicate of it; the earlier one isn't flagged. A draft that
+      matches several invoices still names them all, lowest id first, separated by a comma and a
+      space.
+
+  - id: cp209_business_days
+    type: additive
+    algorithm: business-day-calendar
+    test: acceptance/specs/cp209_business_days.spec.ts
+    request: |
+      My clients' terms are in working days. Let the workspace keep a list of holidays. Once it has
+      one (even an empty list), count every number of days in payment terms as business days, Monday
+      to Friday and not a listed holiday, counted from the day after: the client's own terms, a
+      region's terms and the cap for risky clients set the due date that many business days after
+      the issue date, and grace periods, the early-payment window, a milestone's terms and how long
+      an approval lasts are counted in business days as well. Late interest still accrues for every
+      calendar day after the grace period ends. Without a holiday list everything stays in calendar
+      days.
+
+  - id: cp210_adjustment_approval
+    type: additive
+    test: acceptance/specs/cp210_adjustment_approval.spec.ts
+    request: |
+      Adding to a sent invoice shouldn't get round the approval rules. Judge a debit adjustment note
+      for approval like any draft (over the approval limit, a discount of more than a fifth, a high-
+      risk client, or taking the client over their credit limit). If it needs approval, leave it as
+      a draft note instead of sending it; once approved, sending it issues it (ADJUSTMENT_ISSUED
+      rather than INVOICE_SENT). Credit notes never need approval.
+
+  - id: cp211_rebill_carries
+    type: additive
+    test: acceptance/specs/cp211_rebill_carries.spec.ts
+    request: |
+      A rebill shouldn't lose what was going on with the invoice. Move an open dispute to the
+      replacement (the lines that were disputed stay disputed there, from the same day, and the old
+      invoice's dispute closes), move its milestones with the days they were reached, and move a
+      recurring plan so the old invoice stops recurring and the replacement carries on. If the
+      replacement's grand total is no more than what the old invoice was sent for, treat it as
+      already approved for that total; if it's more, it needs approval like any other draft.
+
+  - id: cp212_no_instalment_plans
+    type: mutative
+    mutates: [57, 58, 66, 71, 73, 75, 84, 85, 94, 95, 99, 117, 122, 128, 143, 148, 149, 189]
+    retires:
+      - "cp57_instalment_plan.spec.ts::spreads a draft over monthly instalments"
+      - "cp57_instalment_plan.spec.ts::sending dates the instalments from the day it is sent"
+      - "cp57_instalment_plan.spec.ts::refuses a plan that breaks a rule"
+      - "cp58_instalment_payments.spec.ts::pays instalments in order and goes overdue by instalment"
+      - "cp58_instalment_payments.spec.ts::a payment must cover the earliest unpaid instalment, not a tenth of the total"
+      - "cp66_instalment_interest.spec.ts::an overdue instalment earns late interest"
+      - "cp71_plan_payoff.spec.ts::pays off a plan early without the future interest"
+      - "cp71_plan_payoff.spec.ts::the payoff includes the interest of instalments already due"
+      - "cp73_credit_note_on_plan.spec.ts::a credit note on a plan re-works the instalments still to come"
+      - "cp73_credit_note_on_plan.spec.ts::refuses a credit note on a plan with an overdue instalment"
+      - "cp75_client_retention.spec.ts::duplicating keeps the plan"
+      - "cp84_whole_dollar_instalments.spec.ts::rounds the instalment up to a whole dollar"
+      - "cp85_plan_down_payment.spec.ts::takes a down payment before the instalments"
+      - "cp85_plan_down_payment.spec.ts::an unpaid down payment falls overdue like an instalment"
+      - "cp94_minimum_instalment.spec.ts::refuses a plan whose instalment is worth under $25"
+      - "cp95_instalment_late_fee.spec.ts::charges no late fee on an overdue instalment"
+      - "cp99_instalment_holiday.spec.ts::skips an instalment and spreads it over the rest"
+      - "cp99_instalment_holiday.spec.ts::refuses to skip an overdue or the last instalment"
+      - "cp117_withholding.spec.ts::an instalment plan spreads what the client pays"
+      - "cp122_interest_cap.spec.ts::an overdue instalment earns interest at the capped rate"
+      - "cp128_no_late_fees.spec.ts::an overdue instalment is charged no late fee"
+      - "cp143_plan_fee.spec.ts::adds the plan fee to what is spread over the instalments"
+      - "cp148_plan_rate_cap.spec.ts::caps an instalment plan's rate at the region's maximum"
+      - "cp149_plan_interest_threshold.spec.ts::an instalment plan's late interest waits for the threshold"
+      - "cp189_plan_approval.spec.ts::an instalment plan is judged on what it will collect"
+    test: acceptance/specs/cp212_no_instalment_plans.spec.ts
+    request: |
+      Instalment plans cause more trouble than they're worth now that adjustment notes and rebilling
+      cover corrections. Remove them completely: no plan form, no instalment rows, no plan total,
+      plan fee, payoff, interest saved or skipping, and no plan fee setting. Every invoice is due in
+      full on its due date, earns late interest on what it owes once it's overdue, is judged for
+      approval on its grand total, and has the client's credit used on it when it's sent, like any
+      other.
+
+  - id: cp213_payment_promise
+    type: additive
+    test: acceptance/specs/cp213_payment_promise.spec.ts
+    request: |
+      With plans gone, a client who is behind needs another way to catch up. Let me record a promise
+      to pay on an overdue invoice: an amount (at least 10% of what it owes, no more than that) by a
+      date (after today, no more than 30 days ahead), noting the day it was made, and write
+      PAYMENT_PROMISED id=<invoice id> amount=<amount> date=<date>. Until that date, unless what
+      they've paid since reaches the promised amount, show the invoice as Promised instead of
+      Overdue: leave it out of the client's overdue amount and don't pay it first as an overdue
+      invoice when a payment is spread, but keep charging late interest. Once the promise is kept,
+      whatever is still owed is overdue as normal. Refuse a promise on an invoice that isn't overdue
+      or whose last promise was broken (its date passed without the amount being paid).
+
+  - id: cp214_rebill_interest
+    type: additive
+    test: acceptance/specs/cp214_rebill_interest.spec.ts
+    request: |
+      Rebilling an overdue invoice shouldn't wipe out the interest it has run up. When I rebill an
+      invoice that owes late interest (above the threshold, if there is one), stop and waive the
+      interest on the old invoice and put it on the replacement as a line "Late interest <old
+      invoice number>", quantity 1, for that amount, with no tax, no share of the invoice discount
+      and no surcharge. Write INTEREST_CARRIED from=<old number> to=<new number> amount=<interest>.
+
+  - id: cp215_invoice_update
+    type: additive
+    test: acceptance/specs/cp215_invoice_update.spec.ts
+    request: |
+      Sometimes I do want a sent invoice to pick up a corrected rate rather than rebilling it. Give
+      a sent invoice whose current total differs from what it was sent for an Update button: it
+      makes today's grand total and tax its sent figures, so it owes what today's rules say, and
+      writes INVOICE_UPDATED id=<id> from=<old total> to=<new total>. Refuse it when there's no
+      difference, when the new total would be less than what's already been paid on it, or when the
+      increase would take the client over their credit limit.
+
+  - id: cp216_no_grace_high_risk
+    type: mutative
+    mutates: [179]
+    test: acceptance/specs/cp216_no_grace_high_risk.spec.ts
+    request: |
+      A client who is already a slow payer shouldn't get a week's grace on top. For a client in the
+      HIGH risk band (judged on their other invoices, as for the higher interest rate), drop the
+      grace period: their invoices are overdue the day after they fall due and late interest runs
+      from the due date, with everything else that being overdue brings.
+
+  - id: cp217_dunning
+    type: additive
+    algorithm: dunning-escalation
+    test: acceptance/specs/cp217_dunning.spec.ts
+    request: |
+      I need to chase overdue invoices properly. Give each overdue invoice a dunning level, shown on
+      the panel: NONE under 7 days past its due date; REMINDER_1 from 7 days; REMINDER_2 from 21
+      days, but only once the first reminder went out at least 14 days earlier; FINAL from 45 days,
+      once the second reminder has gone out; COLLECTIONS from 60 days, once the final notice has
+      gone out. Days are counted from the due date, and each reminder's history is how many days
+      overdue the invoice was when it went out. A level never skips the one before it, and an
+      invoice that isn't overdue (paid, in its grace period, disputed or promised) is at NONE. Add a
+      Remind button that sends the reminder for the level reached if that one hasn't gone out yet:
+      record the date and write REMINDER_SENT id=<invoice id> level=<level>. Refuse it otherwise.
+
+  - id: cp218_reminder_fees
+    type: additive
+    test: acceptance/specs/cp218_reminder_fees.spec.ts
+    request: |
+      Chasing costs me money, so the later reminders should carry a fee. Let the workspace set a fee
+      in US dollars for each reminder level; when that reminder goes out, charge it on the invoice
+      (converted to the client's currency at that day's rate, rounded down), write REMINDER_FEE
+      id=<invoice id> amount=<fee>, and show the reminder fees charged on the panel. The fee is owed
+      with the invoice: it counts in the amount due, the balance, the overdue amount and the cash
+      due, earns no interest and takes no tax. A payment pays the invoice itself first, then the
+      reminder fees, then late interest. Waiving the interest leaves the fees owed, and writing the
+      invoice off includes them. Charging a reminder fee starts a new interest period, just as a
+      payment does: the interest up to that day is worked out and rounded on its own. A reminder
+      already on an invoice's record went out on its date, so it carries its level's fee from that
+      day (at that day's rate) just like one sent now.
+
+  - id: cp219_dunning_hold
+    type: additive
+    test: acceptance/specs/cp219_dunning_hold.spec.ts
+    request: |
+      Clients who ignore my reminders shouldn't get more credit. While a client has an invoice that
+      is still overdue after its final notice (the third reminder) went out, put them on hold
+      automatically, with everything a hold means; and while they have one still overdue after its
+      second reminder, make every one of their drafts need approval.
+
+  - id: cp220_observed_holidays
+    type: mutative
+    mutates: [209]
+    algorithm: business-day-calendar-revised
+    test: acceptance/specs/cp220_observed_holidays.spec.ts
+    request: |
+      A holiday that falls at the weekend still gives us a day off. When a listed holiday falls on a
+      Saturday, treat the Friday before it as the holiday, and when it falls on a Sunday, the Monday
+      after it, for every count of business days: terms, grace, the early-payment window,
+      milestones, approvals and dunning.
+
+  - id: cp221_dunning_minimum
+    type: additive
+    test: acceptance/specs/cp221_dunning_minimum.spec.ts
+    request: |
+      Chasing a client over a few dollars costs more than it brings in. Let the workspace set a
+      dunning minimum in US dollars (converted to the client's currency at today's rate, rounded
+      down). An invoice with less than that overdue is at NONE: no reminder can go out for it,
+      however late it is.
+
+  - id: cp222_dunning_rebill
+    type: additive
+    test: acceptance/specs/cp222_dunning_rebill.spec.ts
+    request: |
+      Rebilling must not let a late payer start again with a clean slate. When I rebill an invoice
+      that has had reminders, move its reminders to the replacement and keep the old invoice's due
+      date on it when it's sent, rather than dating it from today, so the chasing carries on where
+      it was. Refuse to rebill an invoice once its final notice has gone out.
+
+  - id: cp223_dunning_interest
+    type: additive
+    test: acceptance/specs/cp223_dunning_interest.spec.ts
+    request: |
+      A client who has had a final notice should feel it. From the day an invoice's final notice
+      goes out, charge late interest on it at 2 percentage points more (on top of any rise for a
+      high-risk client, and still within the region's legal maximum); from the day its collections
+      notice goes out, stop charging interest on it altogether.
+
+  - id: cp224_approval_lower_total
+    type: mutative
+    mutates: [151, 156]
+    test: acceptance/specs/cp224_approval_lower_total.spec.ts
+    request: |
+      Asking for a fresh approval because I knocked something off an invoice is a waste of the
+      approver's time. Let an approval cover any grand total up to the one approved: if the total
+      goes down it stays approved, and only a total above what was approved needs approving again.
+      Approvals still lapse after their time.
+
+  - id: cp225_progress_adjustment
+    type: additive
+    test: acceptance/specs/cp225_progress_adjustment.spec.ts
+    request: |
+      Progress figures on a sent invoice get corrected after the fact. When I change the percent
+      complete of a line on a sent invoice, issue an adjustment note for the change: one line with
+      the line's description for the difference between the new and old percentages' amounts (each
+      worked out as that percentage of the line's full amount, rounded half up on its own, with
+      anything billed before left alone), on a debit note if it went up or a credit note if it went
+      down, taxed like the invoice's lines. The invoice's own line keeps the percent it was sent
+      with.
+
+  - id: cp226_remittance_notes
+    type: additive
+    test: acceptance/specs/cp226_remittance_notes.spec.ts
+    request: |
+      Clients quote the purchase order when they pay, not the adjustment note. Give each adjustment
+      note its invoice's purchase order number, and when a payment's remittance text is matched to
+      an invoice, pay that invoice's debit notes straight after it, oldest first, before anything
+      else.
+
+  - id: cp227_recurring_adjusted
+    type: additive
+    test: acceptance/specs/cp227_recurring_adjusted.spec.ts
+    request: |
+      When I've adjusted a recurring invoice, the next period should follow the adjustments. Make
+      Generate copy the period lines as adjusted by the invoice's notes: a quantity changed on a
+      note carries into the next period, a line taken off on a credit note isn't copied, and a line
+      with a service period added on a debit note is copied like the invoice's own lines. Everything
+      else about generating stays the same.
+
+  - id: cp228_dunning_revised
+    type: mutative
+    mutates: [217]
+    algorithm: dunning-escalation-revised
+    test: acceptance/specs/cp228_dunning_revised.spec.ts
+    request: |
+      The reminders go out too fast. Start chasing at 10 days overdue instead of 7, and make every
+      level after the first wait until the reminder before it is at least 14 days old: REMINDER_2
+      from 21 days, FINAL from 45 and COLLECTIONS from 60, each only once the previous reminder went
+      out 14 or more days earlier. A level still never skips the one before it.
+
+  - id: cp229_banded_adjustments
+    type: additive
+    test: acceptance/specs/cp229_banded_adjustments.spec.ts
+    request: |
+      Adding hours to a sent invoice shouldn't restart the price bands. When a debit note adds units
+      of a type priced in bands, price them as the next units after the invoice's own units of that
+      type (and anything billed before it that month), just as if they had been on the invoice in
+      the first place: invoices billed after it don't come in between.
+
+  - id: cp230_currency_adjustments
+    type: additive
+    test: acceptance/specs/cp230_currency_adjustments.spec.ts
+    request: |
+      Adjustment notes for my euro clients must be in the same money as the invoice. Convert
+      anything priced in US dollars on a note at its invoice's date rate, like the invoice's own
+      lines, and measure the note's exchange difference on payments from that same rate.
+
+  - id: cp231_early_discount_adjustments
+    type: additive
+    test: acceptance/specs/cp231_early_discount_adjustments.spec.ts
+    request: |
+      The early-payment discount should be on what the client is really paying for. Work it out on
+      the invoice's amount before tax less what its credit notes and credit adjustment notes take
+      off (before tax), so the settle amount drops with them; a debit adjustment note gets no early-
+      payment discount.
+
+  - id: cp232_cap_usual_rate
+    type: mutative
+    mutates: [179, 223]
+    test: acceptance/specs/cp232_cap_usual_rate.spec.ts
+    request: |
+      My lawyer says the regional cap is on the base rate, and the extra charges for risk and
+      dunning are penalties that sit on top. Apply a region's maximum interest rate to the usual
+      rate only (the client's own or the workspace's), then add the 3 points for a high-risk client
+      and the 2 points after a final notice on top of the capped rate.
+
+  - id: cp233_notes_dunned
+    type: additive
+    test: acceptance/specs/cp233_notes_dunned.spec.ts
+    request: |
+      An adjustment note shouldn't get its own separate chasing. Chase a debit note together with
+      its invoice: while it's overdue it shows its invoice's dunning level and can't be reminded by
+      itself; reminding the invoice sends the same reminder for each of its overdue debit notes (a
+      REMINDER_SENT for each) but charges the reminder fee only once, on the invoice; and count its
+      overdue notes in the invoice's overdue amount when judging the dunning minimum.
+
+  - id: cp234_credit_resolves_dispute
+    type: additive
+    test: acceptance/specs/cp234_credit_resolves_dispute.spec.ts
+    request: |
+      When I take a disputed line off an invoice, that's the dispute settled in the client's favour.
+      Taking a disputed line off a sent invoice takes it out of the dispute, and taking off the last
+      disputed line resolves the dispute with credit (write DISPUTE_RESOLVED id=<invoice id>), so
+      the interest held back while it was disputed is waived, just as when a dispute is resolved
+      with a credit note.
+
+  - id: cp235_due_on_business_days
+    type: additive
+    test: acceptance/specs/cp235_due_on_business_days.spec.ts
+    request: |
+      An invoice due on a Saturday or a holiday isn't really due until the next working day. When
+      the workspace has a holiday list and sending gives an invoice a due date on a Saturday, a
+      Sunday or a holiday (as observed), move it to the next business day.
+
+  - id: cp236_mod11_numbers
+    type: mutative
+    mutates: [7, 18, 235]
+    algorithm: luhn-invoice-number-revised
+    test: acceptance/specs/cp236_mod11_numbers.spec.ts
+    request: |
+      Our new bank validates invoice numbers with ISO 7064 MOD 11-2. From 2026-07-01, number
+      invoices, credit notes and adjustment notes (and drafts shown from then on) with a MOD 11-2
+      check character instead of the Luhn digit: over the six digits of the id, start with p = 0 and
+      for each digit set p to (p + digit) x 2 mod 11; the check is (12 - p) mod 11, written X when
+      it comes to 10. Build the RF payment reference from the six digits and that check character,
+      and use the new numbers wherever a number or reference is typed or matched. Anything issued
+      before 2026-07-01 keeps the number it has.
+
+  - id: cp237_payment_value_date
+    type: additive
+    test: acceptance/specs/cp237_payment_value_date.spec.ts
+    request: |
+      Money paid at the weekend doesn't reach us until Monday. With a holiday list, treat a payment
+      dated on a Saturday, a Sunday or a holiday (as observed) as received on the next business day:
+      late interest runs until then, and that's the paid date for Paid late and the risk score, and
+      the date judged for the early-payment window.
+
+  - id: cp238_dunned_deposit
+    type: additive
+    test: acceptance/specs/cp238_dunned_deposit.spec.ts
+    request: |
+      A client ignoring my second reminder should pay up front for new work. While a client has an
+      invoice still overdue after its second reminder, only let me send one of their drafts once the
+      deposits held for it are worth at least 30% of its grand total (after any conversion fee or
+      card surcharge), just as for a high-risk client, even if it has been approved. A replacement
+      for an invoice I've rebilled isn't held back by this: it bills work already invoiced.
+
+  - id: cp239_collections_write_off
+    type: additive
+    test: acceptance/specs/cp239_collections_write_off.spec.ts
+    request: |
+      Once an invoice has been with collections for a month I give up on it. If an invoice still
+      owes something 30 days after its collections notice went out, write it off that day, just as
+      if I had written it off by hand: it shows Written off and the amount written off, leaves the
+      balance and the overdue amount, earns no more interest, and counts in the risk score as paid
+      on the day it was written off.
+
+  - id: cp240_risk_final_notice
+    type: mutative
+    mutates: [192, 223]
+    test: acceptance/specs/cp240_risk_final_notice.spec.ts
+    request: |
+      A client sitting on a final notice is a bad risk even if they've never paid anything late
+      before, because they haven't paid at all. Count an invoice that is still overdue after its
+      final notice in the client's risk score as if it were paid today, with its days late so far,
+      and let that drive everything the score drives.
+
+  - id: cp241_promise_kept
+    type: additive
+    test: acceptance/specs/cp241_promise_kept.spec.ts
+    request: |
+      A client who keeps their promise should be rewarded. When payments since a promise reach the
+      promised amount by its date, waive the late interest that ran from the day the promise was
+      made to the day it was kept (write INTEREST_WAIVED id=<invoice id> amount=<waived>). Interest
+      from before the promise stays owed, and whatever is still overdue afterwards earns interest as
+      usual. The day the promise is made and the day it is kept each start a new interest period, so
+      the interest waived is that period's own, worked out and rounded on its own.
+
+  - id: cp242_credit_keeps_minimum
+    type: additive
+    test: acceptance/specs/cp242_credit_keeps_minimum.spec.ts
+    request: |
+      Taking lines off an invoice mustn't get round my minimum charge. When a credit note would
+      leave its invoice (with any earlier notes) below the minimum charge, keep back on the note the
+      part that would, as a minimum charge taxed at the standard rate on its own (rounded half up),
+      and credit only the rest.
+
+  - id: cp243_note_due_at_once
+    type: additive
+    test: acceptance/specs/cp243_note_due_at_once.spec.ts
+    request: |
+      Extra charges on an invoice that is already overdue shouldn't get fresh terms. Make a debit
+      adjustment note on an invoice that is overdue when the note is issued due that same day, with
+      no grace period, so it is overdue from the next day and earns late interest from its due date.
+      Notes on invoices that aren't overdue keep the usual terms.
+
+  - id: cp244_edit_one_note
+    type: mutative
+    mutates: [42, 204]
+    retires:
+      - "cp42_edit_line.spec.ts::editing a line of a sent invoice takes the old line off and bills the new one"
+    test: acceptance/specs/cp244_edit_one_note.spec.ts
+    request: |
+      Two adjustment notes for one edit confuse my clients. When I edit a line of a sent invoice in
+      any way other than just its quantity, issue a single note for the change in the line's amount:
+      a line with the line's description, quantity 1 (a credit note with quantity -1 if the amount
+      went down) and the difference as its price, keeping the line's tax rate or exemption. Changing
+      only the quantity still gives one note for the difference in quantity.
+
+  - id: cp245_terms_after_final
+    type: additive
+    test: acceptance/specs/cp245_terms_after_final.spec.ts
+    request: |
+      A client who needed a final notice recently doesn't get long terms. If any of a client's
+      invoices had its final notice in the last 90 days, however it ended, make an invoice sent to
+      them due no more than 7 days after it is sent, as for a high-risk client.
+
+  - id: cp246_credit_pays_notes
+    type: additive
+    test: acceptance/specs/cp246_credit_pays_notes.spec.ts
+    request: |
+      Credit left over from crediting an invoice should settle that invoice's own extra charges
+      first. When a credit note or credit adjustment note is for more than its invoice still owes,
+      use the rest on the invoice's unpaid debit notes, oldest first (writing PAYMENT_RECORDED for
+      each), and hold only what's left after that as credit.
+
+  - id: cp247_promise_notes
+    type: additive
+    test: acceptance/specs/cp247_promise_notes.spec.ts
+    request: |
+      When a client promises to pay an invoice, the promise should cover its adjustment notes too.
+      While the promise stands, show its overdue debit notes as Promised as well, and count payments
+      on those notes since the promise towards the promised amount.
+
+  - id: cp248_most_chased_first
+    type: mutative
+    mutates: [188, 233]
+    test: acceptance/specs/cp248_most_chased_first.spec.ts
+    request: |
+      The invoices I've chased hardest are the ones I most need paid. When a payment is spread
+      automatically, across several references or by Apply credit, pay overdue invoices in order of
+      how far their chasing has gone (COLLECTIONS first, then FINAL, REMINDER_2, REMINDER_1, NONE),
+      oldest due date first within a level (lower id on the same date), and then everything else as
+      before. A payment from a client on hold still pays their overdue invoices oldest due date
+      first.
+
+  - id: cp249_hold_notes
+    type: additive
+    test: acceptance/specs/cp249_hold_notes.spec.ts
+    request: |
+      Putting a client on hold should stop extra charges going out too. While a client is on hold,
+      for whatever reason, leave a debit adjustment note as a draft instead of sending it, and
+      refuse to send it until the hold ends. Credit notes still go out straight away.
+
+  - id: cp250_write_off_notes
+    type: additive
+    test: acceptance/specs/cp250_write_off_notes.spec.ts
+    request: |
+      When I give up on an invoice, its adjustment notes should go with it. Whenever an invoice is
+      written off, by hand or after collections, write off its debit notes that still owe something
+      the same day, writing INVOICE_WRITTEN_OFF id=<note id> amount=<amount> for each, and count
+      them in the risk score as paid that day.
