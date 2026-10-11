@@ -13,9 +13,11 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /** An invoice raised for a client, made of lines. */
@@ -122,6 +124,51 @@ public class Invoice {
     public BigDecimal discount() {
         return subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100))
                 .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Each line's share of the discount, in the order of the lines. The discount's cents are split in
+     * proportion to the line amounts: each line first gets the whole cents of its exact share
+     * (rounded down), then the cents left over go one each to the lines with the largest leftover
+     * fractions, equal fractions going to the lower line id. The shares add up to the discount.
+     */
+    public List<BigDecimal> discountShares() {
+        BigInteger discountCents = discount().movePointRight(2).toBigIntegerExact();
+        BigInteger subtotalCents = subtotal().movePointRight(2).toBigIntegerExact();
+        int n = lines.size();
+        BigInteger[] shares = new BigInteger[n];
+        BigInteger[] leftovers = new BigInteger[n];
+        BigInteger given = BigInteger.ZERO;
+        for (int i = 0; i < n; i++) {
+            if (subtotalCents.signum() == 0) {
+                shares[i] = BigInteger.ZERO;
+                leftovers[i] = BigInteger.ZERO;
+            } else {
+                // The exact share is discount * amount / subtotal; all fractions share the subtotal
+                // as denominator, so the remainders compare as the fractions do.
+                BigInteger[] qr = discountCents.multiply(lines.get(i).amount().movePointRight(2).toBigIntegerExact())
+                        .divideAndRemainder(subtotalCents);
+                shares[i] = qr[0];
+                leftovers[i] = qr[1];
+            }
+            given = given.add(shares[i]);
+        }
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            order.add(i);
+        }
+        order.sort(Comparator.<Integer, BigInteger>comparing(i -> leftovers[i]).reversed()
+                .thenComparing(i -> lines.get(i).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
+        int left = discountCents.subtract(given).intValueExact();
+        for (int k = 0; k < left; k++) {
+            int i = order.get(k);
+            shares[i] = shares[i].add(BigInteger.ONE);
+        }
+        List<BigDecimal> result = new ArrayList<>(n);
+        for (BigInteger share : shares) {
+            result.add(new BigDecimal(share, 2));
+        }
+        return result;
     }
 
     /**

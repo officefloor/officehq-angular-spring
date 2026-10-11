@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.stream.IntStream;
 import net.officefloor.hq.app.TaxRate;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,12 +37,15 @@ public class InvoiceController {
 
     /**
      * One line of an opened invoice. The quantity is as entered, without trailing zeros ("1.5");
-     * money is a decimal string to the cent.
+     * money is a decimal string to the cent. {@code discountShare} is the line's share of the
+     * invoice discount.
      */
-    public record LineView(Long id, String description, String qty, String unitPrice, String amount) {
-        static LineView of(InvoiceLine l) {
+    public record LineView(Long id, String description, String qty, String unitPrice, String amount,
+            String discountShare) {
+        static LineView of(InvoiceLine l, BigDecimal discountShare) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
-                    l.getUnitPrice().setScale(2).toPlainString(), l.amount().toPlainString());
+                    l.getUnitPrice().setScale(2).toPlainString(), l.amount().toPlainString(),
+                    discountShare.toPlainString());
         }
     }
 
@@ -54,8 +58,11 @@ public class InvoiceController {
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discount,
             String taxRate, String tax, String total) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate) {
+            List<BigDecimal> shares = i.discountShares();
+            List<LineView> lines = IntStream.range(0, shares.size())
+                    .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n))).toList();
             return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()), i.getClientId(), i.getStatus(), i.getIssueDate(), i.getDueDate(),
-                    i.getLines().stream().map(LineView::of).toList(), i.subtotal().toPlainString(),
+                    lines, i.subtotal().toPlainString(),
                     i.getDiscountPct().stripTrailingZeros().toPlainString(), i.discount().toPlainString(),
                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
                     i.total(taxRate).toPlainString());

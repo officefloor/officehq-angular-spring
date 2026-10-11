@@ -66,6 +66,7 @@ function problemWith(line: NewLine): string {
               <th scope="col">Qty</th>
               <th scope="col">Unit price</th>
               <th scope="col">Amount</th>
+              <th scope="col">Discount share</th>
             </tr>
           </thead>
           <tbody>
@@ -75,28 +76,29 @@ function problemWith(line: NewLine): string {
                 <td data-testid="line-qty">{{ l.qty }}</td>
                 <td data-testid="line-unit-price">{{ money(l.unitPrice) }}</td>
                 <td data-testid="line-amount">{{ money(l.amount) }}</td>
+                <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
               </tr>
             } @empty {
               <tr>
-                <td colspan="4" data-testid="line-empty">No lines yet.</td>
+                <td colspan="5" data-testid="line-empty">No lines yet.</td>
               </tr>
             }
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row" colspan="3">Subtotal</th>
+              <th scope="row" colspan="4">Subtotal</th>
               <td data-testid="invoice-subtotal">{{ money(inv.subtotal) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="3">Discount ({{ inv.discountPct }}%)</th>
+              <th scope="row" colspan="4">Discount ({{ inv.discountPct }}%)</th>
               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="3">Tax ({{ inv.taxRate }}%)</th>
+              <th scope="row" colspan="4">Tax ({{ inv.taxRate }}%)</th>
               <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="3">Total</th>
+              <th scope="row" colspan="4">Total</th>
               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
             </tr>
           </tfoot>

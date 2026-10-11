@@ -17,13 +17,15 @@ export interface InvoiceSummary {
 }
 
 // One line of an opened invoice. `qty` is as entered, without trailing zeros ("1.5"); money is a
-// decimal string to the cent.
+// decimal string to the cent. `discountShare` is the line's share of the invoice discount, split in
+// cents in proportion to the line amounts by the server; the shares add up to the discount.
 export interface InvoiceLineView {
   id: number;
   description: string;
   qty: string;
   unitPrice: string;
   amount: string;
+  discountShare: string;
 }
 
 // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
