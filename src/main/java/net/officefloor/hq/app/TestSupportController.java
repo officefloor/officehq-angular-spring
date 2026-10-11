@@ -30,12 +30,14 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
-    private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices");
+    private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt");
+    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "allocations");
+    private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
 
     private final Audit audit;
@@ -52,7 +54,8 @@ public class TestSupportController {
     public void reset() {
         audit.clear();
         jdbc.execute("DELETE FROM app_setting");
-        for (String table : List.of("invoice_line", "invoice", "client")) {
+        jdbc.execute("DELETE FROM payment_allocation");
+        for (String table : List.of("payment", "invoice_line", "invoice", "client")) {
             jdbc.execute("DELETE FROM " + table);
             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH 1");
         }
@@ -123,8 +126,29 @@ public class TestSupportController {
                         flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"));
             }
         }
+        for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
+            only(row, PAYMENT_FIELDS, "payments[]");
+            if (row.get("clientId") == null) {
+                throw refuse("payments[].clientId is required");
+            }
+            if (row.get("date") == null) {
+                throw refuse("payments[].date is required");
+            }
+            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date"},
+                    id(row.get("clientId")), cents(row.get("amount"), "payments[].amount"),
+                    date(row.get("date"), "payments[].date"));
+            for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
+                only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
+                if (allocation.get("invoiceId") == null) {
+                    throw refuse("payments[].allocations[].invoiceId is required");
+                }
+                jdbc.update("INSERT INTO payment_allocation (payment_id, invoice_id, amount) VALUES (?, ?, ?)",
+                        paymentId, id(allocation.get("invoiceId")),
+                        cents(allocation.get("amount"), "payments[].allocations[].amount"));
+            }
+        }
         // Keep generated ids clear of the seeded ones.
-        for (String table : List.of("client", "invoice", "invoice_line")) {
+        for (String table : List.of("client", "invoice", "invoice_line", "payment")) {
             Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM " + table, Long.class);
             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH " + next);
         }
@@ -175,6 +199,23 @@ public class TestSupportController {
                                 line.put("unitPrice", l.get("UNIT_PRICE"));
                                 line.put("taxExempt", l.get("TAX_EXEMPT"));
                                 return line;
+                            }).toList());
+                    return row;
+                }).toList());
+        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date FROM payment ORDER BY id")
+                .stream().map(r -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", r.get("ID"));
+                    row.put("clientId", r.get("CLIENT_ID"));
+                    row.put("amount", r.get("AMOUNT"));
+                    row.put("date", r.get("PAYMENT_DATE").toString());
+                    row.put("allocations", jdbc.queryForList(
+                            "SELECT invoice_id, amount FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
+                            r.get("ID")).stream().map(a -> {
+                                Map<String, Object> allocation = new LinkedHashMap<>();
+                                allocation.put("invoiceId", a.get("INVOICE_ID"));
+                                allocation.put("amount", a.get("AMOUNT"));
+                                return allocation;
                             }).toList());
                     return row;
                 }).toList());

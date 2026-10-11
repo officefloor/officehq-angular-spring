@@ -106,6 +106,19 @@ public class Invoice {
         this.status = InvoiceStatus.SENT;
     }
 
+    /** The status once the given amount has been paid against the grand total at the tax rate. */
+    public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate) {
+        if (status != InvoiceStatus.SENT || paid.signum() <= 0) {
+            return status;
+        }
+        return amountDue(paid, taxRate).signum() > 0 ? InvoiceStatus.PART_PAID : InvoiceStatus.PAID;
+    }
+
+    /** What is still due once the given amount has been paid: the grand total less it. */
+    public BigDecimal amountDue(BigDecimal paid, BigDecimal taxRate) {
+        return total(taxRate).subtract(paid);
+    }
+
     /** Adds a line to the end of the invoice. */
     public void addLine(InvoiceLine line) {
         lines.add(line);

@@ -1,7 +1,7 @@
 import { Component, effect, inject, input, output, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { InvoiceDetail, InvoiceService, NewLine } from './invoice.service';
+import { InvoiceDetail, InvoiceService, NewLine, NewPayment } from './invoice.service';
 import { money, statusLabel } from './invoice-format';
 
 // A positive decimal with at most two decimals, e.g. 1, 1.5 or 12.35. The server applies the same rules.
@@ -22,6 +22,22 @@ function problemWithDiscount(pct: string): string {
     return 'The discount can have at most two decimals.';
   }
   return '';
+}
+
+// What is wrong with a payment, or '' when it can be recorded.
+function problemWithPayment(payment: NewPayment): string {
+  const problems: string[] = [];
+  if (!payment.amount) {
+    problems.push('Enter an amount.');
+  } else if (!TWO_DECIMALS.test(payment.amount)) {
+    problems.push('The amount must be a number with at most two decimals.');
+  } else if (Number(payment.amount) < 0.01) {
+    problems.push('The amount must be at least $0.01.');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(payment.date)) {
+    problems.push('Enter the date it was paid.');
+  }
+  return problems.join(' ');
 }
 
 // What is wrong with a line, or '' when it can be added.
@@ -48,7 +64,9 @@ function problemWith(line: NewLine): string {
 }
 
 // One opened invoice: its status, its lines and its totals. A draft takes new lines and a
-// percentage discount, and can be sent; once sent, the server refuses further changes.
+// percentage discount, and can be sent; once sent, the server refuses further changes. A sent
+// invoice takes payments until nothing is due; the panel lists them with what has been paid and
+// what is still due.
 @Component({
   selector: 'app-invoice-panel',
   imports: [ReactiveFormsModule],
@@ -105,6 +123,71 @@ function problemWith(line: NewLine): string {
             </tr>
           </tfoot>
         </table>
+
+        @if (inv.status !== 'DRAFT') {
+          <table aria-label="Payments">
+            <thead>
+              <tr>
+                <th scope="col">Paid on</th>
+                <th scope="col">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (p of inv.payments; track p.id) {
+                <tr [attr.data-testid]="'payment-row-' + p.id">
+                  <td data-testid="payment-date">{{ p.date }}</td>
+                  <td data-testid="payment-amount">{{ money(p.amount) }}</td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="2" data-testid="payment-empty">No payments yet.</td>
+                </tr>
+              }
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row">Paid</th>
+                <td data-testid="invoice-paid">{{ money(inv.paid) }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Amount due</th>
+                <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        }
+
+        @if (inv.status === 'SENT' || inv.status === 'PART_PAID') {
+          <form
+            [formGroup]="paymentForm"
+            (ngSubmit)="recordPayment(inv.id)"
+            aria-label="Record a payment"
+            novalidate
+          >
+            <label for="payment-amount">Amount ($)</label>
+            <input
+              id="payment-amount"
+              data-testid="payment-form-amount"
+              inputmode="decimal"
+              formControlName="amount"
+              required
+            />
+            <label for="payment-date">Paid on</label>
+            <input
+              id="payment-date"
+              type="date"
+              data-testid="payment-form-date"
+              formControlName="date"
+              required
+            />
+            <button type="submit" data-testid="payment-form-submit" [disabled]="savingPayment()">
+              Record payment
+            </button>
+            @if (paymentError()) {
+              <p role="alert" data-testid="payment-form-error">{{ paymentError() }}</p>
+            }
+          </form>
+        }
 
         @if (inv.status === 'DRAFT') {
           <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv.id)">
@@ -193,6 +276,8 @@ export class InvoicePanel {
   protected readonly discountError = signal('');
   protected readonly sending = signal(false);
   protected readonly sendError = signal('');
+  protected readonly savingPayment = signal(false);
+  protected readonly paymentError = signal('');
   protected readonly statusLabel = statusLabel;
   protected readonly money = money;
 
@@ -201,6 +286,11 @@ export class InvoicePanel {
     qty: new FormControl('', { nonNullable: true }),
     unitPrice: new FormControl('', { nonNullable: true }),
     taxExempt: new FormControl(false, { nonNullable: true }),
+  });
+
+  protected readonly paymentForm = new FormGroup({
+    amount: new FormControl('', { nonNullable: true }),
+    date: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly discountForm = new FormGroup({
@@ -216,6 +306,8 @@ export class InvoicePanel {
       this.discountForm.reset();
       this.discountError.set('');
       this.sendError.set('');
+      this.paymentForm.reset();
+      this.paymentError.set('');
       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
       onCleanup(() => sub.unsubscribe());
     });
@@ -277,6 +369,37 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The discount could not be applied.',
         );
         this.savingDiscount.set(false);
+      },
+    });
+  }
+
+  protected recordPayment(invoiceId: number): void {
+    const raw = this.paymentForm.getRawValue();
+    const payment: NewPayment = {
+      amount: raw.amount.trim().replace(/^\$/, ''),
+      date: raw.date.trim(),
+    };
+    const problem = problemWithPayment(payment);
+    if (problem) {
+      this.paymentForm.markAllAsTouched();
+      this.paymentError.set(problem);
+      return;
+    }
+    this.savingPayment.set(true);
+    this.paymentError.set('');
+    this.service.recordPayment(invoiceId, payment).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.paymentForm.reset();
+        this.savingPayment.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.paymentError.set(
+          typeof detail === 'string' && detail ? detail : 'The payment could not be recorded.',
+        );
+        this.savingPayment.set(false);
       },
     });
   }

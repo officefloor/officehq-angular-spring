@@ -1,6 +1,11 @@
 import { InvoiceStatus } from './invoice.service';
 
-const STATUS_LABEL: Record<InvoiceStatus, string> = { DRAFT: 'Draft', SENT: 'Sent' };
+const STATUS_LABEL: Record<InvoiceStatus, string> = {
+  DRAFT: 'Draft',
+  SENT: 'Sent',
+  PART_PAID: 'Part paid',
+  PAID: 'Paid',
+};
 const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
 export function statusLabel(status: InvoiceStatus): string {

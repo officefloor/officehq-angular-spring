@@ -1,6 +1,10 @@
 package net.officefloor.hq.app.invoices;
 
-/** Where an invoice is in its life: still being written, or sent to the client. */
+/**
+ * Where an invoice is in its life: still being written, or sent to the client. A sent invoice is
+ * part paid while some of it has been paid and some is still due, and paid once nothing is due;
+ * those two follow from its payments and are never stored.
+ */
 public enum InvoiceStatus {
-    DRAFT, SENT
+    DRAFT, SENT, PART_PAID, PAID
 }
