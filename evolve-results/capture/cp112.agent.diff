@@ -1,0 +1,195 @@
+diff --git a/src/main/java/net/officefloor/hq/app/clients/RateTiers.java b/src/main/java/net/officefloor/hq/app/clients/RateTiers.java
+index f32d7ec..6ac1c26 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/RateTiers.java
++++ b/src/main/java/net/officefloor/hq/app/clients/RateTiers.java
+@@ -46,6 +46,20 @@ public record RateTiers(List<Band> bands) {
+      * price, rounded half up to the given number of decimals (2, the cent; 0 for whole yen).
+      */
+     public BigDecimal total(BigDecimal qty, int scale) {
++        return charge(BigDecimal.ZERO, qty, scale);
++    }
++
++    /**
++     * What the given quantity costs when the given number of units have already gone through the
++     * bands before it: each of its units at the price of the band it falls in, the exact charge
++     * rounded half up to the given number of decimals.
++     */
++    public BigDecimal charge(BigDecimal before, BigDecimal qty, int scale) {
++        return exact(before.add(qty)).subtract(exact(before)).setScale(scale, RoundingMode.HALF_UP);
++    }
++
++    /** What the given quantity costs from the first band, unrounded. */
++    private BigDecimal exact(BigDecimal qty) {
+         BigDecimal left = qty;
+         BigDecimal total = BigDecimal.ZERO;
+         for (int i = 0; i < bands.size() && left.signum() > 0; i++) {
+@@ -55,6 +69,6 @@ public record RateTiers(List<Band> bands) {
+             total = total.add(units.multiply(band.unitPrice()));
+             left = left.subtract(units);
+         }
+-        return total.setScale(scale, RoundingMode.HALF_UP);
++        return total;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 4913439..82bcf2b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -22,6 +22,7 @@ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
+ import java.util.Comparator;
++import java.util.Objects;
+ import java.util.List;
+ import net.officefloor.hq.app.clients.Currency;
+ import net.officefloor.hq.app.clients.TaxNumber;
+@@ -365,7 +366,7 @@ public class Invoice {
+         copy.instalments = instalments;
+         copy.instalmentRate = instalmentRate;
+         copy.planDownPct = planDownPct;
+-        lines.forEach(line -> copy.lines.add(line.copy()));
++        lines.forEach(line -> copy.addLine(line.copy()));
+         return copy;
+     }
+ 
+@@ -1723,9 +1724,30 @@ public class Invoice {
+ 
+     /** Adds a line to the end of the invoice. */
+     public void addLine(InvoiceLine line) {
++        line.placeOn(this);
+         lines.add(line);
+     }
+ 
++    /**
++     * How many units of the given tiered line's unit type the invoice's earlier lines take through the
++     * bands before it: the tiered lines of that unit type before it in line order (lower id first, lines
++     * not yet saved last in the order they were added).
++     */
++    BigDecimal tieredUnitsBefore(InvoiceLine line) {
++        List<InvoiceLine> ordered = new ArrayList<>(lines);
++        ordered.sort(Comparator.comparing(InvoiceLine::getId, Comparator.nullsLast(Comparator.naturalOrder())));
++        BigDecimal before = BigDecimal.ZERO;
++        for (InvoiceLine other : ordered) {
++            if (other == line) {
++                return before;
++            }
++            if (other.isTiered() && Objects.equals(other.getUnitType(), line.getUnitType())) {
++                before = before.add(other.getQty());
++            }
++        }
++        return BigDecimal.ZERO;
++    }
++
+     /** Whether the invoice has the line with the given id. */
+     public boolean hasLine(Long lineId) {
+         return lines.stream().anyMatch(l -> lineId.equals(l.getId()));
+@@ -1740,13 +1762,16 @@ public class Invoice {
+         if (line == null) {
+             return false;
+         }
+-        BigDecimal left = subtotal().subtract(line.amount(scale()));
++        int index = lines.indexOf(line);
++        lines.remove(line);
++        // Removing a tiered line reprices the others of its unit type, so what is left is worked out without it.
++        BigDecimal left = subtotal();
+         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
++            lines.add(index, line);
+             throw new InvoiceRejectedException("This line cannot be removed: the "
+                     + currency().format(left) + " left would be less than the "
+                     + currency().format(discountAmount) + " discount.");
+         }
+-        lines.remove(line);
+         return true;
+     }
+ 
+@@ -1760,15 +1785,17 @@ public class Invoice {
+         if (line == null) {
+             return false;
+         }
+-        BigDecimal changed = new InvoiceLine(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate)
+-                .amount(scale());
+-        BigDecimal left = subtotal().subtract(line.amount(scale())).add(changed);
++        InvoiceLine was = line.copy();
++        line.update(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate);
++        // Changing a tiered line reprices the others of its unit type, so the subtotal is worked out with it changed.
++        BigDecimal left = subtotal();
+         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
++            line.update(was.getDescription(), was.getQty(), was.getUnitType(), was.getUnitPrice(), was.tiers(),
++                    was.isTaxExempt(), was.getDiscountPct(), was.getTaxRate());
+             throw new InvoiceRejectedException("This line cannot be changed: the "
+                     + currency().format(left) + " subtotal would be less than the "
+                     + currency().format(discountAmount) + " discount.");
+         }
+-        line.update(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate);
+         return true;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 0739d58..90f6538 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -4,7 +4,10 @@ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
++import jakarta.persistence.FetchType;
+ import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+@@ -55,6 +58,11 @@ public class InvoiceLine {
+      */
+     private String tiers;
+ 
++    /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
++    @ManyToOne(fetch = FetchType.LAZY)
++    @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
++    private Invoice invoice;
++
+     protected InvoiceLine() {
+     }
+ 
+@@ -105,6 +113,11 @@ public class InvoiceLine {
+         this.taxRate = taxRate;
+     }
+ 
++    /** Puts the line on the given invoice. */
++    void placeOn(Invoice invoice) {
++        this.invoice = invoice;
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -130,6 +143,11 @@ public class InvoiceLine {
+         return tiers != null;
+     }
+ 
++    /** The stored tiers the line is priced in (see {@link RateTiers}); null when it has a single unit price. */
++    String tiers() {
++        return tiers;
++    }
++
+     public boolean isTaxExempt() {
+         return taxExempt;
+     }
+@@ -152,13 +170,14 @@ public class InvoiceLine {
+     }
+ 
+     /**
+-     * Quantity times unit price — or, for a tiered line, the total of its bands starting from the
+-     * first — rounded half up to the given number of decimals (2, the cent; 0 for whole yen), before
++     * Quantity times unit price — or, for a tiered line, the charge for its units at the bands they
++     * fall in, carrying on from where the invoice's earlier lines of its unit type stopped — rounded half up to the given number of decimals (2, the cent; 0 for whole yen), before
+      * the line's discount.
+      */
+     public BigDecimal grossAmount(int scale) {
+         if (tiers != null) {
+-            return RateTiers.parse(tiers).total(qty, scale);
++            BigDecimal before = invoice == null ? BigDecimal.ZERO : invoice.tieredUnitsBefore(this);
++            return RateTiers.parse(tiers).charge(before, qty, scale);
+         }
+         return qty.multiply(unitPrice).setScale(scale, RoundingMode.HALF_UP);
+     }
