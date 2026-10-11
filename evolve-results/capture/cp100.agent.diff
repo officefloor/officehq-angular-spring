@@ -1,0 +1,132 @@
+diff --git a/src/main/java/net/officefloor/hq/app/LateFee.java b/src/main/java/net/officefloor/hq/app/LateFee.java
+index 719cfcc..eb8edf0 100644
+--- a/src/main/java/net/officefloor/hq/app/LateFee.java
++++ b/src/main/java/net/officefloor/hq/app/LateFee.java
+@@ -6,8 +6,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+ 
+ /**
+- * The workspace's late fee: the stored {@code late_fee} setting, a fixed amount in US dollars such as
+- * 25, charged once on an invoice (on a plan, once on each instalment) when it becomes overdue. With no fee set none is charged, so it is 0.
++ * The workspace's late fee switch: the stored {@code late_fee} setting, an amount in US dollars such as
++ * 25. With any fee set, a late fee of 2% of what is owed (at least $10.00) is charged once on an invoice
++ * (on a plan, once on each instalment) when it becomes overdue, whatever amount the setting holds. With
++ * no fee set none is charged, so it is 0.
+  */
+ @Service
+ public class LateFee {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index eab1450..a986895 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -690,23 +690,41 @@ public class Invoice {
+         return total(taxRate).divide(BigDecimal.TEN).setScale(scale(), RoundingMode.DOWN);
+     }
+ 
++    /** The late fee's percentage of what is owed when it is charged. */
++    private static final BigDecimal LATE_FEE_PCT = BigDecimal.valueOf(2);
++
++    /** The least late fee charged, in US dollars (before the cap). */
++    private static final BigDecimal LATE_FEE_MIN_USD = BigDecimal.TEN;
++
++    /**
++     * The late fee charged on what is unpaid when it is charged (before late charges), in the invoice's
++     * currency: 2% of it rounded down to the cent, but at least $10.00 (see {@link #usdIn}), and never
++     * more than the cap.
++     */
++    private BigDecimal lateFeeOn(BigDecimal unpaid, LocalDate on, BigDecimal cap) {
++        BigDecimal pct = unpaid.max(BigDecimal.ZERO).multiply(LATE_FEE_PCT).divide(BigDecimal.valueOf(100))
++                .setScale(scale(), RoundingMode.DOWN);
++        return pct.max(usdIn(LATE_FEE_MIN_USD, on)).min(cap).max(zero());
++    }
++
+     /**
+-     * The late fee in the invoice's currency: the fee in US dollars converted as a payment in another
+-     * currency is, through the workspace rate on the day it is charged, worked out exactly and
+-     * rounded down to the currency's step.
++     * An amount in US dollars in the invoice's currency: converted as a payment in another currency is,
++     * through the workspace rate on the given day, worked out exactly and rounded down to the
++     * currency's step.
+      */
+-    private BigDecimal lateFeeIn(BigDecimal feeUsd, LocalDate on) {
++    private BigDecimal usdIn(BigDecimal usd, LocalDate on) {
+         if (currency() == Currency.USD) {
+-            return feeUsd.setScale(scale(), RoundingMode.HALF_UP);
++            return usd.setScale(scale(), RoundingMode.HALF_UP);
+         }
+-        return currency().divideDownToStep(feeUsd, usdPerOn(on));
++        return currency().divideDownToStep(usd, usdPerOn(on));
+     }
+ 
+     /**
+      * Works out the late fee and late interest charged by the given day, at the late fee (in US
+      * dollars) and annual rate (a percentage), from the payments (those not reversed count), and keeps
+-     * them as part of what is payable. The fee is never more than 10% of the grand total (see
+-     * {@link #lateFeeCap}). The fee is charged once, on the day the invoice becomes overdue
++     * them as part of what is payable. With a late fee set (whatever its amount) the fee is 2% of what the
++     * invoice still owes when it is charged (see {@link #lateFeeOn}), never more than 10% of the grand
++     * total (see {@link #lateFeeCap}). The fee is charged once, on the day the invoice becomes overdue
+      * ({@link #graceDays()} days after its due date), when something is still owed then; it earns no
+      * interest, and a payment from then on pays it once the invoice itself is paid. A sent invoice not
+      * spread over instalments, with something still owed more than {@link #graceDays()} days after its
+@@ -752,9 +770,8 @@ public class Invoice {
+             return;
+         }
+         boolean earnsInterest = annualRate != null && annualRate.signum() > 0;
+-        BigDecimal fee = lateFeeUsd == null || lateFeeUsd.signum() <= 0 ? zero()
+-                : lateFeeIn(lateFeeUsd, dueDate.plusDays(graceDays() + 1)).min(lateFeeCap(taxRate)).max(zero());
+-        if (!earnsInterest && fee.signum() <= 0) {
++        boolean chargesFee = lateFeeUsd != null && lateFeeUsd.signum() > 0;
++        if (!earnsInterest && !chargesFee) {
+             return;
+         }
+         record Part(LocalDate on, Long paymentId, BigDecimal amount, boolean credit) {
+@@ -786,10 +803,14 @@ public class Invoice {
+         if (owed.subtract(paidInGrace).signum() <= 0) {
+             return;
+         }
++        LocalDate overdueOn = dueDate.plusDays(graceDays() + 1);
++        BigDecimal fee = chargesFee ? lateFeeOn(owed.subtract(paidInGrace), overdueOn, lateFeeCap(taxRate)) : zero();
++        if (!earnsInterest && fee.signum() <= 0) {
++            return;
++        }
+         BigDecimal daily = earnsInterest
+                 ? BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128))
+                 : null;
+-        LocalDate overdueOn = dueDate.plusDays(graceDays() + 1);
+         BigDecimal charged = BigDecimal.ZERO;
+         BigDecimal unpaidInterest = BigDecimal.ZERO;
+         BigDecimal unpaidFee = BigDecimal.ZERO;
+@@ -963,7 +984,8 @@ public class Invoice {
+      * order they were made, pay each instalment itself, then its fee and then its interest earned
+      * so far, earliest instalment first. An instalment still not paid off more than
+      * {@link #graceDays()} days after its due date is charged the late fee once, on the day it becomes
+-     * overdue, never more than 10% of the instalment (rounded down to the cent), and earns interest by the
++     * overdue (2% of what is unpaid of it then, see {@link #lateFeeOn}), never more than 10% of the instalment
++     * (rounded down to the cent), and earns interest by the
+      * same rule as an invoice: from the end of its own grace period, compounded daily at rate / 360 (Actual/360), on
+      * what is still unpaid of it, with each payment after its grace period ending a period.
+      */
+@@ -999,6 +1021,7 @@ public class Invoice {
+             LocalDate due = instalment.dueDate();
+             BigDecimal owed = instalment.payment();
+             boolean late = false;
++            BigDecimal unpaidWhenLate = owed;
+             if (due != null && today.isAfter(due.plusDays(graceDays()))) {
+                 BigDecimal paidInGrace = BigDecimal.ZERO;
+                 for (int j = 0; j < left.length; j++) {
+@@ -1007,11 +1030,12 @@ public class Invoice {
+                     }
+                 }
+                 late = paidInGrace.compareTo(owed) < 0;
++                unpaidWhenLate = owed.subtract(paidInGrace);
+             }
+             LocalDate overdueOn = due == null ? null : due.plusDays(graceDays() + 1);
+             BigDecimal fee = late && chargesFee
+-                    ? lateFeeIn(lateFeeUsd, overdueOn).min(instalment.payment().divide(BigDecimal.TEN)
+-                            .setScale(scale(), RoundingMode.DOWN)).max(zero())
++                    ? lateFeeOn(unpaidWhenLate, overdueOn, instalment.payment().divide(BigDecimal.TEN)
++                            .setScale(scale(), RoundingMode.DOWN))
+                     : zero();
+             BigDecimal unpaidFee = BigDecimal.ZERO;
+             boolean feeCharged = false;
