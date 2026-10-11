@@ -968,7 +968,7 @@ public class InvoiceService {
         if (date.isAfter(now)) {
             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
         }
-        BigDecimal surcharge = surchargeOf(amount, currency, method);
+        BigDecimal surcharge = surchargeOf(amount, currency, method, date);
         BigDecimal fee = feeOf(amount, paidIn, currency);
         Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date, reference)
                 .paidIn(paidIn, paidAmount, currency).by(method).surcharged(surcharge).feeCharged(fee));
@@ -1175,7 +1175,7 @@ public class InvoiceService {
             }
             BigDecimal received = converted(paidAmount, paidIn, invoice.currency(), date);
             // Only what is left once the conversion fee and card surcharge are taken out pays the invoice.
-            BigDecimal surcharge = surchargeOf(received, invoice.currency(), method);
+            BigDecimal surcharge = surchargeOf(received, invoice.currency(), method, date);
             BigDecimal fee = feeOf(received, paidIn, invoice.currency());
             BigDecimal amount = received.subtract(surcharge).subtract(fee);
             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
@@ -1280,7 +1280,7 @@ public class InvoiceService {
         Currency currency = currencyOf(clientId);
         BigDecimal received = converted(paidAmount, paidIn, currency, date);
         // Only what is left once the conversion fee and card surcharge are taken out pays invoices or is held as credit.
-        BigDecimal surcharge = surchargeOf(received, currency, method);
+        BigDecimal surcharge = surchargeOf(received, currency, method, date);
         BigDecimal fee = feeOf(received, paidIn, currency);
         BigDecimal amount = received.subtract(surcharge).subtract(fee);
         List<Invoice> ofClient = loadForClient(clientId);
@@ -1650,8 +1650,9 @@ public class InvoiceService {
     }
 
     /** The card surcharge in the amount received by the method (null for a bank transfer): 0 unless by card. */
-    private BigDecimal surchargeOf(BigDecimal received, Currency currency, PaymentMethod method) {
-        return method == PaymentMethod.CARD ? cardSurcharge.of(received, currency.scale()) : BigDecimal.ZERO;
+    private BigDecimal surchargeOf(BigDecimal received, Currency currency, PaymentMethod method, LocalDate date) {
+        return method == PaymentMethod.CARD
+                ? cardSurcharge.of(received, currency, date == null ? today.date() : date) : BigDecimal.ZERO;
     }
 
     /**

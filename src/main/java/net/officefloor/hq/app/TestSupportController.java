@@ -40,7 +40,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown");
     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
@@ -179,6 +179,11 @@ public class TestSupportController {
                 BigDecimal rate = percent(values.get("cardSurchargePct"), "settings.cardSurchargePct");
                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                         CardSurcharge.CARD_SURCHARGE_PCT, rate.toPlainString());
+            }
+            if (values.get("cardSurchargeCap") != null) {
+                BigDecimal cap = money(values.get("cardSurchargeCap"), "settings.cardSurchargeCap");
+                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                        CardSurcharge.CARD_SURCHARGE_CAP, cap.toPlainString());
             }
             if (values.get("fxFeePct") != null) {
                 BigDecimal rate = percent(values.get("fxFeePct"), "settings.fxFeePct");
@@ -484,7 +489,8 @@ public class TestSupportController {
             BigDecimal amount = foreign ? exchangeRates.convert(paidAmount, paidIn, clientCurrency, date(row.get("date"), "payments[].date")) : paidAmount;
             // Part of a card payment is the workspace's card surcharge, as when one is recorded.
             BigDecimal surcharge = PaymentMethod.CARD.name().equals(method) && amount != null
-                    ? cardSurcharge.of(amount, clientCurrency.scale()) : BigDecimal.ZERO;
+                    ? cardSurcharge.of(amount, clientCurrency, row.get("date") == null ? today.date()
+                            : date(row.get("date"), "payments[].date")) : BigDecimal.ZERO;
             // Part of a payment in another currency is the workspace's conversion fee, as when one is recorded.
             BigDecimal fee = foreign ? fxFee.of(amount, clientCurrency.scale()) : BigDecimal.ZERO;
             Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method", "surcharge", "fx_fee"},
@@ -561,6 +567,7 @@ public class TestSupportController {
         if (!cardSurchargePct.isEmpty()) {
             settings.put("cardSurchargePct", new BigDecimal(cardSurchargePct.get(0)));
         }
+        cardSurcharge.cap().ifPresent(cap -> settings.put("cardSurchargeCap", cap));
         List<String> fxFeePct = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
                 String.class, FxFee.FX_FEE_PCT);
         if (!fxFeePct.isEmpty()) {
