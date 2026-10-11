@@ -219,6 +219,13 @@ public class Invoice {
     @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'minimum_charge')")
     private String minimumChargeUsd;
 
+    /**
+     * The workspace's volume discounts, as "threshold in US dollars=percentage" joined by commas;
+     * null when there are none. Read from them.
+     */
+    @Formula("(SELECT LISTAGG(CAST(v.over_usd AS VARCHAR) || '=' || CAST(v.pct AS VARCHAR), ',') WITHIN GROUP (ORDER BY v.over_usd, v.id) FROM volume_discount v)")
+    private String volumeDiscounts;
+
     @Formula("(SELECT MAX(COALESCE(a.applied_date, p.payment_date)) FROM payment_allocation a, payment p WHERE a.invoice_id = id AND p.id = a.payment_id AND p.reversed = FALSE)")
     private LocalDate lastPaidOn;
 
@@ -1862,13 +1869,14 @@ public class Invoice {
     /**
      * The amount taken off: the fixed amount when there is one (never more than the subtotal, should
      * lines have been changed since), otherwise the discount percentage of the subtotal, rounded down
-     * to the cent. When there is a cap, it limits everything taken off — the line discounts plus
+     * to the cent; the volume discount instead when that is more. When there is a cap, it limits everything taken off — the line discounts plus
      * this — so this shrinks to what the line discounts leave under the cap, never below zero.
      */
     public BigDecimal discount() {
         BigDecimal discount = discountAmount.signum() > 0
                 ? discountAmount.min(subtotal()).setScale(scale(), RoundingMode.HALF_UP)
                 : subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+        discount = discount.max(volumeDiscount());
         if (discountCap == null) {
             return discount;
         }
@@ -1876,6 +1884,30 @@ public class Invoice {
                 .reduce(zero(), BigDecimal::add);
         BigDecimal left = discountCap.setScale(scale(), RoundingMode.HALF_UP).subtract(lineDiscounts).max(zero());
         return discount.min(left);
+    }
+
+    /**
+     * The volume discount: the percentage of the highest of the workspace's volume discount thresholds
+     * the subtotal is over (each converted from US dollars at the issue date's rate and rounded down
+     * to the step) of the subtotal, rounded down to the cent. Nothing when it passes none, or for a
+     * credit note.
+     */
+    public BigDecimal volumeDiscount() {
+        if (volumeDiscounts == null || isCreditNote()) {
+            return zero();
+        }
+        BigDecimal subtotal = subtotal();
+        BigDecimal pct = BigDecimal.ZERO;
+        BigDecimal highest = null;
+        for (String entry : volumeDiscounts.split(",")) {
+            String[] parts = entry.split("=");
+            BigDecimal over = currency().divideDownToStep(new BigDecimal(parts[0].trim()), usdPerOn(issueDate));
+            if (subtotal.compareTo(over) > 0 && (highest == null || over.compareTo(highest) >= 0)) {
+                highest = over;
+                pct = new BigDecimal(parts[1].trim());
+            }
+        }
+        return subtotal.multiply(pct).movePointLeft(2).setScale(scale(), RoundingMode.DOWN);
     }
 
     /**

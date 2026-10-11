@@ -39,7 +39,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges", "regionMaxInterest");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts");
+    private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
     private static final String MINIMUM_CHARGE = "minimum_charge";
@@ -68,9 +69,13 @@ public class TestSupportController {
 
     private final LateInterestRate lateInterestRate;
 
+    private final VolumeDiscounts volumeDiscounts;
+
     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
             PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
-            CardSurcharge cardSurcharge, PriceList priceList, Today today, LateInterestRate lateInterestRate) {
+            CardSurcharge cardSurcharge, PriceList priceList, Today today, LateInterestRate lateInterestRate,
+            VolumeDiscounts volumeDiscounts) {
+        this.volumeDiscounts = volumeDiscounts;
         this.lateInterestRate = lateInterestRate;
         this.today = today;
         this.priceList = priceList;
@@ -91,6 +96,7 @@ public class TestSupportController {
         audit.clear();
         jdbc.execute("DELETE FROM app_setting");
         jdbc.execute("DELETE FROM fx_rate");
+        jdbc.execute("DELETE FROM volume_discount");
         jdbc.execute("DELETE FROM tax_rate_change");
         jdbc.execute("DELETE FROM payment_allocation");
         jdbc.execute("DELETE FROM client_rate");
@@ -241,6 +247,14 @@ public class TestSupportController {
                     throw refuse("settings.taxRateChanges[].rate must be from 0 to 100, not " + change.get("rate"));
                 }
                 taxRate.addChange(change.get("region").toString(), date(change.get("from"), "settings.taxRateChanges[].from"), rate);
+            }
+            for (Map<String, Object> threshold : rows(values.get("volumeDiscounts"), "settings.volumeDiscounts")) {
+                only(threshold, VOLUME_DISCOUNT_FIELDS, "settings.volumeDiscounts[]");
+                if (threshold.get("over") == null || threshold.get("pct") == null) {
+                    throw refuse("settings.volumeDiscounts[] needs over and pct");
+                }
+                volumeDiscounts.add(money(threshold.get("over"), "settings.volumeDiscounts[].over"),
+                        percent(threshold.get("pct"), "settings.volumeDiscounts[].pct"));
             }
             for (Map<String, Object> rate : rows(values.get("fxRates"), "settings.fxRates")) {
                 only(rate, FX_RATE_FIELDS, "settings.fxRates[]");
@@ -515,6 +529,15 @@ public class TestSupportController {
         }).toList();
         if (!fxRates.isEmpty()) {
             settings.put("fxRates", fxRates);
+        }
+        List<Map<String, Object>> volumeDiscountRows = volumeDiscounts.all().stream().map(t -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("over", t.over());
+            row.put("pct", t.pct());
+            return row;
+        }).toList();
+        if (!volumeDiscountRows.isEmpty()) {
+            settings.put("volumeDiscounts", volumeDiscountRows);
         }
         List<Map<String, Object>> priceListRates = priceList.all().stream()
                 .map(e -> rate(e.unitType(), e.unitPrice(), e.tiers())).toList();
