@@ -671,10 +671,13 @@ public class InvoiceService {
     /**
      * Uses the client's credit on the invoice just sent, up to what it has due: deposits held for it
      * first, then the oldest payment's credit (lower id first on the same date), never a deposit held
-     * for another of the client's drafts; each part applied today and recorded in the audit.
+     * for another of the client's drafts; each part applied today and recorded in the audit. Credit
+     * used counts as paying early: while the early window is open only what settles it early is taken,
+     * and when the credit covers that the invoice is settled with the early discount, as an early payment is.
      */
     private void applyCredit(Invoice invoice) {
-        BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
+        BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+        BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
         LocalDate now = today.date();
         boolean used = false;
         Map<String, Long> drafts = draftsByReference(invoice.getClientId());
@@ -689,6 +692,14 @@ public class InvoiceService {
             }
         }
         usable.addAll(others);
+        BigDecimal early = BigDecimal.ZERO;
+        BigDecimal settle = invoice.settleAmount(paidSoFar, taxRate.percent(), now);
+        if (settle != null && usable.stream().map(Payment::credit).filter(c -> c.signum() > 0)
+                .reduce(BigDecimal.ZERO, BigDecimal::add).compareTo(settle) >= 0) {
+            early = invoice.earlyDiscount(taxRate.percent());
+            invoice.takeEarlyDiscount(early);
+            due = settle;
+        }
         for (Payment payment : usable) {
             if (due.signum() <= 0) {
                 break;
@@ -704,6 +715,10 @@ public class InvoiceService {
                     + part.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
             due = due.subtract(part);
             used = true;
+        }
+        if (early.signum() > 0) {
+            invoices.saveAndFlush(invoice);
+            audit.record("EARLY_DISCOUNT id=" + invoice.getId() + " amount=" + early.toPlainString());
         }
         if (used) {
             recordWriteOff(invoice);
