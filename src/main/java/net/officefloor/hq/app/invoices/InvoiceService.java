@@ -769,6 +769,10 @@ public class InvoiceService {
             audit.record("REVERSE_CHARGE id=" + invoice.getId() + " number=" + invoice.number()
                     + " total=" + invoice.total(taxRate.percent()).toPlainString());
         }
+        BigDecimal withheld = invoice.withholding(taxRate.percent());
+        if (withheld.signum() > 0) {
+            audit.record("WITHHOLDING id=" + invoice.getId() + " amount=" + withheld.toPlainString());
+        }
         if (!invoice.hasPlan()) {
             applyCredit(invoice);
         }

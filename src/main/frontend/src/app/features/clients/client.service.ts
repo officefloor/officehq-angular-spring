@@ -23,6 +23,9 @@ export interface Client {
   earlyPayDays: number | null;
   // The standard retention percentage (0 to 20) new invoices for the client start with; 0 is none.
   retentionPct: number;
+  // The percentage (0 to 100) of each invoice's amount before tax the client withholds for its tax
+  // office; 0 is none. The client never pays it.
+  withholdingPct: number;
   // Days (0 to 30, a week as standard) past its due date an invoice or instalment is given before it
   // is overdue, earns late interest and is charged the late fee.
   graceDays: number;

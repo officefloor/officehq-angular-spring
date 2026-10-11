@@ -32,13 +32,13 @@ public class ClientController {
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
-            Map<String, RateView> rates) {
+            Map<String, RateView> rates, BigDecimal withholdingPct) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
                     new TreeMap<>(c.getRates().entrySet().stream().collect(Collectors.toMap(
-                            Map.Entry::getKey, e -> RateView.of(e.getValue())))));
+                            Map.Entry::getKey, e -> RateView.of(e.getValue())))), c.getWithholdingPct());
         }
     }
 
@@ -97,7 +97,12 @@ public class ClientController {
             @Size(max = 64, message = "The region must be at most 64 characters.")
             String region,
             /** The client's tax number; none when left out or blank. */
-            String taxNumber) {
+            String taxNumber,
+            /** The percentage of the amount before tax the client withholds for its tax office; none when left out. */
+            @DecimalMin(value = "0", message = "The withholding must be from 0 to 100 percent.")
+            @DecimalMax(value = "100", message = "The withholding must be from 0 to 100 percent.")
+            @Digits(integer = 3, fraction = 2, message = "The withholding can have at most two decimals.")
+            BigDecimal withholdingPct) {
 
         @AssertTrue(message = "Enter a tax number of two letters then ten digits whose last two digits check the first eight, or leave it blank.")
         public boolean isTaxNumberValid() {
@@ -132,6 +137,6 @@ public class ClientController {
     public ClientView add(@Valid @RequestBody NewClient body) {
         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
-                body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber()));
+                body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct()));
     }
 }

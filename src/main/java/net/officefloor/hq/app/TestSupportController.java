@@ -44,7 +44,7 @@ public class TestSupportController {
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
     private static final String MINIMUM_CHARGE = "minimum_charge";
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType");
@@ -253,7 +253,7 @@ public class TestSupportController {
             if (Currency.of(currency) == null) {
                 throw refuse("unsupported value of clients[].currency: " + currency);
             }
-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number"},
+            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct"},
                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
                     percent(row.get("discountPct"), "clients[].discountPct"),
                     flag(row.get("taxExempt"), "clients[].taxExempt"),
@@ -264,7 +264,8 @@ public class TestSupportController {
                     graceDays(row.get("graceDays"), "clients[].graceDays"),
                     interestRate(row.get("interestRate"), "clients[].interestRate"),
                     row.get("region") == null ? null : row.get("region").toString(),
-                    row.get("taxNumber") == null ? null : row.get("taxNumber").toString());
+                    row.get("taxNumber") == null ? null : row.get("taxNumber").toString(),
+                    percent(row.get("withholdingPct"), "clients[].withholdingPct"));
             Long clientId = id(row.get("id") == null
                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
@@ -497,7 +498,7 @@ public class TestSupportController {
         if (!settings.isEmpty()) {
             out.put("settings", settings);
         }
-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number FROM client ORDER BY id").stream()
+        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number, withholding_pct FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -515,6 +516,7 @@ public class TestSupportController {
                         row.put("earlyPayDays", r.get("EARLY_PAY_DAYS"));
                     }
                     row.put("retentionPct", r.get("RETENTION_PCT"));
+                    row.put("withholdingPct", r.get("WITHHOLDING_PCT"));
                     row.put("graceDays", r.get("GRACE_DAYS"));
                     if (r.get("INTEREST_RATE") != null) {
                         row.put("interestRate", r.get("INTEREST_RATE"));

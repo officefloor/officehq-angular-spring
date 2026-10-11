@@ -140,6 +140,17 @@ function validTaxNumber(taxNumber: string): boolean {
           step="0.01"
           formControlName="retentionPct"
         />
+        <label for="client-withholding">Tax withheld by the client % (optional)</label>
+        <input
+          id="client-withholding"
+          data-testid="client-form-withholding-pct"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          max="100"
+          step="0.01"
+          formControlName="withholdingPct"
+        />
         <label for="client-grace">Grace period in days, 0 to 30 (optional, a week if left out)</label>
         <input
           id="client-grace"
@@ -275,6 +286,7 @@ export class Clients {
     terms: new FormControl<number | null>(null),
     discountPct: new FormControl<number | null>(null),
     retentionPct: new FormControl<number | null>(null),
+    withholdingPct: new FormControl<number | null>(null),
     graceDays: new FormControl<number | null>(null),
     interestRate: new FormControl<number | null>(null),
     region: new FormControl('', { nonNullable: true }),
@@ -311,6 +323,8 @@ export class Clients {
     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
     const retention = this.form.controls.retentionPct.value;
     const retentionPct = retention === null || (retention as unknown) === '' ? null : Number(retention);
+    const withholding = this.form.controls.withholdingPct.value;
+    const withholdingPct = withholding === null || (withholding as unknown) === '' ? null : Number(withholding);
     const grace = this.form.controls.graceDays.value;
     const graceDays = grace === null || (grace as unknown) === '' ? null : Number(grace);
     const interest = this.form.controls.interestRate.value;
@@ -330,6 +344,7 @@ export class Clients {
       terms: termsDays,
       discountPct,
       retentionPct,
+      withholdingPct,
       graceDays,
       interestRate,
       region,
@@ -346,6 +361,7 @@ export class Clients {
       termsDays,
       discountPct,
       retentionPct,
+      withholdingPct,
       graceDays,
       interestRate,
       earlyPayPct,
@@ -370,6 +386,7 @@ export class Clients {
       earlyPayPct: earlyPayPct ?? 0,
       earlyPayDays,
       retentionPct: retentionPct ?? 0,
+      withholdingPct: withholdingPct ?? 0,
       graceDays: graceDays ?? STANDARD_GRACE_DAYS,
       interestRate,
       region: region || null,
@@ -431,6 +448,7 @@ export class Clients {
     termsDays: number | null,
     discountPct: number | null,
     retentionPct: number | null,
+    withholdingPct: number | null,
     graceDays: number | null,
     interestRate: number | null,
     earlyPayPct: number | null,
@@ -463,6 +481,13 @@ export class Clients {
         problems.push('The standard retention must be from 0 to 20 percent.');
       } else if (Math.abs(Math.round(retentionPct * 100) - retentionPct * 100) > 1e-6) {
         problems.push('The standard retention can have at most two decimals.');
+      }
+    }
+    if (withholdingPct !== null) {
+      if (!(Number.isFinite(withholdingPct) && withholdingPct >= 0 && withholdingPct <= 100)) {
+        problems.push('The withholding must be from 0 to 100 percent.');
+      } else if (Math.abs(Math.round(withholdingPct * 100) - withholdingPct * 100) > 1e-6) {
+        problems.push('The withholding can have at most two decimals.');
       }
     }
     if (graceDays !== null && !(Number.isInteger(graceDays) && graceDays >= 0 && graceDays <= 30)) {

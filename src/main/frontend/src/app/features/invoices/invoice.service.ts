@@ -194,6 +194,9 @@ export interface InvoiceDetail {
   // after its discounts rounded down to the cent; not discounted, taxed at the client's rate.
   surchargePct: string;
   surcharge: string;
+  // What the client withholds for its tax office: its withholding percentage of the amount before tax,
+  // rounded down to the cent ("0.00" when none). Never owed, so left out of the amount due.
+  withholding: string;
   // The amount due rounded half up to the nearest cash coin (0.05, or whole yen), and the difference
   // that makes (signed); once settled in cash, the cash rounding it was settled with.
   cashDue: string;

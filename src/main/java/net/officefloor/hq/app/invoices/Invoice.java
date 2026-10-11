@@ -230,6 +230,10 @@ public class Invoice {
     @Formula("(SELECT c.early_pay_days FROM client c WHERE c.id = client_id)")
     private Integer earlyPayDays;
 
+    /** The percentage of the amount before tax the client withholds for its tax office; read from the client. */
+    @Formula("(SELECT c.withholding_pct FROM client c WHERE c.id = client_id)")
+    private BigDecimal withholdingPct;
+
     /** The client's grace period in days; read from the client. */
     @Formula("(SELECT c.grace_days FROM client c WHERE c.id = client_id)")
     private Integer clientGraceDays;
@@ -449,7 +453,7 @@ public class Invoice {
      */
     private boolean isSmallEnoughToWriteOff(BigDecimal left, LocalDate on, BigDecimal taxRate) {
         return left.multiply(usdPerOn(on)).compareTo(WRITE_OFF_LIMIT) < 0
-                && left.compareTo(total(taxRate).multiply(WRITE_OFF_SHARE)) <= 0;
+                && left.compareTo(owedTotal(taxRate).multiply(WRITE_OFF_SHARE)) <= 0;
     }
 
     /**
@@ -728,6 +732,23 @@ public class Invoice {
     }
 
     /**
+     * The withholding: the client's withholding percentage of the amount before tax, rounded down to
+     * the cent. The client pays it to its tax office instead, so it is never owed. Nothing for a credit note.
+     */
+    public BigDecimal withholding(BigDecimal taxRate) {
+        if (isCreditNote() || withholdingPct == null || withholdingPct.signum() <= 0) {
+            return zero();
+        }
+        return beforeTax(taxRate).multiply(withholdingPct).divide(BigDecimal.valueOf(100))
+                .setScale(scale(), RoundingMode.DOWN);
+    }
+
+    /** What the client is to pay of the grand total at the tax rate: the grand total less the withholding. */
+    public BigDecimal owedTotal(BigDecimal taxRate) {
+        return total(taxRate).subtract(withholding(taxRate));
+    }
+
+    /**
      * What the invoice is owed in all, held retention left out: the grand total (the plan total when it
      * is spread over instalments) less what is credited and held, plus the late fee and interest charged.
      */
@@ -740,7 +761,7 @@ public class Invoice {
      * already come off its plan total.
      */
     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
-        BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate).subtract(getCredited());
+        BigDecimal owed = hasPlan() ? planTotal(taxRate) : owedTotal(taxRate).subtract(getCredited());
         return owed.subtract(retentionKept(taxRate)).subtract(getEarlyDiscountTaken())
                 .subtract(getInterestSaved()).add(getCashRounding());
     }
@@ -762,7 +783,7 @@ public class Invoice {
 
     /** The most late fee charged: 10% of the grand total at the tax rate, rounded down to the cent. */
     private BigDecimal lateFeeCap(BigDecimal taxRate) {
-        return total(taxRate).divide(BigDecimal.TEN).setScale(scale(), RoundingMode.DOWN);
+        return owedTotal(taxRate).divide(BigDecimal.TEN).setScale(scale(), RoundingMode.DOWN);
     }
 
     /** The late fee's percentage of what is owed when it is charged. */
@@ -1316,7 +1337,7 @@ public class Invoice {
 
     /** The plan's down payment at the tax rate: its percentage of the grand total, rounded down to the cent. */
     private BigDecimal downPayment(BigDecimal taxRate) {
-        return total(taxRate).multiply(planDownPct).divide(BigDecimal.valueOf(100), scale(), RoundingMode.FLOOR);
+        return owedTotal(taxRate).multiply(planDownPct).divide(BigDecimal.valueOf(100), scale(), RoundingMode.FLOOR);
     }
 
     /**
@@ -1341,7 +1362,7 @@ public class Invoice {
         }
         List<LocalDate> dues = new ArrayList<>(instalments + 1);
         List<Instalment> schedule = new ArrayList<>();
-        BigDecimal principal = total(taxRate).setScale(scale(), RoundingMode.HALF_UP);
+        BigDecimal principal = owedTotal(taxRate).setScale(scale(), RoundingMode.HALF_UP);
         if (planDownPct.signum() > 0) {
             BigDecimal down = downPayment(taxRate);
             principal = principal.subtract(down);
@@ -1384,7 +1405,7 @@ public class Invoice {
 
     /** The principal still owed before the instalment at the index: the balance after the one before it. */
     private BigDecimal principalBefore(List<Instalment> schedule, int index, BigDecimal taxRate) {
-        return index == 0 ? total(taxRate).setScale(scale(), RoundingMode.HALF_UP) : schedule.get(index - 1).balance();
+        return index == 0 ? owedTotal(taxRate).setScale(scale(), RoundingMode.HALF_UP) : schedule.get(index - 1).balance();
     }
 
     /**
@@ -1721,7 +1742,7 @@ public class Invoice {
 
     /** The least a part payment may be at the tax rate: {@link #MINIMUM_PART_SHARE} of the grand total. */
     public BigDecimal minimumPart(BigDecimal taxRate) {
-        return total(taxRate).multiply(MINIMUM_PART_SHARE).setScale(scale(), RoundingMode.HALF_UP);
+        return owedTotal(taxRate).multiply(MINIMUM_PART_SHARE).setScale(scale(), RoundingMode.HALF_UP);
     }
 
     /**

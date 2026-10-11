@@ -63,6 +63,13 @@ public class Client {
     private BigDecimal retentionPct = BigDecimal.ZERO;
 
     /**
+     * The percentage (0 to 100) of each invoice's amount before tax the client withholds and pays to its
+     * tax office; 0 is none. It is never owed by the client.
+     */
+    @Column(name = "withholding_pct")
+    private BigDecimal withholdingPct = BigDecimal.ZERO;
+
+    /**
      * Days past its due date an invoice or instalment for this client is given before it is overdue,
      * earns late interest and is charged the late fee: 0 to {@link #MAX_GRACE_DAYS}, a week as standard.
      */
@@ -106,7 +113,7 @@ public class Client {
 
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
-            Integer graceDays, BigDecimal interestRate, String region, String taxNumber) {
+            Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct) {
         this.name = name;
         this.email = email;
         this.termsDays = termsDays;
@@ -121,6 +128,7 @@ public class Client {
         this.interestRate = interestRate;
         this.region = region;
         this.taxNumber = taxNumber;
+        this.withholdingPct = withholdingPct == null ? BigDecimal.ZERO : withholdingPct;
     }
 
     public Long getId() {
@@ -165,6 +173,10 @@ public class Client {
 
     public BigDecimal getRetentionPct() {
         return retentionPct;
+    }
+
+    public BigDecimal getWithholdingPct() {
+        return withholdingPct;
     }
 
     public int getGraceDays() {
