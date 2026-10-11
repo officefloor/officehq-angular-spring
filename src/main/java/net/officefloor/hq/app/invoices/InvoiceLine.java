@@ -58,6 +58,13 @@ public class InvoiceLine {
      */
     private String tiers;
 
+    /**
+     * The increment the line is billed in, from its client's rate card for its unit type (0.25 of an
+     * hour, packs of 5): it is priced on its quantity rounded up to the next whole increment; null for none.
+     */
+    @Column(name = "billing_increment")
+    private BigDecimal increment;
+
     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
@@ -83,14 +90,15 @@ public class InvoiceLine {
     }
 
     public InvoiceLine(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
-            boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+            BigDecimal increment, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
         this(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
         this.tiers = tiers;
+        this.increment = increment;
     }
 
     /** A new line with the same description, quantity, unit type, price, tiers, discount, tax rate and exemption. */
     public InvoiceLine copy() {
-        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, taxExempt, discountPct, taxRate);
+        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, taxExempt, discountPct, taxRate);
     }
 
     /** A new credit note line crediting this line, with its description, quantity, price, discount, tax rate and exemption. */
@@ -102,7 +110,8 @@ public class InvoiceLine {
 
     /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
     public void update(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
-            boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+            BigDecimal increment, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+        this.increment = increment;
         this.description = description;
         this.unitType = unitType;
         this.qty = qty;
@@ -138,6 +147,19 @@ public class InvoiceLine {
         return unitPrice;
     }
 
+    /** The increment the line is billed in; null for none. */
+    public BigDecimal getIncrement() {
+        return increment;
+    }
+
+    /** The quantity the line is billed on: its quantity rounded up to the next whole increment, or as entered without one. */
+    public BigDecimal billedQty() {
+        if (increment == null || increment.signum() <= 0) {
+            return qty;
+        }
+        return qty.divide(increment, 0, RoundingMode.CEILING).multiply(increment);
+    }
+
     /** Whether the line is priced in progressive tiers rather than at its unit price. */
     public boolean isTiered() {
         return tiers != null;
@@ -170,16 +192,16 @@ public class InvoiceLine {
     }
 
     /**
-     * Quantity times unit price — or, for a tiered line, the charge for its units at the bands they
+     * Billed quantity times unit price — or, for a tiered line, the charge for its billed units at the bands they
      * fall in, carrying on from where the invoice's earlier lines of its unit type stopped — rounded half up to the given number of decimals (2, the cent; 0 for whole yen), before
      * the line's discount.
      */
     public BigDecimal grossAmount(int scale) {
         if (tiers != null) {
             BigDecimal before = invoice == null ? BigDecimal.ZERO : invoice.tieredUnitsBefore(this);
-            return RateTiers.parse(tiers).charge(before, qty, scale);
+            return RateTiers.parse(tiers).charge(before, billedQty(), scale);
         }
-        return qty.multiply(unitPrice).setScale(scale, RoundingMode.HALF_UP);
+        return billedQty().multiply(unitPrice).setScale(scale, RoundingMode.HALF_UP);
     }
 
     /** The line's discount: its percentage of the gross amount, rounded down to the given number of decimals. */

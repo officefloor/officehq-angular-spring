@@ -16,11 +16,19 @@ public class ClientRate {
     @Column(name = "tiers")
     private String tiers;
 
+    /** The increment the unit type is billed in (0.25 of an hour, packs of 5); null for none. */
+    @Column(name = "increment")
+    private BigDecimal increment;
+
     protected ClientRate() {
     }
 
     public BigDecimal getUnitPrice() {
         return unitPrice;
+    }
+
+    public BigDecimal getIncrement() {
+        return increment;
     }
 
     /** The tiers; null for a single unit price. */

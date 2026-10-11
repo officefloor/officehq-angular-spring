@@ -250,6 +250,7 @@ function problemWith(line: NewLine): string {
             <tr>
               <th scope="col">Description</th>
               <th scope="col">Qty</th>
+              <th scope="col">Billed qty</th>
               <th scope="col">Unit type</th>
               <th scope="col">Unit price</th>
               <th scope="col">Line discount</th>
@@ -267,6 +268,7 @@ function problemWith(line: NewLine): string {
               <tr [attr.data-testid]="'line-row-' + l.id">
                 <td data-testid="line-description">{{ l.description }}</td>
                 <td data-testid="line-qty">{{ l.qty }}</td>
+                <td data-testid="line-billed-qty">{{ l.billedQty }}</td>
                 <td data-testid="line-unit-type">{{ l.unitType ?? '' }}</td>
                 <td data-testid="line-unit-price">{{ l.tiered ? 'Tiered from ' + amount(l.unitPrice) : amount(l.unitPrice) }}</td>
                 <td data-testid="line-discount">{{ amount(l.discount) }}</td>
@@ -310,17 +312,17 @@ function problemWith(line: NewLine): string {
               </tr>
             } @empty {
               <tr>
-                <td colspan="12" data-testid="line-empty">No lines yet.</td>
+                <td colspan="13" data-testid="line-empty">No lines yet.</td>
               </tr>
             }
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row" colspan="9">Subtotal</th>
+              <th scope="row" colspan="10">Subtotal</th>
               <td data-testid="invoice-subtotal">{{ amount(inv.subtotal) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="9">
+              <th scope="row" colspan="10">
                 @if (+inv.discountAmount > 0) {
                   Discount (fixed@if (inv.discountCap !== null) {, max {{ amount(inv.discountCap) }} in all})
                 } @else {
@@ -332,29 +334,29 @@ function problemWith(line: NewLine): string {
             </tr>
             @if (inv.discountReason) {
               <tr>
-                <th scope="row" colspan="9">Discount reason</th>
+                <th scope="row" colspan="10">Discount reason</th>
                 <td data-testid="invoice-discount-reason">{{ inv.discountReason }}</td>
               </tr>
             }
             <tr>
-              <th scope="row" colspan="9">Surcharge ({{ inv.surchargePct }}%)</th>
+              <th scope="row" colspan="10">Surcharge ({{ inv.surchargePct }}%)</th>
               <td data-testid="invoice-surcharge">{{ amount(inv.surcharge) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="9">Minimum charge</th>
+              <th scope="row" colspan="10">Minimum charge</th>
               <td data-testid="invoice-minimum-charge">{{ amount(inv.minimumCharge) }}</td>
             </tr>
             @if (inv.reverseCharge) {
               <tr>
-                <td colspan="10" data-testid="invoice-reverse-charge">Reverse charge</td>
+                <td colspan="11" data-testid="invoice-reverse-charge">Reverse charge</td>
               </tr>
             }
             <tr>
-              <th scope="row" colspan="9">Amount before tax</th>
+              <th scope="row" colspan="10">Amount before tax</th>
               <td data-testid="invoice-net">{{ amount(inv.net) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="9">
+              <th scope="row" colspan="10">
                 @if (inv.pricesIncludeTax) {
                   Tax included (taxable lines at {{ inv.taxRate }}%)
                 } @else {
@@ -364,11 +366,11 @@ function problemWith(line: NewLine): string {
               <td data-testid="invoice-tax">{{ amount(inv.tax) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="9">Total</th>
+              <th scope="row" colspan="10">Total</th>
               <td data-testid="invoice-grand-total">{{ amount(inv.total) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="9">
+              <th scope="row" colspan="10">
                 Retention ({{ inv.retentionPct }}%@if (inv.retentionCap !== null) {, max
                   {{ amount(inv.retentionCap) }}}@if (inv.retentionReleasedOn) {, released
                   {{ inv.retentionReleasedOn }}, due {{ inv.retentionDueDate }}}@if (+inv.retentionHeld > 0) {, held back})
@@ -377,7 +379,7 @@ function problemWith(line: NewLine): string {
             </tr>
             @if (+inv.retention > 0) {
               <tr>
-                <th scope="row" colspan="9">Retention still held</th>
+                <th scope="row" colspan="10">Retention still held</th>
                 <td data-testid="invoice-retention-held">{{ amount(inv.retentionHeld) }}</td>
               </tr>
             }

@@ -70,6 +70,9 @@ export interface InvoiceLineView {
   // Whether the line is priced in progressive tiers from the client's rate card; its `unitPrice` is
   // then the first band's, and a change of quantity reprices it from the bands.
   tiered: boolean;
+  // The quantity the line is billed and priced on, without trailing zeros: `qty` rounded up to the
+  // next whole increment its unit type has on the client's rate card, or `qty` itself without one.
+  billedQty: string;
 }
 
 // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
