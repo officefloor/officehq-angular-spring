@@ -89,6 +89,10 @@ public class Invoice {
     @Column(name = "retention_released_on")
     private LocalDate retentionReleasedOn;
 
+    /** The day the late fee and interest still unpaid were last waived; null when never. */
+    @Column(name = "interest_waived_on")
+    private LocalDate interestWaivedOn;
+
     /** How many monthly instalments the invoice is spread over; null when it has no plan. */
     @Column(name = "instalments")
     private Integer instalments;
@@ -168,6 +172,13 @@ public class Invoice {
      */
     @Transient
     private BigDecimal lateFee = BigDecimal.ZERO;
+
+    /**
+     * The late fee and interest written off when they were waived (see {@link #accrueLateInterest}); not
+     * stored, worked out again each time the invoice is read.
+     */
+    @Transient
+    private BigDecimal lateWaived = BigDecimal.ZERO;
 
     /**
      * The late interest each instalment of a plan has been charged (see {@link #accrueLateInterest}), in
@@ -385,6 +396,16 @@ public class Invoice {
         return retentionReleasedOn == null ? null : retentionReleasedOn.plusDays(RETENTION_DUE_DAYS);
     }
 
+    /** The day the late fee and interest still unpaid were last waived; null when never. */
+    public LocalDate getInterestWaivedOn() {
+        return interestWaivedOn;
+    }
+
+    /** Waives the late fee and interest still unpaid on the given day; interest starts again from then. */
+    public void waiveInterest(LocalDate on) {
+        this.interestWaivedOn = on;
+    }
+
     /** Releases the retention on the given day, so it is added to the amount due. */
     public void releaseRetention(LocalDate on) {
         this.retentionReleasedOn = on;
@@ -448,6 +469,11 @@ public class Invoice {
         return lateInterest.setScale(scale(), RoundingMode.HALF_UP);
     }
 
+    /** The late fee and interest written off by waiving them, to the cent; 0 when none was. */
+    public BigDecimal getLateWaived() {
+        return lateWaived.setScale(scale(), RoundingMode.HALF_UP);
+    }
+
     /** The late fee charged, in the invoice's currency; 0 when none is. */
     public BigDecimal getLateFee() {
         return lateFee.setScale(scale(), RoundingMode.HALF_UP);
@@ -478,12 +504,16 @@ public class Invoice {
      * the grace week ends a period; every period earns interest on what the invoice still owed during it
      * (earlier interest, the fee and retention left out), and a payment pays the fee, then the interest
      * earned so far, then the invoice. An invoice spread over instalments instead earns interest
-     * instalment by instalment (see {@link #accrueInstalmentInterest}), and no late fee.
+     * instalment by instalment (see {@link #accrueInstalmentInterest}), and no late fee. On the day the
+     * charges were waived (after the day's payments), the fee and interest still unpaid are written off
+     * (kept as what was waived) and that day ends a period: interest starts again from it on what is
+     * still owed, and no new fee is charged.
      */
     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
             BigDecimal lateFeeUsd, LocalDate today) {
         this.lateInterest = BigDecimal.ZERO;
         this.lateFee = BigDecimal.ZERO;
+        this.lateWaived = BigDecimal.ZERO;
         this.instalmentInterest = List.of();
         if (status == InvoiceStatus.SENT && !isCreditNote() && hasPlan()) {
             accrueInstalmentInterest(payments, taxRate, annualRate, today);
@@ -520,7 +550,28 @@ public class Invoice {
         BigDecimal unpaidFee = BigDecimal.ZERO;
         boolean feeCharged = false;
         LocalDate from = dueDate.plusDays(GRACE_DAYS);
+        LocalDate waiveOn = interestWaivedOn != null && !interestWaivedOn.isBefore(overdueOn)
+                && !interestWaivedOn.isAfter(today) ? interestWaivedOn : null;
+        BigDecimal feeWaived = BigDecimal.ZERO;
+        BigDecimal interestWaived = BigDecimal.ZERO;
         for (Part part : inOrder) {
+            if (waiveOn != null && part.on().isAfter(waiveOn)) {
+                if (!feeCharged) {
+                    unpaidFee = fee;
+                    feeCharged = true;
+                }
+                if (earnsInterest && owed.signum() > 0) {
+                    BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
+                    charged = charged.add(earned);
+                    unpaidInterest = unpaidInterest.add(earned);
+                }
+                from = waiveOn;
+                feeWaived = unpaidFee;
+                interestWaived = unpaidInterest;
+                unpaidFee = BigDecimal.ZERO;
+                unpaidInterest = BigDecimal.ZERO;
+                waiveOn = null;
+            }
             if (!feeCharged && !part.on().isBefore(overdueOn)) {
                 unpaidFee = fee;
                 feeCharged = true;
@@ -538,11 +589,22 @@ public class Invoice {
             unpaidInterest = unpaidInterest.subtract(toInterest);
             owed = owed.subtract(rest.subtract(toInterest));
         }
+        if (waiveOn != null) {
+            if (earnsInterest && owed.signum() > 0) {
+                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
+                charged = charged.add(earned);
+                unpaidInterest = unpaidInterest.add(earned);
+            }
+            from = waiveOn;
+            feeWaived = feeCharged ? unpaidFee : fee;
+            interestWaived = unpaidInterest;
+        }
         if (earnsInterest && owed.signum() > 0) {
             charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
         }
-        this.lateFee = fee;
-        this.lateInterest = charged;
+        this.lateFee = fee.subtract(feeWaived);
+        this.lateInterest = charged.subtract(interestWaived);
+        this.lateWaived = feeWaived.add(interestWaived);
     }
 
     /**

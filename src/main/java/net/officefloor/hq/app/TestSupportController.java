@@ -39,7 +39,7 @@ public class TestSupportController {
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "lateInterestRate", "lateFee");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "interestWaivedOn", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
@@ -168,7 +168,7 @@ public class TestSupportController {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_released_on", "instalments", "instalment_rate"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_released_on", "instalments", "instalment_rate", "interest_waived_on"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
@@ -182,7 +182,9 @@ public class TestSupportController {
                     row.get("retentionReleasedOn") == null ? null
                             : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"),
                     instalments(row.get("instalments"), "invoices[].instalments"),
-                    instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"));
+                    instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"),
+                    row.get("interestWaivedOn") == null ? null
+                            : date(row.get("interestWaivedOn"), "invoices[].interestWaivedOn"));
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 insert("invoice_line", line.get("id"),
@@ -315,7 +317,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_released_on, instalments, instalment_rate FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_released_on, instalments, instalment_rate, interest_waived_on FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -333,6 +335,9 @@ public class TestSupportController {
                     row.put("retentionPct", r.get("RETENTION_PCT"));
                     if (r.get("RETENTION_RELEASED_ON") != null) {
                         row.put("retentionReleasedOn", r.get("RETENTION_RELEASED_ON").toString());
+                    }
+                    if (r.get("INTEREST_WAIVED_ON") != null) {
+                        row.put("interestWaivedOn", r.get("INTEREST_WAIVED_ON").toString());
                     }
                     if (r.get("INSTALMENTS") != null) {
                         row.put("instalments", r.get("INSTALMENTS"));

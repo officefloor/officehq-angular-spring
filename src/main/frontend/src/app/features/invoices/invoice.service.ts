@@ -144,6 +144,8 @@ export interface InvoiceDetail {
   lateInterest: string;
   // The late fee charged on it ("0.00" when none), in its currency: part of `amountDue`.
   lateFee: string;
+  // The late fee and interest written off by waiving them ("0.00" when none were).
+  lateWaived: string;
 }
 
 // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,
@@ -286,6 +288,12 @@ export class InvoiceService {
   // while anything else is due or when there is nothing to release.
   releaseRetention(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, null);
+  }
+
+  // Waives the late fee and late interest still unpaid on an overdue invoice; interest starts again
+  // from today on what is still owed. Refused (409) when there is nothing to waive.
+  waiveInterest(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/waive-interest`, null);
   }
 
   // Sends a draft invoice, issuing it today and due on the client's terms, or keeping a due date set

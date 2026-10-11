@@ -378,6 +378,28 @@ public class InvoiceService {
     }
 
     /**
+     * Waives the late fee and late interest still unpaid on a sent invoice today, writing them off, and
+     * records what was waived in the audit; empty if no such invoice. Interest starts again from today on
+     * what is still owed, with no new fee. Refused when there is nothing to waive.
+     */
+    @Transactional
+    public Optional<Invoice> waiveInterest(Long invoiceId) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            BigDecimal before = invoice.getLateWaived();
+            invoice.waiveInterest(today.date());
+            withInterest(List.of(invoice));
+            BigDecimal waived = invoice.getLateWaived().subtract(before);
+            if (invoice.hasPlan() || waived.signum() <= 0) {
+                throw new InvoiceRejectedException("There is no unpaid late interest or late fee to waive.");
+            }
+            invoices.saveAndFlush(invoice);
+            audit.record("INTEREST_WAIVED id=" + invoice.getId() + " amount=" + waived.toPlainString());
+        });
+        return found;
+    }
+
+    /**
      * Readies the invoice for a change: a draft stays as it is; a sent invoice with no payments goes
      * back to draft, to be sent again; an invoice with any payment is refused with the message.
      * Whether it went back to draft.

@@ -385,6 +385,12 @@ function problemWith(line: NewLine): string {
                 <td data-testid="invoice-interest">{{ amount(inv.lateInterest) }}</td>
               </tr>
             }
+            @if (inv.creditOf === null) {
+              <tr>
+                <th scope="row" colspan="4">Late charges waived</th>
+                <td data-testid="invoice-waived">{{ amount(inv.lateWaived) }}</td>
+              </tr>
+            }
             <tr>
               <th scope="row" colspan="4">Amount due</th>
               <td data-testid="invoice-amount-due">{{ amount(inv.amountDue) }}</td>
@@ -477,6 +483,20 @@ function problemWith(line: NewLine): string {
         }
         @if (releaseError()) {
           <p role="alert" data-testid="invoice-release-error">{{ releaseError() }}</p>
+        }
+
+        @if (inv.creditOf === null && inv.status !== 'DRAFT' && inv.status !== 'VOID') {
+          <button
+            type="button"
+            data-testid="invoice-waive"
+            [disabled]="waiving()"
+            (click)="waiveInterest(inv.id)"
+          >
+            Waive late charges
+          </button>
+        }
+        @if (waiveError()) {
+          <p role="alert" data-testid="invoice-waive-error">{{ waiveError() }}</p>
         }
 
         @if (inv.status === 'DRAFT') {
@@ -653,6 +673,8 @@ export class InvoicePanel {
   protected readonly planError = signal('');
   protected readonly releasing = signal(false);
   protected readonly releaseError = signal('');
+  protected readonly waiving = signal(false);
+  protected readonly waiveError = signal('');
   protected readonly sending = signal(false);
   protected readonly sendError = signal('');
   protected readonly duplicating = signal(false);
@@ -722,6 +744,7 @@ export class InvoicePanel {
       this.planForm.reset();
       this.planError.set('');
       this.releaseError.set('');
+      this.waiveError.set('');
       this.sendError.set('');
       this.voidError.set('');
       this.duplicateError.set('');
@@ -967,6 +990,25 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The retention could not be released.',
         );
         this.releasing.set(false);
+      },
+    });
+  }
+
+  protected waiveInterest(invoiceId: number): void {
+    this.waiving.set(true);
+    this.waiveError.set('');
+    this.service.waiveInterest(invoiceId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.waiving.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.waiveError.set(
+          typeof detail === 'string' && detail ? detail : 'The late charges could not be waived.',
+        );
+        this.waiving.set(false);
       },
     });
   }
