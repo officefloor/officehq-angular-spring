@@ -121,6 +121,24 @@ export interface InvoiceDetail {
   // The day (yyyy-mm-dd) the retention was released, and the day it then falls due; null while held.
   retentionReleasedOn: string | null;
   retentionDueDate: string | null;
+  // How many monthly instalments it is spread over (null without a plan), at the annual
+  // `instalmentRate` (without trailing zeros); `schedule` lists them and `planTotal` is what they add
+  // up to (null without a plan). The amount due on a planned invoice is the plan total less what is paid.
+  instalments: number | null;
+  instalmentRate: string;
+  schedule: InstalmentView[];
+  planTotal: string | null;
+}
+
+// One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,
+// interest, principal and the balance left after it, decimal strings to the cent.
+export interface InstalmentView {
+  number: number;
+  dueDate: string | null;
+  payment: string;
+  interest: string;
+  principal: string;
+  balance: string;
 }
 
 // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
@@ -231,6 +249,12 @@ export class InvoiceService {
   // refused (400) outside that, or (409) when it is not a draft.
   setRetention(invoiceId: number, retentionPct: string): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct });
+  }
+
+  // Spreads a draft over monthly instalments (2 to 24) at an annual interest rate (0 to 30, up to two
+  // decimals); refused (400) outside that, or (409) when it is not a draft or holds back retention.
+  setPlan(invoiceId: number, instalments: string, instalmentRate: string): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/plan`, { instalments, instalmentRate });
   }
 
   // Releases the retention held back on a sent invoice, adding it to the amount due; refused (409)

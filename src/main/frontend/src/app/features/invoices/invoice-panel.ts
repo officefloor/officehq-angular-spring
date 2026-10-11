@@ -41,6 +41,27 @@ function problemWithRetention(pct: string): string {
   return '';
 }
 
+// A plan of 2 to 24 monthly instalments at an annual rate from 0 to 30 with at most two decimals;
+// the server checks them again.
+function problemWithPlan(count: string, rate: string): string {
+  if (!/^\d+$/.test(count)) {
+    return 'The number of instalments must be a whole number, like 3 or 12.';
+  }
+  if (Number(count) < 2 || Number(count) > 24) {
+    return 'The plan must have from 2 to 24 instalments.';
+  }
+  if (!/^-?\d+(\.\d+)?$/.test(rate)) {
+    return 'The interest rate must be a number, like 12 or 7.5.';
+  }
+  if (Number(rate) < 0 || Number(rate) > 30) {
+    return 'The interest rate must be from 0 to 30 percent.';
+  }
+  if (!TWO_DECIMALS.test(rate)) {
+    return 'The interest rate can have at most two decimals.';
+  }
+  return '';
+}
+
 // A fixed amount of money, not negative and to the cent, e.g. 25 or 12.50; the server checks it is
 // no more than the subtotal.
 function problemWithDiscountAmount(amount: string): string {
@@ -146,7 +167,10 @@ function problemWith(line: NewLine): string {
 // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
 // server refuses to send it once that date is past. A draft can hold back retention, a percentage of
 // the grand total (0 to 20); while held it is not part of the amount due, and once nothing else is due
-// it can be released on the sent invoice, falling due 30 days later.
+// it can be released on the sent invoice, falling due 30 days later. A draft without retention can
+// instead be spread over 2 to 24 monthly instalments at an annual interest rate (0 to 30); the server
+// works out the schedule from the grand total, dated from the issue date (and again when it is sent),
+// and the amount due is then the plan total less what is paid.
 @Component({
   selector: 'app-invoice-panel',
   imports: [ReactiveFormsModule, PaymentForm],
@@ -255,6 +279,40 @@ function problemWith(line: NewLine): string {
           </tfoot>
         </table>
 
+        @if (inv.instalments !== null) {
+          <table aria-label="Instalments">
+            <caption>{{ inv.instalments }} monthly instalments at {{ inv.instalmentRate }}% a year</caption>
+            <thead>
+              <tr>
+                <th scope="col">No.</th>
+                <th scope="col">Due</th>
+                <th scope="col">Payment</th>
+                <th scope="col">Interest</th>
+                <th scope="col">Principal</th>
+                <th scope="col">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (s of inv.schedule; track s.number) {
+                <tr [attr.data-testid]="'instalment-row-' + s.number">
+                  <td>{{ s.number }}</td>
+                  <td data-testid="instalment-due">{{ s.dueDate }}</td>
+                  <td data-testid="instalment-payment">{{ money(s.payment) }}</td>
+                  <td data-testid="instalment-interest">{{ money(s.interest) }}</td>
+                  <td data-testid="instalment-principal">{{ money(s.principal) }}</td>
+                  <td data-testid="instalment-balance">{{ money(s.balance) }}</td>
+                </tr>
+              }
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row" colspan="5">Plan total</th>
+                <td data-testid="invoice-plan-total">{{ money(inv.planTotal ?? '0') }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        }
+
         <table aria-label="Payments">
           <thead>
             <tr>
@@ -352,6 +410,19 @@ function problemWith(line: NewLine): string {
             </button>
             @if (retentionError()) {
               <p role="alert" data-testid="retention-form-error">{{ retentionError() }}</p>
+            }
+          </form>
+        }
+
+        @if (inv.status === 'DRAFT' && inv.creditOf === null) {
+          <form [formGroup]="planForm" (ngSubmit)="setPlan(inv.id)" aria-label="Instalment plan" novalidate>
+            <label for="plan-count">Monthly instalments (2 to 24)</label>
+            <input id="plan-count" data-testid="plan-form-count" inputmode="numeric" formControlName="count" />
+            <label for="plan-rate">Annual interest rate (%, 0 to 30)</label>
+            <input id="plan-rate" data-testid="plan-form-rate" inputmode="decimal" formControlName="rate" />
+            <button type="submit" data-testid="plan-form-submit" [disabled]="savingPlan()">Set plan</button>
+            @if (planError()) {
+              <p role="alert" data-testid="plan-form-error">{{ planError() }}</p>
             }
           </form>
         }
@@ -545,6 +616,8 @@ export class InvoicePanel {
   protected readonly dueError = signal('');
   protected readonly savingRetention = signal(false);
   protected readonly retentionError = signal('');
+  protected readonly savingPlan = signal(false);
+  protected readonly planError = signal('');
   protected readonly releasing = signal(false);
   protected readonly releaseError = signal('');
   protected readonly sending = signal(false);
@@ -580,6 +653,11 @@ export class InvoicePanel {
     pct: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly planForm = new FormGroup({
+    count: new FormControl('', { nonNullable: true }),
+    rate: new FormControl('', { nonNullable: true }),
+  });
+
   protected readonly dueForm = new FormGroup({
     dueDate: new FormControl('', { nonNullable: true }),
   });
@@ -598,6 +676,8 @@ export class InvoicePanel {
       this.dueError.set('');
       this.retentionForm.reset();
       this.retentionError.set('');
+      this.planForm.reset();
+      this.planError.set('');
       this.releaseError.set('');
       this.sendError.set('');
       this.voidError.set('');
@@ -796,6 +876,35 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The retention could not be set.',
         );
         this.savingRetention.set(false);
+      },
+    });
+  }
+
+  protected setPlan(invoiceId: number): void {
+    const raw = this.planForm.getRawValue();
+    const count = raw.count.trim();
+    const rate = raw.rate.trim().replace(/%$/, '').trim();
+    const problem = problemWithPlan(count, rate);
+    if (problem) {
+      this.planForm.markAllAsTouched();
+      this.planError.set(problem);
+      return;
+    }
+    this.savingPlan.set(true);
+    this.planError.set('');
+    this.service.setPlan(invoiceId, count, rate).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.planForm.reset();
+        this.savingPlan.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.planError.set(
+          typeof detail === 'string' && detail ? detail : 'The plan could not be set.',
+        );
+        this.savingPlan.set(false);
       },
     });
   }

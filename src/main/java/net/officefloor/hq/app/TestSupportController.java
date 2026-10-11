@@ -38,7 +38,7 @@ public class TestSupportController {
     private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "lineItems");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionReleasedOn", "instalments", "instalmentRate", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
@@ -127,7 +127,7 @@ public class TestSupportController {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_released_on"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_released_on", "instalments", "instalment_rate"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
@@ -139,7 +139,9 @@ public class TestSupportController {
                     row.get("creditOf") == null ? null : id(row.get("creditOf")),
                     percent(row.get("retentionPct"), "invoices[].retentionPct"),
                     row.get("retentionReleasedOn") == null ? null
-                            : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"));
+                            : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"),
+                    instalments(row.get("instalments"), "invoices[].instalments"),
+                    instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"));
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 insert("invoice_line", line.get("id"),
@@ -236,7 +238,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_released_on FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_released_on, instalments, instalment_rate FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -255,6 +257,10 @@ public class TestSupportController {
                     if (r.get("RETENTION_RELEASED_ON") != null) {
                         row.put("retentionReleasedOn", r.get("RETENTION_RELEASED_ON").toString());
                     }
+                    if (r.get("INSTALMENTS") != null) {
+                        row.put("instalments", r.get("INSTALMENTS"));
+                    }
+                    row.put("instalmentRate", r.get("INSTALMENT_RATE"));
                     if (r.get("CREDIT_OF") != null) {
                         row.put("creditOf", r.get("CREDIT_OF"));
                     }
@@ -336,6 +342,32 @@ public class TestSupportController {
         } catch (NumberFormatException | ArithmeticException e) {
             throw refuse(field + " must be a whole number of days, not " + value);
         }
+    }
+
+    /** A whole number of instalments from 2 to 24; null (no plan) when left out. */
+    private static Integer instalments(Object value, String field) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            int count = new BigDecimal(value.toString()).intValueExact();
+            if (count < Invoice.MIN_INSTALMENTS || count > Invoice.MAX_INSTALMENTS) {
+                throw refuse(field + " must be from " + Invoice.MIN_INSTALMENTS + " to " + Invoice.MAX_INSTALMENTS
+                        + ", not " + value);
+            }
+            return count;
+        } catch (NumberFormatException | ArithmeticException e) {
+            throw refuse(field + " must be a whole number, not " + value);
+        }
+    }
+
+    /** An annual interest rate from 0 to 30 with at most two decimals; none given is zero. */
+    private static BigDecimal instalmentRate(Object value, String field) {
+        BigDecimal rate = percent(value, field);
+        if (rate.compareTo(Invoice.MAX_INSTALMENT_RATE) > 0) {
+            throw refuse(field + " must be from 0 to " + Invoice.MAX_INSTALMENT_RATE + ", not " + value);
+        }
+        return rate;
     }
 
     /** A true/false flag; false when left out. */

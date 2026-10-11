@@ -15,6 +15,7 @@ import jakarta.persistence.Table;
 import org.hibernate.annotations.Formula;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -40,6 +41,13 @@ public class Invoice {
 
     /** Released retention falls due this many days after the day it was released. */
     public static final int RETENTION_DUE_DAYS = 30;
+
+    /** The fewest and most monthly instalments a plan can have. */
+    public static final int MIN_INSTALMENTS = 2;
+    public static final int MAX_INSTALMENTS = 24;
+
+    /** The highest annual interest rate a plan can charge, as a percentage. */
+    public static final BigDecimal MAX_INSTALMENT_RATE = new BigDecimal("30");
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -77,6 +85,14 @@ public class Invoice {
 
     @Column(name = "retention_released_on")
     private LocalDate retentionReleasedOn;
+
+    /** How many monthly instalments the invoice is spread over; null when it has no plan. */
+    @Column(name = "instalments")
+    private Integer instalments;
+
+    /** The annual interest rate of the plan, a percentage from 0 to {@link #MAX_INSTALMENT_RATE}. */
+    @Column(name = "instalment_rate")
+    private BigDecimal instalmentRate = BigDecimal.ZERO;
 
     /** Whether the invoice's client is tax exempt, so no line is taxed; read from the client. */
     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
@@ -143,6 +159,8 @@ public class Invoice {
         copy.discountCap = discountCap;
         copy.discountReason = discountReason;
         copy.retentionPct = retentionPct;
+        copy.instalments = instalments;
+        copy.instalmentRate = instalmentRate;
         lines.forEach(line -> copy.lines.add(line.copy()));
         return copy;
     }
@@ -334,9 +352,80 @@ public class Invoice {
         return retentionReleasedOn == null ? BigDecimal.ZERO.setScale(2) : retention(taxRate);
     }
 
-    /** What the invoice is owed in all, held retention left out: the grand total less what is credited and held. */
+    /**
+     * What the invoice is owed in all, held retention left out: the grand total (the plan total when it
+     * is spread over instalments) less what is credited and held.
+     */
     private BigDecimal payable(BigDecimal taxRate) {
-        return total(taxRate).subtract(getCredited()).subtract(retentionHeld(taxRate));
+        BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate);
+        return owed.subtract(getCredited()).subtract(retentionHeld(taxRate));
+    }
+
+    /** Whether the invoice is spread over monthly instalments. */
+    public boolean hasPlan() {
+        return instalments != null;
+    }
+
+    /** How many monthly instalments the invoice is spread over; null when it has no plan. */
+    public Integer getInstalments() {
+        return instalments;
+    }
+
+    /** The plan's annual interest rate, a percentage; 0 when it has no plan. */
+    public BigDecimal getInstalmentRate() {
+        return instalmentRate;
+    }
+
+    /** Spreads the invoice over the number of monthly instalments at the annual rate; both have already been checked. */
+    public void setPlan(int instalments, BigDecimal instalmentRate) {
+        this.instalments = instalments;
+        this.instalmentRate = instalmentRate;
+    }
+
+    /**
+     * The plan's schedule at the tax rate, an ordinary loan of the grand total; empty when there is no
+     * plan. With the monthly rate i (the annual rate / 12 / 100) the instalment is P x i / (1 - (1 +
+     * i)^-n), or P / n at 0%, rounded half up to the cent. Each month's interest is the balance still
+     * owed x i, rounded half up to the cent, and its principal the instalment less the interest; the
+     * last instalment pays off the whole balance left plus its interest, so the schedule ends at zero.
+     * Instalment k falls due k months after the issue date, on the same day (the month's last day when
+     * it is shorter).
+     */
+    public List<Instalment> schedule(BigDecimal taxRate) {
+        if (!hasPlan()) {
+            return List.of();
+        }
+        MathContext mc = MathContext.DECIMAL128;
+        BigDecimal principal = total(taxRate);
+        BigDecimal i = instalmentRate.divide(BigDecimal.valueOf(1200), mc);
+        int n = instalments;
+        BigDecimal payment;
+        if (i.signum() == 0) {
+            payment = principal.divide(BigDecimal.valueOf(n), 2, RoundingMode.HALF_UP);
+        } else {
+            BigDecimal growth = BigDecimal.ONE.add(i).pow(n, mc);
+            payment = principal.multiply(i).multiply(growth)
+                    .divide(growth.subtract(BigDecimal.ONE), mc).setScale(2, RoundingMode.HALF_UP);
+        }
+        List<Instalment> schedule = new ArrayList<>(n);
+        BigDecimal balance = principal.setScale(2, RoundingMode.HALF_UP);
+        for (int k = 1; k <= n; k++) {
+            BigDecimal interest = balance.multiply(i).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal paid = k == n ? balance.add(interest) : payment;
+            BigDecimal repaid = paid.subtract(interest);
+            balance = balance.subtract(repaid);
+            LocalDate due = issueDate == null ? null : issueDate.plusMonths(k);
+            schedule.add(new Instalment(k, due, paid, interest, repaid, balance));
+        }
+        return schedule;
+    }
+
+    /** The plan total at the tax rate: the sum of the instalments; null when there is no plan. */
+    public BigDecimal planTotal(BigDecimal taxRate) {
+        if (!hasPlan()) {
+            return null;
+        }
+        return schedule(taxRate).stream().map(Instalment::payment).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     public List<InvoiceLine> getLines() {

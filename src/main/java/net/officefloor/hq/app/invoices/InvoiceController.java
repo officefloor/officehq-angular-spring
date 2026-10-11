@@ -104,13 +104,17 @@ public class InvoiceController {
      * {@code retentionPct} (without trailing zeros) is the share of the grand total held back as
      * {@code retention}, rounded down to the cent; {@code retentionHeld} is what is still held back (not
      * part of the amount due), {@code retentionReleasedOn} the day it was released (null while held) and
-     * {@code retentionDueDate} the day released retention falls due.
+     * {@code retentionDueDate} the day released retention falls due. {@code instalments} is how many
+     * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
+     * (without trailing zeros); {@code schedule} lists them and {@code planTotal} is what they add up to
+     * (null without a plan), from which what is paid comes off for the amount due.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
             String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
-            String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate) {
+            String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+            String instalmentRate, List<InstalmentView> schedule, String planTotal) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -133,7 +137,10 @@ public class InvoiceController {
                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
                     i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
                     i.getRetentionPct().stripTrailingZeros().toPlainString(), i.retention(taxRate).toPlainString(),
-                    i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate());
+                    i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate(),
+                    i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
+                    i.schedule(taxRate).stream().map(InstalmentView::of).toList(),
+                    i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null);
         }
     }
 
@@ -234,6 +241,35 @@ public class InvoiceController {
             @DecimalMax(value = "20", message = "The retention must be from 0 to 20 percent.")
             @Digits(integer = 2, fraction = 2, message = "The retention can have at most two decimals.")
             BigDecimal retentionPct) {
+    }
+
+    /**
+     * A plan to spread a draft over: a whole number of monthly instalments from 2 to 24 and an annual
+     * interest rate from 0 to 30 with at most two decimals.
+     */
+    public record NewPlan(
+            @NotNull(message = "Enter the number of instalments.")
+            @DecimalMin(value = "2", message = "The plan must have from 2 to 24 instalments.")
+            @DecimalMax(value = "24", message = "The plan must have from 2 to 24 instalments.")
+            @Digits(integer = 2, fraction = 0, message = "The number of instalments must be a whole number.")
+            BigDecimal instalments,
+            @NotNull(message = "Enter the annual interest rate.")
+            @DecimalMin(value = "0", message = "The interest rate must be from 0 to 30 percent.")
+            @DecimalMax(value = "30", message = "The interest rate must be from 0 to 30 percent.")
+            @Digits(integer = 2, fraction = 2, message = "The interest rate can have at most two decimals.")
+            BigDecimal instalmentRate) {
+    }
+
+    /**
+     * One instalment of a plan: its number, the day it falls due, and its payment, interest, principal
+     * and the balance left after it, decimal strings to the cent.
+     */
+    public record InstalmentView(int number, LocalDate dueDate, String payment, String interest, String principal,
+            String balance) {
+        static InstalmentView of(Instalment i) {
+            return new InstalmentView(i.number(), i.dueDate(), i.payment().toPlainString(),
+                    i.interest().toPlainString(), i.principal().toPlainString(), i.balance().toPlainString());
+        }
     }
 
     /** A due date to set on a draft by hand. */
@@ -392,6 +428,13 @@ public class InvoiceController {
     @PutMapping("/api/invoices/{id}/retention")
     public InvoiceDetail setRetention(@PathVariable Long id, @Valid @RequestBody NewRetention body) {
         return invoices.setRetention(id, body.retentionPct())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    @PutMapping("/api/invoices/{id}/plan")
+    public InvoiceDetail setPlan(@PathVariable Long id, @Valid @RequestBody NewPlan body) {
+        return invoices.setPlan(id, body.instalments().intValueExact(), body.instalmentRate())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

@@ -267,7 +267,34 @@ public class InvoiceService {
             if (!invoice.isDraft()) {
                 throw new InvoiceRejectedException("Retention can only be set on a draft.");
             }
+            if (invoice.hasPlan() && retentionPct.signum() > 0) {
+                throw new InvoiceRejectedException("An invoice spread over instalments cannot also hold back retention.");
+            }
             invoice.setRetentionPct(retentionPct);
+            invoices.saveAndFlush(invoice);
+        });
+        return found;
+    }
+
+    /**
+     * Spreads a draft over the number of monthly instalments at the annual interest rate; empty if no
+     * such invoice. Both have already been checked; any invoice that is not a draft, a credit note, or
+     * one holding back retention is refused.
+     */
+    @Transactional
+    public Optional<Invoice> setPlan(Long invoiceId, int instalments, BigDecimal instalmentRate) {
+        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+        found.ifPresent(invoice -> {
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note cannot be spread over instalments.");
+            }
+            if (!invoice.isDraft()) {
+                throw new InvoiceRejectedException("Only a draft can be spread over instalments.");
+            }
+            if (invoice.getRetentionPct().signum() > 0) {
+                throw new InvoiceRejectedException("An invoice holding back retention cannot also be spread over instalments.");
+            }
+            invoice.setPlan(instalments, instalmentRate);
             invoices.saveAndFlush(invoice);
         });
         return found;
@@ -422,7 +449,8 @@ public class InvoiceService {
 
     /**
      * Issues the draft today, due on the client's terms, and records it in the audit; then uses the
-     * client's credit on it (see {@link #applyCredit}).
+     * client's credit on it (see {@link #applyCredit}), unless it is spread over instalments, whose
+     * schedule is dated from the new issue date.
      */
     private void markSent(Invoice invoice) {
         LocalDate issued = today.date();
@@ -430,7 +458,9 @@ public class InvoiceService {
         invoices.saveAndFlush(invoice);
         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
                 + " total=" + invoice.total(taxRate.percent()).toPlainString());
-        applyCredit(invoice);
+        if (!invoice.hasPlan()) {
+            applyCredit(invoice);
+        }
     }
 
     /**
