@@ -1,0 +1,427 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index f1d5921..645f62d 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -1,5 +1,5 @@
+ import { Component, effect, inject, input, signal } from '@angular/core';
+-import { InvoiceService, InvoiceSummary } from './invoice.service';
++import { InvoiceDetail, InvoiceService, InvoiceSummary } from './invoice.service';
+ import { InvoicePanel } from './invoice-panel';
+ import { money, statusLabel } from './invoice-format';
+ 
+@@ -75,7 +75,7 @@ import { money, statusLabel } from './invoice-format';
+     </section>
+ 
+     @if (selectedId(); as id) {
+-      <app-invoice-panel [invoiceId]="id" />
++      <app-invoice-panel [invoiceId]="id" (changed)="totalChanged($event)" />
+     }
+   `,
+ })
+@@ -112,4 +112,11 @@ export class ClientInvoices {
+       error: () => this.creating.set(false),
+     });
+   }
++
++  // An invoice changed in the panel: show its new total in the list.
++  protected totalChanged(detail: InvoiceDetail): void {
++    this.invoices.update((list) =>
++      list.map((i) => (i.id === detail.id ? { ...i, total: detail.total } : i)),
++    );
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 9d2c63c..98f3567 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -1,10 +1,39 @@
+-import { Component, effect, inject, input, signal } from '@angular/core';
+-import { InvoiceDetail, InvoiceService } from './invoice.service';
++import { Component, effect, inject, input, output, signal } from '@angular/core';
++import { HttpErrorResponse } from '@angular/common/http';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { InvoiceDetail, InvoiceService, NewLine } from './invoice.service';
+ import { money, statusLabel } from './invoice-format';
+ 
+-// One opened invoice: its status, its lines and its totals.
++// A positive decimal with at most two decimals, e.g. 1, 1.5 or 12.35. The server applies the same rules.
++const TWO_DECIMALS = /^\d+(\.\d{1,2})?$/;
++
++// What is wrong with a line, or '' when it can be added.
++function problemWith(line: NewLine): string {
++  const problems: string[] = [];
++  if (!line.description) {
++    problems.push('Enter a description.');
++  }
++  if (!line.qty) {
++    problems.push('Enter a quantity.');
++  } else if (!TWO_DECIMALS.test(line.qty)) {
++    problems.push('The quantity must be a number with at most two decimals.');
++  } else if (Number(line.qty) <= 0) {
++    problems.push('The quantity must be more than zero.');
++  }
++  if (!line.unitPrice) {
++    problems.push('Enter a unit price.');
++  } else if (!TWO_DECIMALS.test(line.unitPrice)) {
++    problems.push('The unit price must be a number with at most two decimals.');
++  } else if (Number(line.unitPrice) < 0.01) {
++    problems.push('The unit price must be at least $0.01.');
++  }
++  return problems.join(' ');
++}
++
++// One opened invoice: its status, its lines and its totals. A draft takes new lines.
+ @Component({
+   selector: 'app-invoice-panel',
++  imports: [ReactiveFormsModule],
+   template: `
+     <section data-testid="invoice-panel" aria-labelledby="invoice-panel-heading">
+       <h2 id="invoice-panel-heading">Invoice #{{ invoiceId() }}</h2>
+@@ -44,6 +73,40 @@ import { money, statusLabel } from './invoice-format';
+             </tr>
+           </tfoot>
+         </table>
++
++        @if (inv.status === 'DRAFT') {
++          <form [formGroup]="form" (ngSubmit)="addLine(inv.id)" aria-label="Add a line" novalidate>
++            <label for="line-description">Description</label>
++            <input
++              id="line-description"
++              data-testid="line-form-description"
++              formControlName="description"
++              required
++            />
++            <label for="line-qty">Quantity</label>
++            <input
++              id="line-qty"
++              data-testid="line-form-qty"
++              inputmode="decimal"
++              formControlName="qty"
++              required
++            />
++            <label for="line-unit-price">Unit price ($)</label>
++            <input
++              id="line-unit-price"
++              data-testid="line-form-unit-price"
++              inputmode="decimal"
++              formControlName="unitPrice"
++              required
++            />
++            <button type="submit" data-testid="line-form-submit" [disabled]="saving()">
++              Add line
++            </button>
++            @if (error()) {
++              <p role="alert" data-testid="line-form-error">{{ error() }}</p>
++            }
++          </form>
++        }
+       }
+     </section>
+   `,
+@@ -52,17 +115,61 @@ export class InvoicePanel {
+   private readonly service = inject(InvoiceService);
+ 
+   readonly invoiceId = input.required<number>();
++  // The invoice after a change made here, so the list can show its new total.
++  readonly changed = output<InvoiceDetail>();
+ 
+   protected readonly invoice = signal<InvoiceDetail | null>(null);
++  protected readonly saving = signal(false);
++  protected readonly error = signal('');
+   protected readonly statusLabel = statusLabel;
+   protected readonly money = money;
+ 
++  protected readonly form = new FormGroup({
++    description: new FormControl('', { nonNullable: true }),
++    qty: new FormControl('', { nonNullable: true }),
++    unitPrice: new FormControl('', { nonNullable: true }),
++  });
++
+   constructor() {
+     effect((onCleanup) => {
+       const id = this.invoiceId();
+       this.invoice.set(null);
++      this.form.reset();
++      this.error.set('');
+       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
+       onCleanup(() => sub.unsubscribe());
+     });
+   }
++
++  protected addLine(invoiceId: number): void {
++    const raw = this.form.getRawValue();
++    const line: NewLine = {
++      description: raw.description.trim(),
++      qty: raw.qty.trim(),
++      unitPrice: raw.unitPrice.trim().replace(/^\$/, ''),
++    };
++    const problem = problemWith(line);
++    if (problem) {
++      this.form.markAllAsTouched();
++      this.error.set(problem);
++      return;
++    }
++    this.saving.set(true);
++    this.error.set('');
++    this.service.addLine(invoiceId, line).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.form.reset();
++        this.saving.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.error.set(
++          typeof detail === 'string' && detail ? detail : 'The line could not be added.',
++        );
++        this.saving.set(false);
++      },
++    });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 7f401c7..a789d6d 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -36,6 +36,13 @@ export interface InvoiceDetail {
+   total: string;
+ }
+ 
++// A line to add to a draft: quantity and unit price as entered, checked again by the server.
++export interface NewLine {
++  description: string;
++  qty: string;
++  unitPrice: string;
++}
++
+ // The invoices REST API.
+ @Injectable({ providedIn: 'root' })
+ export class InvoiceService {
+@@ -53,4 +60,9 @@ export class InvoiceService {
+   open(id: number): Observable<InvoiceDetail> {
+     return this.http.get<InvoiceDetail>(`/api/invoices/${id}`);
+   }
++
++  // Adds a line to a draft invoice; answers the invoice with its new lines and totals.
++  addLine(invoiceId: number, line: NewLine): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines`, line);
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 1b3f165..75994aa 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.invoices;
+ 
++import jakarta.persistence.CascadeType;
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.EnumType;
+@@ -37,8 +38,8 @@ public class Invoice {
+     @Column(name = "due_date")
+     private LocalDate dueDate;
+ 
+-    @OneToMany
+-    @JoinColumn(name = "invoice_id")
++    @OneToMany(cascade = CascadeType.ALL)
++    @JoinColumn(name = "invoice_id", nullable = false)
+     @OrderBy("id")
+     private List<InvoiceLine> lines = new ArrayList<>();
+ 
+@@ -79,6 +80,16 @@ public class Invoice {
+         return lines;
+     }
+ 
++    /** Whether lines can still be added: only a draft is still being written. */
++    public boolean isDraft() {
++        return status == InvoiceStatus.DRAFT;
++    }
++
++    /** Adds a line to the end of the invoice. */
++    public void addLine(InvoiceLine line) {
++        lines.add(line);
++    }
++
+     /**
+      * The sum of the line amounts, each already rounded half up to the cent — so the total matches
+      * what a client gets by adding up the lines shown.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 1c4e87f..c804ed3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -1,5 +1,11 @@
+ package net.officefloor.hq.app.invoices;
+ 
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.DecimalMin;
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+@@ -7,6 +13,7 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.server.ResponseStatusException;
+@@ -45,6 +52,21 @@ public class InvoiceController {
+         }
+     }
+ 
++    /** A line to add: a description, a quantity above zero and a unit price of at least $0.01. */
++    public record NewLine(
++            @NotBlank(message = "Enter a description.")
++            @Size(max = 255, message = "The description must be at most 255 characters.")
++            String description,
++            @NotNull(message = "Enter a quantity.")
++            @DecimalMin(value = "0", inclusive = false, message = "The quantity must be more than zero.")
++            @Digits(integer = 10, fraction = 2, message = "The quantity can have at most two decimals.")
++            BigDecimal qty,
++            @NotNull(message = "Enter a unit price.")
++            @DecimalMin(value = "0.01", message = "The unit price must be at least $0.01.")
++            @Digits(integer = 17, fraction = 2, message = "The unit price can have at most two decimals.")
++            BigDecimal unitPrice) {
++    }
++
+     private final InvoiceService invoices;
+ 
+     public InvoiceController(InvoiceService invoices) {
+@@ -68,4 +90,12 @@ public class InvoiceController {
+         return invoices.find(id).map(InvoiceDetail::of)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
++
++    @PostMapping("/api/invoices/{id}/lines")
++    @ResponseStatus(HttpStatus.CREATED)
++    public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
++        return invoices.addLine(id, body.description().trim(), body.qty(), body.unitPrice())
++                .map(InvoiceDetail::of)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+new file mode 100644
+index 0000000..806d6c9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceErrors.java
+@@ -0,0 +1,39 @@
++package net.officefloor.hq.app.invoices;
++
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.converter.HttpMessageNotReadableException;
++import org.springframework.web.bind.MethodArgumentNotValidException;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.RestControllerAdvice;
++
++/** Turns a refused invoice change into a problem response whose detail says what is wrong. */
++@RestControllerAdvice(assignableTypes = InvoiceController.class)
++public class InvoiceErrors {
++
++    private static final List<String> FIELD_ORDER = List.of("description", "qty", "unitPrice");
++
++    @ExceptionHandler(MethodArgumentNotValidException.class)
++    public ProblemDetail invalid(MethodArgumentNotValidException e) {
++        String detail = e.getBindingResult().getFieldErrors().stream()
++                .sorted((a, b) -> Integer.compare(FIELD_ORDER.indexOf(a.getField()),
++                        FIELD_ORDER.indexOf(b.getField())))
++                .map(f -> f.getDefaultMessage())
++                .distinct()
++                .reduce((a, b) -> a + " " + b)
++                .orElse("The line is not valid.");
++        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
++    }
++
++    @ExceptionHandler(HttpMessageNotReadableException.class)
++    public ProblemDetail unreadable(HttpMessageNotReadableException e) {
++        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
++                "Enter the quantity and unit price as numbers, like 1.5 and 12.35.");
++    }
++
++    @ExceptionHandler(InvoiceRejectedException.class)
++    public ProblemDetail rejected(InvoiceRejectedException e) {
++        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index a7c4189..ce52a03 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -28,6 +28,12 @@ public class InvoiceLine {
+     protected InvoiceLine() {
+     }
+ 
++    public InvoiceLine(String description, BigDecimal qty, BigDecimal unitPrice) {
++        this.description = description;
++        this.qty = qty;
++        this.unitPrice = unitPrice;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceRejectedException.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceRejectedException.java
+new file mode 100644
+index 0000000..2736a36
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceRejectedException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.invoices;
++
++/** A change an invoice cannot take; the message says why, in words the user can act on. */
++public class InvoiceRejectedException extends RuntimeException {
++
++    public InvoiceRejectedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 630f163..d8a279b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.invoices;
+ 
++import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Optional;
+@@ -8,7 +9,7 @@ import net.officefloor.hq.app.clients.ClientRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** Lists a client's invoices, opens one, and starts new drafts. */
++/** Lists a client's invoices, opens one, starts new drafts and adds lines to them. */
+ @Service
+ public class InvoiceService {
+ 
+@@ -44,4 +45,21 @@ public class InvoiceService {
+         LocalDate issued = today.date();
+         return Optional.of(invoices.save(Invoice.draft(clientId, issued, issued.plusDays(PAYMENT_TERMS_DAYS))));
+     }
++
++    /**
++     * Adds a line to a draft invoice; empty if no such invoice. The line has already been checked;
++     * a sent invoice refuses it.
++     */
++    @Transactional
++    public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice) {
++        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        found.ifPresent(invoice -> {
++            if (!invoice.isDraft()) {
++                throw new InvoiceRejectedException("Only a draft invoice can take new lines.");
++            }
++            invoice.addLine(new InvoiceLine(description, qty, unitPrice));
++            invoices.saveAndFlush(invoice);
++        });
++        return found;
++    }
+ }
