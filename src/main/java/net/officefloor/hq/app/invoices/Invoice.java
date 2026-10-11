@@ -222,6 +222,13 @@ public class Invoice {
     private String minimumChargeUsd;
 
     /**
+     * The client's own minimum charge in its currency, charged instead of the workspace's; null for the
+     * workspace's, 0 for none. Read from the client.
+     */
+    @Formula("(SELECT c.minimum_charge FROM client c WHERE c.id = client_id)")
+    private BigDecimal clientMinimumCharge;
+
+    /**
      * The workspace's volume discounts, as "threshold in US dollars=percentage" joined by commas;
      * null when there are none. Read from them.
      */
@@ -2264,15 +2271,17 @@ public class Invoice {
     }
 
     /**
-     * The minimum charge: what the subtotal less the discount plus the surcharge falls short of the workspace's minimum
-     * charge, converted from US dollars at the issue date's rate and rounded down to the step. Nothing
-     * when no minimum is set, for a credit note, or for an invoice with no lines.
+     * The minimum charge: what the subtotal less the discount plus the surcharge falls short of the client's own
+     * minimum charge (in its currency), or else the workspace's minimum charge, converted from US dollars at the
+     * issue date's rate and rounded down to the step. Nothing when no minimum is set (or the client's is 0), for a
+     * credit note, or for an invoice with no lines.
      */
     public BigDecimal minimumCharge() {
-        if (minimumChargeUsd == null || isCreditNote() || lines.isEmpty()) {
+        if ((clientMinimumCharge == null && minimumChargeUsd == null) || isCreditNote() || lines.isEmpty()) {
             return zero();
         }
-        BigDecimal minimum = currency().divideDownToStep(new BigDecimal(minimumChargeUsd.trim()), usdPerOn(issueDate));
+        BigDecimal minimum = clientMinimumCharge != null ? currency().divideDownToStep(clientMinimumCharge, BigDecimal.ONE)
+                : currency().divideDownToStep(new BigDecimal(minimumChargeUsd.trim()), usdPerOn(issueDate));
         return minimum.subtract(discounted().add(surcharge())).max(zero());
     }
 

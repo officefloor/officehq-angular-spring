@@ -96,6 +96,13 @@ public class Client {
     @Column(name = "tax_number")
     private String taxNumber;
 
+    /**
+     * The client's own minimum charge, in its currency (no conversion), charged instead of the
+     * workspace's on its invoices; null for the workspace's, 0 for never charged a minimum.
+     */
+    @Column(name = "minimum_charge")
+    private BigDecimal minimumCharge;
+
     /** The client's rate card: its price, single or tiered, per unit type (hour, day, ...); empty for none. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "client_rate", joinColumns = @JoinColumn(name = "client_id"))
@@ -113,7 +120,7 @@ public class Client {
 
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
-            Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct) {
+            Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge) {
         this.name = name;
         this.email = email;
         this.termsDays = termsDays;
@@ -129,6 +136,7 @@ public class Client {
         this.region = region;
         this.taxNumber = taxNumber;
         this.withholdingPct = withholdingPct == null ? BigDecimal.ZERO : withholdingPct;
+        this.minimumCharge = minimumCharge;
     }
 
     public Long getId() {
@@ -177,6 +185,10 @@ public class Client {
 
     public BigDecimal getWithholdingPct() {
         return withholdingPct;
+    }
+
+    public BigDecimal getMinimumCharge() {
+        return minimumCharge;
     }
 
     public int getGraceDays() {

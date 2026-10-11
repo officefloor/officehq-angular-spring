@@ -26,6 +26,9 @@ export interface Client {
   // The percentage (0 to 100) of each invoice's amount before tax the client withholds for its tax
   // office; 0 is none. The client never pays it.
   withholdingPct: number;
+  // The client's own minimum charge, in its currency (no conversion), charged on its invoices instead
+  // of the workspace's; null for the workspace's, 0 for never charged a minimum.
+  minimumCharge: number | null;
   // Days (0 to 30, a week as standard) past its due date an invoice or instalment is given before it
   // is overdue, earns late interest and is charged the late fee.
   graceDays: number;

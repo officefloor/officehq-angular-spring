@@ -32,12 +32,12 @@ public class ClientService {
     @Transactional
     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays,
-            BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct) {
+            BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge) {
         String address = email.trim();
         if (clients.existsByEmailIgnoreCase(address)) {
             throw new ClientRejectedException("Another client already has the email " + address + ".");
         }
         return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, pricesIncludeTax, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays, interestRate,
-                region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber), withholdingPct));
+                region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber), withholdingPct, minimumCharge));
     }
 }

@@ -151,6 +151,18 @@ function validTaxNumber(taxNumber: string): boolean {
           step="0.01"
           formControlName="withholdingPct"
         />
+        <label for="client-minimum-charge"
+          >Minimum charge in the client's currency (optional, the workspace's if left out, 0 for none)</label
+        >
+        <input
+          id="client-minimum-charge"
+          data-testid="client-form-minimum-charge"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          step="0.01"
+          formControlName="minimumCharge"
+        />
         <label for="client-grace">Grace period in days, 0 to 30 (optional, a week if left out)</label>
         <input
           id="client-grace"
@@ -287,6 +299,7 @@ export class Clients {
     discountPct: new FormControl<number | null>(null),
     retentionPct: new FormControl<number | null>(null),
     withholdingPct: new FormControl<number | null>(null),
+    minimumCharge: new FormControl<number | null>(null),
     graceDays: new FormControl<number | null>(null),
     interestRate: new FormControl<number | null>(null),
     region: new FormControl('', { nonNullable: true }),
@@ -325,6 +338,8 @@ export class Clients {
     const retentionPct = retention === null || (retention as unknown) === '' ? null : Number(retention);
     const withholding = this.form.controls.withholdingPct.value;
     const withholdingPct = withholding === null || (withholding as unknown) === '' ? null : Number(withholding);
+    const minimum = this.form.controls.minimumCharge.value;
+    const minimumCharge = minimum === null || (minimum as unknown) === '' ? null : Number(minimum);
     const grace = this.form.controls.graceDays.value;
     const graceDays = grace === null || (grace as unknown) === '' ? null : Number(grace);
     const interest = this.form.controls.interestRate.value;
@@ -345,6 +360,7 @@ export class Clients {
       discountPct,
       retentionPct,
       withholdingPct,
+      minimumCharge,
       graceDays,
       interestRate,
       region,
@@ -362,6 +378,7 @@ export class Clients {
       discountPct,
       retentionPct,
       withholdingPct,
+      minimumCharge,
       graceDays,
       interestRate,
       earlyPayPct,
@@ -387,6 +404,7 @@ export class Clients {
       earlyPayDays,
       retentionPct: retentionPct ?? 0,
       withholdingPct: withholdingPct ?? 0,
+      minimumCharge,
       graceDays: graceDays ?? STANDARD_GRACE_DAYS,
       interestRate,
       region: region || null,
@@ -449,6 +467,7 @@ export class Clients {
     discountPct: number | null,
     retentionPct: number | null,
     withholdingPct: number | null,
+    minimumCharge: number | null,
     graceDays: number | null,
     interestRate: number | null,
     earlyPayPct: number | null,
@@ -488,6 +507,13 @@ export class Clients {
         problems.push('The withholding must be from 0 to 100 percent.');
       } else if (Math.abs(Math.round(withholdingPct * 100) - withholdingPct * 100) > 1e-6) {
         problems.push('The withholding can have at most two decimals.');
+      }
+    }
+    if (minimumCharge !== null) {
+      if (!(Number.isFinite(minimumCharge) && minimumCharge >= 0)) {
+        problems.push('The minimum charge cannot be negative.');
+      } else if (Math.abs(Math.round(minimumCharge * 100) - minimumCharge * 100) > 1e-6) {
+        problems.push('The minimum charge can have at most two decimals.');
       }
     }
     if (graceDays !== null && !(Number.isInteger(graceDays) && graceDays >= 0 && graceDays <= 30)) {
