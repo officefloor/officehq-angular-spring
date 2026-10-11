@@ -1,0 +1,316 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 5686de9..d7a70da 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -275,7 +275,7 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="line-amount">{{ amount(l.amount) }}</td>
+                 <td data-testid="line-discount-share">{{ amount(l.discountShare) }}</td>
+                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
+-                <td data-testid="line-tax-rate">{{ (inv.pricesIncludeTax ? inv.taxRate : (l.taxRate ?? inv.taxRate)) + '%' }}</td>
++                <td data-testid="line-tax-rate">{{ (l.taxRate ?? inv.taxRate) + '%' }}</td>
+                 <td data-testid="line-tax">{{ amount(l.tax) }}</td>
+                 <td data-testid="line-net">{{ amount(l.net) }}</td>
+                 <td>
+@@ -358,7 +358,7 @@ function problemWith(line: NewLine): string {
+             <tr>
+               <th scope="row" colspan="10">
+                 @if (inv.pricesIncludeTax) {
+-                  Tax included (taxable lines at {{ inv.taxRate }}%)
++                  Tax included (lines at their own rate, otherwise {{ inv.taxRate }}%)
+                 } @else {
+                   Tax (lines at their own rate, otherwise {{ inv.taxRate }}%)
+                 }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 11794bb..eb54bf2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -24,6 +24,8 @@ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.Objects;
+ import java.util.List;
++import java.util.Map;
++import java.util.TreeMap;
+ import net.officefloor.hq.app.clients.Currency;
+ import net.officefloor.hq.app.clients.TaxNumber;
+ 
+@@ -1924,31 +1926,75 @@ public class Invoice {
+      */
+     private List<BigDecimal> exactLineTaxes(BigDecimal taxRate) {
+         List<BigDecimal> shares = discountShares();
+-        BigDecimal clientRate = clientTaxExempt ? BigDecimal.ZERO : clientTaxRate(taxRate);
+-        List<BigDecimal> taxes = new ArrayList<>(lines.size());
++        List<BigDecimal> rates = lineRates(taxRate);
++        List<BigDecimal> taxes = new ArrayList<>(lines.size() + 1);
+         for (int i = 0; i < lines.size(); i++) {
+-            InvoiceLine line = lines.get(i);
+-            taxes.add(isReverseCharge() || line.isTaxExempt() ? BigDecimal.ZERO
+-                    : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(clientRate)).movePointLeft(2));
++            taxes.add(lines.get(i).amount(scale()).subtract(shares.get(i)).multiply(rates.get(i)).movePointLeft(2));
+         }
+-        taxes.add(isReverseCharge() ? BigDecimal.ZERO : surcharge().add(minimumCharge()).multiply(clientRate).movePointLeft(2));
++        taxes.add(surcharge().add(minimumCharge()).multiply(rates.get(lines.size())).movePointLeft(2));
+         return taxes;
+     }
+ 
+     /**
+-     * Each line's share of the invoice tax, in the order of the lines. The tax's cents are split in
+-     * proportion to the lines' exact taxes as the discount is split: each line first gets the whole
+-     * cents of its exact share (rounded down), then the cents left over go one each to the lines with
+-     * the largest leftover fractions; between equal fractions the cent goes to the line with the
+-     * larger exact tax, and between equal exact taxes too to the lower line id. The line taxes add up
+-     * to the invoice tax, less the share of the surcharge and minimum charge, which is split as one more line after them.
++     * The rate (a percentage) each line is taxed at, in the order of the lines, then the rate of the
++     * surcharge and minimum charge: the line's own rate, otherwise the client's (zero for a tax-exempt
++     * client); zero for a tax-exempt line and on every line of a reverse-charged invoice.
++     */
++    private List<BigDecimal> lineRates(BigDecimal taxRate) {
++        BigDecimal clientRate = clientTaxExempt ? BigDecimal.ZERO : clientTaxRate(taxRate);
++        List<BigDecimal> rates = new ArrayList<>(lines.size() + 1);
++        for (InvoiceLine line : lines) {
++            rates.add(isReverseCharge() || line.isTaxExempt() ? BigDecimal.ZERO : line.taxRate(clientRate));
++        }
++        rates.add(isReverseCharge() ? BigDecimal.ZERO : clientRate);
++        return rates;
++    }
++
++    /**
++     * The lines (by index, the surcharge and minimum charge last) grouped by the rate they are taxed at,
++     * the lower rate first.
++     */
++    private Map<BigDecimal, List<Integer>> byRate(BigDecimal taxRate) {
++        List<BigDecimal> rates = lineRates(taxRate);
++        Map<BigDecimal, List<Integer>> groups = new TreeMap<>();
++        for (int i = 0; i < rates.size(); i++) {
++            groups.computeIfAbsent(rates.get(i), r -> new ArrayList<>()).add(i);
++        }
++        return groups;
++    }
++
++    /**
++     * Each line's share of the invoice tax, in the order of the lines. The tax is worked out once for
++     * each rate, and each rate's tax is split over the lines at that rate in proportion to their exact
++     * taxes as the discount is split: each line first gets the whole cents of its exact share (rounded
++     * down), then the cents left over go one each to the lines with the largest leftover fractions;
++     * between equal fractions the cent goes to the line with the larger exact tax, and between equal
++     * exact taxes too to the lower line id. The line taxes add up to the invoice tax, less the share of
++     * the surcharge and minimum charge, which is split as one more line at the client's rate.
+      */
+     public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
+         if (clientPricesIncludeTax) {
+             return inclusiveLineTaxes(taxRate);
+         }
+         List<BigDecimal> exact = exactLineTaxes(taxRate);
+-        int n = exact.size();
++        BigInteger[] shares = new BigInteger[exact.size()];
++        for (List<Integer> group : byRate(taxRate).values()) {
++            share(exact, group, shares);
++        }
++        List<BigDecimal> result = new ArrayList<>(lines.size());
++        for (int i = 0; i < lines.size(); i++) {
++            result.add(new BigDecimal(shares[i], scale()));
++        }
++        return result;
++    }
++
++    /** Splits the rounded tax of one rate's lines (by index) over them, into the given shares in cents. */
++    private void share(List<BigDecimal> allExact, List<Integer> group, BigInteger[] out) {
++        int n = group.size();
++        List<BigDecimal> exact = new ArrayList<>(n);
++        for (int i : group) {
++            exact.add(allExact.get(i));
++        }
+         BigInteger taxCents = roundTax(exact).movePointRight(scale()).toBigIntegerExact();
+         int common = exact.stream().mapToInt(BigDecimal::scale).max().orElse(0);
+         BigInteger[] weights = new BigInteger[n];
+@@ -1957,7 +2003,8 @@ public class Invoice {
+             weights[i] = exact.get(i).setScale(common).unscaledValue();
+             total = total.add(weights[i]);
+         }
+-        if (total.signum() < 0) {
++        boolean flipped = total.signum() < 0;
++        if (flipped) {
+             // Split the magnitude, so the leftover cents are always added, then flip the shares back.
+             taxCents = taxCents.negate();
+             total = total.negate();
+@@ -1991,18 +2038,16 @@ public class Invoice {
+         }
+         order.sort(Comparator.<Integer, BigInteger>comparing(i -> leftovers[i]).reversed()
+                 .thenComparing(Comparator.<Integer, BigInteger>comparing(i -> weights[i]).reversed())
+-                .thenComparing(i -> i < lines.size() ? lines.get(i).getId() : null, Comparator.nullsLast(Comparator.naturalOrder())));
++                .thenComparing(i -> group.get(i) < lines.size() ? lines.get(group.get(i)).getId() : null,
++                        Comparator.nullsLast(Comparator.naturalOrder())));
+         int left = taxCents.subtract(given).intValueExact();
+         for (int k = 0; k < left; k++) {
+             int i = order.get(k);
+             shares[i] = shares[i].add(BigInteger.ONE);
+         }
+-        boolean flipped = exact.stream().reduce(BigDecimal.ZERO, BigDecimal::add).signum() < 0;
+-        List<BigDecimal> result = new ArrayList<>(n);
+-        for (int i = 0; i < lines.size(); i++) {
+-            result.add(new BigDecimal(flipped ? shares[i].negate() : shares[i], scale()));
++        for (int i = 0; i < n; i++) {
++            out[group.get(i)] = flipped ? shares[i].negate() : shares[i];
+         }
+-        return result;
+     }
+ 
+     /** The sum of the exact line taxes, rounded once, half up to the cent. */
+@@ -2011,11 +2056,20 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The tax charged at the given rate (a percentage): every line's exact tax added up and rounded
+-     * once, half up to the cent. It is what the line taxes add up to.
++     * The tax charged at the given rate (a percentage): for each rate, the exact taxes of the lines
++     * (and the surcharge and minimum charge) at it added up and rounded half up to the cent; the
++     * invoice tax is the total over the rates. It is what the line taxes add up to.
+      */
+     public BigDecimal tax(BigDecimal taxRate) {
+-        return clientPricesIncludeTax ? inclusiveTax(taxRate) : roundTax(exactLineTaxes(taxRate));
++        if (clientPricesIncludeTax) {
++            return inclusiveTax(taxRate);
++        }
++        List<BigDecimal> exact = exactLineTaxes(taxRate);
++        BigDecimal tax = zero();
++        for (List<Integer> group : byRate(taxRate).values()) {
++            tax = tax.add(roundTax(group.stream().map(exact::get).toList()));
++        }
++        return tax;
+     }
+ 
+     /** Whether the invoice's client is quoted prices that include tax. */
+@@ -2024,74 +2078,85 @@ public class Invoice {
+     }
+ 
+     /**
+-     * Whether the line at the given index carries tax: not when it is tax exempt, nor on any line of a
+-     * tax-exempt client or a reverse-charged invoice.
++     * The tax-inclusive amount of each line after its discount share, in the order of the lines, then
++     * the surcharge and minimum charge.
+      */
+-    private boolean isTaxed(int i) {
+-        return !clientTaxExempt && !isReverseCharge() && !lines.get(i).isTaxExempt();
++    private List<BigDecimal> inclusiveAmounts() {
++        List<BigDecimal> shares = discountShares();
++        List<BigDecimal> amounts = new ArrayList<>(lines.size() + 1);
++        for (int i = 0; i < lines.size(); i++) {
++            amounts.add(lines.get(i).amount(scale()).subtract(shares.get(i)));
++        }
++        amounts.add(surcharge().add(minimumCharge()));
++        return amounts;
+     }
+ 
+-    /** The divisor that takes tax at the client's rate out of a tax-inclusive amount: 1 plus the rate. */
+-    private BigDecimal inclusiveDivisor(BigDecimal taxRate) {
+-        return BigDecimal.ONE.add(clientTaxRate(taxRate).movePointLeft(2));
++    /** The tax inside a tax-inclusive amount at the given rate: the amount less it divided by 1 plus the rate, rounded half up. */
++    private BigDecimal taxInside(BigDecimal amount, BigDecimal rate) {
++        return amount.subtract(amount.divide(BigDecimal.ONE.add(rate.movePointLeft(2)), scale(), RoundingMode.HALF_UP));
++    }
++
++    /** The tax inside the total of one rate's tax-inclusive amounts (by index). */
++    private BigDecimal inclusiveRateTax(List<BigDecimal> amounts, BigDecimal rate, List<Integer> group) {
++        BigDecimal taxed = zero();
++        for (int i : group) {
++            taxed = taxed.add(amounts.get(i));
++        }
++        return taxInside(taxed, rate);
+     }
+ 
+     /**
+-     * The tax inside tax-inclusive prices: the total of the taxed lines' amounts after their discount
+-     * shares, the surcharge and the minimum charge, less that total divided by 1 plus the client's rate, rounded once,
+-     * half up to the cent.
++     * The tax inside tax-inclusive prices: for each rate (a line's own, otherwise the client's), the tax
++     * inside the total of the lines' amounts after their discount shares at that rate (with the
++     * surcharge and the minimum charge at the client's rate), rounded half up to the cent; the invoice
++     * tax is the total over the rates.
+      */
+     private BigDecimal inclusiveTax(BigDecimal taxRate) {
+-        List<BigDecimal> shares = discountShares();
+-        BigDecimal taxed = zero();
+-        for (int i = 0; i < lines.size(); i++) {
+-            if (isTaxed(i)) {
+-                taxed = taxed.add(lines.get(i).amount(scale()).subtract(shares.get(i)));
+-            }
+-        }
+-        if (!clientTaxExempt && !isReverseCharge()) {
+-            taxed = taxed.add(surcharge()).add(minimumCharge());
++        List<BigDecimal> amounts = inclusiveAmounts();
++        BigDecimal tax = zero();
++        for (Map.Entry<BigDecimal, List<Integer>> group : byRate(taxRate).entrySet()) {
++            tax = tax.add(inclusiveRateTax(amounts, group.getKey(), group.getValue()));
+         }
+-        return taxed.subtract(taxed.divide(inclusiveDivisor(taxRate), scale(), RoundingMode.HALF_UP));
++        return tax;
+     }
+ 
+     /**
+-     * Each line's tax inside tax-inclusive prices, in the order of the lines: the line's amount after
+-     * its discount share, less that divided by 1 plus the client's rate rounded half up to the cent;
+-     * exempt lines have none. The cents by which they miss the invoice tax go (or come off) one at a
+-     * time to the taxed lines with the largest amounts, the earlier line on a tie.
++     * Each line's tax inside tax-inclusive prices, in the order of the lines: the tax inside the line's
++     * amount after its discount share at the line's rate; exempt lines have none. For each rate, the
++     * cents by which its lines miss the tax inside their total go (or come off) one at a time to its
++     * lines with the largest amounts, the earlier line on a tie.
+      */
+     private List<BigDecimal> inclusiveLineTaxes(BigDecimal taxRate) {
+-        List<BigDecimal> shares = discountShares();
+-        BigDecimal divisor = inclusiveDivisor(taxRate);
++        List<BigDecimal> amounts = inclusiveAmounts();
+         int n = lines.size();
+         List<BigDecimal> taxes = new ArrayList<>(n);
+-        List<BigDecimal> amounts = new ArrayList<>(n);
+-        List<Integer> order = new ArrayList<>();
+-        BigDecimal given = zero();
+         for (int i = 0; i < n; i++) {
+-            BigDecimal amount = lines.get(i).amount(scale()).subtract(shares.get(i));
+-            amounts.add(amount);
+-            BigDecimal tax = zero();
+-            if (isTaxed(i)) {
+-                tax = amount.subtract(amount.divide(divisor, scale(), RoundingMode.HALF_UP));
+-                order.add(i);
+-            }
+-            taxes.add(tax);
+-            given = given.add(tax);
++            taxes.add(zero());
+         }
+-        if (!clientTaxExempt && !isReverseCharge()) {
+-            // The surcharge and minimum charge keep their own tax, which is not a line's.
+-            BigDecimal minimum = surcharge().add(minimumCharge());
+-            given = given.add(minimum.subtract(minimum.divide(divisor, scale(), RoundingMode.HALF_UP)));
+-        }
+-        order.sort(Comparator.<Integer, BigDecimal>comparing(amounts::get).reversed().thenComparing(i -> i));
+         BigDecimal cent = BigDecimal.ONE.movePointLeft(scale());
+-        int missing = inclusiveTax(taxRate).subtract(given).movePointRight(scale()).intValueExact();
+-        BigDecimal step = missing < 0 ? cent.negate() : cent;
+-        for (int k = 0; k < Math.abs(missing) && !order.isEmpty(); k++) {
+-            int i = order.get(k % order.size());
+-            taxes.set(i, taxes.get(i).add(step));
++        for (Map.Entry<BigDecimal, List<Integer>> group : byRate(taxRate).entrySet()) {
++            BigDecimal rate = group.getKey();
++            if (rate.signum() == 0) {
++                continue;
++            }
++            BigDecimal given = zero();
++            List<Integer> order = new ArrayList<>();
++            for (int i : group.getValue()) {
++                BigDecimal tax = taxInside(amounts.get(i), rate);
++                // The surcharge and minimum charge keep their own tax, which is not a line's.
++                if (i < n) {
++                    taxes.set(i, tax);
++                    order.add(i);
++                }
++                given = given.add(tax);
++            }
++            order.sort(Comparator.<Integer, BigDecimal>comparing(amounts::get).reversed().thenComparing(i -> i));
++            int missing = inclusiveRateTax(amounts, rate, group.getValue()).subtract(given).movePointRight(scale()).intValueExact();
++            BigDecimal step = missing < 0 ? cent.negate() : cent;
++            for (int k = 0; k < Math.abs(missing) && !order.isEmpty(); k++) {
++                int i = order.get(k % order.size());
++                taxes.set(i, taxes.get(i).add(step));
++            }
+         }
+         return taxes;
+     }
