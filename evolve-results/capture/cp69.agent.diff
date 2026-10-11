@@ -1,0 +1,80 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 2bf55e7..5789f83 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -160,8 +160,9 @@ function problemWith(line: NewLine): string {
+ // The panel shows the invoice's RF payment reference; a payment may quote one, which must pass the
+ // ISO 11649 check and be this invoice's. When parts of a payment are filled in on the list, the
+ // payment is spread over those invoices instead; each payment shows how much of it went here.
+-// A sent invoice with no payments can be voided; the server refuses to void a draft or one with
+-// payments, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
++// A sent invoice paid only by credit used when it was sent can be voided (the credit goes back to the
++// client); the server refuses to void a draft or one with a recorded
++// payment, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
+ // cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
+ // be duplicated into a new draft for the same client, which then opens. A draft's due date can be set
+ // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index a97d2f5..e392c2e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -658,8 +658,10 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Voids a sent invoice with no payments, and records it in the audit; empty if no such invoice. A
+-     * draft, an invoice already void, or one with any payment is refused.
++     * Voids a sent invoice paid nothing but credit used on it when it was sent, and records it in the
++     * audit; that credit goes back on the client's account, unused again, each payment's part recorded
++     * in the audit. Empty if no such invoice. A draft, an invoice already void, or one with a payment
++     * recorded against it is refused.
+      */
+     @Transactional
+     public Optional<Invoice> voidInvoice(Long invoiceId) {
+@@ -677,11 +679,18 @@ public class InvoiceService {
+             if (invoice.hasCreditNotesIssued()) {
+                 throw new InvoiceRejectedException("An invoice with an issued credit note cannot be voided.");
+             }
+-            if (!payments.findForInvoice(invoice.getId()).isEmpty()) {
+-                throw new InvoiceRejectedException("An invoice with payments cannot be voided.");
++            List<Payment> paidBy = payments.findForInvoice(invoice.getId());
++            if (paidBy.stream().anyMatch(payment -> !payment.onlyCreditUsedOn(invoice.getId()))) {
++                throw new InvoiceRejectedException("An invoice with a payment recorded against it cannot be voided.");
+             }
+             invoice.markVoid();
+             invoices.saveAndFlush(invoice);
++            for (Payment payment : paidBy) {
++                BigDecimal returned = payment.returnCredit(invoice.getId());
++                payments.saveAndFlush(payment);
++                audit.record("CREDIT_RETURNED payment=" + payment.getId() + " amount="
++                        + returned.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
++            }
+             audit.record("INVOICE_VOIDED id=" + invoice.getId() + " number=" + invoice.number());
+         });
+         return found;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index 6aad55c..dec373d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -205,6 +205,21 @@ public class Payment {
+         allocations.add(new PaymentAllocation(invoiceId, part, on));
+     }
+ 
++    /**
++     * Whether every part of this payment that goes to the invoice is credit used on it (applied on its
++     * own day), none of it recorded against it.
++     */
++    public boolean onlyCreditUsedOn(Long invoiceId) {
++        return allocations.stream().filter(a -> a.getInvoiceId().equals(invoiceId)).allMatch(a -> a.getDate() != null);
++    }
++
++    /** Takes back every part of this payment applied to the invoice, as unused credit again; how much that was. */
++    public BigDecimal returnCredit(Long invoiceId) {
++        BigDecimal returned = amountTo(invoiceId);
++        allocations.removeIf(a -> a.getInvoiceId().equals(invoiceId));
++        return returned;
++    }
++
+     /** How much of this payment goes to the invoice. */
+     public BigDecimal amountTo(Long invoiceId) {
+         return allocations.stream().filter(a -> a.getInvoiceId().equals(invoiceId))
