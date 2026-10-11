@@ -1,0 +1,346 @@
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 468480a..ac92a6f 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -821,8 +821,8 @@ public class TestSupportController {
+ 
+     /**
+      * A seeded line's unit price and the tiers it is priced in (null for a single price): the price
+-     * given, or else its invoice's client's rate for the line's unit type in force on the invoice's issue
+-     * date — a single price, or tiers whose first band's price is kept as the unit price — or else the price
++     * given, or else its invoice's client's rate for the line's unit type in force on the day the invoice is
++     * priced as of (see {@link #ratesDate}; its issue date when nothing is in force then) — a single price, or tiers whose first band's price is kept as the unit price — or else the price
+      * list's then; refused when neither is there — and whether the line is priced from the rates, which a
+      * draft's line follows.
+      */
+@@ -831,9 +831,22 @@ public class TestSupportController {
+             return new Object[] {cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"), null, false, false};
+         }
+         Map<String, Object> invoice = jdbc.queryForMap("SELECT i.status, i.issue_date, c.currency, c.rate_discount_pct FROM invoice i JOIN client c ON c.id = i.client_id WHERE i.id = ?", invoiceId);
++        LocalDate issued = invoiceDate(invoice.get("ISSUE_DATE"));
++        LocalDate on = ratesDate(invoiceId);
++        if (!on.equals(issued)) {
++            try {
++                return linePrice(invoiceId, line, invoice, on);
++            } catch (ResponseStatusException noRateToday) {
++                // nothing in force today: priced as of its issue date instead
++            }
++        }
++        return linePrice(invoiceId, line, invoice, issued);
++    }
++
++    /** A seeded line's price as {@link #linePrice(Long, Map)}, from the rates in force on the date. */
++    private Object[] linePrice(Long invoiceId, Map<String, Object> line, Map<String, Object> invoice, LocalDate on) {
+         Currency currency = Currency.orUsd((String) invoice.get("CURRENCY"));
+         BigDecimal discountPct = (BigDecimal) invoice.get("RATE_DISCOUNT_PCT");
+-        LocalDate on = invoiceDate(invoice.get("ISSUE_DATE"));
+         // A draft's line priced from the rates follows them; a sent invoice's has its price fixed.
+         boolean draft = "DRAFT".equals(invoice.get("STATUS"));
+         List<Map<String, Object>> rate = jdbc.queryForList("SELECT r.unit_price, r.tiers FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
+@@ -857,6 +870,16 @@ public class TestSupportController {
+         return new Object[] {RateDiscount.price((BigDecimal) rate.get(0).get("UNIT_PRICE"), discountPct, currency), null, draft, true};
+     }
+ 
++    /**
++     * The day a seeded invoice's lines are priced as of: today for a draft (not a credit note), which will be
++     * dated today when sent; otherwise its issue date, or today when it has none.
++     */
++    private LocalDate ratesDate(Long invoiceId) {
++        Map<String, Object> invoice = jdbc.queryForMap("SELECT status, credit_of, issue_date FROM invoice WHERE id = ?", invoiceId);
++        return "DRAFT".equals(invoice.get("STATUS")) && invoice.get("CREDIT_OF") == null ? today.date()
++                : invoiceDate(invoice.get("ISSUE_DATE"));
++    }
++
+     /** The day an invoice's rates are taken on: its issue date, or today when it has none. */
+     private LocalDate invoiceDate(Object issueDate) {
+         return issueDate == null ? today.date() : ((java.sql.Date) issueDate).toLocalDate();
+@@ -864,13 +887,20 @@ public class TestSupportController {
+ 
+     /**
+      * A seeded line's billing increment or minimum units: its invoice's client's given column for the line's unit type
+-     * in the entry in force on the invoice's issue date; null for none.
++     * in the entry in force on the day the invoice is priced as of (see {@link #ratesDate}), or else on its issue date;
++     * null for none.
+      */
+     private BigDecimal lineRate(Long invoiceId, Map<String, Object> line, String column) {
+         if (line.get("unitType") == null) {
+             return null;
+         }
+-        LocalDate on = invoiceDate(jdbc.queryForMap("SELECT issue_date FROM invoice WHERE id = ?", invoiceId).get("ISSUE_DATE"));
++        LocalDate issued = invoiceDate(jdbc.queryForMap("SELECT issue_date FROM invoice WHERE id = ?", invoiceId).get("ISSUE_DATE"));
++        LocalDate on = ratesDate(invoiceId);
++        if (!on.equals(issued) && jdbc.queryForObject("SELECT COUNT(*) FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
++                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?) AND (r.effective_from IS NULL OR r.effective_from <= ?)",
++                Integer.class, invoiceId, line.get("unitType").toString().trim(), on) == 0) {
++            on = issued;
++        }
+         List<BigDecimal> found = jdbc.queryForList("SELECT r." + column + " FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
+                 + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?) AND (r.effective_from IS NULL OR r.effective_from <= ?) "
+                 + "ORDER BY r.effective_from DESC NULLS LAST LIMIT 1", BigDecimal.class, invoiceId,
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index aedf331..be67105 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -404,6 +404,13 @@ public class Invoice {
+     @Transient
+     private BigDecimal lateInterest = BigDecimal.ZERO;
+ 
++    /**
++     * Today, as the workspace has it (see {@link #priceAsOf}); not stored. A draft is priced and taxed as of
++     * this day, since it will be dated today when sent. Null until it is set, when the issue date is used.
++     */
++    @Transient
++    private LocalDate pricedToday;
++
+     /** The part of {@link #lateInterest} charged on released retention (see {@link #accrueRetentionInterest}); not stored. */
+     @Transient
+     private BigDecimal retentionInterest = BigDecimal.ZERO;
+@@ -484,6 +491,24 @@ public class Invoice {
+         return note;
+     }
+ 
++    /** Tells the invoice what today is, the day a draft is priced and taxed as of (see {@link #pricingDate}). */
++    public void priceAsOf(LocalDate today) {
++        this.pricedToday = today;
++    }
++
++    /**
++     * The day the invoice's prices, exchange rates, monthly volume and tax are taken as of: today for a draft
++     * (not a credit note), since it will be dated today when sent; otherwise its issue date.
++     */
++    public LocalDate pricingDate() {
++        return isDraft() && !isCreditNote() && pricedToday != null ? pricedToday : issueDate;
++    }
++
++    /** The day the invoice is taxed as of: a credit note's original's issue date, otherwise {@link #pricingDate}. */
++    private LocalDate taxDate() {
++        return creditOf != null ? creditedIssueDate : pricingDate();
++    }
++
+     /** The currency the invoice is in: its client's. */
+     public Currency currency() {
+         return Currency.orUsd(clientCurrency);
+@@ -1350,7 +1375,7 @@ public class Invoice {
+     /**
+      * Spreads the invoice over the number of monthly instalments at the annual rate, after a down
+      * payment of the percentage of the grand total; all have already been checked. Charges the
+-     * workspace's plan fee: its US dollars converted at the issue date's rate, rounded down to the step.
++     * workspace's plan fee: its US dollars converted at the rate of the pricing date (see {@link #pricingDate}), rounded down to the step.
+      */
+     public void setPlan(int instalments, BigDecimal instalmentRate, BigDecimal planDownPct) {
+         this.instalments = instalments;
+@@ -1358,7 +1383,7 @@ public class Invoice {
+         this.skippedInstalment = null;
+         this.planDownPct = planDownPct;
+         this.planFee = planFeeUsd == null ? zero()
+-                : currency().divideDownToStep(new BigDecimal(planFeeUsd.trim()), usdPerOn(issueDate));
++                : currency().divideDownToStep(new BigDecimal(planFeeUsd.trim()), usdPerOn(pricingDate()));
+     }
+ 
+     /**
+@@ -1846,12 +1871,13 @@ public class Invoice {
+     /**
+      * How many units of the tiered unit type the client was already billed this calendar month before this
+      * invoice: the tiered lines of that unit type on the client's other sent invoices (not credit notes)
+-     * issued earlier in the same month as this one, or on the same date with a lower id. Drafts, void
++     * issued earlier in the same month as this one is priced in (see {@link #pricingDate}), or on the same date with a lower id. Drafts, void
+      * invoices and credit notes don't count; a credit note itself carries on from none.
+      */
+     private BigDecimal monthUnitsBefore(String unitType) {
+         BigDecimal before = BigDecimal.ZERO;
+-        if (clientTieredUnits == null || unitType == null || issueDate == null || isCreditNote()) {
++        LocalDate on = pricingDate();
++        if (clientTieredUnits == null || unitType == null || on == null || isCreditNote()) {
+             return before;
+         }
+         for (String entry : clientTieredUnits.split(String.valueOf((char) 30))) {
+@@ -1861,9 +1887,9 @@ public class Invoice {
+             }
+             Long otherId = Long.valueOf(parts[0]);
+             LocalDate issued = LocalDate.parse(parts[1]);
+-            boolean sameMonth = issued.getYear() == issueDate.getYear() && issued.getMonth() == issueDate.getMonth();
+-            boolean earlier = issued.isBefore(issueDate)
+-                    || (issued.isEqual(issueDate) && (id == null || otherId < id));
++            boolean sameMonth = issued.getYear() == on.getYear() && issued.getMonth() == on.getMonth();
++            boolean earlier = issued.isBefore(on)
++                    || (issued.isEqual(on) && (id == null || otherId < id));
+             if (sameMonth && earlier) {
+                 before = before.add(new BigDecimal(parts[3]));
+             }
+@@ -1964,7 +1990,7 @@ public class Invoice {
+ 
+     /**
+      * The volume discount: the percentage of the highest of the workspace's volume discount thresholds
+-     * the subtotal is over (each converted from US dollars at the issue date's rate and rounded down
++     * the subtotal is over (each converted from US dollars at the pricing date's rate (see {@link #pricingDate}) and rounded down
+      * to the step) of the discountable subtotal (see {@link #discountableSubtotal()}), rounded down to the cent. Nothing when it passes none, or for a
+      * credit note.
+      */
+@@ -1977,7 +2003,7 @@ public class Invoice {
+         BigDecimal highest = null;
+         for (String entry : volumeDiscounts.split(",")) {
+             String[] parts = entry.split("=");
+-            BigDecimal over = currency().divideDownToStep(new BigDecimal(parts[0].trim()), usdPerOn(issueDate));
++            BigDecimal over = currency().divideDownToStep(new BigDecimal(parts[0].trim()), usdPerOn(pricingDate()));
+             if (subtotal.compareTo(over) > 0 && (highest == null || over.compareTo(highest) >= 0)) {
+                 highest = over;
+                 pct = new BigDecimal(parts[1].trim());
+@@ -2042,13 +2068,13 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The rate lines without their own are taxed at: the client's regional rate in force on the issue
+-     * date (a credit note's original's), that is the latest change on or before it, otherwise the
++     * The rate lines without their own are taxed at: the client's regional rate in force on the day it is taxed as of
++     * (see {@link #taxDate}: today for a draft, a credit note's original's issue date), that is the latest change on or before it, otherwise the
+      * region's own rate; or the given workspace rate when the region has neither.
+      */
+     public BigDecimal clientTaxRate(BigDecimal workspaceRate) {
+         BigDecimal rate = regionTaxRate == null ? null : new BigDecimal(regionTaxRate.trim());
+-        LocalDate on = creditOf != null ? creditedIssueDate : issueDate;
++        LocalDate on = taxDate();
+         if (regionRateChanges != null && on != null) {
+             for (String entry : regionRateChanges.split(",")) {
+                 String[] parts = entry.split("=");
+@@ -2080,14 +2106,14 @@ public class Invoice {
+     }
+ 
+     /**
+-     * Whether the client's tax exemption covers the invoice: the client is exempt and the invoice (a credit
+-     * note's original) was issued on or before the exemption's end date, when it has one.
++     * Whether the client's tax exemption covers the invoice: the client is exempt and the day the invoice is
++     * taxed as of (see {@link #taxDate}) is on or before the exemption's end date, when it has one.
+      */
+     private boolean isClientExempt() {
+         if (!clientTaxExempt) {
+             return false;
+         }
+-        LocalDate on = creditOf != null ? creditedIssueDate : issueDate;
++        LocalDate on = taxDate();
+         return clientTaxExemptUntil == null || on == null || !on.isAfter(clientTaxExemptUntil);
+     }
+ 
+@@ -2113,7 +2139,7 @@ public class Invoice {
+ 
+     /**
+      * The tax rate of the client's rate card entry for the unit type (matched ignoring case and surrounding
+-     * spaces) in force on the issue date (the latest entry while there is none); null when the unit type has
++     * spaces) in force on the day the invoice is taxed as of (see {@link #taxDate}) (the latest entry while there is none); null when the unit type has
+      * no entry in force or its entry has no tax rate.
+      */
+     private BigDecimal cardTaxRate(String unitType) {
+@@ -2128,7 +2154,7 @@ public class Invoice {
+                 continue;
+             }
+             LocalDate from = parts[1].isBlank() ? LocalDate.MIN : LocalDate.parse(parts[1].trim());
+-            if ((issueDate == null || !from.isAfter(issueDate)) && (latest == null || from.isAfter(latest))) {
++            if ((taxDate() == null || !from.isAfter(taxDate())) && (latest == null || from.isAfter(latest))) {
+                 latest = from;
+                 rate = parts[2];
+             }
+@@ -2372,7 +2398,7 @@ public class Invoice {
+     /**
+      * The minimum charge: what the subtotal less the discount plus the surcharge falls short of the client's own
+      * minimum charge (in its currency), or else the workspace's minimum charge, converted from US dollars at the
+-     * issue date's rate and rounded down to the step. Nothing when no minimum is set (or the client's is 0), for a
++     * pricing date's rate (see {@link #pricingDate}) and rounded down to the step. Nothing when no minimum is set (or the client's is 0), for a
+      * credit note, or for an invoice with no lines.
+      */
+     public BigDecimal minimumCharge() {
+@@ -2380,7 +2406,7 @@ public class Invoice {
+             return zero();
+         }
+         BigDecimal minimum = clientMinimumCharge != null ? currency().divideDownToStep(clientMinimumCharge, BigDecimal.ONE)
+-                : currency().divideDownToStep(new BigDecimal(minimumChargeUsd.trim()), usdPerOn(issueDate));
++                : currency().divideDownToStep(new BigDecimal(minimumChargeUsd.trim()), usdPerOn(pricingDate()));
+         return minimum.subtract(discounted().add(surcharge())).max(zero());
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index d36bd58..a290c44 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -99,7 +99,8 @@ public class InvoiceService {
+ 
+     /**
+      * Works out the late interest each of the invoices has been charged by today (see
+-     * {@link Invoice#accrueLateInterest}).
++     * {@link Invoice#accrueLateInterest}), and prices and taxes each draft as of today (see
++     * {@link Invoice#pricingDate}): its lines priced from the rates follow those in force today.
+      */
+     private List<Invoice> withInterest(List<Invoice> list) {
+         if (list.isEmpty()) {
+@@ -109,7 +110,13 @@ public class InvoiceService {
+         BigDecimal rate = taxRate.percent();
+         BigDecimal annual = lateInterestRate.percent();
+         LocalDate now = today.date();
+-        list.forEach(i -> i.accrueLateInterest(found, rate, annual, now));
++        list.forEach(i -> {
++            i.priceAsOf(now);
++            if (i.isDraft() && !i.isCreditNote()) {
++                repriceWhereRated(i, now);
++            }
++            i.accrueLateInterest(found, rate, annual, now);
++        });
+         return list;
+     }
+ 
+@@ -634,7 +641,7 @@ public class InvoiceService {
+                 if (!invoice.isDraft()) {
+                     continue;
+                 }
+-                if (repriceFromRates(invoice, type, invoice.getIssueDate() == null ? today.date() : invoice.getIssueDate())) {
++                if (repriceFromRates(invoice, type, ratesDate(invoice))) {
+                     invoices.saveAndFlush(invoice);
+                 }
+             }
+@@ -642,6 +649,23 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Reprices the draft's lines priced from the rates at those in force on the date, leaving as it is any line
++     * whose unit type has no rate in force then.
++     */
++    private void repriceWhereRated(Invoice invoice, LocalDate on) {
++        for (InvoiceLine line : invoice.getLines()) {
++            if (line.isCardPriced() && line.getUnitType() != null) {
++                try {
++                    LinePrice price = linePrice(invoice, line.getUnitType(), null, on);
++                    line.reprice(price.unitPrice(), price.tiers(), price.increment(), price.minUnits());
++                } catch (InvoiceRejectedException noRate) {
++                    // no rate in force on the date: the line keeps the price it has
++                }
++            }
++        }
++    }
++
+     /**
+      * Reprices the draft's lines priced from the rates (all of them, or those of the given unit type) at the
+      * rates in force on the date; whether any was.
+@@ -1536,14 +1560,23 @@ public class InvoiceService {
+ 
+     /**
+      * A line's price: the unit price entered, or else the client's rate for the line's unit type in force on the
+-     * invoice's issue date (today while it has none) — a single price, or tiers starting from the first band — or,
++     * day the invoice is priced as of (today for a draft, see {@link #ratesDate}) — a single price, or tiers starting from the first band — or,
+      * when the card has none in force, the workspace price list's in force then, converted into the client's currency
+      * (see {@link PriceList}). Refused when neither is there, and a single price with more decimals than the currency
+      * has. Either way the line is billed in the increment, and at least the minimum units, the client's rate card has
+      * for its unit type then, if any. A price from the rates follows them while the invoice is a draft.
+      */
+     private LinePrice linePrice(Invoice invoice, String unitType, BigDecimal unitPrice) {
+-        return linePrice(invoice, unitType, unitPrice, invoice.getIssueDate() == null ? today.date() : invoice.getIssueDate());
++        return linePrice(invoice, unitType, unitPrice, ratesDate(invoice));
++    }
++
++    /**
++     * The day the invoice's lines are priced as of: today for a draft (not a credit note), which will be dated
++     * today when sent; otherwise its issue date, or today when it has none.
++     */
++    private LocalDate ratesDate(Invoice invoice) {
++        return (invoice.isDraft() && !invoice.isCreditNote()) || invoice.getIssueDate() == null ? today.date()
++                : invoice.getIssueDate();
+     }
+ 
+     /** A line's price as {@link #linePrice(Invoice, String, BigDecimal)}, at the rates in force on the given date. */
