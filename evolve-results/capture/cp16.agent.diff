@@ -1,0 +1,106 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 12e6c5f..0544ddf 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -64,9 +64,9 @@ function problemWith(line: NewLine): string {
+ }
+ 
+ // One opened invoice: its status, its lines and its totals. A draft takes new lines and a
+-// percentage discount, and can be sent; once sent, the server refuses further changes. A sent
+-// invoice takes payments until nothing is due; the panel lists them with what has been paid and
+-// what is still due.
++// percentage discount, and can be sent; a change to a sent invoice with no payments puts it back to
++// draft, and once paid anything the server refuses further changes. A sent invoice takes payments
++// until nothing is due; the panel lists them with what has been paid and what is still due.
+ @Component({
+   selector: 'app-invoice-panel',
+   imports: [ReactiveFormsModule],
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index a04a2a6..53734e4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -106,6 +106,11 @@ public class Invoice {
+         this.status = InvoiceStatus.SENT;
+     }
+ 
++    /** Puts a sent invoice back to draft, so it has to be sent again. */
++    public void reopen() {
++        this.status = InvoiceStatus.DRAFT;
++    }
++
+     /** The status once the given amount has been paid against the grand total at the tax rate. */
+     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate) {
+         if (status != InvoiceStatus.SENT || paid.signum() <= 0) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 67186a3..c4c445f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -65,40 +65,58 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Adds a line to a draft invoice; empty if no such invoice. The line has already been checked;
+-     * a sent invoice refuses it.
++     * Adds a line to an invoice; empty if no such invoice. The line has already been checked. A sent
++     * invoice with no payments goes back to draft; one with a payment refuses it.
+      */
+     @Transactional
+     public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, BigDecimal unitPrice,
+             boolean taxExempt) {
+         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+         found.ifPresent(invoice -> {
+-            if (!invoice.isDraft()) {
+-                throw new InvoiceRejectedException("Only a draft invoice can take new lines.");
+-            }
++            boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
+             invoice.addLine(new InvoiceLine(description, qty, unitPrice, taxExempt));
+             invoices.saveAndFlush(invoice);
++            if (reopened) {
++                audit.record("INVOICE_REOPENED id=" + invoice.getId());
++            }
+         });
+         return found;
+     }
+ 
+     /**
+-     * Gives a draft invoice a percentage discount; empty if no such invoice. The percentage has
+-     * already been checked; a sent invoice refuses it.
++     * Gives an invoice a percentage discount; empty if no such invoice. The percentage has already
++     * been checked. A sent invoice with no payments goes back to draft; one with a payment refuses it.
+      */
+     @Transactional
+     public Optional<Invoice> setDiscount(Long invoiceId, BigDecimal discountPct) {
+         Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
+         found.ifPresent(invoice -> {
+-            if (!invoice.isDraft()) {
+-                throw new InvoiceRejectedException("Only a draft invoice can be given a discount.");
+-            }
++            boolean reopened = reopenForChange(invoice, "A paid invoice cannot be given a discount.");
+             invoice.setDiscountPct(discountPct);
+             invoices.saveAndFlush(invoice);
++            if (reopened) {
++                audit.record("INVOICE_REOPENED id=" + invoice.getId());
++            }
+         });
+         return found;
+     }
+ 
++    /**
++     * Readies the invoice for a change: a draft stays as it is; a sent invoice with no payments goes
++     * back to draft, to be sent again; an invoice with any payment is refused with the message.
++     * Whether it went back to draft.
++     */
++    private boolean reopenForChange(Invoice invoice, String refusal) {
++        if (invoice.isDraft()) {
++            return false;
++        }
++        if (!payments.findForInvoice(invoice.getId()).isEmpty()) {
++            throw new InvoiceRejectedException(refusal);
++        }
++        invoice.reopen();
++        return true;
++    }
++
+     /**
+      * Sends a draft invoice, keeping its issue and due dates, and records it in the audit; empty if
+      * no such invoice. An invoice already sent, or with no lines, is refused.
