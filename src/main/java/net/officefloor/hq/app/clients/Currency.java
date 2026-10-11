@@ -31,13 +31,18 @@ public enum Currency {
         return amount.stripTrailingZeros().scale() <= scale;
     }
 
+    /** This currency's step: whole yen, 0.05 for Swiss francs, otherwise the cent. */
+    public BigDecimal step() {
+        return this == CHF ? new BigDecimal("0.05") : BigDecimal.ONE.movePointLeft(scale);
+    }
+
     /**
-     * The amount rounded half up to this currency's step: whole yen, 0.05 for Swiss francs, otherwise
-     * the cent.
+     * The exact quotient amount / divisor rounded down (towards zero) to this currency's step, worked
+     * out in decimals in one division so that a quotient landing on a step stays on it.
      */
-    public BigDecimal roundToStep(BigDecimal amount) {
-        BigDecimal step = this == CHF ? new BigDecimal("0.05") : BigDecimal.ONE.movePointLeft(scale);
-        return amount.divide(step, 0, RoundingMode.HALF_UP).multiply(step).setScale(scale);
+    public BigDecimal divideDownToStep(BigDecimal amount, BigDecimal divisor) {
+        BigDecimal step = step();
+        return amount.divide(divisor.multiply(step), 0, RoundingMode.DOWN).multiply(step).setScale(scale);
     }
 
     /** The amount with its symbol and thousands separators, e.g. €1,234.50 or ¥1,235. */

@@ -625,14 +625,14 @@ public class Invoice {
 
     /**
      * The late fee in the invoice's currency: the fee in US dollars converted as a payment in another
-     * currency is, through the workspace rate on the day it is charged, rounded half up to the
-     * currency's step.
+     * currency is, through the workspace rate on the day it is charged, worked out exactly and
+     * rounded down to the currency's step.
      */
     private BigDecimal lateFeeIn(BigDecimal feeUsd, LocalDate on) {
         if (currency() == Currency.USD) {
             return feeUsd.setScale(scale(), RoundingMode.HALF_UP);
         }
-        return currency().roundToStep(feeUsd.divide(usdPerOn(on), MathContext.DECIMAL128));
+        return currency().divideDownToStep(feeUsd, usdPerOn(on));
     }
 
     /**

@@ -684,7 +684,7 @@ public class InvoiceService {
     /**
      * Refunds the amount of the client's unused credit on the date, never a deposit held for one of its
      * drafts. The amount is in the currency refunded in (null for the client's own) and comes off the
-     * credit converted into the client's currency through US dollars at the rates on the date, rounded
+     * credit converted into the client's currency through US dollars at the rates on the date, rounded down
      * to their currency's step: the oldest payment's credit first
      * (lower id first on the same date), then the next, each part recorded in the audit; empty if no
      * such client. The amount has already been checked; a date after today or before a payment it

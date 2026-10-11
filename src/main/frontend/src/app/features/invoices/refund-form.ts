@@ -8,7 +8,7 @@ import { CURRENCIES, Currency, TWO_DECIMALS, symbolOf } from './invoice-format';
 // Refunds the client's unused credit: an amount more than zero with at most two decimals, and the
 // date it was refunded, in the currency picked (the client's own by default). An amount in another
 // currency is converted by the server into the client's through US dollars at the rates on the refund
-// date, rounded to their currency's step. It comes out of the oldest payment's credit first; the
+// date, rounded down to their currency's step. It comes out of the oldest payment's credit first; the
 // server refuses a date after today or before a payment it would come from, or more than the client's
 // credit once converted.
 @Component({

@@ -1,7 +1,6 @@
 package net.officefloor.hq.app;
 
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.sql.Date;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -78,13 +77,13 @@ public class ExchangeRates {
 
     /**
      * The amount paid in one currency converted into another through US dollars: amount x (dollars per
-     * unit paid) / (dollars per unit of the other), at the rates in force on the date, rounded half up
-     * to the other's step.
+     * unit paid) / (dollars per unit of the other), at the rates in force on the date, worked out exactly
+     * and rounded down to the other's step, so the client is never credited more than was received.
      */
     public BigDecimal convert(BigDecimal amount, Currency from, Currency to, LocalDate on) {
         if (from == to) {
             return amount.setScale(to.scale());
         }
-        return to.roundToStep(amount.multiply(usdPer(from, on)).divide(usdPer(to, on), MathContext.DECIMAL128));
+        return to.divideDownToStep(amount.multiply(usdPer(from, on)), usdPer(to, on));
     }
 }
