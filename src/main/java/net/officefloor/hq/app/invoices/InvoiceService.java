@@ -343,6 +343,27 @@ public class InvoiceService {
     }
 
     /**
+     * Sets the rush surcharge of a draft, a percentage of its amount after its discounts; empty if no
+     * such invoice. The percentage has already been checked; any invoice that is not a draft, or a
+     * credit note, is refused.
+     */
+    @Transactional
+    public Optional<Invoice> setSurcharge(Long invoiceId, BigDecimal surchargePct) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note carries no surcharge.");
+            }
+            if (!invoice.isDraft()) {
+                throw new InvoiceRejectedException("A surcharge can only be set on a draft.");
+            }
+            invoice.setSurchargePct(surchargePct);
+            invoices.saveAndFlush(invoice);
+        });
+        return found;
+    }
+
+    /**
      * Sets the percentage of a draft's amount before tax held back as retention, and the most it holds
      * back (null for no cap); empty if no such invoice.
      * The percentage has already been checked; any invoice that is not a draft, or a credit note, is refused.

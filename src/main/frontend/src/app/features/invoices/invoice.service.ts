@@ -181,9 +181,13 @@ export interface InvoiceDetail {
   // Whether it is reverse charged: its client is registered (a valid tax number) outside the
   // workspace's home region and accounts for the tax itself, so no line is taxed.
   reverseCharge: boolean;
-  // What the amount after its discounts falls short of the workspace's minimum charge, added to the
-  // invoice and taxed at the client's rate; "0.00" when there is none.
+  // What the amount after its discounts plus the surcharge falls short of the workspace's minimum
+  // charge, added to the invoice and taxed at the client's rate; "0.00" when there is none.
   minimumCharge: string;
+  // The rush surcharge percentage (without trailing zeros), and `surcharge`, that share of the amount
+  // after its discounts rounded down to the cent; not discounted, taxed at the client's rate.
+  surchargePct: string;
+  surcharge: string;
   // The amount due rounded half up to the nearest cash coin (0.05, or whole yen), and the difference
   // that makes (signed); once settled in cash, the cash rounding it was settled with.
   cashDue: string;
@@ -314,6 +318,12 @@ export class InvoiceService {
   // with an optional cap on the amount held back; refused (400) outside that, or (409) when it is not a draft.
   setRetention(invoiceId: number, retentionPct: string, retentionCap?: string): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct, retentionCap });
+  }
+
+  // Sets the rush surcharge of a draft, a percentage of its amount after its discounts (0 to 25, up to
+  // two decimals); refused (400) outside that, or (409) when it is not a draft.
+  setSurcharge(invoiceId: number, surchargePct: string): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/surcharge`, { surchargePct });
   }
 
   // Spreads a draft over monthly instalments (2 to 24) at an annual interest rate (0 to 30, up to two

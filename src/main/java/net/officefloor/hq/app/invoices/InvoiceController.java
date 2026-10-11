@@ -133,6 +133,8 @@ public class InvoiceController {
      * {@code pricesIncludeTax} the tax is inside the subtotal less the discount, which is then the grand total.
      * {@code cashDue} is the amount due rounded half up to the nearest cash coin (0.05, or whole yen) and
      * {@code cashRounding} the difference (signed): once settled in cash, the cash rounding it was settled with.
+     * {@code surchargePct} (without trailing zeros) is the rush surcharge percentage and {@code surcharge} that share of
+     * the subtotal less the discount, rounded down to the cent; it counts towards the {@code minimumCharge}.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
@@ -142,7 +144,7 @@ public class InvoiceController {
             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
-            String minimumCharge, String cashDue, String cashRounding) {
+            String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -181,7 +183,8 @@ public class InvoiceController {
                     i.getInterestSaved().toPlainString(),
                     i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
                     i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),
-                    i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString());
+                    i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
+                    i.getSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString());
         }
     }
 
@@ -309,6 +312,15 @@ public class InvoiceController {
             @DecimalMin(value = "0", message = "The retention cap cannot be negative.")
             @Digits(integer = 10, fraction = 2, message = "The retention cap can have at most two decimals.")
             BigDecimal retentionCap) {
+    }
+
+    /** A rush surcharge on a draft: a percentage from 0 to 25 with at most two decimals. */
+    public record NewSurcharge(
+            @NotNull(message = "Enter a surcharge percentage.")
+            @DecimalMin(value = "0", message = "The surcharge must be from 0 to 25 percent.")
+            @DecimalMax(value = "25", message = "The surcharge must be from 0 to 25 percent.")
+            @Digits(integer = 2, fraction = 2, message = "The surcharge can have at most two decimals.")
+            BigDecimal surchargePct) {
     }
 
     /**
@@ -509,6 +521,13 @@ public class InvoiceController {
     @PutMapping("/api/invoices/{id}/retention")
     public InvoiceDetail setRetention(@PathVariable Long id, @Valid @RequestBody NewRetention body) {
         return invoices.setRetention(id, body.retentionPct(), body.retentionCap())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    @PutMapping("/api/invoices/{id}/surcharge")
+    public InvoiceDetail setSurcharge(@PathVariable Long id, @Valid @RequestBody NewSurcharge body) {
+        return invoices.setSurcharge(id, body.surchargePct())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

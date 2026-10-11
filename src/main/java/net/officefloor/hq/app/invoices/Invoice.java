@@ -62,6 +62,9 @@ public class Invoice {
     /** The highest annual interest rate a plan can charge, as a percentage. */
     public static final BigDecimal MAX_INSTALMENT_RATE = new BigDecimal("30");
 
+    /** The most a draft's surcharge can be, a percentage of its amount after its discounts. */
+    public static final BigDecimal MAX_SURCHARGE_PCT = new BigDecimal("25");
+
     /** The most a plan's down payment can be, a percentage of the grand total. */
     public static final BigDecimal MAX_PLAN_DOWN_PCT = new BigDecimal("50");
 
@@ -98,6 +101,10 @@ public class Invoice {
 
     @Column(name = "retention_pct")
     private BigDecimal retentionPct = BigDecimal.ZERO;
+
+    /** The rush surcharge, a percentage of the amount after the discounts, 0 to {@link #MAX_SURCHARGE_PCT}. */
+    @Column(name = "surcharge_pct")
+    private BigDecimal surchargePct = BigDecimal.ZERO;
 
     /** The most retention held back, in the invoice's currency; null is no cap. */
     @Column(name = "retention_cap")
@@ -353,6 +360,7 @@ public class Invoice {
         copy.discountCap = discountCap;
         copy.discountReason = discountReason;
         copy.retentionPct = retentionPct;
+        copy.surchargePct = surchargePct;
         copy.retentionCap = retentionCap;
         copy.instalments = instalments;
         copy.instalmentRate = instalmentRate;
@@ -563,6 +571,16 @@ public class Invoice {
         }
         this.discountAmount = discountAmount;
         this.discountPct = BigDecimal.ZERO;
+    }
+
+    /** The rush surcharge, a percentage of the amount after the discounts, 0 to {@link #MAX_SURCHARGE_PCT}. */
+    public BigDecimal getSurchargePct() {
+        return surchargePct;
+    }
+
+    /** Sets the rush surcharge percentage; it has already been checked. */
+    public void setSurchargePct(BigDecimal surchargePct) {
+        this.surchargePct = surchargePct;
     }
 
     /** The percentage of the amount before tax held back as retention, 0 to {@link #MAX_RETENTION_PCT}. */
@@ -1847,7 +1865,7 @@ public class Invoice {
      * has none the client's regional rate, or the given workspace rate when that has none either, on the line's amount less its share of the discount,
      * unrounded. Tax-exempt lines, and every line of a reverse-charged invoice, have no tax. A tax-exempt
      * client is exempt from the general rate only (regional or workspace): its lines with their own rate are still taxed at it.
-     * The minimum charge's exact tax at the client's rate follows, as one more line.
+     * The exact tax of the surcharge and minimum charge at the client's rate follows, as one more line.
      */
     private List<BigDecimal> exactLineTaxes(BigDecimal taxRate) {
         List<BigDecimal> shares = discountShares();
@@ -1858,7 +1876,7 @@ public class Invoice {
             taxes.add(isReverseCharge() || line.isTaxExempt() ? BigDecimal.ZERO
                     : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(clientRate)).movePointLeft(2));
         }
-        taxes.add(isReverseCharge() ? BigDecimal.ZERO : minimumCharge().multiply(clientRate).movePointLeft(2));
+        taxes.add(isReverseCharge() ? BigDecimal.ZERO : surcharge().add(minimumCharge()).multiply(clientRate).movePointLeft(2));
         return taxes;
     }
 
@@ -1868,7 +1886,7 @@ public class Invoice {
      * cents of its exact share (rounded down), then the cents left over go one each to the lines with
      * the largest leftover fractions; between equal fractions the cent goes to the line with the
      * larger exact tax, and between equal exact taxes too to the lower line id. The line taxes add up
-     * to the invoice tax, less the minimum charge's share, which is split as one more line after them.
+     * to the invoice tax, less the share of the surcharge and minimum charge, which is split as one more line after them.
      */
     public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
         if (clientPricesIncludeTax) {
@@ -1965,7 +1983,7 @@ public class Invoice {
 
     /**
      * The tax inside tax-inclusive prices: the total of the taxed lines' amounts after their discount
-     * shares and the minimum charge, less that total divided by 1 plus the client's rate, rounded once,
+     * shares, the surcharge and the minimum charge, less that total divided by 1 plus the client's rate, rounded once,
      * half up to the cent.
      */
     private BigDecimal inclusiveTax(BigDecimal taxRate) {
@@ -1977,7 +1995,7 @@ public class Invoice {
             }
         }
         if (!clientTaxExempt && !isReverseCharge()) {
-            taxed = taxed.add(minimumCharge());
+            taxed = taxed.add(surcharge()).add(minimumCharge());
         }
         return taxed.subtract(taxed.divide(inclusiveDivisor(taxRate), scale(), RoundingMode.HALF_UP));
     }
@@ -2008,8 +2026,8 @@ public class Invoice {
             given = given.add(tax);
         }
         if (!clientTaxExempt && !isReverseCharge()) {
-            // The minimum charge keeps its own tax, which is not a line's.
-            BigDecimal minimum = minimumCharge();
+            // The surcharge and minimum charge keep their own tax, which is not a line's.
+            BigDecimal minimum = surcharge().add(minimumCharge());
             given = given.add(minimum.subtract(minimum.divide(divisor, scale(), RoundingMode.HALF_UP)));
         }
         order.sort(Comparator.<Integer, BigDecimal>comparing(amounts::get).reversed().thenComparing(i -> i));
@@ -2023,8 +2041,24 @@ public class Invoice {
         return taxes;
     }
 
+    /** The amount after the discounts: the subtotal less the discount. */
+    public BigDecimal discounted() {
+        return subtotal().subtract(discount());
+    }
+
     /**
-     * The minimum charge: what the subtotal less the discount falls short of the workspace's minimum
+     * The rush surcharge: the surcharge percentage of the amount after the discounts, rounded down to
+     * the cent. It is not discounted and is taxed at the client's rate. Nothing for a credit note.
+     */
+    public BigDecimal surcharge() {
+        if (isCreditNote()) {
+            return zero();
+        }
+        return discounted().multiply(surchargePct).movePointLeft(2).setScale(scale(), RoundingMode.DOWN);
+    }
+
+    /**
+     * The minimum charge: what the subtotal less the discount plus the surcharge falls short of the workspace's minimum
      * charge, converted from US dollars at the issue date's rate and rounded down to the step. Nothing
      * when no minimum is set, for a credit note, or for an invoice with no lines.
      */
@@ -2033,24 +2067,24 @@ public class Invoice {
             return zero();
         }
         BigDecimal minimum = currency().divideDownToStep(new BigDecimal(minimumChargeUsd.trim()), usdPerOn(issueDate));
-        return minimum.subtract(subtotal().subtract(discount())).max(zero());
+        return minimum.subtract(discounted().add(surcharge())).max(zero());
     }
 
     /**
-     * The amount before tax: the subtotal less the discount plus the minimum charge, less the tax inside
+     * The amount before tax: the subtotal less the discount plus the surcharge and the minimum charge, less the tax inside
      * it when the client's prices include tax.
      */
     public BigDecimal beforeTax(BigDecimal taxRate) {
-        BigDecimal amount = subtotal().subtract(discount()).add(minimumCharge());
+        BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
         return clientPricesIncludeTax ? amount.subtract(tax(taxRate)) : amount;
     }
 
     /**
-     * The grand total: the subtotal less the discount plus the minimum charge, plus tax at the given
+     * The grand total: the subtotal less the discount plus the surcharge and the minimum charge, plus tax at the given
      * rate — or, when the client's prices include tax, that amount, which already holds it.
      */
     public BigDecimal total(BigDecimal taxRate) {
-        BigDecimal amount = subtotal().subtract(discount()).add(minimumCharge());
+        BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
         return clientPricesIncludeTax ? amount : amount.add(tax(taxRate));
     }
 }

@@ -40,6 +40,20 @@ function problemWithRetention(pct: string): string {
   return '';
 }
 
+// A surcharge percentage from 0 to 25 with at most two decimals, e.g. 10 or 7.5; the server checks it again.
+function problemWithSurcharge(pct: string): string {
+  if (!/^-?\d+(\.\d+)?$/.test(pct)) {
+    return 'The surcharge must be a number, like 10 or 7.5.';
+  }
+  if (Number(pct) < 0 || Number(pct) > 25) {
+    return 'The surcharge must be from 0 to 25 percent.';
+  }
+  if (!TWO_DECIMALS.test(pct)) {
+    return 'The surcharge can have at most two decimals.';
+  }
+  return '';
+}
+
 // A plan of 2 to 24 monthly instalments at an annual rate from 0 to 30 with at most two decimals,
 // after an optional down payment from 0 to 50 percent with at most two decimals; the server checks
 // them again.
@@ -323,6 +337,10 @@ function problemWith(line: NewLine): string {
               </tr>
             }
             <tr>
+              <th scope="row" colspan="9">Surcharge ({{ inv.surchargePct }}%)</th>
+              <td data-testid="invoice-surcharge">{{ amount(inv.surcharge) }}</td>
+            </tr>
+            <tr>
               <th scope="row" colspan="9">Minimum charge</th>
               <td data-testid="invoice-minimum-charge">{{ amount(inv.minimumCharge) }}</td>
             </tr>
@@ -576,6 +594,19 @@ function problemWith(line: NewLine): string {
           </form>
         }
 
+        @if (inv.creditOf === null) {
+          <form [formGroup]="surchargeForm" (ngSubmit)="setSurcharge(inv.id)" aria-label="Surcharge" novalidate>
+            <label for="surcharge-pct">Rush surcharge (%, 0 to 25, drafts only)</label>
+            <input id="surcharge-pct" data-testid="surcharge-form-pct" inputmode="decimal" formControlName="pct" />
+            <button type="submit" data-testid="surcharge-form-submit" [disabled]="savingSurcharge()">
+              Set surcharge
+            </button>
+            @if (surchargeError()) {
+              <p role="alert" data-testid="surcharge-form-error">{{ surchargeError() }}</p>
+            }
+          </form>
+        }
+
         @if (inv.status === 'DRAFT' && inv.creditOf === null) {
           <form [formGroup]="retentionForm" (ngSubmit)="setRetention(inv.id)" aria-label="Retention" novalidate>
             <label for="retention-pct">Retention (%, 0 to 20)</label>
@@ -825,6 +856,8 @@ export class InvoicePanel {
   protected readonly dueError = signal('');
   protected readonly savingRetention = signal(false);
   protected readonly retentionError = signal('');
+  protected readonly savingSurcharge = signal(false);
+  protected readonly surchargeError = signal('');
   protected readonly savingPlan = signal(false);
   protected readonly planError = signal('');
   protected readonly releasing = signal(false);
@@ -880,6 +913,10 @@ export class InvoicePanel {
     cap: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly surchargeForm = new FormGroup({
+    pct: new FormControl('', { nonNullable: true }),
+  });
+
   protected readonly releaseForm = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
   });
@@ -908,6 +945,8 @@ export class InvoicePanel {
       this.dueError.set('');
       this.retentionForm.reset();
       this.retentionError.set('');
+      this.surchargeForm.reset();
+      this.surchargeError.set('');
       this.planForm.reset();
       this.planError.set('');
       this.releaseForm.reset();
@@ -1123,6 +1162,33 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The retention could not be set.',
         );
         this.savingRetention.set(false);
+      },
+    });
+  }
+
+  protected setSurcharge(invoiceId: number): void {
+    const pct = this.surchargeForm.getRawValue().pct.trim().replace(/%$/, '').trim();
+    const problem = problemWithSurcharge(pct);
+    if (problem) {
+      this.surchargeForm.markAllAsTouched();
+      this.surchargeError.set(problem);
+      return;
+    }
+    this.savingSurcharge.set(true);
+    this.surchargeError.set('');
+    this.service.setSurcharge(invoiceId, pct).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.surchargeForm.reset();
+        this.savingSurcharge.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.surchargeError.set(
+          typeof detail === 'string' && detail ? detail : 'The surcharge could not be set.',
+        );
+        this.savingSurcharge.set(false);
       },
     });
   }
