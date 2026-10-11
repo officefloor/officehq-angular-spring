@@ -1,6 +1,7 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ClientInvoices } from '../invoices/client-invoices';
 import { Client, ClientService, byName } from './client.service';
 
 // A proper email address: a mailbox, an @, and a domain with at least one dot — name@company.com,
@@ -8,18 +9,50 @@ import { Client, ClientService, byName } from './client.service';
 const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
 
 // The workspace's clients: listed A to Z by name (ignoring capitals), with a form to add one.
+// Clicking a client lists that client's invoices beside the clients.
 @Component({
   selector: 'app-clients',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, ClientInvoices],
+  styles: `
+    :host {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2rem;
+      align-items: flex-start;
+    }
+    .client {
+      display: flex;
+      gap: 1rem;
+      width: 100%;
+      text-align: left;
+      font: inherit;
+      color: inherit;
+      background: none;
+      border: 1px solid transparent;
+      padding: 0.25rem 0.5rem;
+      cursor: pointer;
+    }
+    .client[aria-pressed='true'] {
+      border-color: currentColor;
+      font-weight: bold;
+    }
+  `,
   template: `
     <section aria-labelledby="clients-heading">
       <h2 id="clients-heading">Clients</h2>
 
       <ul data-testid="client-list">
         @for (c of clients(); track c.id) {
-          <li [attr.data-testid]="'client-row-' + c.id">
-            <span data-testid="client-name">{{ c.name }}</span>
-            <span data-testid="client-email">{{ c.email }}</span>
+          <li [attr.data-testid]="'client-row-' + c.id" (click)="selectedId.set(c.id)">
+            <button
+              type="button"
+              class="client"
+              [attr.aria-pressed]="selectedId() === c.id"
+              (click)="$event.stopPropagation(); selectedId.set(c.id)"
+            >
+              <span data-testid="client-name">{{ c.name }}</span>
+              <span data-testid="client-email">{{ c.email }}</span>
+            </button>
           </li>
         } @empty {
           <li data-testid="home-empty">No clients yet.</li>
@@ -45,6 +78,10 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
         }
       </form>
     </section>
+
+    @if (selected(); as client) {
+      <app-client-invoices [clientId]="client.id" [clientName]="client.name" />
+    }
   `,
 })
 export class Clients {
@@ -53,6 +90,10 @@ export class Clients {
   protected readonly clients = signal<Client[]>([]);
   protected readonly saving = signal(false);
   protected readonly error = signal('');
+  protected readonly selectedId = signal<number | null>(null);
+  protected readonly selected = computed(
+    () => this.clients().find((c) => c.id === this.selectedId()) ?? null,
+  );
 
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),

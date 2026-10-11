@@ -1,6 +1,10 @@
 package net.officefloor.hq.app;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +30,12 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
+    private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "clients", "invoices");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
+    private static final Set<String> INVOICE_FIELDS =
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "lineItems");
+    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice");
+    private static final Set<String> STATUSES = Set.of("DRAFT", "SENT");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
@@ -41,8 +50,11 @@ public class TestSupportController {
     @Transactional
     public void reset() {
         audit.clear();
-        jdbc.execute("DELETE FROM client");
-        jdbc.execute("ALTER TABLE client ALTER COLUMN id RESTART WITH 1");
+        jdbc.execute("DELETE FROM app_setting");
+        for (String table : List.of("invoice_line", "invoice", "client")) {
+            jdbc.execute("DELETE FROM " + table);
+            jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH 1");
+        }
     }
 
     /**
@@ -53,28 +65,53 @@ public class TestSupportController {
     @Transactional
     public void seed(@RequestBody Map<String, Object> fixture) {
         for (String key : fixture.keySet()) {
-            if (!key.equals("clients")) {
+            if (!FIXTURE_KEYS.contains(key)) {
                 throw refuse("unsupported fixture key: " + key);
             }
         }
+        if (fixture.get("asOf") != null) {
+            LocalDate asOf = date(fixture.get("asOf"), "asOf");
+            jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", Today.AS_OF, asOf.toString());
+        }
         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
-            for (String field : row.keySet()) {
-                if (!CLIENT_FIELDS.contains(field)) {
-                    throw refuse("unsupported field: clients[]." + field);
-                }
-            }
+            only(row, CLIENT_FIELDS, "clients[]");
             Object id = row.get("id");
             if (id == null) {
                 jdbc.update("INSERT INTO client (name, email) VALUES (?, ?)",
                         text(row, "name"), text(row, "email"));
             } else {
                 jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
-                        ((Number) id).longValue(), text(row, "name"), text(row, "email"));
+                        id(id), text(row, "name"), text(row, "email"));
+            }
+        }
+        for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
+            only(row, INVOICE_FIELDS, "invoices[]");
+            String status = row.get("status") == null ? "DRAFT" : row.get("status").toString();
+            if (!STATUSES.contains(status)) {
+                throw refuse("unsupported value of invoices[].status: " + status);
+            }
+            if (row.get("clientId") == null) {
+                throw refuse("invoices[].clientId is required");
+            }
+            Long invoiceId = insert("invoice", row.get("id"),
+                    new String[] {"client_id", "status", "issue_date", "due_date"},
+                    id(row.get("clientId")), status,
+                    row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                    row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"));
+            for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                insert("invoice_line", line.get("id"),
+                        new String[] {"invoice_id", "description", "qty", "unit_price"},
+                        invoiceId, text(line, "description"),
+                        cents(line.get("qty"), "invoices[].lineItems[].qty"),
+                        cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"));
             }
         }
         // Keep generated ids clear of the seeded ones.
-        Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM client", Long.class);
-        jdbc.execute("ALTER TABLE client ALTER COLUMN id RESTART WITH " + next);
+        for (String table : List.of("client", "invoice", "invoice_line")) {
+            Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM " + table, Long.class);
+            jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH " + next);
+        }
     }
 
     /**
@@ -84,6 +121,11 @@ public class TestSupportController {
     @GetMapping("/fixture")
     public Map<String, Object> fixture() {
         Map<String, Object> out = new LinkedHashMap<>();
+        List<String> asOf = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class,
+                Today.AS_OF);
+        if (!asOf.isEmpty()) {
+            out.put("asOf", asOf.get(0));
+        }
         out.put("clients", jdbc.queryForList("SELECT id, name, email FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
@@ -92,7 +134,87 @@ public class TestSupportController {
                     row.put("email", r.get("EMAIL"));
                     return row;
                 }).toList());
+        out.put("invoices", jdbc.queryForList(
+                "SELECT id, client_id, status, issue_date, due_date FROM invoice ORDER BY id").stream()
+                .map(r -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", r.get("ID"));
+                    row.put("clientId", r.get("CLIENT_ID"));
+                    row.put("status", r.get("STATUS"));
+                    row.put("issueDate", r.get("ISSUE_DATE") == null ? null : r.get("ISSUE_DATE").toString());
+                    row.put("dueDate", r.get("DUE_DATE") == null ? null : r.get("DUE_DATE").toString());
+                    row.put("lineItems", jdbc.queryForList(
+                            "SELECT id, description, qty, unit_price FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                            r.get("ID")).stream().map(l -> {
+                                Map<String, Object> line = new LinkedHashMap<>();
+                                line.put("id", l.get("ID"));
+                                line.put("description", l.get("DESCRIPTION"));
+                                line.put("qty", l.get("QTY"));
+                                line.put("unitPrice", l.get("UNIT_PRICE"));
+                                return line;
+                            }).toList());
+                    return row;
+                }).toList());
         return out;
+    }
+
+    /** Insert a row with the given id, or a generated one when none is given; returns the id. */
+    private Long insert(String table, Object id, String[] columns, Object... values) {
+        String cols = String.join(", ", columns);
+        String marks = String.join(", ", Collections.nCopies(columns.length, "?"));
+        if (id != null) {
+            Object[] args = new Object[values.length + 1];
+            args[0] = id(id);
+            System.arraycopy(values, 0, args, 1, values.length);
+            jdbc.update("INSERT INTO " + table + " (id, " + cols + ") VALUES (?, " + marks + ")", args);
+            return id(id);
+        }
+        jdbc.update("INSERT INTO " + table + " (" + cols + ") VALUES (" + marks + ")", values);
+        return jdbc.queryForObject("SELECT MAX(id) FROM " + table, Long.class);
+    }
+
+    private static void only(Map<String, Object> row, Set<String> fields, String where) {
+        for (String field : row.keySet()) {
+            if (!fields.contains(field)) {
+                throw refuse("unsupported field: " + where + "." + field);
+            }
+        }
+    }
+
+    private static Long id(Object value) {
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        try {
+            return Long.valueOf(value.toString());
+        } catch (NumberFormatException e) {
+            throw refuse("not an id: " + value);
+        }
+    }
+
+    private static LocalDate date(Object value, String field) {
+        try {
+            return LocalDate.parse(value.toString());
+        } catch (DateTimeParseException e) {
+            throw refuse(field + " must be a yyyy-mm-dd date, not " + value);
+        }
+    }
+
+    /** A number stored to the cent; refuses a value it could only store by rounding. */
+    private static BigDecimal cents(Object value, String field) {
+        if (value == null) {
+            throw refuse(field + " is required");
+        }
+        BigDecimal number;
+        try {
+            number = new BigDecimal(value.toString());
+        } catch (NumberFormatException e) {
+            throw refuse(field + " must be a number, not " + value);
+        }
+        if (number.stripTrailingZeros().scale() > 2) {
+            throw refuse(field + " can have at most two decimals, not " + value);
+        }
+        return number;
     }
 
     @SuppressWarnings("unchecked")
