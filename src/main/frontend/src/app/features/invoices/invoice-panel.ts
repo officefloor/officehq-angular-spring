@@ -176,7 +176,7 @@ function problemWith(line: NewLine): string {
   }
   if (line.unitPrice === undefined) {
     if (line.unitType === undefined) {
-      problems.push('Enter a unit price, or a unit type to price the line from the client\'s rate card.');
+      problems.push('Enter a unit price, or a unit type to price the line from the client\'s rate card or the price list.');
     }
   } else if (!TWO_DECIMALS.test(line.unitPrice)) {
     problems.push('The unit price must be a number with at most two decimals.');
@@ -746,7 +746,7 @@ function problemWith(line: NewLine): string {
             data-testid="line-form-unit-type"
             formControlName="unitType"
           />
-          <label for="line-unit-price">Unit price ({{ symbol() }}, optional with a unit type on the rate card)</label>
+          <label for="line-unit-price">Unit price ({{ symbol() }}, optional with a unit type on the rate card or price list)</label>
           <input
             id="line-unit-price"
             data-testid="line-form-unit-price"

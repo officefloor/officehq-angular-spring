@@ -19,6 +19,7 @@ import net.officefloor.hq.app.CardSurcharge;
 import net.officefloor.hq.app.ExchangeRates;
 import net.officefloor.hq.app.LateFee;
 import net.officefloor.hq.app.LateInterestRate;
+import net.officefloor.hq.app.PriceList;
 import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
 import net.officefloor.hq.app.clients.Client;
@@ -45,12 +46,14 @@ public class InvoiceService {
     private final EntityManager entityManager;
     private final ExchangeRates exchangeRates;
     private final LateInterestRate lateInterestRate;
+    private final PriceList priceList;
     private final LateFee lateFee;
     private final CardSurcharge cardSurcharge;
 
     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
-            LateInterestRate lateInterestRate, LateFee lateFee, CardSurcharge cardSurcharge) {
+            LateInterestRate lateInterestRate, LateFee lateFee, CardSurcharge cardSurcharge, PriceList priceList) {
+        this.priceList = priceList;
         this.cardSurcharge = cardSurcharge;
         this.lateInterestRate = lateInterestRate;
         this.lateFee = lateFee;
@@ -1436,7 +1439,8 @@ public class InvoiceService {
 
     /**
      * A line's price: the unit price entered, or else the client's rate for the line's unit type —
-     * a single price, or tiers starting from the first band. Refused when neither is there, and a
+     * a single price, or tiers starting from the first band — or, when the card has none, the
+     * workspace price list's converted into the client's currency (see {@link PriceList}). Refused when neither is there, and a
      * single price with more decimals than the currency has.
      */
     private LinePrice linePrice(Invoice invoice, String unitType, BigDecimal unitPrice) {
@@ -1450,8 +1454,13 @@ public class InvoiceService {
         Client client = clients.findById(invoice.getClientId()).orElse(null);
         ClientRate rate = client == null ? null : client.rateFor(unitType);
         if (rate == null) {
-            throw new InvoiceRejectedException("The client's rate card has no rate for " + unitType
-                    + "; enter a unit price.");
+            LocalDate on = invoice.getIssueDate() == null ? today.date() : invoice.getIssueDate();
+            PriceList.Converted listed = priceList.priceFor(unitType, invoice.currency(), on);
+            if (listed == null) {
+                throw new InvoiceRejectedException("The client's rate card has no rate for " + unitType
+                        + "; enter a unit price.");
+            }
+            return new LinePrice(listed.unitPrice(), listed.tiers());
         }
         RateTiers tiers = rate.tiers();
         if (tiers != null) {

@@ -39,7 +39,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
     private static final String MINIMUM_CHARGE = "minimum_charge";
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
@@ -61,9 +61,15 @@ public class TestSupportController {
 
     private final CardSurcharge cardSurcharge;
 
+    private final PriceList priceList;
+
+    private final Today today;
+
     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
             PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
-            CardSurcharge cardSurcharge) {
+            CardSurcharge cardSurcharge, PriceList priceList, Today today) {
+        this.today = today;
+        this.priceList = priceList;
         this.cardSurcharge = cardSurcharge;
         this.exchangeRates = exchangeRates;
         this.payments = payments;
@@ -83,6 +89,7 @@ public class TestSupportController {
         jdbc.execute("DELETE FROM fx_rate");
         jdbc.execute("DELETE FROM payment_allocation");
         jdbc.execute("DELETE FROM client_rate");
+        jdbc.execute("DELETE FROM price_list_rate");
         for (String table : List.of("payment", "invoice_line", "invoice", "client")) {
             jdbc.execute("DELETE FROM " + table);
             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH 1");
@@ -188,6 +195,18 @@ public class TestSupportController {
                 }
                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", TaxRate.HOME_REGION, home);
             }
+            for (Map<String, Object> rate : rows(values.get("rates"), "settings.rates")) {
+                only(rate, Set.of("unitType", "unitPrice", "tiers"), "settings.rates[]");
+                if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
+                    throw refuse("settings.rates[].unitType is required");
+                }
+                RateTiers tiers = tiers(rate.get("tiers"), "settings.rates[].tiers");
+                if ((tiers == null) == (rate.get("unitPrice") == null)) {
+                    throw refuse("settings.rates[] needs either unitPrice or tiers");
+                }
+                priceList.add(rate.get("unitType").toString(),
+                        tiers != null ? null : cents(rate.get("unitPrice"), "settings.rates[].unitPrice"), tiers);
+            }
             for (Map<String, Object> rate : rows(values.get("fxRates"), "settings.fxRates")) {
                 only(rate, FX_RATE_FIELDS, "settings.fxRates[]");
                 if (rate.get("from") == null || rate.get("currency") == null || rate.get("usdPer") == null) {
@@ -234,7 +253,7 @@ public class TestSupportController {
                 if (rate.get("unitType") == null || rate.get("unitType").toString().isBlank()) {
                     throw refuse("clients[].rates[].unitType is required");
                 }
-                RateTiers tiers = tiers(rate.get("tiers"));
+                RateTiers tiers = tiers(rate.get("tiers"), "clients[].rates[].tiers");
                 if ((tiers == null) == (rate.get("unitPrice") == null)) {
                     throw refuse("clients[].rates[] needs either unitPrice or tiers");
                 }
@@ -435,6 +454,11 @@ public class TestSupportController {
         if (!fxRates.isEmpty()) {
             settings.put("fxRates", fxRates);
         }
+        List<Map<String, Object>> priceListRates = priceList.all().stream()
+                .map(e -> rate(e.unitType(), e.unitPrice(), e.tiers())).toList();
+        if (!priceListRates.isEmpty()) {
+            settings.put("rates", priceListRates);
+        }
         if (!settings.isEmpty()) {
             out.put("settings", settings);
         }
@@ -469,22 +493,8 @@ public class TestSupportController {
                     List<Map<String, Object>> rateCard = jdbc.queryForList(
                             "SELECT unit_type, unit_price, tiers FROM client_rate WHERE client_id = ? ORDER BY unit_type",
                             r.get("ID")).stream().map(c -> {
-                                Map<String, Object> rate = new LinkedHashMap<>();
-                                rate.put("unitType", c.get("UNIT_TYPE"));
-                                RateTiers tiers = RateTiers.parse((String) c.get("TIERS"));
-                                if (tiers == null) {
-                                    rate.put("unitPrice", c.get("UNIT_PRICE"));
-                                } else {
-                                    rate.put("tiers", tiers.bands().stream().map(b -> {
-                                        Map<String, Object> band = new LinkedHashMap<>();
-                                        if (b.units() != null) {
-                                            band.put("units", b.units());
-                                        }
-                                        band.put("unitPrice", b.unitPrice());
-                                        return band;
-                                    }).toList());
-                                }
-                                return rate;
+                                return rate((String) c.get("UNIT_TYPE"), (BigDecimal) c.get("UNIT_PRICE"),
+                                        RateTiers.parse((String) c.get("TIERS")));
                             }).toList();
                     if (!rateCard.isEmpty()) {
                         row.put("rates", rateCard);
@@ -621,8 +631,16 @@ public class TestSupportController {
                 + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?)", invoiceId,
                 line.get("unitType").toString().trim());
         if (rate.isEmpty()) {
-            throw refuse("invoices[].lineItems[].unitPrice is required: the client has no rate for unitType "
-                    + line.get("unitType"));
+            Map<String, Object> invoice = jdbc.queryForMap("SELECT i.issue_date, c.currency FROM invoice i JOIN client c ON c.id = i.client_id WHERE i.id = ?", invoiceId);
+            LocalDate on = invoice.get("ISSUE_DATE") == null ? today.date()
+                    : ((java.sql.Date) invoice.get("ISSUE_DATE")).toLocalDate();
+            PriceList.Converted listed = priceList.priceFor(line.get("unitType").toString(),
+                    Currency.orUsd((String) invoice.get("CURRENCY")), on);
+            if (listed == null) {
+                throw refuse("invoices[].lineItems[].unitPrice is required: neither the client's rate card nor the price list has unitType "
+                        + line.get("unitType"));
+            }
+            return new Object[] {listed.unitPrice(), listed.tiers()};
         }
         RateTiers tiers = RateTiers.parse((String) rate.get(0).get("TIERS"));
         if (tiers != null) {
@@ -631,37 +649,56 @@ public class TestSupportController {
         return new Object[] {rate.get(0).get("UNIT_PRICE"), null};
     }
 
+    /** A rate card or price list entry as read back: its unit type and a single unitPrice or tiers. */
+    private static Map<String, Object> rate(String unitType, BigDecimal unitPrice, RateTiers tiers) {
+        Map<String, Object> rate = new LinkedHashMap<>();
+        rate.put("unitType", unitType);
+        if (tiers == null) {
+            rate.put("unitPrice", unitPrice);
+        } else {
+            rate.put("tiers", tiers.bands().stream().map(b -> {
+                Map<String, Object> band = new LinkedHashMap<>();
+                if (b.units() != null) {
+                    band.put("units", b.units());
+                }
+                band.put("unitPrice", b.unitPrice());
+                return band;
+            }).toList());
+        }
+        return rate;
+    }
+
     /**
-     * A rate card entry's tiers: bands of {@code units} each with its {@code unitPrice}, the last with
+     * A rate card or price list entry's tiers: bands of {@code units} each with its {@code unitPrice}, the last with
      * no units covering everything above; null when left out.
      */
-    private static RateTiers tiers(Object value) {
+    private static RateTiers tiers(Object value, String field) {
         if (value == null) {
             return null;
         }
-        List<Map<String, Object>> rows = rows(value, "clients[].rates[].tiers");
+        List<Map<String, Object>> rows = rows(value, field);
         if (rows.isEmpty()) {
-            throw refuse("clients[].rates[].tiers needs at least one band");
+            throw refuse(field + " needs at least one band");
         }
         List<RateTiers.Band> bands = new ArrayList<>();
         for (int i = 0; i < rows.size(); i++) {
             Map<String, Object> band = rows.get(i);
-            only(band, Set.of("units", "unitPrice"), "clients[].rates[].tiers[]");
+            only(band, Set.of("units", "unitPrice"), field + "[]");
             boolean last = i == rows.size() - 1;
             if (!last && band.get("units") == null) {
-                throw refuse("clients[].rates[].tiers[].units is required on every band but the last");
+                throw refuse(field + "[].units is required on every band but the last");
             }
             if (last && band.get("units") != null) {
-                throw refuse("clients[].rates[].tiers[].units must be left out of the last band, which covers the rest");
+                throw refuse(field + "[].units must be left out of the last band, which covers the rest");
             }
-            BigDecimal units = last ? null : cents(band.get("units"), "clients[].rates[].tiers[].units");
+            BigDecimal units = last ? null : cents(band.get("units"), field + "[].units");
             if (units != null && units.signum() <= 0) {
-                throw refuse("clients[].rates[].tiers[].units must be more than zero, not " + band.get("units"));
+                throw refuse(field + "[].units must be more than zero, not " + band.get("units"));
             }
             if (band.get("unitPrice") == null) {
-                throw refuse("clients[].rates[].tiers[].unitPrice is required");
+                throw refuse(field + "[].unitPrice is required");
             }
-            bands.add(new RateTiers.Band(units, cents(band.get("unitPrice"), "clients[].rates[].tiers[].unitPrice")));
+            bands.add(new RateTiers.Band(units, cents(band.get("unitPrice"), field + "[].unitPrice")));
         }
         return new RateTiers(bands);
     }
