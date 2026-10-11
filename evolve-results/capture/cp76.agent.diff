@@ -1,0 +1,449 @@
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 0a42e38..ede6117 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -178,6 +178,7 @@ const PROPER_EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+         [clientName]="client.name"
+         [currency]="client.currency"
+         [openInvoice]="openInvoice()"
++        [picked]="picked()"
+         (changed)="loadBalances()"
+       />
+     }
+@@ -202,6 +203,8 @@ export class Clients {
+   protected readonly looking = signal(false);
+   protected readonly lookupError = signal('');
+   protected readonly openInvoice = signal<{ id: number; clientId: number } | null>(null);
++  // Bumped each time a client is picked from the list, so its invoices are shown with none open.
++  protected readonly picked = signal(0);
+   protected readonly lookup = new FormGroup({
+     number: new FormControl('', { nonNullable: true }),
+   });
+@@ -301,6 +304,7 @@ export class Clients {
+   protected selectClient(id: number): void {
+     this.openInvoice.set(null);
+     this.selectedId.set(id);
++    this.picked.update((n) => n + 1);
+   }
+ 
+   // Opens the invoice with the typed number and selects its client. The server checks the number's
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index 18998cd..d94b747 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -1,15 +1,15 @@
+-import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+-import { InvoiceDetail, InvoiceService, InvoiceSummary, NewAllocation } from './invoice.service';
++import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
++import { InvoiceDetail, InvoiceService, InvoiceSummary } from './invoice.service';
+ import { PaymentForm } from './payment-form';
+ import { RefundForm } from './refund-form';
+ import { InvoicePanel } from './invoice-panel';
+-import { Currency, money, statusLabel, symbolOf } from './invoice-format';
++import { Currency, money, statusLabel } from './invoice-format';
+ 
+ // One client's invoices, each with its status, total, issue and due dates. Clicking an invoice
+ // opens it in the invoice panel beside the list; New invoice starts an empty draft and opens it.
+ // An invoice looked up by its number is opened as soon as its client's invoices are shown.
+-// Every sent invoice that is not void has a box for its part of a payment; once any is filled, the payment recorded
+-// (in the panel, or below the list when no invoice is open) is spread over those invoices.
++// A payment recorded in the panel goes to the open invoice; one recorded below the list when no invoice
++// is open goes to the invoices its references name, or is spread automatically.
+ // The client's unused credit can be refunded from the refund form below the list.
+ @Component({
+   selector: 'app-client-invoices',
+@@ -24,9 +24,6 @@ import { Currency, money, statusLabel, symbolOf } from './invoice-format';
+     tr[aria-selected='true'] {
+       font-weight: bold;
+     }
+-    .allocate {
+-      width: 6rem;
+-    }
+     .open {
+       font: inherit;
+       color: inherit;
+@@ -54,7 +51,6 @@ import { Currency, money, statusLabel, symbolOf } from './invoice-format';
+             <th scope="col">Total</th>
+             <th scope="col">Issued</th>
+             <th scope="col">Due</th>
+-            <th scope="col">Part of payment ({{ symbolOf(currency()) }})</th>
+           </tr>
+         </thead>
+         <tbody>
+@@ -77,23 +73,10 @@ import { Currency, money, statusLabel, symbolOf } from './invoice-format';
+               <td data-testid="invoice-total">{{ money(i.total, currency()) }}</td>
+               <td data-testid="invoice-issue">{{ i.issueDate }}</td>
+               <td data-testid="invoice-due">{{ i.dueDate }}</td>
+-              <td>
+-                @if (i.status !== 'DRAFT' && i.status !== 'VOID' && i.status !== 'CREDIT_NOTE') {
+-                  <input
+-                    class="allocate"
+-                    data-testid="invoice-allocate"
+-                    inputmode="decimal"
+-                    [attr.aria-label]="'Part of payment for ' + i.number"
+-                    [value]="allocated()[i.id] ?? ''"
+-                    (click)="$event.stopPropagation()"
+-                    (input)="allocate(i.id, $any($event.target).value)"
+-                  />
+-                }
+-              </td>
+             </tr>
+           } @empty {
+             <tr>
+-              <td colspan="6" data-testid="invoice-empty">No invoices yet.</td>
++              <td colspan="5" data-testid="invoice-empty">No invoices yet.</td>
+             </tr>
+           }
+         </tbody>
+@@ -105,7 +88,6 @@ import { Currency, money, statusLabel, symbolOf } from './invoice-format';
+       <app-invoice-panel
+         [invoiceId]="id"
+         [reload]="reloadPanel()"
+-        [allocations]="allocations()"
+         (changed)="totalChanged($event)"
+         (split)="splitRecorded($event)"
+         (duplicated)="duplicated($event)"
+@@ -115,7 +97,6 @@ import { Currency, money, statusLabel, symbolOf } from './invoice-format';
+       <app-payment-form
+         [clientId]="clientId()"
+         [currency]="currency()"
+-        [allocations]="allocations()"
+         (split)="splitRecorded($event)"
+         (deposited)="splitRecorded($event)"
+       />
+@@ -132,6 +113,9 @@ export class ClientInvoices {
+   // An invoice to open, looked up by number; a new object for each lookup, so the same invoice
+   // can be opened again.
+   readonly openInvoice = input<{ id: number; clientId: number } | null>(null);
++  // Bumped when the client is picked again, to close the open invoice so a payment is spread
++  // automatically.
++  readonly picked = input(0);
+ 
+   // An invoice of the client was changed or paid, so what the client owes may have changed.
+   readonly changed = output<void>();
+@@ -142,28 +126,26 @@ export class ClientInvoices {
+   protected readonly sendingAll = signal(false);
+   // Bumped to make the invoice panel load its invoice again.
+   protected readonly reloadPanel = signal(0);
+-  // The part of a payment typed for each invoice, by id, as entered.
+-  protected readonly allocated = signal<Record<number, string>>({});
+-  // The parts that have been filled in, for the payment form.
+-  protected readonly allocations = computed<NewAllocation[]>(() =>
+-    Object.entries(this.allocated())
+-      .map(([id, amount]) => ({ invoiceId: Number(id), amount: amount.trim().replace(/^\$/, '') }))
+-      .filter((a) => a.amount !== ''),
+-  );
+   protected readonly statusLabel = statusLabel;
+   protected readonly money = money;
+-  protected readonly symbolOf = symbolOf;
+ 
+   constructor() {
+     effect((onCleanup) => {
+       const id = this.clientId();
+       this.invoices.set([]);
+-      this.allocated.set({});
+       const open = untracked(this.openInvoice);
+       this.selectedId.set(open?.clientId === id ? open.id : null);
+       const sub = this.service.forClient(id).subscribe((list) => this.invoices.set(list));
+       onCleanup(() => sub.unsubscribe());
+     });
++    let lastPicked: number | undefined;
++    effect(() => {
++      const picked = this.picked();
++      if (lastPicked !== undefined && picked !== lastPicked) {
++        this.selectedId.set(null);
++      }
++      lastPicked = picked;
++    });
+     effect(() => {
+       const open = this.openInvoice();
+       if (open && open.clientId === untracked(this.clientId)) {
+@@ -209,14 +191,9 @@ export class ClientInvoices {
+     this.selectedId.set(id);
+   }
+ 
+-  protected allocate(invoiceId: number, amount: string): void {
+-    this.allocated.update((parts) => ({ ...parts, [invoiceId]: amount }));
+-  }
+-
+-  // A payment was spread over several invoices: show their new statuses and clear the parts.
++  // A payment was spread over several invoices: show their new statuses.
+   protected splitRecorded(list: InvoiceSummary[]): void {
+     this.invoices.set(list);
+-    this.allocated.set({});
+     this.changed.emit();
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 302f484..6914ccd 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -6,7 +6,6 @@ import {
+   InvoiceLineView,
+   InvoiceService,
+   InvoiceSummary,
+-  NewAllocation,
+   NewDiscount,
+   NewLine,
+ } from './invoice.service';
+@@ -434,7 +433,6 @@ function problemWith(line: NewLine): string {
+             [clientId]="inv.clientId"
+             [currency]="inv.currency"
+             [invoiceId]="inv.id"
+-            [allocations]="allocations()"
+             (paid)="paymentRecorded($event)"
+             (split)="splitRecorded(inv.id, $event)"
+             (deposited)="splitRecorded(inv.id, $event)"
+@@ -661,9 +659,7 @@ export class InvoicePanel {
+   readonly reload = input(0);
+   // The invoice after a change made here, so the list can show its new total.
+   readonly changed = output<InvoiceDetail>();
+-  // The parts of a payment filled in on the list; when any is, a payment is spread over them.
+-  readonly allocations = input<NewAllocation[]>([]);
+-  // The client's invoices after a payment spread over several of them.
++  // The client's invoices after a deposit or a payment spread over several of them.
+   readonly split = output<InvoiceSummary[]>();
+   // A new draft copied from this invoice, to be listed and opened.
+   readonly duplicated = output<InvoiceDetail>();
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index d2460b8..ba25514 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -180,17 +180,6 @@ export interface NewPayment {
+   reference: string;
+ }
+ 
+-// The part of a split payment that goes to one invoice: the amount as entered.
+-export interface NewAllocation {
+-  invoiceId: number;
+-  amount: string;
+-}
+-
+-// A payment spread over several of a client's invoices, with the part going to each.
+-export interface NewSplitPayment extends NewPayment {
+-  allocations: NewAllocation[];
+-}
+-
+ // A line to add to a draft: quantity, unit price, the line's own discount percentage and its own tax
+ // rate as entered (each left out when none), checked again by the server.
+ export interface NewLine {
+@@ -336,12 +325,11 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments`, payment);
+   }
+ 
+-  // Records one payment spread over several of the client's invoices; refused (409) unless the parts
+-  // add up to the payment and each goes to a sent invoice of the client, no more than it has due.
+-  // With no parts it goes to the invoices whose references are quoted (comma separated), earliest due
+-  // date first, refused when one is mistyped (400) or not the client's; what they do not owe is held as credit.
++  // Records one payment spread automatically over the client's invoices: those whose references are
++  // quoted (comma separated), or with none all its unpaid invoices, overdue first, then the largest due
++  // first; refused when a reference is mistyped (400) or not the client's; what they do not owe is held as credit.
+   // Answers the client's invoices with their new statuses.
+-  recordSplitPayment(clientId: number, payment: NewSplitPayment): Observable<InvoiceSummary[]> {
++  recordSplitPayment(clientId: number, payment: NewPayment): Observable<InvoiceSummary[]> {
+     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment);
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index 4f0e1dd..94133f3 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -6,10 +6,9 @@ import {
+   InvoiceDetail,
+   InvoiceService,
+   InvoiceSummary,
+-  NewAllocation,
+   NewPayment,
+ } from './invoice.service';
+-import { CURRENCIES, Currency, TWO_DECIMALS, cents, symbolOf } from './invoice-format';
++import { CURRENCIES, Currency, TWO_DECIMALS, symbolOf } from './invoice-format';
+ 
+ // Whether a reference passes the ISO 11649 check: its first four characters moved to the end,
+ // letters as numbers (A=10 up to Z=35), mod 97 is 1. Spaces and capitals are ignored by the caller.
+@@ -83,27 +82,10 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
+   return problems.join(' ');
+ }
+ 
+-// What is wrong with the parts of a split payment, or '' when they fit it. Whether each part is no
+-// more than its invoice has due is checked by the server, as is whether they add up to a payment made
+-// in another currency than the client's (`currency`) once converted.
+-function problemWithAllocations(payment: NewPayment, allocations: NewAllocation[], currency: Currency): string {
+-  if (allocations.some((a) => !TWO_DECIMALS.test(a.amount))) {
+-    return "Each invoice's part must be a number with at most two decimals.";
+-  }
+-  if (allocations.some((a) => cents(a.amount) <= 0)) {
+-    return "Each invoice's part must be more than zero.";
+-  }
+-  const sum = allocations.reduce((total, a) => total + cents(a.amount), 0);
+-  if (payment.currency === currency && TWO_DECIMALS.test(payment.amount) && sum !== cents(payment.amount)) {
+-    return `The parts add up to $${(sum / 100).toFixed(2)}, not the $${(cents(payment.amount) / 100).toFixed(2)} paid.`;
+-  }
+-  return '';
+-}
+-
+-// Records a payment. With no parts filled in it goes to the open invoice (`invoiceId`), or, when none
+-// is open, to the client's invoices whose references are quoted (several may be, separated by
+-// commas: RF references or invoice numbers, applied overdue first, then largest due first), or without one to the client's unpaid invoices in that order; once any invoice in the list has a part, the
+-// payment is spread over those invoices instead, and the parts must add up to it, none over what its invoice has due. Otherwise what is paid beyond
++// Records a payment. It goes to the open invoice (`invoiceId`), or, when none is open, to the client's
++// invoices whose references are quoted (several may be, separated by commas: RF references or invoice
++// numbers, applied overdue first, then largest due first), or without one to the client's unpaid
++// invoices in that order. What is paid beyond
+ // what is due is held on the client's account as credit. The server refuses a payment on a draft, or dated after today
+ // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
+ // invoice number may be quoted instead: it must pass its Luhn check and stands for that invoice's reference.
+@@ -179,9 +161,8 @@ export class PaymentForm {
+   readonly currency = input<Currency>('USD');
+   protected readonly symbolOf = symbolOf;
+   protected readonly currencies = CURRENCIES;
+-  // The open invoice, which takes the payment when no parts are filled in; null when none is open.
++  // The open invoice, which takes the payment; null when none is open.
+   readonly invoiceId = input<number | null>(null);
+-  readonly allocations = input<NewAllocation[]>([]);
+   // The open invoice after a payment to it alone.
+   readonly paid = output<InvoiceDetail>();
+   // The client's invoices after a payment spread over several of them.
+@@ -225,12 +206,8 @@ export class PaymentForm {
+       this.recordDeposit(payment);
+       return;
+     }
+-    const allocations = this.allocations();
+     const invoiceId = this.invoiceId();
+-    let problem = problemWithPayment(payment, allocations.length === 0 && invoiceId === null);
+-    if (allocations.length > 0) {
+-      problem = [problem, problemWithAllocations(payment, allocations, this.currency())].filter((p) => p).join(' ');
+-    }
++    const problem = problemWithPayment(payment, invoiceId === null);
+     if (problem) {
+       this.form.markAllAsTouched();
+       this.error.set(problem);
+@@ -249,9 +226,9 @@ export class PaymentForm {
+       );
+       this.saving.set(false);
+     };
+-    if (allocations.length > 0 || invoiceId === null) {
++    if (invoiceId === null) {
+       this.service
+-        .recordSplitPayment(this.clientId(), { ...payment, allocations })
++        .recordSplitPayment(this.clientId(), payment)
+         .subscribe({
+           next: (list) => {
+             done();
+@@ -259,7 +236,7 @@ export class PaymentForm {
+           },
+           error: failed,
+         });
+-    } else if (invoiceId !== null) {
++    } else {
+       this.service
+         .recordPayment(invoiceId, payment)
+         .subscribe({
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index bf97773..fd512f4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -311,17 +311,7 @@ public class InvoiceController {
+             LocalDate dueDate) {
+     }
+ 
+-    /** The part of a split payment that goes to one invoice: more than zero, with at most two decimals. */
+-    public record NewAllocation(
+-            @NotNull(message = "Choose the invoice each part of the payment goes to.")
+-            Long invoiceId,
+-            @NotNull(message = "Enter how much of the payment goes to each invoice.")
+-            @DecimalMin(value = "0", inclusive = false, message = "Each invoice's part must be more than zero.")
+-            @Digits(integer = 17, fraction = 2, message = "Each invoice's part can have at most two decimals.")
+-            BigDecimal amount) {
+-    }
+-
+-    /** A payment to spread over several of a client's invoices: a payment and the part going to each. */
++    /** A payment to spread automatically over several of a client's invoices. */
+     public record NewSplitPayment(
+             @NotNull(message = "Enter an amount.")
+             @DecimalMin(value = "0", inclusive = false, message = "The amount must be more than zero.")
+@@ -332,9 +322,7 @@ public class InvoiceController {
+             @NotNull(message = "Enter the date it was paid.")
+             LocalDate date,
+             @Size(max = 255, message = "The references must be at most 255 characters.")
+-            String reference,
+-            @NotNull(message = "Enter how much of the payment goes to each invoice.")
+-            List<@Valid NewAllocation> allocations) {
++            String reference) {
+     }
+ 
+     private final InvoiceService invoices;
+@@ -527,20 +515,14 @@ public class InvoiceController {
+     }
+ 
+     /**
+-     * Records one payment spread over several of the client's invoices, or, with no parts given,
+-     * applied to the invoices whose references are quoted (several may be, separated by commas) or, with none,
++     * Records one payment spread automatically over several of the client's invoices: applied to the invoices whose references are quoted (several may be, separated by commas) or, with none,
+      * to all its unpaid invoices, overdue first (earliest due date first), then the largest amount due first; answers the client's invoices
+      * with their new statuses.
+      */
+     @PostMapping("/api/clients/{clientId}/payments")
+     @ResponseStatus(HttpStatus.CREATED)
+     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
+-        if (body.allocations().isEmpty()) {
+-            invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()));
+-        } else {
+-            invoices.recordSplitPayment(clientId, body.amount(), body.currency(), body.date(), reference(body.reference()),
+-                    body.allocations().stream().map(a -> new PaymentAllocation(a.invoiceId(), a.amount())).toList());
+-        }
++        invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()));
+         return forClient(clientId);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 9becf96..0488164 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -939,31 +939,20 @@ public class InvoiceService {
+                     : "Those invoices have already been paid.");
+         }
+         String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
+-        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, true);
++        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts);
+     }
+ 
+     /**
+      * Records one payment of the amount on the date spread over several of the client's invoices, and
+      * records each part in the audit. The amounts have already been checked to be more than zero; they
+-     * must add up exactly to the payment, and each must go to a different sent invoice of the client
+-     * and be no more than what it still has due. The date must be no later than today nor before any
+-     * of the invoices' issue dates. The reference (null when none) has already been checked; it must
+-     * be the reference of one of the invoices.
+-     */
+-    @Transactional
+-    public Payment recordSplitPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+-            String reference, List<PaymentAllocation> parts) {
+-        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId), date);
+-        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, false);
+-    }
+-
+-    /**
+-     * Records the payment spread over the parts as {@link #recordSplitPayment} does, except that when
+-     * credit may be held the parts may add up to less than the payment: the rest is held on the
+-     * client's account as credit and recorded in the audit.
++     * must add up to no more than the payment: the rest is
++     * held on the client's account as credit and recorded in the audit. Each must go to a different
++     * sent invoice of the client and be no more than what it still has due. The date must be no later
++     * than today nor before any of the invoices' issue dates. The reference (null when none) has
++     * already been checked; it must be the reference of one of the invoices.
+      */
+     private Payment recordSpread(Long clientId, BigDecimal amount, BigDecimal paidAmount, Currency paidIn,
+-            LocalDate date, String reference, List<PaymentAllocation> parts, boolean holdCredit) {
++            LocalDate date, String reference, List<PaymentAllocation> parts) {
+         if (parts.isEmpty()) {
+             throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
+         }
+@@ -973,7 +962,7 @@ public class InvoiceService {
+             requireWhole(currency, part.getAmount(), "Each invoice's part");
+         }
+         BigDecimal sum = parts.stream().map(PaymentAllocation::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+-        if (holdCredit ? sum.compareTo(amount) > 0 : sum.compareTo(amount) != 0) {
++        if (sum.compareTo(amount) > 0) {
+             throw new InvoiceRejectedException("The amounts for the invoices add up to "
+                     + currency.format(sum) + ", not the " + currency.format(amount) + " paid.");
+         }
