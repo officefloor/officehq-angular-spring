@@ -109,7 +109,8 @@ public class InvoiceController {
      * part of the amount due), {@code retentionReleasedOn} the day it was released (null while held) and
      * {@code retentionDueDate} the day released retention falls due. {@code instalments} is how many
      * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
-     * (without trailing zeros); {@code schedule} lists them and {@code planTotal} is what they add up to
+     * (without trailing zeros), after a down payment of {@code planDownPct} percent of the grand total
+     * (without trailing zeros; instalment 0 when not 0); {@code schedule} lists them and {@code planTotal} is what they add up to
      * (null without a plan), from which what is paid comes off for the amount due. {@code listedDueDate}
      * is the due date as listed: for a plan, its next unpaid instalment's. {@code currency} is the
      * currency its client is billed in, which every amount is in (whole yen for a yen client).
@@ -128,7 +129,7 @@ public class InvoiceController {
             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
             String credited, Long creditOf, String listedTotal, String retentionPct, String retentionCap, String retention,
             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
-            String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+            String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
             String payoff, String interestSaved, String fxDifference) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
@@ -157,6 +158,7 @@ public class InvoiceController {
                     i.retention(taxRate).toPlainString(),
                     i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate(),
                     i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
+                    i.getPlanDownPct().stripTrailingZeros().toPlainString(),
                     i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
                     i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate),
                     i.currency(), i.getEarlyDiscountTaken().toPlainString(),
@@ -291,7 +293,8 @@ public class InvoiceController {
 
     /**
      * A plan to spread a draft over: a whole number of monthly instalments from 2 to 24 and an annual
-     * interest rate from 0 to 30 with at most two decimals.
+     * interest rate from 0 to 30 with at most two decimals, and a down payment from 0 to 50 percent of
+     * the grand total with at most two decimals (none when left out).
      */
     public record NewPlan(
             @NotNull(message = "Enter the number of instalments.")
@@ -303,7 +306,11 @@ public class InvoiceController {
             @DecimalMin(value = "0", message = "The interest rate must be from 0 to 30 percent.")
             @DecimalMax(value = "30", message = "The interest rate must be from 0 to 30 percent.")
             @Digits(integer = 2, fraction = 2, message = "The interest rate can have at most two decimals.")
-            BigDecimal instalmentRate) {
+            BigDecimal instalmentRate,
+            @DecimalMin(value = "0", message = "The down payment must be from 0 to 50 percent.")
+            @DecimalMax(value = "50", message = "The down payment must be from 0 to 50 percent.")
+            @Digits(integer = 2, fraction = 2, message = "The down payment can have at most two decimals.")
+            BigDecimal planDownPct) {
     }
 
     /**
@@ -471,7 +478,8 @@ public class InvoiceController {
 
     @PutMapping("/api/invoices/{id}/plan")
     public InvoiceDetail setPlan(@PathVariable Long id, @Valid @RequestBody NewPlan body) {
-        return invoices.setPlan(id, body.instalments().intValueExact(), body.instalmentRate())
+        return invoices.setPlan(id, body.instalments().intValueExact(), body.instalmentRate(),
+                body.planDownPct() == null ? BigDecimal.ZERO : body.planDownPct())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

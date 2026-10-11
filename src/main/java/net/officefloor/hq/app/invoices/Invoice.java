@@ -52,6 +52,9 @@ public class Invoice {
     /** The highest annual interest rate a plan can charge, as a percentage. */
     public static final BigDecimal MAX_INSTALMENT_RATE = new BigDecimal("30");
 
+    /** The most a plan's down payment can be, a percentage of the grand total. */
+    public static final BigDecimal MAX_PLAN_DOWN_PCT = new BigDecimal("50");
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -104,6 +107,10 @@ public class Invoice {
     /** The annual interest rate of the plan, a percentage from 0 to {@link #MAX_INSTALMENT_RATE}. */
     @Column(name = "instalment_rate")
     private BigDecimal instalmentRate = BigDecimal.ZERO;
+
+    /** The plan's down payment, a percentage of the grand total from 0 to {@link #MAX_PLAN_DOWN_PCT}. */
+    @Column(name = "plan_down_pct")
+    private BigDecimal planDownPct = BigDecimal.ZERO;
 
     /** Whether the invoice's client is tax exempt, so no line is taxed; read from the client. */
     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
@@ -256,6 +263,7 @@ public class Invoice {
         copy.retentionCap = retentionCap;
         copy.instalments = instalments;
         copy.instalmentRate = instalmentRate;
+        copy.planDownPct = planDownPct;
         lines.forEach(line -> copy.lines.add(line.copy()));
         return copy;
     }
@@ -882,10 +890,24 @@ public class Invoice {
         return instalmentRate;
     }
 
-    /** Spreads the invoice over the number of monthly instalments at the annual rate; both have already been checked. */
-    public void setPlan(int instalments, BigDecimal instalmentRate) {
+    /** The plan's down payment, a percentage of the grand total; 0 when there is none. */
+    public BigDecimal getPlanDownPct() {
+        return planDownPct;
+    }
+
+    /**
+     * Spreads the invoice over the number of monthly instalments at the annual rate, after a down
+     * payment of the percentage of the grand total; all have already been checked.
+     */
+    public void setPlan(int instalments, BigDecimal instalmentRate, BigDecimal planDownPct) {
         this.instalments = instalments;
         this.instalmentRate = instalmentRate;
+        this.planDownPct = planDownPct;
+    }
+
+    /** The plan's down payment at the tax rate: its percentage of the grand total, rounded down to the cent. */
+    private BigDecimal downPayment(BigDecimal taxRate) {
+        return total(taxRate).multiply(planDownPct).divide(BigDecimal.valueOf(100), scale(), RoundingMode.FLOOR);
     }
 
     /**
@@ -894,7 +916,9 @@ public class Invoice {
      * i)^-n), or P / n at 0%, rounded up to the next whole unit of the currency. Each month's interest is the balance still
      * owed x i, rounded half up to the cent, and its principal the instalment less the interest; the
      * last instalment (or any earlier one the instalment would overpay) pays off the whole balance left
-     * plus its interest, so the schedule ends at zero. Instalment k falls due k months after the issue date, on the same day (the month's last day when
+     * plus its interest, so the schedule ends at zero. A plan with a down payment starts with it as
+     * instalment 0, due on the issue date with no interest, and the instalments are worked out on what
+     * is left. Instalment k falls due k months after the issue date, on the same day (the month's last day when
      * it is shorter). Each credit note issued against it, in the order they were issued, then re-works
      * the instalments due after its issue date by the same rule: from the principal still owed before
      * them less what the credit note took off, over as many instalments, keeping their due dates; the
@@ -904,22 +928,32 @@ public class Invoice {
         if (!hasPlan()) {
             return List.of();
         }
-        List<LocalDate> dues = new ArrayList<>(instalments);
+        List<LocalDate> dues = new ArrayList<>(instalments + 1);
+        List<Instalment> schedule = new ArrayList<>();
+        BigDecimal principal = total(taxRate).setScale(scale(), RoundingMode.HALF_UP);
+        if (planDownPct.signum() > 0) {
+            BigDecimal down = downPayment(taxRate);
+            principal = principal.subtract(down);
+            dues.add(issueDate);
+            schedule.add(new Instalment(0, issueDate, down, zero(), down, principal));
+        }
+        int downs = dues.size();
         for (int k = 1; k <= instalments; k++) {
             dues.add(issueDate == null ? null : issueDate.plusMonths(k));
         }
-        List<Instalment> schedule = new ArrayList<>(amortise(total(taxRate), dues, 1));
+        schedule.addAll(amortise(principal, dues.subList(downs, dues.size()), 1));
         if (creditsIssued != null && !creditsIssued.isBlank()) {
             for (String credit : creditsIssued.split(",")) {
                 String[] parts = credit.split("=");
                 LocalDate on = LocalDate.parse(parts[0].trim());
-                int kept = keptBefore(schedule, on);
+                int kept = Math.max(keptBefore(schedule, on), downs);
                 if (kept == schedule.size()) {
                     continue;
                 }
-                BigDecimal principal = principalBefore(schedule, kept, taxRate)
+                BigDecimal left = principalBefore(schedule, kept, taxRate)
                         .subtract(new BigDecimal(parts[1].trim()));
-                List<Instalment> reworked = amortise(principal, dues.subList(kept, dues.size()), kept + 1);
+                List<Instalment> reworked = amortise(left, dues.subList(kept, dues.size()),
+                        schedule.get(kept).number());
                 schedule = new ArrayList<>(schedule.subList(0, kept));
                 schedule.addAll(reworked);
             }
@@ -948,7 +982,7 @@ public class Invoice {
      */
     public BigDecimal principalToCome(LocalDate on, BigDecimal taxRate) {
         List<Instalment> schedule = schedule(taxRate);
-        int kept = keptBefore(schedule, on);
+        int kept = Math.max(keptBefore(schedule, on), planDownPct.signum() > 0 ? 1 : 0);
         return kept == schedule.size() ? zero() : principalBefore(schedule, kept, taxRate);
     }
 
@@ -1178,7 +1212,8 @@ public class Invoice {
         if (due) {
             return InvoiceStatus.PART_PAID;
         }
-        LocalDate finalDue = hasPlan() ? schedule(taxRate).get(instalments - 1).dueDate() : dueDate;
+        List<Instalment> schedule = schedule(taxRate);
+        LocalDate finalDue = hasPlan() ? schedule.get(schedule.size() - 1).dueDate() : dueDate;
         return paidOn != null && finalDue != null && paidOn.isAfter(finalDue) ? InvoiceStatus.PAID_LATE
                 : InvoiceStatus.PAID;
     }

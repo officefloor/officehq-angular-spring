@@ -41,7 +41,7 @@ public class TestSupportController {
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "instalments", "instalmentRate", "interestWaivedOn", "lineItems");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
@@ -193,7 +193,7 @@ public class TestSupportController {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "instalments", "instalment_rate", "interest_waived_on"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
@@ -209,6 +209,7 @@ public class TestSupportController {
                             : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"),
                     instalments(row.get("instalments"), "invoices[].instalments"),
                     instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"),
+                    planDownPct(row.get("planDownPct"), "invoices[].planDownPct"),
                     row.get("interestWaivedOn") == null ? null
                             : date(row.get("interestWaivedOn"), "invoices[].interestWaivedOn"));
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
@@ -355,7 +356,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, instalments, instalment_rate, interest_waived_on FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, instalments, instalment_rate, plan_down_pct, interest_waived_on FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -384,6 +385,7 @@ public class TestSupportController {
                         row.put("instalments", r.get("INSTALMENTS"));
                     }
                     row.put("instalmentRate", r.get("INSTALMENT_RATE"));
+                    row.put("planDownPct", r.get("PLAN_DOWN_PCT"));
                     if (r.get("CREDIT_OF") != null) {
                         row.put("creditOf", r.get("CREDIT_OF"));
                     }
@@ -505,6 +507,15 @@ public class TestSupportController {
             throw refuse(field + " must be from 0 to " + Invoice.MAX_INSTALMENT_RATE + ", not " + value);
         }
         return rate;
+    }
+
+    /** A plan's down payment percentage from 0 to 50 with at most two decimals; none given is zero. */
+    private static BigDecimal planDownPct(Object value, String field) {
+        BigDecimal pct = percent(value, field);
+        if (pct.compareTo(Invoice.MAX_PLAN_DOWN_PCT) > 0) {
+            throw refuse(field + " must be from 0 to " + Invoice.MAX_PLAN_DOWN_PCT + ", not " + value);
+        }
+        return pct;
     }
 
     /** A true/false flag; false when left out. */

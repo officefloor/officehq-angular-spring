@@ -40,9 +40,10 @@ function problemWithRetention(pct: string): string {
   return '';
 }
 
-// A plan of 2 to 24 monthly instalments at an annual rate from 0 to 30 with at most two decimals;
-// the server checks them again.
-function problemWithPlan(count: string, rate: string): string {
+// A plan of 2 to 24 monthly instalments at an annual rate from 0 to 30 with at most two decimals,
+// after an optional down payment from 0 to 50 percent with at most two decimals; the server checks
+// them again.
+function problemWithPlan(count: string, rate: string, down: string): string {
   if (!/^\d+$/.test(count)) {
     return 'The number of instalments must be a whole number, like 3 or 12.';
   }
@@ -57,6 +58,17 @@ function problemWithPlan(count: string, rate: string): string {
   }
   if (!TWO_DECIMALS.test(rate)) {
     return 'The interest rate can have at most two decimals.';
+  }
+  if (down !== '') {
+    if (!/^-?\d+(\.\d+)?$/.test(down)) {
+      return 'The down payment must be a number, like 10 or 12.5.';
+    }
+    if (Number(down) < 0 || Number(down) > 50) {
+      return 'The down payment must be from 0 to 50 percent.';
+    }
+    if (!TWO_DECIMALS.test(down)) {
+      return 'The down payment can have at most two decimals.';
+    }
   }
   return '';
 }
@@ -296,7 +308,9 @@ function problemWith(line: NewLine): string {
 
         @if (inv.instalments !== null) {
           <table aria-label="Instalments">
-            <caption>{{ inv.instalments }} monthly instalments at {{ inv.instalmentRate }}% a year</caption>
+            <caption>
+              {{ inv.instalments }} monthly instalments at {{ inv.instalmentRate }}% a year@if (inv.planDownPct !== '0') {, after a {{ inv.planDownPct }}% down payment}
+            </caption>
             <thead>
               <tr>
                 <th scope="col">No.</th>
@@ -492,6 +506,8 @@ function problemWith(line: NewLine): string {
             <input id="plan-count" data-testid="plan-form-count" inputmode="numeric" formControlName="count" />
             <label for="plan-rate">Annual interest rate (%, 0 to 30)</label>
             <input id="plan-rate" data-testid="plan-form-rate" inputmode="decimal" formControlName="rate" />
+            <label for="plan-down">Down payment (% of the total, 0 to 50, optional)</label>
+            <input id="plan-down" data-testid="plan-form-down" inputmode="decimal" formControlName="down" />
             <button type="submit" data-testid="plan-form-submit" [disabled]="savingPlan()">Set plan</button>
             @if (planError()) {
               <p role="alert" data-testid="plan-form-error">{{ planError() }}</p>
@@ -753,6 +769,7 @@ export class InvoicePanel {
   protected readonly planForm = new FormGroup({
     count: new FormControl('', { nonNullable: true }),
     rate: new FormControl('', { nonNullable: true }),
+    down: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly dueForm = new FormGroup({
@@ -984,7 +1001,8 @@ export class InvoicePanel {
     const raw = this.planForm.getRawValue();
     const count = raw.count.trim();
     const rate = raw.rate.trim().replace(/%$/, '').trim();
-    const problem = problemWithPlan(count, rate);
+    const down = raw.down.trim().replace(/%$/, '').trim();
+    const problem = problemWithPlan(count, rate, down);
     if (problem) {
       this.planForm.markAllAsTouched();
       this.planError.set(problem);
@@ -992,7 +1010,7 @@ export class InvoicePanel {
     }
     this.savingPlan.set(true);
     this.planError.set('');
-    this.service.setPlan(invoiceId, count, rate).subscribe({
+    this.service.setPlan(invoiceId, count, rate, down || '0').subscribe({
       next: (detail) => {
         this.invoice.set(detail);
         this.changed.emit(detail);

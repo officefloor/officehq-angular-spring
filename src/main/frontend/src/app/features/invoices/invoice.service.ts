@@ -132,6 +132,9 @@ export interface InvoiceDetail {
   // up to (null without a plan). The amount due on a planned invoice is the plan total less what is paid.
   instalments: number | null;
   instalmentRate: string;
+  // The plan's down payment, a percentage of the grand total without trailing zeros ("0" when none);
+  // when there is one it is instalment 0 of the schedule, due on the issue date with no interest.
+  planDownPct: string;
   schedule: InstalmentView[];
   planTotal: string | null;
   // The due date as listed (yyyy-mm-dd): for a plan, its next unpaid instalment's due date.
@@ -157,7 +160,7 @@ export interface InvoiceDetail {
   fxDifference: string | null;
 }
 
-// One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,
+// One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
 // interest, principal and the balance left after it, decimal strings to the cent; what has been paid
 // off it (payments pay the instalments in order, each its late interest first), the late interest it
 // has been charged ("0.00" when none) and its status.
@@ -277,9 +280,10 @@ export class InvoiceService {
   }
 
   // Spreads a draft over monthly instalments (2 to 24) at an annual interest rate (0 to 30, up to two
-  // decimals); refused (400) outside that, or (409) when it is not a draft or holds back retention.
-  setPlan(invoiceId: number, instalments: string, instalmentRate: string): Observable<InvoiceDetail> {
-    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/plan`, { instalments, instalmentRate });
+  // decimals), after a down payment of a percentage of the grand total (0 to 50, up to two decimals);
+  // refused (400) outside that, or (409) when it is not a draft or holds back retention.
+  setPlan(invoiceId: number, instalments: string, instalmentRate: string, planDownPct: string): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/plan`, { instalments, instalmentRate, planDownPct });
   }
 
   // Releases the retention held back on a sent invoice, adding it to the amount due; refused (409)

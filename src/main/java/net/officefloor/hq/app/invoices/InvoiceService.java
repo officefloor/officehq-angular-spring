@@ -333,12 +333,14 @@ public class InvoiceService {
     }
 
     /**
-     * Spreads a draft over the number of monthly instalments at the annual interest rate; empty if no
+     * Spreads a draft over the number of monthly instalments at the annual interest rate, after a down
+     * payment of the percentage of the grand total; empty if no
      * such invoice. Both have already been checked; any invoice that is not a draft, a credit note, or
      * one holding back retention is refused.
      */
     @Transactional
-    public Optional<Invoice> setPlan(Long invoiceId, int instalments, BigDecimal instalmentRate) {
+    public Optional<Invoice> setPlan(Long invoiceId, int instalments, BigDecimal instalmentRate,
+            BigDecimal planDownPct) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isCreditNote()) {
@@ -350,7 +352,7 @@ public class InvoiceService {
             if (invoice.getRetentionPct().signum() > 0) {
                 throw new InvoiceRejectedException("An invoice holding back retention cannot also be spread over instalments.");
             }
-            invoice.setPlan(instalments, instalmentRate);
+            invoice.setPlan(instalments, instalmentRate, planDownPct);
             invoices.saveAndFlush(invoice);
         });
         return found;
