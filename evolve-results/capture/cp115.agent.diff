@@ -1,0 +1,233 @@
+diff --git a/src/main/java/net/officefloor/hq/app/TaxRate.java b/src/main/java/net/officefloor/hq/app/TaxRate.java
+index 28bdb57..2145df3 100644
+--- a/src/main/java/net/officefloor/hq/app/TaxRate.java
++++ b/src/main/java/net/officefloor/hq/app/TaxRate.java
+@@ -1,6 +1,8 @@
+ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
++import java.sql.Date;
++import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.TreeMap;
+@@ -10,7 +12,10 @@ import org.springframework.stereotype.Service;
+ /**
+  * The workspace's tax rate: the stored {@code tax_rate} setting, a percentage such as 10. With no
+  * rate set there is no tax, so the rate is 0. A region can have its own rate, the
+- * {@code region_tax_rate_<region>} setting, charged to the region's clients instead.
++ * {@code region_tax_rate_<region>} setting, charged to the region's clients instead. A region's rate
++ * can change on a date (the {@code tax_rate_change} table): an invoice is taxed at the latest change on
++ * or before its issue date, or the region's own rate before any. Invoices read the changes themselves
++ * (see Invoice).
+  */
+ @Service
+ public class TaxRate {
+@@ -58,4 +63,33 @@ public class TaxRate {
+         return jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class, HOME_REGION)
+                 .stream().findFirst().orElse(null);
+     }
++
++    /** A dated change of a region's rate: from the date on, the region is taxed at the rate. */
++    public record Change(String region, LocalDate from, BigDecimal rate) {
++    }
++
++    /** Every dated change, by region then date. */
++    public List<Change> changes() {
++        return jdbc.query("SELECT region, from_date, rate FROM tax_rate_change ORDER BY region, from_date, id",
++                (rs, n) -> new Change(rs.getString(1), rs.getDate(2).toLocalDate(), rs.getBigDecimal(3)));
++    }
++
++    /** Records that the region's rate changes to the given rate from the date on. */
++    public void addChange(String region, LocalDate from, BigDecimal rate) {
++        jdbc.update("INSERT INTO tax_rate_change (region, from_date, rate) VALUES (?, ?, ?)", region,
++                Date.valueOf(from), rate);
++    }
++
++    /**
++     * The region's dated changes as "from date=rate" joined by commas in date order, the form invoices
++     * read them in; null when the client has no region or the region has no changes.
++     */
++    public String changesFor(String region) {
++        if (region == null) {
++            return null;
++        }
++        List<String> changes = jdbc.query("SELECT from_date, rate FROM tax_rate_change WHERE region = ? ORDER BY from_date, id",
++                (rs, n) -> rs.getDate(1).toLocalDate() + "=" + rs.getBigDecimal(2).toPlainString(), region);
++        return changes.isEmpty() ? null : String.join(",", changes);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 19d6388..37202dc 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -39,7 +39,8 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "rates", "taxRateChanges");
++    private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+     private static final String MINIMUM_CHARGE = "minimum_charge";
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+@@ -87,6 +88,7 @@ public class TestSupportController {
+         audit.clear();
+         jdbc.execute("DELETE FROM app_setting");
+         jdbc.execute("DELETE FROM fx_rate");
++        jdbc.execute("DELETE FROM tax_rate_change");
+         jdbc.execute("DELETE FROM payment_allocation");
+         jdbc.execute("DELETE FROM client_rate");
+         jdbc.execute("DELETE FROM price_list_rate");
+@@ -207,6 +209,23 @@ public class TestSupportController {
+                 priceList.add(rate.get("unitType").toString(),
+                         tiers != null ? null : cents(rate.get("unitPrice"), "settings.rates[].unitPrice"), tiers);
+             }
++            for (Map<String, Object> change : rows(values.get("taxRateChanges"), "settings.taxRateChanges")) {
++                only(change, TAX_RATE_CHANGE_FIELDS, "settings.taxRateChanges[]");
++                if (change.get("region") == null || change.get("region").toString().isBlank()
++                        || change.get("from") == null || change.get("rate") == null) {
++                    throw refuse("settings.taxRateChanges[] needs region, from and rate");
++                }
++                BigDecimal rate;
++                try {
++                    rate = new BigDecimal(String.valueOf(change.get("rate")));
++                } catch (NumberFormatException ex) {
++                    throw refuse("settings.taxRateChanges[].rate must be a number, not " + change.get("rate"));
++                }
++                if (rate.signum() < 0 || rate.compareTo(BigDecimal.valueOf(100)) > 0) {
++                    throw refuse("settings.taxRateChanges[].rate must be from 0 to 100, not " + change.get("rate"));
++                }
++                taxRate.addChange(change.get("region").toString(), date(change.get("from"), "settings.taxRateChanges[].from"), rate);
++            }
+             for (Map<String, Object> rate : rows(values.get("fxRates"), "settings.fxRates")) {
+                 only(rate, FX_RATE_FIELDS, "settings.fxRates[]");
+                 if (rate.get("from") == null || rate.get("currency") == null || rate.get("usdPer") == null) {
+@@ -442,6 +461,16 @@ public class TestSupportController {
+         if (!regionTaxRates.isEmpty()) {
+             settings.put("regionTaxRates", regionTaxRates);
+         }
++        List<Map<String, Object>> taxRateChanges = this.taxRate.changes().stream().map(c -> {
++            Map<String, Object> row = new LinkedHashMap<>();
++            row.put("region", c.region());
++            row.put("from", c.from().toString());
++            row.put("rate", c.rate());
++            return row;
++        }).toList();
++        if (!taxRateChanges.isEmpty()) {
++            settings.put("taxRateChanges", taxRateChanges);
++        }
+         String homeRegion = this.taxRate.homeRegion();
+         if (homeRegion != null) {
+             settings.put("homeRegion", homeRegion);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 63e8af6..11794bb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -167,6 +167,17 @@ public class Invoice {
+     @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_tax_rate_' || c.region)")
+     private String regionTaxRate;
+ 
++    /**
++     * The dated changes of the client's region's rate, as "from date=rate" joined by commas in date
++     * order; null when there are none. Read from the workspace's tax rate changes.
++     */
++    @Formula("(SELECT LISTAGG(CAST(t.from_date AS VARCHAR) || '=' || CAST(t.rate AS VARCHAR), ',') WITHIN GROUP (ORDER BY t.from_date, t.id) FROM tax_rate_change t, client c WHERE c.id = client_id AND t.region = c.region)")
++    private String regionRateChanges;
++
++    /** The issue date of the invoice this credit note credits; null for an ordinary invoice. */
++    @Formula("(SELECT o.issue_date FROM invoice o WHERE o.id = credit_of)")
++    private LocalDate creditedIssueDate;
++
+     /**
+      * The tax number of the invoice's client when the client is in a region other than the workspace's
+      * home region; read from them, null when it has no number, no region, is in the home region or
+@@ -336,12 +347,13 @@ public class Invoice {
+ 
+     /** A new, empty draft for a client, issued and due on the given dates. */
+     public static Invoice draft(Long clientId, boolean clientTaxExempt, boolean clientPricesIncludeTax, String regionTaxRate,
+-            String outOfRegionTaxNumber, Currency currency, LocalDate issueDate, LocalDate dueDate) {
++            String regionRateChanges, String outOfRegionTaxNumber, Currency currency, LocalDate issueDate, LocalDate dueDate) {
+         Invoice invoice = new Invoice();
+         invoice.clientId = clientId;
+         invoice.clientTaxExempt = clientTaxExempt;
+         invoice.clientPricesIncludeTax = clientPricesIncludeTax;
+         invoice.regionTaxRate = regionTaxRate;
++        invoice.regionRateChanges = regionRateChanges;
+         invoice.outOfRegionTaxNumber = outOfRegionTaxNumber;
+         invoice.clientCurrency = currency.name();
+         invoice.status = InvoiceStatus.DRAFT;
+@@ -355,7 +367,7 @@ public class Invoice {
+      * discount, issued and due on the given dates. Payments stay with this invoice.
+      */
+     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
+-        Invoice copy = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, dueDate);
++        Invoice copy = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+         copy.discountPct = discountPct;
+         copy.discountAmount = discountAmount;
+         copy.discountCap = discountCap;
+@@ -375,8 +387,9 @@ public class Invoice {
+      * discount, taxed as the original's lines are.
+      */
+     public Invoice creditNote(LocalDate issueDate) {
+-        Invoice note = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, outOfRegionTaxNumber, currency(), issueDate, null);
++        Invoice note = draft(clientId, clientTaxExempt, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, null);
+         note.creditOf = id;
++        note.creditedIssueDate = this.issueDate;
+         return note;
+     }
+ 
+@@ -1882,9 +1895,24 @@ public class Invoice {
+         return TaxNumber.isValid(outOfRegionTaxNumber);
+     }
+ 
+-    /** The rate lines without their own are taxed at: the client's regional rate, or the given workspace rate when it has none. */
++    /**
++     * The rate lines without their own are taxed at: the client's regional rate in force on the issue
++     * date (a credit note's original's), that is the latest change on or before it, otherwise the
++     * region's own rate; or the given workspace rate when the region has neither.
++     */
+     public BigDecimal clientTaxRate(BigDecimal workspaceRate) {
+-        return regionTaxRate == null ? workspaceRate : new BigDecimal(regionTaxRate.trim());
++        BigDecimal rate = regionTaxRate == null ? null : new BigDecimal(regionTaxRate.trim());
++        LocalDate on = creditOf != null ? creditedIssueDate : issueDate;
++        if (regionRateChanges != null && on != null) {
++            for (String entry : regionRateChanges.split(",")) {
++                String[] parts = entry.split("=");
++                if (LocalDate.parse(parts[0].trim()).isAfter(on)) {
++                    break;
++                }
++                rate = new BigDecimal(parts[1].trim());
++            }
++        }
++        return rate == null ? workspaceRate : rate;
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 9c6d1d5..f0bc419 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -121,6 +121,7 @@ public class InvoiceService {
+         return clients.findById(clientId).map(client -> {
+             LocalDate issued = today.date();
+             Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), client.isPricesIncludeTax(), taxRate.forRegion(client.getRegion()),
++                    taxRate.changesFor(client.getRegion()),
+                     outOfHomeRegion(client) ? client.getTaxNumber() : null, client.getCurrency(), issued, dueDateFor(clientId, issued));
+             draft.setDiscountPct(client.getDiscountPct());
+             draft.setRetentionPct(client.getRetentionPct());
+diff --git a/src/main/resources/db/migration/V48__tax_rate_change.sql b/src/main/resources/db/migration/V48__tax_rate_change.sql
+new file mode 100644
+index 0000000..4df4f9d
+--- /dev/null
++++ b/src/main/resources/db/migration/V48__tax_rate_change.sql
+@@ -0,0 +1,9 @@
++-- Dated changes to a region's tax rate: from a date on, the region's invoices are taxed at the new
++-- rate. An invoice is taxed at the latest change on or before its issue date (a credit note at its
++-- original's), or the standing region_tax_rate_<region> setting before any.
++CREATE TABLE tax_rate_change (
++    id        BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    region    VARCHAR(64)    NOT NULL,
++    from_date DATE           NOT NULL,
++    rate      DECIMAL(9, 4)  NOT NULL
++);
