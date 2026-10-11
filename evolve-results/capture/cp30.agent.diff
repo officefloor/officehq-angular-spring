@@ -1,0 +1,270 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index c7f91e9..fdc2b46 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -111,7 +111,8 @@ function problemWith(line: NewLine): string {
+ // ISO 11649 check and be this invoice's. When parts of a payment are filled in on the list, the
+ // payment is spread over those invoices instead; each payment shows how much of it went here.
+ // A sent invoice with no payments can be voided; the server refuses to void a draft or one with
+-// payments, and refuses any payment or change to a void invoice.
++// payments, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
++// cheque): it is undone on every invoice it was applied to and never counts again.
+ @Component({
+   selector: 'app-invoice-panel',
+   imports: [ReactiveFormsModule, PaymentForm],
+@@ -189,6 +190,7 @@ function problemWith(line: NewLine): string {
+                 <th scope="col">Amount</th>
+                 <th scope="col">To this invoice</th>
+                 <th scope="col">Reference</th>
++                <th scope="col">Actions</th>
+               </tr>
+             </thead>
+             <tbody>
+@@ -198,24 +200,38 @@ function problemWith(line: NewLine): string {
+                   <td data-testid="payment-amount">{{ money(p.amount) }}</td>
+                   <td data-testid="payment-allocated">{{ money(p.allocated) }}</td>
+                   <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
++                  <td>
++                    <button
++                      type="button"
++                      data-testid="payment-reverse"
++                      [disabled]="reversing()"
++                      [attr.aria-label]="'Reverse payment of ' + money(p.amount) + ' on ' + p.date"
++                      (click)="reversePayment(inv.id, inv.clientId, p.id)"
++                    >
++                      Reverse
++                    </button>
++                  </td>
+                 </tr>
+               } @empty {
+                 <tr>
+-                  <td colspan="4" data-testid="payment-empty">No payments yet.</td>
++                  <td colspan="5" data-testid="payment-empty">No payments yet.</td>
+                 </tr>
+               }
+             </tbody>
+             <tfoot>
+               <tr>
+-                <th scope="row" colspan="3">Paid</th>
++                <th scope="row" colspan="4">Paid</th>
+                 <td data-testid="invoice-paid">{{ money(inv.paid) }}</td>
+               </tr>
+               <tr>
+-                <th scope="row" colspan="3">Amount due</th>
++                <th scope="row" colspan="4">Amount due</th>
+                 <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
+               </tr>
+             </tfoot>
+           </table>
++          @if (reverseError()) {
++            <p role="alert" data-testid="payment-reverse-error">{{ reverseError() }}</p>
++          }
+         }
+ 
+         @if (inv.status !== 'PAID') {
+@@ -350,6 +366,8 @@ export class InvoicePanel {
+   protected readonly sendError = signal('');
+   protected readonly voiding = signal(false);
+   protected readonly voidError = signal('');
++  protected readonly reversing = signal(false);
++  protected readonly reverseError = signal('');
+   protected readonly statusLabel = statusLabel;
+   protected readonly money = money;
+ 
+@@ -377,6 +395,7 @@ export class InvoicePanel {
+       this.discountError.set('');
+       this.sendError.set('');
+       this.voidError.set('');
++      this.reverseError.set('');
+       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
+       onCleanup(() => sub.unsubscribe());
+     });
+@@ -501,4 +520,25 @@ export class InvoicePanel {
+       },
+     });
+   }
++
++  // A payment was reversed: show this invoice again, and the client's other invoices it was applied to.
++  protected reversePayment(invoiceId: number, clientId: number, paymentId: number): void {
++    this.reversing.set(true);
++    this.reverseError.set('');
++    this.service.reversePayment(invoiceId, paymentId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.service.forClient(clientId).subscribe((list) => this.split.emit(list));
++        this.reversing.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.reverseError.set(
++          typeof detail === 'string' && detail ? detail : 'The payment could not be reversed.',
++        );
++        this.reversing.set(false);
++      },
++    });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 796803b..358abd8 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -187,4 +187,10 @@ export class InvoiceService {
+   recordSplitPayment(clientId: number, payment: NewSplitPayment): Observable<InvoiceSummary[]> {
+     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment);
+   }
++
++  // Reverses a payment (a bounced cheque) on every invoice it was applied to; refused (409) when it
++  // has already been reversed. Answers the opened invoice with its payments and new status.
++  reversePayment(invoiceId: number, paymentId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments/${paymentId}/reverse`, null);
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index bff224f..2e6dfa8 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -36,7 +36,7 @@ public class TestSupportController {
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct");
+-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "allocations");
++    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "allocations");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID");
+ 
+@@ -137,10 +137,11 @@ public class TestSupportController {
+             if (row.get("date") == null) {
+                 throw refuse("payments[].date is required");
+             }
+-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference"},
++            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed"},
+                     id(row.get("clientId")), cents(row.get("amount"), "payments[].amount"),
+                     date(row.get("date"), "payments[].date"),
+-                    row.get("reference") == null ? null : row.get("reference").toString());
++                    row.get("reference") == null ? null : row.get("reference").toString(),
++                    flag(row.get("reversed"), "payments[].reversed"));
+             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
+                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
+                 if (allocation.get("invoiceId") == null) {
+@@ -211,7 +212,7 @@ public class TestSupportController {
+                             }).toList());
+                     return row;
+                 }).toList());
+-        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference FROM payment ORDER BY id")
++        out.put("payments", jdbc.queryForList("SELECT id, client_id, amount, payment_date, reference, reversed FROM payment ORDER BY id")
+                 .stream().map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -219,6 +220,7 @@ public class TestSupportController {
+                     row.put("amount", r.get("AMOUNT"));
+                     row.put("date", r.get("PAYMENT_DATE").toString());
+                     row.put("reference", r.get("REFERENCE"));
++                    row.put("reversed", r.get("REVERSED"));
+                     row.put("allocations", jdbc.queryForList(
+                             "SELECT invoice_id, amount FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
+                             r.get("ID")).stream().map(a -> {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 095fbed..6a94067 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -333,4 +333,13 @@ public class InvoiceController {
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
++
++    /** Reverses a payment on every invoice it was applied to; answers the invoice it was reversed from. */
++    @PostMapping("/api/invoices/{id}/payments/{paymentId}/reverse")
++    public InvoiceDetail reversePayment(@PathVariable Long id, @PathVariable Long paymentId) {
++        invoices.reversePayment(paymentId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such payment."));
++        return invoices.find(id).map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 0c6e5e8..5e3ec7f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -353,4 +353,23 @@ public class InvoiceService {
+         }
+         return payment;
+     }
++
++    /**
++     * Reverses the payment (a bounced cheque), undoing it on every invoice it was applied to, and
++     * records it in the audit; empty if no such payment. A payment already reversed is refused.
++     */
++    @Transactional
++    public Optional<Payment> reversePayment(Long paymentId) {
++        Optional<Payment> found = payments.findById(paymentId);
++        found.ifPresent(payment -> {
++            if (payment.isReversed()) {
++                throw new InvoiceRejectedException("This payment has already been reversed.");
++            }
++            payment.reverse();
++            payments.saveAndFlush(payment);
++            audit.record("PAYMENT_REVERSED id=" + payment.getId() + " amount="
++                    + payment.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++        });
++        return found;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index 3aa3283..05bd540 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -34,6 +34,9 @@ public class Payment {
+     /** The payment reference the client quoted, or null when none was. */
+     private String reference;
+ 
++    /** Whether the payment has been reversed (a bounced cheque): it then no longer counts. */
++    private boolean reversed;
++
+     @ElementCollection
+     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
+     private List<PaymentAllocation> allocations = new ArrayList<>();
+@@ -87,6 +90,15 @@ public class Payment {
+         return reference;
+     }
+ 
++    public boolean isReversed() {
++        return reversed;
++    }
++
++    /** Reverses the payment: it no longer counts on any invoice it was applied to. */
++    public void reverse() {
++        reversed = true;
++    }
++
+     public List<PaymentAllocation> getAllocations() {
+         return allocations;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java
+index 2025f93..7d58307 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/PaymentRepository.java
+@@ -8,11 +8,11 @@ import org.springframework.data.repository.query.Param;
+ 
+ public interface PaymentRepository extends JpaRepository<Payment, Long> {
+ 
+-    /** The payments with a part allocated to the invoice, oldest first. */
+-    @Query("SELECT DISTINCT p FROM Payment p LEFT JOIN FETCH p.allocations WHERE p.id IN (SELECT q.id FROM Payment q JOIN q.allocations a WHERE a.invoiceId = :invoiceId) ORDER BY p.date, p.id")
++    /** The payments not reversed with a part allocated to the invoice, oldest first. */
++    @Query("SELECT DISTINCT p FROM Payment p LEFT JOIN FETCH p.allocations WHERE p.reversed = false AND p.id IN (SELECT q.id FROM Payment q JOIN q.allocations a WHERE a.invoiceId = :invoiceId) ORDER BY p.date, p.id")
+     List<Payment> findForInvoice(@Param("invoiceId") Long invoiceId);
+ 
+-    /** For each of the invoices that has been paid something, its id and the amount paid to it. */
+-    @Query("SELECT a.invoiceId, SUM(a.amount) FROM Payment p JOIN p.allocations a WHERE a.invoiceId IN :invoiceIds GROUP BY a.invoiceId")
++    /** For each of the invoices that has been paid something, its id and the amount paid to it by payments not reversed. */
++    @Query("SELECT a.invoiceId, SUM(a.amount) FROM Payment p JOIN p.allocations a WHERE p.reversed = false AND a.invoiceId IN :invoiceIds GROUP BY a.invoiceId")
+     List<Object[]> paidTo(@Param("invoiceIds") Collection<Long> invoiceIds);
+ }
+diff --git a/src/main/resources/db/migration/V10__payment_reversed.sql b/src/main/resources/db/migration/V10__payment_reversed.sql
+new file mode 100644
+index 0000000..87c0554
+--- /dev/null
++++ b/src/main/resources/db/migration/V10__payment_reversed.sql
+@@ -0,0 +1,2 @@
++-- Whether the payment has been reversed (a bounced cheque): it then no longer counts anywhere.
++ALTER TABLE payment ADD COLUMN reversed BOOLEAN DEFAULT FALSE NOT NULL;
