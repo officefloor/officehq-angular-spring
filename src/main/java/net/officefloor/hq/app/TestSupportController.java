@@ -821,8 +821,8 @@ public class TestSupportController {
 
     /**
      * A seeded line's unit price and the tiers it is priced in (null for a single price): the price
-     * given, or else its invoice's client's rate for the line's unit type in force on the invoice's issue
-     * date — a single price, or tiers whose first band's price is kept as the unit price — or else the price
+     * given, or else its invoice's client's rate for the line's unit type in force on the day the invoice is
+     * priced as of (see {@link #ratesDate}; its issue date when nothing is in force then) — a single price, or tiers whose first band's price is kept as the unit price — or else the price
      * list's then; refused when neither is there — and whether the line is priced from the rates, which a
      * draft's line follows.
      */
@@ -831,9 +831,22 @@ public class TestSupportController {
             return new Object[] {cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"), null, false, false};
         }
         Map<String, Object> invoice = jdbc.queryForMap("SELECT i.status, i.issue_date, c.currency, c.rate_discount_pct FROM invoice i JOIN client c ON c.id = i.client_id WHERE i.id = ?", invoiceId);
+        LocalDate issued = invoiceDate(invoice.get("ISSUE_DATE"));
+        LocalDate on = ratesDate(invoiceId);
+        if (!on.equals(issued)) {
+            try {
+                return linePrice(invoiceId, line, invoice, on);
+            } catch (ResponseStatusException noRateToday) {
+                // nothing in force today: priced as of its issue date instead
+            }
+        }
+        return linePrice(invoiceId, line, invoice, issued);
+    }
+
+    /** A seeded line's price as {@link #linePrice(Long, Map)}, from the rates in force on the date. */
+    private Object[] linePrice(Long invoiceId, Map<String, Object> line, Map<String, Object> invoice, LocalDate on) {
         Currency currency = Currency.orUsd((String) invoice.get("CURRENCY"));
         BigDecimal discountPct = (BigDecimal) invoice.get("RATE_DISCOUNT_PCT");
-        LocalDate on = invoiceDate(invoice.get("ISSUE_DATE"));
         // A draft's line priced from the rates follows them; a sent invoice's has its price fixed.
         boolean draft = "DRAFT".equals(invoice.get("STATUS"));
         List<Map<String, Object>> rate = jdbc.queryForList("SELECT r.unit_price, r.tiers FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
@@ -857,6 +870,16 @@ public class TestSupportController {
         return new Object[] {RateDiscount.price((BigDecimal) rate.get(0).get("UNIT_PRICE"), discountPct, currency), null, draft, true};
     }
 
+    /**
+     * The day a seeded invoice's lines are priced as of: today for a draft (not a credit note), which will be
+     * dated today when sent; otherwise its issue date, or today when it has none.
+     */
+    private LocalDate ratesDate(Long invoiceId) {
+        Map<String, Object> invoice = jdbc.queryForMap("SELECT status, credit_of, issue_date FROM invoice WHERE id = ?", invoiceId);
+        return "DRAFT".equals(invoice.get("STATUS")) && invoice.get("CREDIT_OF") == null ? today.date()
+                : invoiceDate(invoice.get("ISSUE_DATE"));
+    }
+
     /** The day an invoice's rates are taken on: its issue date, or today when it has none. */
     private LocalDate invoiceDate(Object issueDate) {
         return issueDate == null ? today.date() : ((java.sql.Date) issueDate).toLocalDate();
@@ -864,13 +887,20 @@ public class TestSupportController {
 
     /**
      * A seeded line's billing increment or minimum units: its invoice's client's given column for the line's unit type
-     * in the entry in force on the invoice's issue date; null for none.
+     * in the entry in force on the day the invoice is priced as of (see {@link #ratesDate}), or else on its issue date;
+     * null for none.
      */
     private BigDecimal lineRate(Long invoiceId, Map<String, Object> line, String column) {
         if (line.get("unitType") == null) {
             return null;
         }
-        LocalDate on = invoiceDate(jdbc.queryForMap("SELECT issue_date FROM invoice WHERE id = ?", invoiceId).get("ISSUE_DATE"));
+        LocalDate issued = invoiceDate(jdbc.queryForMap("SELECT issue_date FROM invoice WHERE id = ?", invoiceId).get("ISSUE_DATE"));
+        LocalDate on = ratesDate(invoiceId);
+        if (!on.equals(issued) && jdbc.queryForObject("SELECT COUNT(*) FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
+                + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?) AND (r.effective_from IS NULL OR r.effective_from <= ?)",
+                Integer.class, invoiceId, line.get("unitType").toString().trim(), on) == 0) {
+            on = issued;
+        }
         List<BigDecimal> found = jdbc.queryForList("SELECT r." + column + " FROM client_rate r JOIN invoice i ON i.client_id = r.client_id "
                 + "WHERE i.id = ? AND LOWER(r.unit_type) = LOWER(?) AND (r.effective_from IS NULL OR r.effective_from <= ?) "
                 + "ORDER BY r.effective_from DESC NULLS LAST LIMIT 1", BigDecimal.class, invoiceId,

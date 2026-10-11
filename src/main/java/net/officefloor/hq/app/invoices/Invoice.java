@@ -404,6 +404,13 @@ public class Invoice {
     @Transient
     private BigDecimal lateInterest = BigDecimal.ZERO;
 
+    /**
+     * Today, as the workspace has it (see {@link #priceAsOf}); not stored. A draft is priced and taxed as of
+     * this day, since it will be dated today when sent. Null until it is set, when the issue date is used.
+     */
+    @Transient
+    private LocalDate pricedToday;
+
     /** The part of {@link #lateInterest} charged on released retention (see {@link #accrueRetentionInterest}); not stored. */
     @Transient
     private BigDecimal retentionInterest = BigDecimal.ZERO;
@@ -482,6 +489,24 @@ public class Invoice {
         note.creditedIssueDate = this.issueDate;
         note.creditedSurchargePct = this.surchargePct;
         return note;
+    }
+
+    /** Tells the invoice what today is, the day a draft is priced and taxed as of (see {@link #pricingDate}). */
+    public void priceAsOf(LocalDate today) {
+        this.pricedToday = today;
+    }
+
+    /**
+     * The day the invoice's prices, exchange rates, monthly volume and tax are taken as of: today for a draft
+     * (not a credit note), since it will be dated today when sent; otherwise its issue date.
+     */
+    public LocalDate pricingDate() {
+        return isDraft() && !isCreditNote() && pricedToday != null ? pricedToday : issueDate;
+    }
+
+    /** The day the invoice is taxed as of: a credit note's original's issue date, otherwise {@link #pricingDate}. */
+    private LocalDate taxDate() {
+        return creditOf != null ? creditedIssueDate : pricingDate();
     }
 
     /** The currency the invoice is in: its client's. */
@@ -1350,7 +1375,7 @@ public class Invoice {
     /**
      * Spreads the invoice over the number of monthly instalments at the annual rate, after a down
      * payment of the percentage of the grand total; all have already been checked. Charges the
-     * workspace's plan fee: its US dollars converted at the issue date's rate, rounded down to the step.
+     * workspace's plan fee: its US dollars converted at the rate of the pricing date (see {@link #pricingDate}), rounded down to the step.
      */
     public void setPlan(int instalments, BigDecimal instalmentRate, BigDecimal planDownPct) {
         this.instalments = instalments;
@@ -1358,7 +1383,7 @@ public class Invoice {
         this.skippedInstalment = null;
         this.planDownPct = planDownPct;
         this.planFee = planFeeUsd == null ? zero()
-                : currency().divideDownToStep(new BigDecimal(planFeeUsd.trim()), usdPerOn(issueDate));
+                : currency().divideDownToStep(new BigDecimal(planFeeUsd.trim()), usdPerOn(pricingDate()));
     }
 
     /**
@@ -1846,12 +1871,13 @@ public class Invoice {
     /**
      * How many units of the tiered unit type the client was already billed this calendar month before this
      * invoice: the tiered lines of that unit type on the client's other sent invoices (not credit notes)
-     * issued earlier in the same month as this one, or on the same date with a lower id. Drafts, void
+     * issued earlier in the same month as this one is priced in (see {@link #pricingDate}), or on the same date with a lower id. Drafts, void
      * invoices and credit notes don't count; a credit note itself carries on from none.
      */
     private BigDecimal monthUnitsBefore(String unitType) {
         BigDecimal before = BigDecimal.ZERO;
-        if (clientTieredUnits == null || unitType == null || issueDate == null || isCreditNote()) {
+        LocalDate on = pricingDate();
+        if (clientTieredUnits == null || unitType == null || on == null || isCreditNote()) {
             return before;
         }
         for (String entry : clientTieredUnits.split(String.valueOf((char) 30))) {
@@ -1861,9 +1887,9 @@ public class Invoice {
             }
             Long otherId = Long.valueOf(parts[0]);
             LocalDate issued = LocalDate.parse(parts[1]);
-            boolean sameMonth = issued.getYear() == issueDate.getYear() && issued.getMonth() == issueDate.getMonth();
-            boolean earlier = issued.isBefore(issueDate)
-                    || (issued.isEqual(issueDate) && (id == null || otherId < id));
+            boolean sameMonth = issued.getYear() == on.getYear() && issued.getMonth() == on.getMonth();
+            boolean earlier = issued.isBefore(on)
+                    || (issued.isEqual(on) && (id == null || otherId < id));
             if (sameMonth && earlier) {
                 before = before.add(new BigDecimal(parts[3]));
             }
@@ -1964,7 +1990,7 @@ public class Invoice {
 
     /**
      * The volume discount: the percentage of the highest of the workspace's volume discount thresholds
-     * the subtotal is over (each converted from US dollars at the issue date's rate and rounded down
+     * the subtotal is over (each converted from US dollars at the pricing date's rate (see {@link #pricingDate}) and rounded down
      * to the step) of the discountable subtotal (see {@link #discountableSubtotal()}), rounded down to the cent. Nothing when it passes none, or for a
      * credit note.
      */
@@ -1977,7 +2003,7 @@ public class Invoice {
         BigDecimal highest = null;
         for (String entry : volumeDiscounts.split(",")) {
             String[] parts = entry.split("=");
-            BigDecimal over = currency().divideDownToStep(new BigDecimal(parts[0].trim()), usdPerOn(issueDate));
+            BigDecimal over = currency().divideDownToStep(new BigDecimal(parts[0].trim()), usdPerOn(pricingDate()));
             if (subtotal.compareTo(over) > 0 && (highest == null || over.compareTo(highest) >= 0)) {
                 highest = over;
                 pct = new BigDecimal(parts[1].trim());
@@ -2042,13 +2068,13 @@ public class Invoice {
     }
 
     /**
-     * The rate lines without their own are taxed at: the client's regional rate in force on the issue
-     * date (a credit note's original's), that is the latest change on or before it, otherwise the
+     * The rate lines without their own are taxed at: the client's regional rate in force on the day it is taxed as of
+     * (see {@link #taxDate}: today for a draft, a credit note's original's issue date), that is the latest change on or before it, otherwise the
      * region's own rate; or the given workspace rate when the region has neither.
      */
     public BigDecimal clientTaxRate(BigDecimal workspaceRate) {
         BigDecimal rate = regionTaxRate == null ? null : new BigDecimal(regionTaxRate.trim());
-        LocalDate on = creditOf != null ? creditedIssueDate : issueDate;
+        LocalDate on = taxDate();
         if (regionRateChanges != null && on != null) {
             for (String entry : regionRateChanges.split(",")) {
                 String[] parts = entry.split("=");
@@ -2080,14 +2106,14 @@ public class Invoice {
     }
 
     /**
-     * Whether the client's tax exemption covers the invoice: the client is exempt and the invoice (a credit
-     * note's original) was issued on or before the exemption's end date, when it has one.
+     * Whether the client's tax exemption covers the invoice: the client is exempt and the day the invoice is
+     * taxed as of (see {@link #taxDate}) is on or before the exemption's end date, when it has one.
      */
     private boolean isClientExempt() {
         if (!clientTaxExempt) {
             return false;
         }
-        LocalDate on = creditOf != null ? creditedIssueDate : issueDate;
+        LocalDate on = taxDate();
         return clientTaxExemptUntil == null || on == null || !on.isAfter(clientTaxExemptUntil);
     }
 
@@ -2113,7 +2139,7 @@ public class Invoice {
 
     /**
      * The tax rate of the client's rate card entry for the unit type (matched ignoring case and surrounding
-     * spaces) in force on the issue date (the latest entry while there is none); null when the unit type has
+     * spaces) in force on the day the invoice is taxed as of (see {@link #taxDate}) (the latest entry while there is none); null when the unit type has
      * no entry in force or its entry has no tax rate.
      */
     private BigDecimal cardTaxRate(String unitType) {
@@ -2128,7 +2154,7 @@ public class Invoice {
                 continue;
             }
             LocalDate from = parts[1].isBlank() ? LocalDate.MIN : LocalDate.parse(parts[1].trim());
-            if ((issueDate == null || !from.isAfter(issueDate)) && (latest == null || from.isAfter(latest))) {
+            if ((taxDate() == null || !from.isAfter(taxDate())) && (latest == null || from.isAfter(latest))) {
                 latest = from;
                 rate = parts[2];
             }
@@ -2372,7 +2398,7 @@ public class Invoice {
     /**
      * The minimum charge: what the subtotal less the discount plus the surcharge falls short of the client's own
      * minimum charge (in its currency), or else the workspace's minimum charge, converted from US dollars at the
-     * issue date's rate and rounded down to the step. Nothing when no minimum is set (or the client's is 0), for a
+     * pricing date's rate (see {@link #pricingDate}) and rounded down to the step. Nothing when no minimum is set (or the client's is 0), for a
      * credit note, or for an invoice with no lines.
      */
     public BigDecimal minimumCharge() {
@@ -2380,7 +2406,7 @@ public class Invoice {
             return zero();
         }
         BigDecimal minimum = clientMinimumCharge != null ? currency().divideDownToStep(clientMinimumCharge, BigDecimal.ONE)
-                : currency().divideDownToStep(new BigDecimal(minimumChargeUsd.trim()), usdPerOn(issueDate));
+                : currency().divideDownToStep(new BigDecimal(minimumChargeUsd.trim()), usdPerOn(pricingDate()));
         return minimum.subtract(discounted().add(surcharge())).max(zero());
     }
 

@@ -99,7 +99,8 @@ public class InvoiceService {
 
     /**
      * Works out the late interest each of the invoices has been charged by today (see
-     * {@link Invoice#accrueLateInterest}).
+     * {@link Invoice#accrueLateInterest}), and prices and taxes each draft as of today (see
+     * {@link Invoice#pricingDate}): its lines priced from the rates follow those in force today.
      */
     private List<Invoice> withInterest(List<Invoice> list) {
         if (list.isEmpty()) {
@@ -109,7 +110,13 @@ public class InvoiceService {
         BigDecimal rate = taxRate.percent();
         BigDecimal annual = lateInterestRate.percent();
         LocalDate now = today.date();
-        list.forEach(i -> i.accrueLateInterest(found, rate, annual, now));
+        list.forEach(i -> {
+            i.priceAsOf(now);
+            if (i.isDraft() && !i.isCreditNote()) {
+                repriceWhereRated(i, now);
+            }
+            i.accrueLateInterest(found, rate, annual, now);
+        });
         return list;
     }
 
@@ -634,12 +641,29 @@ public class InvoiceService {
                 if (!invoice.isDraft()) {
                     continue;
                 }
-                if (repriceFromRates(invoice, type, invoice.getIssueDate() == null ? today.date() : invoice.getIssueDate())) {
+                if (repriceFromRates(invoice, type, ratesDate(invoice))) {
                     invoices.saveAndFlush(invoice);
                 }
             }
         });
         return found;
+    }
+
+    /**
+     * Reprices the draft's lines priced from the rates at those in force on the date, leaving as it is any line
+     * whose unit type has no rate in force then.
+     */
+    private void repriceWhereRated(Invoice invoice, LocalDate on) {
+        for (InvoiceLine line : invoice.getLines()) {
+            if (line.isCardPriced() && line.getUnitType() != null) {
+                try {
+                    LinePrice price = linePrice(invoice, line.getUnitType(), null, on);
+                    line.reprice(price.unitPrice(), price.tiers(), price.increment(), price.minUnits());
+                } catch (InvoiceRejectedException noRate) {
+                    // no rate in force on the date: the line keeps the price it has
+                }
+            }
+        }
     }
 
     /**
@@ -1536,14 +1560,23 @@ public class InvoiceService {
 
     /**
      * A line's price: the unit price entered, or else the client's rate for the line's unit type in force on the
-     * invoice's issue date (today while it has none) — a single price, or tiers starting from the first band — or,
+     * day the invoice is priced as of (today for a draft, see {@link #ratesDate}) — a single price, or tiers starting from the first band — or,
      * when the card has none in force, the workspace price list's in force then, converted into the client's currency
      * (see {@link PriceList}). Refused when neither is there, and a single price with more decimals than the currency
      * has. Either way the line is billed in the increment, and at least the minimum units, the client's rate card has
      * for its unit type then, if any. A price from the rates follows them while the invoice is a draft.
      */
     private LinePrice linePrice(Invoice invoice, String unitType, BigDecimal unitPrice) {
-        return linePrice(invoice, unitType, unitPrice, invoice.getIssueDate() == null ? today.date() : invoice.getIssueDate());
+        return linePrice(invoice, unitType, unitPrice, ratesDate(invoice));
+    }
+
+    /**
+     * The day the invoice's lines are priced as of: today for a draft (not a credit note), which will be dated
+     * today when sent; otherwise its issue date, or today when it has none.
+     */
+    private LocalDate ratesDate(Invoice invoice) {
+        return (invoice.isDraft() && !invoice.isCreditNote()) || invoice.getIssueDate() == null ? today.date()
+                : invoice.getIssueDate();
     }
 
     /** A line's price as {@link #linePrice(Invoice, String, BigDecimal)}, at the rates in force on the given date. */
