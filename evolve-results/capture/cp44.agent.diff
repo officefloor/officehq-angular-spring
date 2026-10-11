@@ -1,0 +1,55 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index f404c28..085d7ca 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -4,7 +4,8 @@ import { Observable } from 'rxjs';
+ 
+ // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
+ // nothing is due, or PAID_LATE when the payment that cleared it (payments in date order) came after
+-// its due date; it is OVERDUE while something is still due after its due date, part paid or not.
++// its due date; it is OVERDUE while something is still due more than 7 days (a week's grace) after
++// its due date, part paid or not.
+ // The server works this out from its payments and today's date. A VOID invoice was voided while sent
+ // and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
+ export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID' | 'PAID_LATE' | 'OVERDUE' | 'VOID';
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 33d2bf2..150aca7 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -201,9 +201,13 @@ public class Invoice {
+         this.status = InvoiceStatus.DRAFT;
+     }
+ 
++    /** Days past its due date an invoice is given before it becomes overdue: a week's grace. */
++    public static final int GRACE_DAYS = 7;
++
+     /**
+      * The status on the given day once the given amount has been paid against the grand total at the
+-     * tax rate: a sent invoice with something still due after its due date is overdue, part paid or not.
++     * tax rate: a sent invoice with something still due more than {@link #GRACE_DAYS} days after its
++     * due date is overdue, part paid or not.
+      */
+     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
+         return statusWhenPaid(paid, null, taxRate, today);
+@@ -218,7 +222,7 @@ public class Invoice {
+             return status;
+         }
+         boolean due = amountDue(paid, taxRate).signum() > 0;
+-        if (due && dueDate != null && today.isAfter(dueDate)) {
++        if (due && dueDate != null && today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
+             return InvoiceStatus.OVERDUE;
+         }
+         if (paid.signum() <= 0) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index 5491d65..404bc33 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -5,7 +5,7 @@ package net.officefloor.hq.app.invoices;
+  * part paid while some of it has been paid and some is still due, and paid once nothing is due, or
+  * paid late when the payment that cleared it (taking payments in date order) came after its due date;
+  * those follow from its payments and are never stored. A sent invoice with something still due
+- * after its due date is overdue, part paid or not; that follows from the date and is never stored.
++ * more than a week (the grace period) after its due date is overdue, part paid or not; that follows from the date and is never stored.
+  * A sent invoice with no payments can be voided: it is then void for good, owes nothing and takes no
+  * payments or changes.
+  */
