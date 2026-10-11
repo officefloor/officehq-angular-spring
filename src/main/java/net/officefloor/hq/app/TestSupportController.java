@@ -15,6 +15,7 @@ import net.officefloor.hq.app.clients.Currency;
 import net.officefloor.hq.app.clients.RateTiers;
 import net.officefloor.hq.app.invoices.Invoice;
 import net.officefloor.hq.app.invoices.InvoiceRepository;
+import net.officefloor.hq.app.invoices.PaymentMethod;
 import net.officefloor.hq.app.invoices.PaymentRepository;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
@@ -46,7 +47,7 @@ public class TestSupportController {
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType");
-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
+    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
 
@@ -309,15 +310,19 @@ public class TestSupportController {
                 }
             }
             BigDecimal paidAmount = cents(row.get("amount"), "payments[].amount");
+            String method = row.get("method") == null ? PaymentMethod.BANK.name() : row.get("method").toString();
+            if (PaymentMethod.of(method) == null) {
+                throw refuse("unsupported value of payments[].method: " + method);
+            }
             boolean foreign = paidIn != clientCurrency && paidAmount != null;
-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount"},
+            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method"},
                     id(row.get("clientId")), foreign ? exchangeRates.convert(paidAmount, paidIn, clientCurrency, date(row.get("date"), "payments[].date")) : paidAmount,
                     date(row.get("date"), "payments[].date"),
                     row.get("reference") == null ? null : row.get("reference").toString(),
                     flag(row.get("reversed"), "payments[].reversed"),
                     money(row.get("refunded"), "payments[].refunded"),
                     row.get("creditNote") == null ? null : id(row.get("creditNote")),
-                    foreign ? paidIn.name() : null, foreign ? paidAmount : null);
+                    foreign ? paidIn.name() : null, foreign ? paidAmount : null, method);
             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
                 if (allocation.get("invoiceId") == null) {
@@ -536,7 +541,7 @@ public class TestSupportController {
                             }).toList());
                     return row;
                 }).toList());
-        out.put("payments", jdbc.queryForList("SELECT p.id, p.client_id, p.amount, p.payment_date, p.reference, p.reversed, p.refunded, p.credit_note, "
+        out.put("payments", jdbc.queryForList("SELECT p.id, p.client_id, p.amount, p.payment_date, p.reference, p.reversed, p.refunded, p.credit_note, p.method, "
                 + "p.paid_currency, p.paid_amount, c.currency FROM payment p LEFT JOIN client c ON c.id = p.client_id ORDER BY p.id")
                 .stream().map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
@@ -548,6 +553,7 @@ public class TestSupportController {
                     row.put("reference", r.get("REFERENCE"));
                     row.put("reversed", r.get("REVERSED"));
                     row.put("refunded", r.get("REFUNDED"));
+                    row.put("method", r.get("METHOD"));
                     if (r.get("CREDIT_NOTE") != null) {
                         row.put("creditNote", r.get("CREDIT_NOTE"));
                     }

@@ -7,8 +7,9 @@ import {
   InvoiceService,
   InvoiceSummary,
   NewPayment,
+  PaymentMethod,
 } from './invoice.service';
-import { CURRENCIES, Currency, TWO_DECIMALS, symbolOf } from './invoice-format';
+import { CURRENCIES, Currency, TWO_DECIMALS, cents, symbolOf } from './invoice-format';
 
 // Whether a reference passes the ISO 11649 check: its first four characters moved to the end,
 // letters as numbers (A=10 up to Z=35), mod 97 is 1. Spaces and capitals are ignored by the caller.
@@ -92,6 +93,25 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
   return problems.join(' ');
 }
 
+// What is wrong with taking a payment in cash, or '' when nothing is: cash is paid against the open
+// invoice, in the client's own currency, counted out in coins of 0.05 (whole yen for yen). The server
+// applies the same rules.
+function problemWithCash(payment: NewPayment, invoiceOpen: boolean, clientCurrency: Currency): string {
+  if (!invoiceOpen) {
+    return 'Open the invoice the cash is paid against.';
+  }
+  if (payment.currency !== clientCurrency) {
+    return `Cash is paid only in the client's own currency (${clientCurrency}).`;
+  }
+  const step = clientCurrency === 'JPY' ? 100 : 5;
+  if (TWO_DECIMALS.test(payment.amount) && cents(payment.amount) % step !== 0) {
+    return clientCurrency === 'JPY'
+      ? 'Cash is counted out in whole yen.'
+      : 'Cash must be counted out in coins of 0.05.';
+  }
+  return '';
+}
+
 // Records a payment. It goes to the open invoice (`invoiceId`), or, when none is open, to the client's
 // invoices whose references are quoted (several may be, separated by commas: RF references or invoice
 // numbers, applied overdue first, then largest due first; one may state the amount it gets after an
@@ -113,6 +133,11 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
         @for (c of currencies; track c) {
           <option [value]="c">{{ c }}</option>
         }
+      </select>
+      <label for="payment-method">Paid by</label>
+      <select id="payment-method" data-testid="payment-form-method" formControlName="method">
+        <option value="BANK">Bank transfer</option>
+        <option value="CASH">Cash (to the nearest 0.05)</option>
       </select>
       <label for="payment-amount">Amount ({{ symbolOf(paidIn()) }})</label>
       <input
@@ -190,6 +215,7 @@ export class PaymentForm {
     reference: new FormControl('', { nonNullable: true }),
     deposit: new FormControl(false, { nonNullable: true }),
     currency: new FormControl<Currency>('USD', { nonNullable: true }),
+    method: new FormControl<PaymentMethod>('BANK', { nonNullable: true }),
   });
   // The currency picked to pay in, as a signal for the amount's label.
   protected readonly paidIn = toSignal(this.form.controls.currency.valueChanges, {
@@ -212,13 +238,16 @@ export class PaymentForm {
       currency: raw.currency,
       date: raw.date.trim(),
       reference: raw.reference.replace(/\s/g, '').toUpperCase(),
+      method: raw.method,
     };
     if (raw.deposit) {
       this.recordDeposit(payment);
       return;
     }
     const invoiceId = this.invoiceId();
-    const problem = problemWithPayment(payment, invoiceId === null);
+    const problem =
+      problemWithPayment(payment, invoiceId === null) ||
+      (payment.method === 'CASH' ? problemWithCash(payment, invoiceId !== null, this.currency()) : '');
     if (problem) {
       this.form.markAllAsTouched();
       this.error.set(problem);
@@ -264,7 +293,9 @@ export class PaymentForm {
   // reference or invoice number of one of the client's drafts; the server refuses any other) it is held
   // for that invoice: used first when it is sent, and by nothing else until then.
   private recordDeposit(payment: NewPayment): void {
-    const problem = problemWithPayment(payment, false);
+    const problem =
+      problemWithPayment(payment, false) ||
+      (payment.method === 'CASH' ? 'Cash is taken only against the open invoice, not held as credit.' : '');
     if (problem) {
       this.form.markAllAsTouched();
       this.error.set(problem);

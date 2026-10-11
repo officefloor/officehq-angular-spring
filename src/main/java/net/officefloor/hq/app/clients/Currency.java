@@ -36,6 +36,22 @@ public enum Currency {
         return this == CHF ? new BigDecimal("0.05") : BigDecimal.ONE.movePointLeft(scale);
     }
 
+    /** The smallest coin cash is counted out in: whole yen, otherwise 0.05 (there are no one- or two-cent coins). */
+    public BigDecimal cashStep() {
+        return this == JPY ? BigDecimal.ONE : new BigDecimal("0.05");
+    }
+
+    /** The amount rounded half up to the nearest {@link #cashStep()}: what it comes to in cash. */
+    public BigDecimal toCash(BigDecimal amount) {
+        BigDecimal step = cashStep();
+        return amount.divide(step, 0, RoundingMode.HALF_UP).multiply(step).setScale(scale);
+    }
+
+    /** Whether the amount can be counted out in cash: a whole number of {@link #cashStep()}s. */
+    public boolean isCash(BigDecimal amount) {
+        return amount.remainder(cashStep()).signum() == 0;
+    }
+
     /**
      * The exact quotient amount / divisor rounded down (towards zero) to this currency's step, worked
      * out in decimals in one division so that a quotient landing on a step stays on it.

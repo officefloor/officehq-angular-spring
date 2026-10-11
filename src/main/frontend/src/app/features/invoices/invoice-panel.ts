@@ -502,6 +502,16 @@ function problemWith(line: NewLine): string {
               <th scope="row" colspan="4">Amount due</th>
               <td data-testid="invoice-amount-due">{{ amount(inv.amountDue) }}</td>
             </tr>
+            @if (inv.creditOf === null) {
+              <tr>
+                <th scope="row" colspan="4">Amount due in cash (to the nearest coin)</th>
+                <td data-testid="invoice-cash-due">{{ amount(inv.cashDue) }}</td>
+              </tr>
+              <tr>
+                <th scope="row" colspan="4">Cash rounding</th>
+                <td data-testid="invoice-cash-rounding">{{ amount(inv.cashRounding) }}</td>
+              </tr>
+            }
             @if (inv.settleAmount !== null) {
               <tr>
                 <th scope="row" colspan="4">Settles it if paid now (early-payment discount)</th>

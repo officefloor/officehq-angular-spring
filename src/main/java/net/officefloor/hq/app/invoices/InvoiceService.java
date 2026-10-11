@@ -998,11 +998,13 @@ public class InvoiceService {
      * checked; what it pays beyond what is due is held on the client's account as credit. A draft, an
      * invoice already paid, or a date after today
      * or before the invoice's issue date is refused. The reference (null when none was quoted) has
-     * already been checked; one that belongs to a different invoice is refused.
+     * already been checked; one that belongs to a different invoice is refused. Cash (the method; null
+     * for a bank transfer) must be in the client's own currency and a whole number of its coins; paying
+     * exactly what is due rounded to them settles the invoice, the difference its cash rounding.
      */
     @Transactional
     public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
-            String reference) {
+            String reference, PaymentMethod method) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isDraft()) {
@@ -1016,6 +1018,15 @@ public class InvoiceService {
             }
             if (invoice.isWrittenOff()) {
                 throw new InvoiceRejectedException("A written-off invoice takes no more payments.");
+            }
+            boolean cash = method == PaymentMethod.CASH;
+            if (cash && paidIn != null && paidIn != invoice.currency()) {
+                throw new InvoiceRejectedException("Cash is paid only in the client's own currency ("
+                        + invoice.currency() + ").");
+            }
+            if (cash && !invoice.currency().isCash(paidAmount)) {
+                throw new InvoiceRejectedException("Cash must be counted out in "
+                        + invoice.currency().format(invoice.currency().cashStep()) + " coins.");
             }
             BigDecimal amount = converted(paidAmount, paidIn, invoice.currency(), date);
             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
@@ -1038,7 +1049,11 @@ public class InvoiceService {
                 invoice.saveInterest(saved);
                 due = payoff;
             }
-            BigDecimal applied = amount.min(due);
+            BigDecimal rounding = BigDecimal.ZERO;
+            if (cash && amount.compareTo(invoice.currency().toCash(due)) == 0) {
+                rounding = amount.subtract(due);
+            }
+            BigDecimal applied = amount.min(due.add(rounding));
             if (invoice.hasPlan() && invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
                 throw new InvoiceRejectedException("A payment must be at least the "
                         + invoice.currency().format(invoice.earliestUnpaid(paidSoFar, taxRate.percent()))
@@ -1061,10 +1076,18 @@ public class InvoiceService {
                         + " is the reference of a different invoice; this invoice's is "
                         + PaymentReference.grouped(PaymentReference.of(invoice.getId())) + ".");
             }
+            if (rounding.signum() != 0) {
+                invoice.roundForCash(rounding);
+                invoices.saveAndFlush(invoice);
+            }
             Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, applied, date, reference)
-                    .paidIn(paidIn, paidAmount, invoice.currency()));
+                    .paidIn(paidIn, paidAmount, invoice.currency()).by(method));
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
                     + applied.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
+            if (rounding.signum() != 0) {
+                audit.record("CASH_ROUNDING id=" + invoice.getId() + " amount="
+                        + rounding.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
+            }
             if (invoice.currency() != Currency.USD) {
                 audit.record("FX_DIFFERENCE id=" + invoice.getId() + " payment=" + payment.getId() + " amount="
                         + invoice.fxDifference(applied, date).toPlainString());

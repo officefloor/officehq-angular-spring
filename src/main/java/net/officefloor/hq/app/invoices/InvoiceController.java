@@ -131,6 +131,8 @@ public class InvoiceController {
      * {@code writtenOffOn} is the day it was written off as a bad debt (null when it was not); everything
      * it still owed then is in {@code writtenOff}, and nothing is due. {@code net} is the amount before tax; when
      * {@code pricesIncludeTax} the tax is inside the subtotal less the discount, which is then the grand total.
+     * {@code cashDue} is the amount due rounded half up to the nearest cash coin (0.05, or whole yen) and
+     * {@code cashRounding} the difference (signed): once settled in cash, the cash rounding it was settled with.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
@@ -140,7 +142,7 @@ public class InvoiceController {
             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
-            String minimumCharge) {
+            String minimumCharge, String cashDue, String cashRounding) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -178,7 +180,8 @@ public class InvoiceController {
                     Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
                     i.getInterestSaved().toPlainString(),
                     i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
-                    i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString());
+                    i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),
+                    i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString());
         }
     }
 
@@ -253,7 +256,9 @@ public class InvoiceController {
             @NotNull(message = "Enter the date it was paid.")
             LocalDate date,
             @Size(max = 64, message = "The reference must be at most 64 characters.")
-            String reference) {
+            String reference,
+            // How it was paid; a bank transfer when left out.
+            PaymentMethod method) {
     }
 
     /**
@@ -271,7 +276,9 @@ public class InvoiceController {
             LocalDate date,
             // The reference or invoice number of the client's draft to hold it for; none when left out.
             @Size(max = 64, message = "The reference must be at most 64 characters.")
-            String reference) {
+            String reference,
+            // How it was paid; a bank transfer when left out. Cash is taken only against an open invoice.
+            PaymentMethod method) {
     }
 
     /**
@@ -368,7 +375,9 @@ public class InvoiceController {
             @NotNull(message = "Enter the date it was paid.")
             LocalDate date,
             @Size(max = 255, message = "The references must be at most 255 characters.")
-            String reference) {
+            String reference,
+            // How it was paid; a bank transfer when left out. Cash is taken only against an open invoice.
+            PaymentMethod method) {
     }
 
     private final InvoiceService invoices;
@@ -605,8 +614,16 @@ public class InvoiceController {
     @PostMapping("/api/clients/{clientId}/payments")
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
+        refuseCashWithoutInvoice(body.method());
         invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()));
         return forClient(clientId);
+    }
+
+    /** Cash is taken only against the invoice that is open, so never spread over invoices or held as credit. */
+    private static void refuseCashWithoutInvoice(PaymentMethod method) {
+        if (method == PaymentMethod.CASH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Open the invoice the cash is paid against.");
+        }
     }
 
     /**
@@ -668,6 +685,7 @@ public class InvoiceController {
     @PostMapping("/api/clients/{clientId}/deposits")
     @ResponseStatus(HttpStatus.CREATED)
     public List<InvoiceSummary> recordDeposit(@PathVariable Long clientId, @Valid @RequestBody NewDeposit body) {
+        refuseCashWithoutInvoice(body.method());
         invoices.recordDeposit(clientId, body.amount(), body.currency(), body.date(), reference(body.reference()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
         return forClient(clientId);
@@ -693,7 +711,8 @@ public class InvoiceController {
     @PostMapping("/api/invoices/{id}/payments")
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
-        return invoices.recordPayment(id, body.amount(), body.currency(), body.date(), reference(body.reference()))
+        return invoices.recordPayment(id, body.amount(), body.currency(), body.date(), reference(body.reference()),
+                body.method())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

@@ -228,6 +228,13 @@ public class Invoice {
     @Column(name = "interest_saved")
     private BigDecimal interestSaved = BigDecimal.ZERO;
 
+    /**
+     * The cash rounding the invoice was settled with in cash: what was paid in cash less what was due
+     * (signed); 0 when none. It is owed on top of the grand total, so nothing is left due or held as credit.
+     */
+    @Column(name = "cash_rounding")
+    private BigDecimal cashRounding = BigDecimal.ZERO;
+
     /** An issued credit note's grand total, kept when it is issued; null until then. */
     @Column(name = "credit_total")
     private BigDecimal creditTotal;
@@ -701,7 +708,7 @@ public class Invoice {
     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
         BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate).subtract(getCredited());
         return owed.subtract(retentionKept(taxRate)).subtract(getEarlyDiscountTaken())
-                .subtract(getInterestSaved());
+                .subtract(getInterestSaved()).add(getCashRounding());
     }
 
     /** The late interest charged, to the cent; 0 when none is. */
@@ -1163,6 +1170,32 @@ public class Invoice {
     /** Settles the invoice with the early discount (0 to clear it again). */
     public void takeEarlyDiscount(BigDecimal amount) {
         this.earlyDiscount = amount;
+    }
+
+    /** The cash rounding the invoice was settled with, signed; 0 when it was not settled in cash. */
+    public BigDecimal getCashRounding() {
+        return (cashRounding == null ? BigDecimal.ZERO : cashRounding).setScale(scale(), RoundingMode.HALF_UP);
+    }
+
+    /** Settles the invoice in cash with the given rounding (signed). */
+    public void roundForCash(BigDecimal rounding) {
+        this.cashRounding = getCashRounding().add(rounding);
+    }
+
+    /** What is due once the given amount has been paid, in cash: rounded half up to the nearest coin. */
+    public BigDecimal cashDue(BigDecimal paid, BigDecimal taxRate) {
+        return currency().toCash(amountDue(paid, taxRate));
+    }
+
+    /**
+     * The cash rounding shown: the one the invoice was settled with in cash, or else the difference
+     * paying what is due in cash would make (signed).
+     */
+    public BigDecimal cashRounding(BigDecimal paid, BigDecimal taxRate) {
+        if (getCashRounding().signum() != 0) {
+            return getCashRounding();
+        }
+        return cashDue(paid, taxRate).subtract(amountDue(paid, taxRate));
     }
 
     /** The interest dropped when the plan was paid off early, to the cent; 0 when it was not. */

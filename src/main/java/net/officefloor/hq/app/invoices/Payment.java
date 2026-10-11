@@ -4,6 +4,8 @@ import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -52,6 +54,10 @@ public class Payment {
     /** The amount paid in {@link #paidCurrency}; the amount is it converted into the client's currency. */
     @Column(name = "paid_amount")
     private BigDecimal paidAmount;
+
+    /** How the payment was made: a bank transfer unless it was cash. */
+    @Enumerated(EnumType.STRING)
+    private PaymentMethod method = PaymentMethod.BANK;
 
     @ElementCollection
     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
@@ -129,6 +135,16 @@ public class Payment {
             paidAmount = paid;
         }
         return this;
+    }
+
+    /** Notes how the payment was made (null for a bank transfer). */
+    public Payment by(PaymentMethod method) {
+        this.method = method == null ? PaymentMethod.BANK : method;
+        return this;
+    }
+
+    public PaymentMethod getMethod() {
+        return method;
     }
 
     /** The currency the payment was paid in: the given client's currency unless it was paid in another. */

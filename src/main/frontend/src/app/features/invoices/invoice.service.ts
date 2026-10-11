@@ -184,6 +184,10 @@ export interface InvoiceDetail {
   // What the amount after its discounts falls short of the workspace's minimum charge, added to the
   // invoice and taxed at the client's rate; "0.00" when there is none.
   minimumCharge: string;
+  // The amount due rounded half up to the nearest cash coin (0.05, or whole yen), and the difference
+  // that makes (signed); once settled in cash, the cash rounding it was settled with.
+  cashDue: string;
+  cashRounding: string;
 }
 
 // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
@@ -208,11 +212,15 @@ export interface InstalmentView {
 // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
 // RF reference the client quoted ('' when none), checked again by the server.
 // `currency` is the currency it was paid in; the server converts it into the client's currency.
+// How a payment was made: a bank transfer, or cash counted out in coins (0.05, or whole yen).
+export type PaymentMethod = 'BANK' | 'CASH';
+
 export interface NewPayment {
   amount: string;
   currency: Currency;
   date: string;
   reference: string;
+  method: PaymentMethod;
 }
 
 // A line to add to a draft: quantity, unit type, unit price, the line's own discount percentage and
