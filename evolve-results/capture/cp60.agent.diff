@@ -1,0 +1,101 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index cf0c293..31f93dd 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -166,7 +166,7 @@ function problemWith(line: NewLine): string {
+ // be duplicated into a new draft for the same client, which then opens. A draft's due date can be set
+ // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
+ // server refuses to send it once that date is past. A draft can hold back retention, a percentage of
+-// the grand total (0 to 20); while held it is not part of the amount due, and once nothing else is due
++// the amount before tax, the subtotal less the discount (0 to 20); while held it is not part of the amount due, and once nothing else is due
+ // it can be released on the sent invoice, falling due 30 days later. A draft without retention can
+ // instead be spread over 2 to 24 monthly instalments at an annual interest rate (0 to 30); the server
+ // works out the schedule from the grand total, dated from the issue date (and again when it is sent),
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index ebce72d..e306b04 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -114,7 +114,7 @@ export interface InvoiceDetail {
+   creditOf: number | null;
+   // The total as listed: negative for a credit note.
+   listedTotal: string;
+-  // The percentage of the grand total held back (without trailing zeros), and `retention`, that share
++  // The percentage of the amount before tax held back (without trailing zeros), and `retention`, that share
+   // rounded down to the cent; `retentionHeld` is what is still held back, not part of `amountDue`.
+   retentionPct: string;
+   retention: string;
+@@ -255,7 +255,7 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/due-date`, { dueDate });
+   }
+ 
+-  // Sets the percentage of a draft's grand total held back as retention (0 to 20, up to two decimals);
++  // Sets the percentage of a draft's amount before tax held back as retention (0 to 20, up to two decimals);
+   // refused (400) outside that, or (409) when it is not a draft.
+   setRetention(invoiceId: number, retentionPct: string): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct });
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 235681f..059542a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -37,7 +37,7 @@ public class Invoice {
+     /** A part payment must be at least this share of the grand total, unless it settles the invoice. */
+     public static final BigDecimal MINIMUM_PART_SHARE = new BigDecimal("0.10");
+ 
+-    /** The most retention a draft can hold back, as a percentage of the grand total. */
++    /** The most retention a draft can hold back, as a percentage of the amount before tax. */
+     public static final BigDecimal MAX_RETENTION_PCT = new BigDecimal("20");
+ 
+     /** Released retention falls due this many days after the day it was released. */
+@@ -329,7 +329,7 @@ public class Invoice {
+         this.discountPct = BigDecimal.ZERO;
+     }
+ 
+-    /** The percentage of the grand total held back as retention, 0 to {@link #MAX_RETENTION_PCT}. */
++    /** The percentage of the amount before tax held back as retention, 0 to {@link #MAX_RETENTION_PCT}. */
+     public BigDecimal getRetentionPct() {
+         return retentionPct;
+     }
+@@ -354,12 +354,15 @@ public class Invoice {
+         this.retentionReleasedOn = on;
+     }
+ 
+-    /** The retention at the tax rate: the retention percentage of the grand total, rounded down to the cent. */
++    /**
++     * The retention: the retention percentage of the amount before tax (the subtotal less the
++     * discount), rounded down to the cent. Tax is never held back, so the tax rate does not change it.
++     */
+     public BigDecimal retention(BigDecimal taxRate) {
+         if (isCreditNote()) {
+             return zero();
+         }
+-        return total(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
++        return subtotal().subtract(discount()).multiply(retentionPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index b8e450c..9475b0c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -102,7 +102,7 @@ public class InvoiceController {
+      * it, payments taken in date order; null while it is not fully paid. {@code credited} is what
+      * issued credit notes take off it; {@code creditOf} the id of the invoice a credit note credits
+      * (null for an ordinary invoice) and {@code listedTotal} the total as listed, negative for a credit note.
+-     * {@code retentionPct} (without trailing zeros) is the share of the grand total held back as
++     * {@code retentionPct} (without trailing zeros) is the share of the amount before tax (subtotal less discount) held back as
+      * {@code retention}, rounded down to the cent; {@code retentionHeld} is what is still held back (not
+      * part of the amount due), {@code retentionReleasedOn} the day it was released (null while held) and
+      * {@code retentionDueDate} the day released retention falls due. {@code instalments} is how many
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index f246150..25cb1d6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -263,7 +263,7 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Sets the percentage of a draft's grand total held back as retention; empty if no such invoice.
++     * Sets the percentage of a draft's amount before tax held back as retention; empty if no such invoice.
+      * The percentage has already been checked; any invoice that is not a draft, or a credit note, is refused.
+      */
+     @Transactional
