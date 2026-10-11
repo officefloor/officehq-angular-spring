@@ -134,7 +134,7 @@ public class InvoiceService {
         return clients.findById(clientId).map(client -> {
             LocalDate issued = today.date();
             Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), client.getTaxExemptUntil(), client.isPricesIncludeTax(), taxRate.forRegion(client.getRegion()),
-                    taxRate.changesFor(client.getRegion()),
+                    taxRate.changesFor(client.getRegion()), taxRate.roundsDown(client.getRegion()),
                     outOfHomeRegion(client) ? client.getTaxNumber() : null, client.getCurrency(), issued, dueDateFor(clientId, issued));
             draft.setDiscountPct(client.getDiscountPct());
             draft.setRetentionPct(client.getRetentionPct());
@@ -382,7 +382,7 @@ public class InvoiceService {
             }
             invoice.setSupplyRegion(supplyRegion);
             invoices.saveAndFlush(invoice);
-            // Read again the rate and tax number of the region of supply.
+            // Read again the rate, rounding and tax number of the region of supply.
             entityManager.refresh(invoice);
         });
         return found;

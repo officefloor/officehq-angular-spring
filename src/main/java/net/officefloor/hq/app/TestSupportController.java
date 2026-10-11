@@ -40,7 +40,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown");
     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
@@ -227,6 +227,17 @@ public class TestSupportController {
                     }
                     jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                             TaxRate.REGION_TAX_RATE + region, rate.toPlainString());
+                }
+            }
+            if (values.get("regionRoundDown") != null) {
+                if (!(values.get("regionRoundDown") instanceof List<?> regions)) {
+                    throw refuse("settings.regionRoundDown must be a list of regions");
+                }
+                for (Object region : regions) {
+                    if (region == null || region.toString().isBlank()) {
+                        throw refuse("settings.regionRoundDown needs regions, not " + region);
+                    }
+                    taxRate.setRoundsDown(region.toString());
                 }
             }
             if (values.get("regionMaxInterest") != null) {
@@ -590,6 +601,10 @@ public class TestSupportController {
         Map<String, BigDecimal> regionTaxRates = this.taxRate.regions();
         if (!regionTaxRates.isEmpty()) {
             settings.put("regionTaxRates", regionTaxRates);
+        }
+        List<String> regionRoundDown = this.taxRate.roundDownRegions();
+        if (!regionRoundDown.isEmpty()) {
+            settings.put("regionRoundDown", regionRoundDown);
         }
         List<Map<String, Object>> taxRateChanges = this.taxRate.changes().stream().map(c -> {
             Map<String, Object> row = new LinkedHashMap<>();

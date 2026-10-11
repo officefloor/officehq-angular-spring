@@ -195,6 +195,13 @@ public class Invoice {
     private String regionRateChanges;
 
     /**
+     * Whether the region the invoice is taxed in (the place of supply, else the client's) requires its tax
+     * to be rounded down to the cent instead of half up; read from the workspace's round-down regions.
+     */
+    @Formula("(SELECT COUNT(*) > 0 FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_round_down_' || COALESCE(supply_region, c.region))")
+    private boolean regionRoundsDown;
+
+    /**
      * The tax rates of the client's rate card entries, as "unit type", the date the entry takes effect from
      * (empty for always) and rate (empty for none) separated by CHAR(31), entries separated by CHAR(30); null
      * when the card is empty. Read from the client's rate card.
@@ -440,7 +447,7 @@ public class Invoice {
 
     /** A new, empty draft for a client, issued and due on the given dates. */
     public static Invoice draft(Long clientId, boolean clientTaxExempt, LocalDate clientTaxExemptUntil, boolean clientPricesIncludeTax, String regionTaxRate,
-            String regionRateChanges, String outOfRegionTaxNumber, Currency currency, LocalDate issueDate, LocalDate dueDate) {
+            String regionRateChanges, boolean regionRoundsDown, String outOfRegionTaxNumber, Currency currency, LocalDate issueDate, LocalDate dueDate) {
         Invoice invoice = new Invoice();
         invoice.clientId = clientId;
         invoice.clientTaxExempt = clientTaxExempt;
@@ -448,6 +455,7 @@ public class Invoice {
         invoice.clientPricesIncludeTax = clientPricesIncludeTax;
         invoice.regionTaxRate = regionTaxRate;
         invoice.regionRateChanges = regionRateChanges;
+        invoice.regionRoundsDown = regionRoundsDown;
         invoice.outOfRegionTaxNumber = outOfRegionTaxNumber;
         invoice.clientCurrency = currency.name();
         invoice.status = InvoiceStatus.DRAFT;
@@ -461,7 +469,7 @@ public class Invoice {
      * discount, issued and due on the given dates. Payments stay with this invoice.
      */
     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
-        Invoice copy = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+        Invoice copy = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
         copy.supplyRegion = supplyRegion;
         copy.discountPct = discountPct;
         copy.discountAmount = discountAmount;
@@ -483,7 +491,7 @@ public class Invoice {
      * discount, taxed as the original's lines are.
      */
     public Invoice creditNote(LocalDate issueDate) {
-        Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, null);
+        Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, null);
         note.creditOf = id;
         note.supplyRegion = supplyRegion;
         note.creditedIssueDate = this.issueDate;
@@ -2281,14 +2289,23 @@ public class Invoice {
         }
     }
 
-    /** The sum of the exact line taxes, rounded once, half up to the cent. */
+    /**
+     * The sum of the exact line taxes, rounded once to the cent: half up, or down when the region the
+     * invoice is taxed in requires it.
+     */
     private BigDecimal roundTax(List<BigDecimal> exact) {
-        return exact.stream().reduce(BigDecimal.ZERO, BigDecimal::add).setScale(scale(), RoundingMode.HALF_UP);
+        return exact.stream().reduce(BigDecimal.ZERO, BigDecimal::add).setScale(scale(), taxRounding());
+    }
+
+    /** How a rate's tax is rounded to the cent: down in a region that requires it, otherwise half up. */
+    private RoundingMode taxRounding() {
+        return regionRoundsDown ? RoundingMode.DOWN : RoundingMode.HALF_UP;
     }
 
     /**
      * The tax charged at the given rate (a percentage): for each rate, the exact taxes of the lines
-     * (and the surcharge and minimum charge) at it added up and rounded half up to the cent; the
+     * (and the surcharge and minimum charge) at it added up and rounded half up to the cent (down in a
+     * region that requires it); the
      * invoice tax is the total over the rates. It is what the line taxes add up to.
      */
     public BigDecimal tax(BigDecimal taxRate) {
@@ -2335,11 +2352,17 @@ public class Invoice {
         return amount.subtract(amount.divide(BigDecimal.ONE.add(rate.movePointLeft(2)), scale(), RoundingMode.HALF_UP));
     }
 
-    /** The tax inside the total of one rate's tax-inclusive amounts (by index). */
+    /**
+     * The tax inside the total of one rate's tax-inclusive amounts (by index); in a region that requires
+     * it, the exact tax inside rounded down to the cent instead.
+     */
     private BigDecimal inclusiveRateTax(List<BigDecimal> amounts, BigDecimal rate, List<Integer> group) {
         BigDecimal taxed = zero();
         for (int i : group) {
             taxed = taxed.add(amounts.get(i));
+        }
+        if (regionRoundsDown) {
+            return taxed.multiply(rate).divide(BigDecimal.valueOf(100).add(rate), scale(), RoundingMode.DOWN);
         }
         return taxInside(taxed, rate);
     }
@@ -2347,7 +2370,8 @@ public class Invoice {
     /**
      * The tax inside tax-inclusive prices: for each rate (a line's own, otherwise the client's), the tax
      * inside the total of the lines' amounts after their discount shares at that rate (with the
-     * surcharge and the minimum charge at the client's rate), rounded half up to the cent; the invoice
+     * surcharge and the minimum charge at the client's rate), rounded half up to the cent (down in a
+     * region that requires it); the invoice
      * tax is the total over the rates.
      */
     private BigDecimal inclusiveTax(BigDecimal taxRate) {

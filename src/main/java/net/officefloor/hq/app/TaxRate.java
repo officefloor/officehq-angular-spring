@@ -15,7 +15,8 @@ import org.springframework.stereotype.Service;
  * {@code region_tax_rate_<region>} setting, charged to the region's clients instead. A region's rate
  * can change on a date (the {@code tax_rate_change} table): an invoice is taxed at the latest change on
  * or before its issue date, or the region's own rate before any. Invoices read the changes themselves
- * (see Invoice).
+ * (see Invoice). A region can require its tax to be rounded down to the cent instead of half up, the
+ * {@code region_round_down_<region>} setting; invoices read it themselves too.
  */
 @Service
 public class TaxRate {
@@ -24,6 +25,9 @@ public class TaxRate {
 
     /** The prefix of the setting holding a region's rate, followed by the region (region_tax_rate_NY). */
     public static final String REGION_TAX_RATE = "region_tax_rate_";
+
+    /** The prefix of the setting marking a region whose tax is rounded down, followed by the region (region_round_down_CA). */
+    public static final String REGION_ROUND_DOWN = "region_round_down_";
 
     /** The setting holding the workspace's home region: registered clients outside it are reverse charged. */
     public static final String HOME_REGION = "home_region";
@@ -56,6 +60,23 @@ public class TaxRate {
                 .forEach(r -> rates.put(((String) r.get("NAME")).substring(REGION_TAX_RATE.length()),
                         new BigDecimal((String) r.get("SETTING_VALUE"))));
         return rates;
+    }
+
+    /** Whether the region requires its tax to be rounded down; false when the client has no region. */
+    public boolean roundsDown(String region) {
+        return region != null && !jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class,
+                REGION_ROUND_DOWN + region).isEmpty();
+    }
+
+    /** Every region that requires its tax to be rounded down, in order. */
+    public List<String> roundDownRegions() {
+        return jdbc.queryForList("SELECT name FROM app_setting WHERE name LIKE ? ORDER BY name", String.class, REGION_ROUND_DOWN + "%")
+                .stream().map(name -> name.substring(REGION_ROUND_DOWN.length())).toList();
+    }
+
+    /** Records that the region requires its tax to be rounded down. */
+    public void setRoundsDown(String region) {
+        jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", REGION_ROUND_DOWN + region, "true");
     }
 
     /** The workspace's home region; null when none is set. */
