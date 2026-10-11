@@ -47,7 +47,7 @@ public class TestSupportController {
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "lineItems");
-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType");
+    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
@@ -339,7 +339,7 @@ public class TestSupportController {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 Object[] price = linePrice(invoiceId, line);
                 insert("invoice_line", line.get("id"),
-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units"},
+                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime"},
                         invoiceId, text(line, "description"),
                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
                         price[0], price[1],
@@ -348,7 +348,8 @@ public class TestSupportController {
                         line.get("taxRate") == null ? null : percent(line.get("taxRate"), "invoices[].lineItems[].taxRate"),
                         line.get("creditOfLine") == null ? null : id(line.get("creditOfLine")),
                         line.get("unitType") == null ? null : line.get("unitType").toString(),
-                        lineRate(invoiceId, line, "increment"), lineRate(invoiceId, line, "min_units"));
+                        lineRate(invoiceId, line, "increment"), lineRate(invoiceId, line, "min_units"),
+                        flag(line.get("overtime"), "invoices[].lineItems[].overtime"));
             }
         }
         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
@@ -598,7 +599,7 @@ public class TestSupportController {
                         row.put("discountReason", r.get("DISCOUNT_REASON"));
                     }
                     row.put("lineItems", jdbc.queryForList(
-                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime FROM invoice_line WHERE invoice_id = ? ORDER BY id",
                             r.get("ID")).stream().map(l -> {
                                 Map<String, Object> line = new LinkedHashMap<>();
                                 line.put("id", l.get("ID"));
@@ -609,6 +610,7 @@ public class TestSupportController {
                                 }
                                 line.put("unitPrice", l.get("UNIT_PRICE"));
                                 line.put("taxExempt", l.get("TAX_EXEMPT"));
+                                line.put("overtime", l.get("OVERTIME"));
                                 line.put("discountPct", l.get("DISCOUNT_PCT"));
                                 if (l.get("TAX_RATE") != null) {
                                     line.put("taxRate", l.get("TAX_RATE"));

@@ -85,21 +85,24 @@ public class InvoiceController {
      * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
      * {@code amount} is after it. {@code creditOfLine} is the id of the line a credit note's line credits, null when none.
      * {@code tiered} lines are priced in progressive tiers from the rate card; their {@code unitPrice} is the first band's.
+     * {@code overtime} lines are charged at time and a half: {@code unitPrice} (and each band's price) is 1.5 times the
+     * price given, rounded half up to the cent; {@code basePrice} is the price given, before overtime.
      * {@code billedQty} (without trailing zeros) is the quantity the line is priced on: its quantity rounded up to the next
      * whole increment of its unit type's rate card entry (as entered without one), and then at least its minimum units.
      */
     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
             String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,
-            Long creditOfLine, boolean tiered, String billedQty) {
+            Long creditOfLine, boolean tiered, String billedQty, boolean overtime, String basePrice) {
         static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
-                    l.getUnitType(), l.getUnitPrice().setScale(2).toPlainString(),
+                    l.getUnitType(), l.chargedUnitPrice().setScale(2).toPlainString(),
                     l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount(scale).toPlainString(),
                     l.amount(scale).toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
                     l.amount(scale).subtract(discountShare).subtract(includedTax).toPlainString(),
                     l.isTaxExempt(),
                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
-                    l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString());
+                    l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString(), l.isOvertime(),
+                    l.getUnitPrice().setScale(2).toPlainString());
         }
     }
 
@@ -242,6 +245,7 @@ public class InvoiceController {
             @DecimalMin(value = "0.01", message = "The unit price must be at least $0.01.")
             @Digits(integer = 17, fraction = 2, message = "The unit price can have at most two decimals.")
             BigDecimal unitPrice,
+            Boolean overtime,
             Boolean taxExempt,
             @DecimalMin(value = "0", message = "The line discount must be from 0 to 100 percent.")
             @DecimalMax(value = "100", message = "The line discount must be from 0 to 100 percent.")
@@ -496,7 +500,7 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
         return invoices.addLine(id, body.description().trim(), body.qty(), unitType(body), body.unitPrice(),
-                Boolean.TRUE.equals(body.taxExempt()),
+                Boolean.TRUE.equals(body.overtime()), Boolean.TRUE.equals(body.taxExempt()),
                 body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
@@ -506,7 +510,7 @@ public class InvoiceController {
     public InvoiceDetail updateLine(@PathVariable Long id, @PathVariable Long lineId,
             @Valid @RequestBody NewLine body) {
         return invoices.updateLine(id, lineId, body.description().trim(), body.qty(), unitType(body), body.unitPrice(),
-                Boolean.TRUE.equals(body.taxExempt()),
+                Boolean.TRUE.equals(body.overtime()), Boolean.TRUE.equals(body.taxExempt()),
                 body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));

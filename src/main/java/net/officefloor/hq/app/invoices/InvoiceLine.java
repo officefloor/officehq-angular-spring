@@ -72,6 +72,12 @@ public class InvoiceLine {
     @Column(name = "billing_min_units")
     private BigDecimal minUnits;
 
+    /**
+     * Whether the line is work out of hours, charged at time and a half: its unit price (and, when tiered, each
+     * band's price) is 1.5 times the price it was given, rounded half up to the cent.
+     */
+    private boolean overtime;
+
     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
@@ -97,16 +103,18 @@ public class InvoiceLine {
     }
 
     public InvoiceLine(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
-            BigDecimal increment, BigDecimal minUnits, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+            BigDecimal increment, BigDecimal minUnits, boolean overtime, boolean taxExempt, BigDecimal discountPct,
+            BigDecimal taxRate) {
         this(description, qty, unitType, unitPrice, taxExempt, discountPct, taxRate);
         this.tiers = tiers;
         this.increment = increment;
         this.minUnits = minUnits;
+        this.overtime = overtime;
     }
 
     /** A new line with the same description, quantity, unit type, price, tiers, discount, tax rate and exemption. */
     public InvoiceLine copy() {
-        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, minUnits, taxExempt, discountPct, taxRate);
+        return new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);
     }
 
     /** A new credit note line crediting this line, with its description, quantity, price, discount, tax rate and exemption. */
@@ -118,9 +126,11 @@ public class InvoiceLine {
 
     /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
     public void update(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
-            BigDecimal increment, BigDecimal minUnits, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+            BigDecimal increment, BigDecimal minUnits, boolean overtime, boolean taxExempt, BigDecimal discountPct,
+            BigDecimal taxRate) {
         this.increment = increment;
         this.minUnits = minUnits;
+        this.overtime = overtime;
         this.description = description;
         this.unitType = unitType;
         this.qty = qty;
@@ -152,9 +162,28 @@ public class InvoiceLine {
         return unitType;
     }
 
+    /** The price the line was given (from the rate card, the price list or typed in), before any overtime. */
     public BigDecimal getUnitPrice() {
         return unitPrice;
     }
+
+    /** Whether the line is charged at time and a half. */
+    public boolean isOvertime() {
+        return overtime;
+    }
+
+    /** The unit price the line is charged: its price, or 1.5 times it rounded half up to the cent when overtime. */
+    public BigDecimal chargedUnitPrice() {
+        return charged(unitPrice);
+    }
+
+    /** The given price as charged on this line: 1.5 times it, rounded half up to the cent, when overtime. */
+    private BigDecimal charged(BigDecimal price) {
+        return overtime ? price.multiply(OVERTIME_RATE).setScale(2, RoundingMode.HALF_UP) : price;
+    }
+
+    /** Overtime is charged at time and a half. */
+    private static final BigDecimal OVERTIME_RATE = new BigDecimal("1.5");
 
     /** The increment the line is billed in; null for none. */
     public BigDecimal getIncrement() {
@@ -208,16 +237,21 @@ public class InvoiceLine {
     }
 
     /**
-     * Billed quantity times unit price — or, for a tiered line, the charge for its billed units at the bands they
+     * Billed quantity times the charged unit price (time and a half when overtime) — or, for a tiered line, the charge for its billed units at the bands they
      * fall in, carrying on from where the invoice's earlier lines of its unit type stopped — rounded half up to the given number of decimals (2, the cent; 0 for whole yen), before
      * the line's discount.
      */
     public BigDecimal grossAmount(int scale) {
         if (tiers != null) {
             BigDecimal before = invoice == null ? BigDecimal.ZERO : invoice.tieredUnitsBefore(this);
-            return RateTiers.parse(tiers).charge(before, billedQty(), scale);
+            RateTiers bands = RateTiers.parse(tiers);
+            if (overtime) {
+                bands = new RateTiers(bands.bands().stream()
+                        .map(b -> new RateTiers.Band(b.units(), charged(b.unitPrice()))).toList());
+            }
+            return bands.charge(before, billedQty(), scale);
         }
-        return billedQty().multiply(unitPrice).setScale(scale, RoundingMode.HALF_UP);
+        return billedQty().multiply(chargedUnitPrice()).setScale(scale, RoundingMode.HALF_UP);
     }
 
     /** The line's discount: its percentage of the gross amount, rounded down to the given number of decimals. */

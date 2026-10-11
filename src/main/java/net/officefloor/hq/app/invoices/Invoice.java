@@ -1816,17 +1816,18 @@ public class Invoice {
      * the subtotal would then be less than a fixed discount on the invoice.
      */
     public boolean updateLine(Long lineId, String description, BigDecimal qty, String unitType, BigDecimal unitPrice,
-            String tiers, BigDecimal increment, BigDecimal minUnits, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+            String tiers, BigDecimal increment, BigDecimal minUnits, boolean overtime, boolean taxExempt, BigDecimal discountPct,
+            BigDecimal taxRate) {
         InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
         if (line == null) {
             return false;
         }
         InvoiceLine was = line.copy();
-        line.update(description, qty, unitType, unitPrice, tiers, increment, minUnits, taxExempt, discountPct, taxRate);
+        line.update(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);
         // Changing a tiered line reprices the others of its unit type, so the subtotal is worked out with it changed.
         BigDecimal left = subtotal();
         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
-            line.update(was.getDescription(), was.getQty(), was.getUnitType(), was.getUnitPrice(), was.tiers(), was.getIncrement(), was.getMinUnits(),
+            line.update(was.getDescription(), was.getQty(), was.getUnitType(), was.getUnitPrice(), was.tiers(), was.getIncrement(), was.getMinUnits(), was.isOvertime(),
                     was.isTaxExempt(), was.getDiscountPct(), was.getTaxRate());
             throw new InvoiceRejectedException("This line cannot be changed: the "
                     + currency().format(left) + " subtotal would be less than the "

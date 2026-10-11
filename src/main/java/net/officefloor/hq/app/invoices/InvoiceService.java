@@ -224,12 +224,12 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, String unitType,
-            BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+            BigDecimal unitPrice, boolean overtime, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             LinePrice price = linePrice(invoice, unitType, unitPrice);
             boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
-            invoice.addLine(new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), taxExempt,
+            invoice.addLine(new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
                     discountPct, taxRate));
             invoices.saveAndFlush(invoice);
             if (reopened) {
@@ -270,7 +270,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
-            String unitType, BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
+            String unitType, BigDecimal unitPrice, boolean overtime, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
         Optional<Invoice> found = load(invoiceId);
         if (found.isEmpty()) {
             return found;
@@ -281,7 +281,7 @@ public class InvoiceService {
         }
         LinePrice price = linePrice(invoice, unitType, unitPrice);
         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
-        invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), taxExempt,
+        invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
                 discountPct, taxRate);
         invoices.saveAndFlush(invoice);
         if (reopened) {

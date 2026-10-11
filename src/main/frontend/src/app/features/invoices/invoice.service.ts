@@ -74,6 +74,10 @@ export interface InvoiceLineView {
   // next whole increment its unit type has on the client's rate card (`qty` itself without one), and
   // then at least the minimum units it has there.
   billedQty: string;
+  // Whether the line is work out of hours, charged at time and a half: its `unitPrice` (and, when
+  // tiered, each band's price) is 1.5 times `basePrice`, the price it was given, rounded half up to the cent.
+  overtime: boolean;
+  basePrice: string;
 }
 
 // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
@@ -245,6 +249,7 @@ export interface NewLine {
   qty: string;
   unitType?: string;
   unitPrice?: string;
+  overtime: boolean;
   taxExempt: boolean;
   discountPct?: string;
   taxRate?: string;

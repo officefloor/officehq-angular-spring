@@ -776,6 +776,13 @@ function problemWith(line: NewLine): string {
             formControlName="taxRate"
           />
           <input
+            id="line-overtime"
+            type="checkbox"
+            data-testid="line-form-overtime"
+            formControlName="overtime"
+          />
+          <label for="line-overtime">Overtime (time and a half)</label>
+          <input
             id="line-exempt"
             type="checkbox"
             data-testid="line-form-exempt"
@@ -906,6 +913,7 @@ export class InvoicePanel {
     qty: new FormControl('', { nonNullable: true }),
     unitType: new FormControl('', { nonNullable: true }),
     unitPrice: new FormControl('', { nonNullable: true }),
+    overtime: new FormControl(false, { nonNullable: true }),
     taxExempt: new FormControl(false, { nonNullable: true }),
     discountPct: new FormControl('', { nonNullable: true }),
     taxRate: new FormControl('', { nonNullable: true }),
@@ -981,7 +989,9 @@ export class InvoicePanel {
       qty: line.qty,
       unitType: line.unitType ?? '',
       // A tiered line has no price of its own: left empty, it is repriced from the rate card's bands.
-      unitPrice: line.tiered ? '' : line.unitPrice,
+      // An overtime line keeps the price it was given; time and a half is worked out on it again.
+      unitPrice: line.tiered ? '' : line.basePrice,
+      overtime: line.overtime,
       taxExempt: line.taxExempt,
       discountPct: Number(line.discountPct) === 0 ? '' : line.discountPct,
       taxRate: line.taxRate ?? '',
@@ -1001,6 +1011,7 @@ export class InvoicePanel {
     const line: NewLine = {
       description: raw.description.trim(),
       qty: raw.qty.trim(),
+      overtime: raw.overtime,
       taxExempt: raw.taxExempt,
     };
     const unitType = raw.unitType.trim();
