@@ -1,0 +1,32 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index dc9af9c..7c9a8de 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -29,7 +29,7 @@ export interface InvoiceLineView {
+ // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
+ // percentage taken off the subtotal, without trailing zeros ("12.5"); `discount` is the amount it
+ // takes off, rounded half up to the cent; `taxRate` is the workspace's tax percentage (without
+-// trailing zeros, "0" when none is set) and `tax` is that rate on the subtotal, before the discount,
++// trailing zeros, "0" when none is set) and `tax` is that rate on the subtotal less the discount,
+ // rounded half up to the cent; `total` is the subtotal less the discount plus the tax.
+ export interface InvoiceDetail {
+   id: number;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index b8fc664..8e67ea0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -125,11 +125,11 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The tax charged at the given rate (a percentage): the rate on the subtotal, before any
+-     * discount comes off, rounded half up to the cent.
++     * The tax charged at the given rate (a percentage): the rate on what is left once the discount
++     * has come off the subtotal, rounded half up to the cent.
+      */
+     public BigDecimal tax(BigDecimal taxRate) {
+-        return subtotal().multiply(taxRate).divide(BigDecimal.valueOf(100))
++        return subtotal().subtract(discount()).multiply(taxRate).divide(BigDecimal.valueOf(100))
+                 .setScale(2, RoundingMode.HALF_UP);
+     }
+ 
