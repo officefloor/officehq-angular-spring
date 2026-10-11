@@ -1,0 +1,157 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 6361c48..8e1dbf7 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -115,7 +115,8 @@ function problemWith(line: NewLine): string {
+ // percentage or fixed discount, can have lines removed (refused when what is left would be less than a
+ // fixed discount), and can be sent; a change to a sent invoice with no payments puts it back to
+ // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
+-// until nothing is due; the panel lists them with what has been paid and what is still due. The
++// until nothing is due, less than $1.00 left being written off; the panel lists them with what has
++// been paid, what is still due and what was written off. The
+ // server refuses a payment on a draft, over what is due, or dated after today or before the issue date.
+ // The panel shows the invoice's RF payment reference; a payment may quote one, which must pass the
+ // ISO 11649 check and be this invoice's. When parts of a payment are filled in on the list, the
+@@ -254,6 +255,10 @@ function problemWith(line: NewLine): string {
+               <th scope="row" colspan="4">Amount due</th>
+               <td data-testid="invoice-amount-due">{{ money(inv.amountDue) }}</td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="4">Written off (under $1.00 left)</th>
++              <td data-testid="invoice-written-off">{{ money(inv.writtenOff) }}</td>
++            </tr>
+           </tfoot>
+         </table>
+         @if (reverseError()) {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 2b8d40b..b697f2b 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -61,7 +61,8 @@ export interface InvoicePaymentView {
+ // discount takes off, rounded half up to the cent and shrunk so the total taken off stays within the cap; `taxRate` is the workspace's tax percentage (without
+ // trailing zeros, "0" when none is set) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
+ // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
+-// `amountDue` is the total less that. `reference` is its ISO 11649 RF payment reference, made from
++// `amountDue` is the total less that and less `writtenOff`: when payments leave less than $1.00 due,
++// the rest is written off ("0.00" when nothing is). `reference` is its ISO 11649 RF payment reference, made from
+ // the seven digits of its number, in groups of four (RF16 0000 075).
+ export interface InvoiceDetail {
+   id: number;
+@@ -83,6 +84,7 @@ export interface InvoiceDetail {
+   payments: InvoicePaymentView[];
+   paid: string;
+   amountDue: string;
++  writtenOff: string;
+   // The date (yyyy-mm-dd) of the payment that cleared it, payments in date order; null while not fully paid.
+   paidDate: string | null;
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 169df71..eee336d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -25,6 +25,9 @@ import java.util.List;
+ @Table(name = "invoice")
+ public class Invoice {
+ 
++    /** Payments that leave less than this still due have the rest written off. */
++    public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("1.00");
++
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+     private Long id;
+@@ -215,16 +218,30 @@ public class Invoice {
+         BigDecimal sum = BigDecimal.ZERO;
+         for (Payment p : inOrder) {
+             sum = sum.add(p.amountTo(id));
+-            if (sum.compareTo(total) >= 0) {
++            if (sum.signum() > 0 && total.subtract(sum).compareTo(WRITE_OFF_LIMIT) < 0) {
+                 return p.getDate();
+             }
+         }
+         return null;
+     }
+ 
+-    /** What is still due once the given amount has been paid: the grand total less it. */
++    /**
++     * What is still due once the given amount has been paid: the grand total less it, less anything
++     * written off — so nothing once payments leave less than {@link #WRITE_OFF_LIMIT}.
++     */
+     public BigDecimal amountDue(BigDecimal paid, BigDecimal taxRate) {
+-        return total(taxRate).subtract(paid);
++        return total(taxRate).subtract(paid).subtract(writtenOff(paid, taxRate));
++    }
++
++    /**
++     * What is written off once the given amount has been paid: when payments leave less than
++     * {@link #WRITE_OFF_LIMIT} still due, all of what is left; otherwise nothing.
++     */
++    public BigDecimal writtenOff(BigDecimal paid, BigDecimal taxRate) {
++        BigDecimal left = total(taxRate).subtract(paid);
++        return paid.signum() > 0 && left.signum() > 0 && left.compareTo(WRITE_OFF_LIMIT) < 0
++                ? left.setScale(2, RoundingMode.HALF_UP)
++                : BigDecimal.ZERO.setScale(2);
+     }
+ 
+     /** Adds a line to the end of the invoice. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 4e46ea1..4850911 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -86,14 +86,15 @@ public class InvoiceController {
+     /**
+      * An opened invoice: its lines, subtotal, discount percentage (without trailing zeros, "12.5"),
+      * the amount it takes off, the tax rate (without trailing zeros) and the tax charged, the sum of the
+-     * line taxes, and the grand total; the payments made to it, what they add up to and what is still due (money as
++     * line taxes, and the grand total; the payments made to it, what they add up to, what is still due and what was written off because less than
++     * $1.00 was left (money as
+      * decimal strings to the cent). Its status follows what has been paid. {@code reference} is its
+      * RF payment reference in groups of four. {@code paidDate} is the date of the payment that cleared
+      * it, payments taken in date order; null while it is not fully paid.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+-            String discountCap, String discount, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, LocalDate paidDate) {
++            String discountCap, String discount, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -113,7 +114,7 @@ public class InvoiceController {
+                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
+                     i.total(taxRate).toPlainString(),
+                     payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
+-                    i.amountDue(paid, taxRate).toPlainString(), paidOn);
++                    i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn);
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index c7a7cab..db9cd16 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -333,6 +333,7 @@ public class InvoiceService {
+             Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, date, reference));
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
+                     + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++            recordWriteOff(invoice);
+         });
+         return found;
+     }
+@@ -447,9 +448,18 @@ public class InvoiceService {
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + part.getInvoiceId() + " amount="
+                     + part.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+         }
++        spreadOver.forEach(this::recordWriteOff);
+         return payment;
+     }
+ 
++    /** Records in the audit what a payment just recorded left written off on the invoice, if anything. */
++    private void recordWriteOff(Invoice invoice) {
++        BigDecimal writtenOff = invoice.writtenOff(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent());
++        if (writtenOff.signum() > 0) {
++            audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + writtenOff.toPlainString());
++        }
++    }
++
+     /**
+      * Reverses the payment (a bounced cheque), undoing it on every invoice it was applied to, and
+      * records it in the audit; empty if no such payment. A payment already reversed is refused.
