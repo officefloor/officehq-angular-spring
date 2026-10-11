@@ -1,0 +1,59 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index c069348..cb3a53f 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -15,7 +15,7 @@ export interface Client {
+   taxExempt: boolean;
+   // The currency the client is billed in: everything on its invoices is in it.
+   currency: Currency;
+-  // An early-payment discount: the percentage of the grand total (0 is none) taken off an invoice
++  // An early-payment discount: the percentage of the amount before tax (0 is none) taken off an invoice
+   // paid off within earlyPayDays of its issue date (null when there is none).
+   earlyPayPct: number;
+   earlyPayDays: number | null;
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 64b3099..1e38259 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -46,7 +46,7 @@ public class Client {
+     @Enumerated(EnumType.STRING)
+     private Currency currency = Currency.USD;
+ 
+-    /** The percentage of the grand total taken off an invoice paid off early; 0 is none. */
++    /** The percentage of the amount before tax taken off an invoice paid off early; 0 is none. */
+     @Column(name = "early_pay_pct")
+     private BigDecimal earlyPayPct = BigDecimal.ZERO;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index fafb45d..5bbb647 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -187,7 +187,7 @@ public class Invoice {
+     @Formula("(SELECT MAX(COALESCE(a.applied_date, p.payment_date)) FROM payment_allocation a, payment p WHERE a.invoice_id = id AND p.id = a.payment_id AND p.reversed = FALSE)")
+     private LocalDate lastPaidOn;
+ 
+-    /** The client's early-payment discount, a percentage of the grand total; read from the client. */
++    /** The client's early-payment discount, a percentage of the amount before tax; read from the client. */
+     @Formula("(SELECT c.early_pay_pct FROM client c WHERE c.id = client_id)")
+     private BigDecimal earlyPayPct;
+ 
+@@ -1107,8 +1107,8 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The early-payment discount on offer at the tax rate: the client's early-payment percentage of the
+-     * grand total, rounded down to the cent; nothing for a credit note, or an invoice holding back
++     * The early-payment discount on offer: the client's early-payment percentage of the amount before
++     * tax (the subtotal less the discount), rounded down to the cent; nothing for a credit note, or an invoice holding back
+      * retention or spread over instalments.
+      */
+     public BigDecimal earlyDiscount(BigDecimal taxRate) {
+@@ -1116,7 +1116,7 @@ public class Invoice {
+                 || earlyPayPct == null || earlyPayPct.signum() <= 0) {
+             return zero();
+         }
+-        return total(taxRate).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
++        return subtotal().subtract(discount()).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+     }
+ 
+     /**
