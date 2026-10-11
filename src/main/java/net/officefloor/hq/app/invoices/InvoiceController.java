@@ -196,7 +196,7 @@ public class InvoiceController {
                     i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
                     i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),
                     i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
-                    i.getSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
+                    i.chargedSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
                     i.getSupplyRegion());
         }

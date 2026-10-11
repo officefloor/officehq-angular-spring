@@ -382,7 +382,7 @@ public class InvoiceService {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isCreditNote()) {
-                throw new InvoiceRejectedException("A credit note carries no surcharge.");
+                throw new InvoiceRejectedException("A credit note carries the surcharge of the invoice it credits.");
             }
             if (!invoice.isDraft()) {
                 throw new InvoiceRejectedException("A surcharge can only be set on a draft.");

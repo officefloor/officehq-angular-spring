@@ -212,6 +212,10 @@ public class Invoice {
     @Formula("(SELECT o.issue_date FROM invoice o WHERE o.id = credit_of)")
     private LocalDate creditedIssueDate;
 
+    /** The surcharge percentage of the invoice this credit note credits; null for an ordinary invoice. */
+    @Formula("(SELECT o.surcharge_pct FROM invoice o WHERE o.id = credit_of)")
+    private BigDecimal creditedSurchargePct;
+
     /**
      * The tax number of the invoice's client when the client is in a region other than the workspace's
      * home region and the number's two letters are that region's code; read from them, null when it has
@@ -451,6 +455,7 @@ public class Invoice {
         note.creditOf = id;
         note.supplyRegion = supplyRegion;
         note.creditedIssueDate = this.issueDate;
+        note.creditedSurchargePct = this.surchargePct;
         return note;
     }
 
@@ -652,6 +657,14 @@ public class Invoice {
 
     /** The rush surcharge, a percentage of the amount after the discounts, 0 to {@link #MAX_SURCHARGE_PCT}. */
     public BigDecimal getSurchargePct() {
+        return surchargePct;
+    }
+
+    /** The surcharge percentage charged: a credit note's is its original's; otherwise its own. */
+    public BigDecimal chargedSurchargePct() {
+        if (isCreditNote()) {
+            return creditedSurchargePct == null ? BigDecimal.ZERO : creditedSurchargePct;
+        }
         return surchargePct;
     }
 
@@ -2294,13 +2307,11 @@ public class Invoice {
 
     /**
      * The rush surcharge: the surcharge percentage of the amount after the discounts, rounded down to
-     * the cent. It is not discounted and is taxed at the client's rate. Nothing for a credit note.
+     * the cent. It is not discounted and is taxed at the client's rate. A credit note carries its
+     * original's percentage on what it credits, so gives back the surcharge on that part.
      */
     public BigDecimal surcharge() {
-        if (isCreditNote()) {
-            return zero();
-        }
-        return discounted().multiply(surchargePct).movePointLeft(2).setScale(scale(), RoundingMode.DOWN);
+        return discounted().multiply(chargedSurchargePct()).movePointLeft(2).setScale(scale(), RoundingMode.DOWN);
     }
 
     /**
