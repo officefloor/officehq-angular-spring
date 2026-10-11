@@ -134,6 +134,9 @@ function problemWith(line: NewLine): string {
       </h2>
       @if (invoice(); as inv) {
         <p>Status: <span data-testid="invoice-panel-status">{{ statusLabel(inv.status) }}</span></p>
+        @if (inv.paidDate) {
+          <p>Paid on: <span data-testid="invoice-paid-date">{{ inv.paidDate }}</span></p>
+        }
         <p>Payment reference: <span data-testid="invoice-reference">{{ inv.reference }}</span></p>
         <table>
           <thead>
@@ -257,7 +260,7 @@ function problemWith(line: NewLine): string {
           <p role="alert" data-testid="payment-reverse-error">{{ reverseError() }}</p>
         }
 
-        @if (inv.status !== 'PAID') {
+        @if (inv.status !== 'PAID' && inv.status !== 'PAID_LATE') {
           <app-payment-form
             [clientId]="inv.clientId"
             [invoiceId]="inv.id"

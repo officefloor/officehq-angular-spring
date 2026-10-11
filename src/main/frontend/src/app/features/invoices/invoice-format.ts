@@ -5,6 +5,7 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   SENT: 'Sent',
   PART_PAID: 'Part paid',
   PAID: 'Paid',
+  PAID_LATE: 'Paid late',
   OVERDUE: 'Overdue',
   VOID: 'Void',
 };

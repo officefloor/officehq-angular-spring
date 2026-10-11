@@ -262,6 +262,24 @@ public class InvoiceService {
         return payments.findForInvoice(invoiceId);
     }
 
+    /** The date each fully paid invoice was paid (see {@link Invoice#paidOn}); an invoice not fully paid is left out. */
+    @Transactional(readOnly = true)
+    public Map<Long, LocalDate> paidOn(List<Invoice> list) {
+        Map<Long, LocalDate> paidOn = new HashMap<>();
+        if (list.isEmpty()) {
+            return paidOn;
+        }
+        List<Payment> found = payments.findForInvoices(list.stream().map(Invoice::getId).toList());
+        BigDecimal rate = taxRate.percent();
+        for (Invoice i : list) {
+            LocalDate on = i.paidOn(found, rate);
+            if (on != null) {
+                paidOn.put(i.getId(), on);
+            }
+        }
+        return paidOn;
+    }
+
     /** What has been paid to each of the invoices; an invoice paid nothing is paid zero. */
     @Transactional(readOnly = true)
     public Map<Long, BigDecimal> paid(List<Invoice> list) {

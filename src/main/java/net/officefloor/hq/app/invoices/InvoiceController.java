@@ -36,9 +36,9 @@ public class InvoiceController {
      */
     public record InvoiceSummary(Long id, String number, InvoiceStatus status, String total,
             LocalDate issueDate, LocalDate dueDate) {
-        static InvoiceSummary of(Invoice i, BigDecimal taxRate, BigDecimal paid, LocalDate today) {
+        static InvoiceSummary of(Invoice i, BigDecimal taxRate, BigDecimal paid, LocalDate paidOn, LocalDate today) {
             BigDecimal total = i.total(taxRate);
-            return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.statusWhenPaid(paid, taxRate, today),
+            return new InvoiceSummary(i.getId(), InvoiceNumber.of(i.getId()), i.statusWhenPaid(paid, paidOn, taxRate, today),
                     total.toPlainString(), i.getIssueDate(), i.getDueDate());
         }
     }
@@ -88,21 +88,23 @@ public class InvoiceController {
      * the amount it takes off, the tax rate (without trailing zeros) and the tax charged, the sum of the
      * line taxes, and the grand total; the payments made to it, what they add up to and what is still due (money as
      * decimal strings to the cent). Its status follows what has been paid. {@code reference} is its
-     * RF payment reference in groups of four.
+     * RF payment reference in groups of four. {@code paidDate} is the date of the payment that cleared
+     * it, payments taken in date order; null while it is not fully paid.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
-            String discountCap, String discount, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue) {
+            String discountCap, String discount, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, LocalDate paidDate) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+            LocalDate paidOn = i.paidOn(payments, taxRate);
             List<BigDecimal> shares = i.discountShares();
             List<BigDecimal> taxes = i.lineTaxes(taxRate);
             List<LineView> lines = IntStream.range(0, shares.size())
                     .mapToObj(n -> LineView.of(i.getLines().get(n), shares.get(n), taxes.get(n))).toList();
             return new InvoiceDetail(i.getId(), InvoiceNumber.of(i.getId()),
                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
-                    i.statusWhenPaid(paid, taxRate, today), i.getIssueDate(), i.getDueDate(),
+                    i.statusWhenPaid(paid, paidOn, taxRate, today), i.getIssueDate(), i.getDueDate(),
                     lines, i.subtotal().toPlainString(),
                     i.getDiscountPct().stripTrailingZeros().toPlainString(),
                     i.getDiscountAmount().setScale(2).toPlainString(),
@@ -111,7 +113,7 @@ public class InvoiceController {
                     taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
                     i.total(taxRate).toPlainString(),
                     payments.stream().map(p -> PaymentView.of(p, i.getId())).toList(), paid.toPlainString(),
-                    i.amountDue(paid, taxRate).toPlainString());
+                    i.amountDue(paid, taxRate).toPlainString(), paidOn);
         }
     }
 
@@ -217,7 +219,8 @@ public class InvoiceController {
     }
 
     private InvoiceSummary summary(Invoice i) {
-        return InvoiceSummary.of(i, taxRate.percent(), invoices.paid(List.of(i)).get(i.getId()), today.date());
+        return InvoiceSummary.of(i, taxRate.percent(), invoices.paid(List.of(i)).get(i.getId()),
+                invoices.paidOn(List.of(i)).get(i.getId()), today.date());
     }
 
     private InvoiceDetail detail(Invoice i) {
@@ -229,8 +232,9 @@ public class InvoiceController {
         BigDecimal rate = taxRate.percent();
         List<Invoice> list = invoices.forClient(clientId);
         Map<Long, BigDecimal> paid = invoices.paid(list);
+        Map<Long, LocalDate> paidOn = invoices.paidOn(list);
         LocalDate on = today.date();
-        return list.stream().map(i -> InvoiceSummary.of(i, rate, paid.get(i.getId()), on)).toList();
+        return list.stream().map(i -> InvoiceSummary.of(i, rate, paid.get(i.getId()), paidOn.get(i.getId()), on)).toList();
     }
 
     /** The balance of each client that has a sent invoice; a client not listed owes nothing. Void invoices do not count. */

@@ -3,10 +3,11 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
-// nothing is due; it is OVERDUE while something is still due after its due date, part paid or not.
+// nothing is due, or PAID_LATE when the payment that cleared it (payments in date order) came after
+// its due date; it is OVERDUE while something is still due after its due date, part paid or not.
 // The server works this out from its payments and today's date. A VOID invoice was voided while sent
 // and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
-export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID' | 'OVERDUE' | 'VOID';
+export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PART_PAID' | 'PAID' | 'PAID_LATE' | 'OVERDUE' | 'VOID';
 
 // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
 // server: the grand total — the lines' subtotal less any discount plus tax.
@@ -82,6 +83,8 @@ export interface InvoiceDetail {
   payments: InvoicePaymentView[];
   paid: string;
   amountDue: string;
+  // The date (yyyy-mm-dd) of the payment that cleared it, payments in date order; null while not fully paid.
+  paidDate: string | null;
 }
 
 // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the

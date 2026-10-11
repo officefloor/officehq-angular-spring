@@ -176,6 +176,14 @@ public class Invoice {
      * tax rate: a sent invoice with something still due after its due date is overdue, part paid or not.
      */
     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
+        return statusWhenPaid(paid, null, taxRate, today);
+    }
+
+    /**
+     * As {@link #statusWhenPaid(BigDecimal, BigDecimal, LocalDate)}, but a fully paid invoice whose
+     * paid date (null when not known) is after its due date is paid late.
+     */
+    public InvoiceStatus statusWhenPaid(BigDecimal paid, LocalDate paidOn, BigDecimal taxRate, LocalDate today) {
         if (status != InvoiceStatus.SENT) {
             return status;
         }
@@ -186,7 +194,32 @@ public class Invoice {
         if (paid.signum() <= 0) {
             return status;
         }
-        return due ? InvoiceStatus.PART_PAID : InvoiceStatus.PAID;
+        if (due) {
+            return InvoiceStatus.PART_PAID;
+        }
+        return paidOn != null && dueDate != null && paidOn.isAfter(dueDate) ? InvoiceStatus.PAID_LATE
+                : InvoiceStatus.PAID;
+    }
+
+    /**
+     * The date the invoice was fully paid: the date of the payment that cleared its grand total at the
+     * tax rate, taking the payments (not reversed) in date order; null while something is still due.
+     */
+    public LocalDate paidOn(List<Payment> payments, BigDecimal taxRate) {
+        BigDecimal total = total(taxRate);
+        if (status != InvoiceStatus.SENT || total.signum() <= 0) {
+            return null;
+        }
+        List<Payment> inOrder = payments.stream().filter(p -> !p.isReversed())
+                .sorted(Comparator.comparing(Payment::getDate).thenComparing(Payment::getId)).toList();
+        BigDecimal sum = BigDecimal.ZERO;
+        for (Payment p : inOrder) {
+            sum = sum.add(p.amountTo(id));
+            if (sum.compareTo(total) >= 0) {
+                return p.getDate();
+            }
+        }
+        return null;
     }
 
     /** What is still due once the given amount has been paid: the grand total less it. */
