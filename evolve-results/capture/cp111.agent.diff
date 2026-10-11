@@ -1,0 +1,570 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 840956c..a46b35a 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -451,6 +451,7 @@ function problemWith(line: NewLine): string {
+             <tr>
+               <th scope="col">Paid on</th>
+               <th scope="col">Amount</th>
++              <th scope="col">Card surcharge</th>
+               <th scope="col">To this invoice</th>
+               <th scope="col">Reference</th>
+               <th scope="col">Actions</th>
+@@ -461,6 +462,7 @@ function problemWith(line: NewLine): string {
+               <tr [attr.data-testid]="'payment-row-' + p.id">
+                 <td data-testid="payment-date">{{ p.date }}</td>
+                 <td data-testid="payment-amount">{{ money(p.amount, p.currency) }}</td>
++                <td data-testid="payment-surcharge">{{ amount(p.surcharge) }}</td>
+                 <td data-testid="payment-allocated">{{ amount(p.allocated) }}</td>
+                 <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
+                 <td>
+@@ -477,85 +479,85 @@ function problemWith(line: NewLine): string {
+               </tr>
+             } @empty {
+               <tr>
+-                <td colspan="5" data-testid="payment-empty">No payments yet.</td>
++                <td colspan="6" data-testid="payment-empty">No payments yet.</td>
+               </tr>
+             }
+           </tbody>
+           <tfoot>
+             <tr>
+-              <th scope="row" colspan="4">Paid</th>
++              <th scope="row" colspan="5">Paid</th>
+               <td data-testid="invoice-paid">{{ amount(inv.paid) }}</td>
+             </tr>
+             @if (inv.creditOf === null) {
+               <tr>
+-                <th scope="row" colspan="4">Credited</th>
++                <th scope="row" colspan="5">Credited</th>
+                 <td data-testid="invoice-credited">{{ amount(inv.credited) }}</td>
+               </tr>
+             }
+             @if (inv.creditOf === null) {
+               <tr>
+-                <th scope="row" colspan="4">Early-payment discount</th>
++                <th scope="row" colspan="5">Early-payment discount</th>
+                 <td data-testid="invoice-early-discount">{{ amount(inv.earlyDiscount) }}</td>
+               </tr>
+             }
+             @if (inv.creditOf === null) {
+               <tr>
+-                <th scope="row" colspan="4">Late fee</th>
++                <th scope="row" colspan="5">Late fee</th>
+                 <td data-testid="invoice-late-fee">{{ amount(inv.lateFee) }}</td>
+               </tr>
+             }
+             @if (inv.creditOf === null) {
+               <tr>
+-                <th scope="row" colspan="4">Late interest</th>
++                <th scope="row" colspan="5">Late interest</th>
+                 <td data-testid="invoice-interest">{{ amount(inv.lateInterest) }}</td>
+               </tr>
+             }
+             @if (inv.creditOf === null) {
+               <tr>
+-                <th scope="row" colspan="4">Late charges waived</th>
++                <th scope="row" colspan="5">Late charges waived</th>
+                 <td data-testid="invoice-waived">{{ amount(inv.lateWaived) }}</td>
+               </tr>
+             }
+             <tr>
+-              <th scope="row" colspan="4">Amount due</th>
++              <th scope="row" colspan="5">Amount due</th>
+               <td data-testid="invoice-amount-due">{{ amount(inv.amountDue) }}</td>
+             </tr>
+             @if (inv.creditOf === null) {
+               <tr>
+-                <th scope="row" colspan="4">Amount due in cash (to the nearest coin)</th>
++                <th scope="row" colspan="5">Amount due in cash (to the nearest coin)</th>
+                 <td data-testid="invoice-cash-due">{{ amount(inv.cashDue) }}</td>
+               </tr>
+               <tr>
+-                <th scope="row" colspan="4">Cash rounding</th>
++                <th scope="row" colspan="5">Cash rounding</th>
+                 <td data-testid="invoice-cash-rounding">{{ amount(inv.cashRounding) }}</td>
+               </tr>
+             }
+             @if (inv.settleAmount !== null) {
+               <tr>
+-                <th scope="row" colspan="4">Settles it if paid now (early-payment discount)</th>
++                <th scope="row" colspan="5">Settles it if paid now (early-payment discount)</th>
+                 <td data-testid="invoice-settle-amount">{{ amount(inv.settleAmount) }}</td>
+               </tr>
+             }
+             @if (inv.payoff !== null) {
+               <tr>
+-                <th scope="row" colspan="4">Pays off the plan if paid now</th>
++                <th scope="row" colspan="5">Pays off the plan if paid now</th>
+                 <td data-testid="invoice-payoff">{{ amount(inv.payoff) }}</td>
+               </tr>
+             }
+             @if (inv.instalments !== null) {
+               <tr>
+-                <th scope="row" colspan="4">Interest saved by paying off early</th>
++                <th scope="row" colspan="5">Interest saved by paying off early</th>
+                 <td data-testid="invoice-interest-saved">{{ amount(inv.interestSaved) }}</td>
+               </tr>
+             }
+             @if (inv.fxDifference !== null) {
+               <tr>
+-                <th scope="row" colspan="4">Exchange difference (US dollars)</th>
++                <th scope="row" colspan="5">Exchange difference (US dollars)</th>
+                 <td data-testid="invoice-fx-difference">{{ money(inv.fxDifference) }}</td>
+               </tr>
+             }
+             <tr>
+-              <th scope="row" colspan="4">
++              <th scope="row" colspan="5">
+                 {{ inv.writtenOffOn === null ? 'Written off (small balance left)' : 'Written off as a bad debt' }}
+               </th>
+               <td data-testid="invoice-written-off">{{ amount(inv.writtenOff) }}</td>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 4ecc1d9..fc70f6c 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -76,7 +76,8 @@ export interface InvoiceLineView {
+ // this invoice, decimal strings to the cent; the date it was paid (yyyy-mm-dd) and the RF reference it
+ // quoted in groups of four (null when none).
+ // A payment to an opened invoice: `amount` is in the `currency` it was paid in, `allocated` (the
+-// part applied to this invoice) in the client's currency.
++// part applied to this invoice) in the client's currency. `surcharge` is the part of the amount that
++// was the card surcharge, in the client's currency ("0.00" unless paid by card).
+ export interface InvoicePaymentView {
+   id: number;
+   amount: string;
+@@ -84,6 +85,8 @@ export interface InvoicePaymentView {
+   allocated: string;
+   date: string;
+   reference: string | null;
++  method: PaymentMethod;
++  surcharge: string;
+ }
+ 
+ // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
+@@ -217,7 +220,7 @@ export interface InstalmentView {
+ // RF reference the client quoted ('' when none), checked again by the server.
+ // `currency` is the currency it was paid in; the server converts it into the client's currency.
+ // How a payment was made: a bank transfer, or cash counted out in coins (0.05, or whole yen).
+-export type PaymentMethod = 'BANK' | 'CASH';
++export type PaymentMethod = 'BANK' | 'CASH' | 'CARD';
+ 
+ export interface NewPayment {
+   amount: string;
+@@ -421,7 +424,13 @@ export class InvoiceService {
+   // client's invoices.
+   recordDeposit(
+     clientId: number,
+-    deposit: { amount: string; currency: Currency; date: string; reference?: string },
++    deposit: {
++      amount: string;
++      currency: Currency;
++      date: string;
++      reference?: string;
++      method?: PaymentMethod;
++    },
+   ): Observable<InvoiceSummary[]> {
+     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/deposits`, deposit);
+   }
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index 4c56cdf..7cfa460 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -138,6 +138,7 @@ function problemWithCash(payment: NewPayment, invoiceOpen: boolean, clientCurren
+       <select id="payment-method" data-testid="payment-form-method" formControlName="method">
+         <option value="BANK">Bank transfer</option>
+         <option value="CASH">Cash (to the nearest 0.05)</option>
++        <option value="CARD">Card (the card surcharge is taken out of it)</option>
+       </select>
+       <label for="payment-amount">Amount ({{ symbolOf(paidIn()) }})</label>
+       <input
+@@ -309,6 +310,7 @@ export class PaymentForm {
+         currency: payment.currency,
+         date: payment.date,
+         reference: payment.reference || undefined,
++        method: payment.method,
+       })
+       .subscribe({
+         next: (list) => {
+diff --git a/src/main/java/net/officefloor/hq/app/CardSurcharge.java b/src/main/java/net/officefloor/hq/app/CardSurcharge.java
+new file mode 100644
+index 0000000..873a3f2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/CardSurcharge.java
+@@ -0,0 +1,42 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.math.MathContext;
++import java.math.RoundingMode;
++import java.util.List;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++
++/**
++ * The workspace's card surcharge: the stored {@code card_surcharge_pct} setting, a percentage such as
++ * 2.5 passed on to a client paying by card; 0 when none is set. Part of a card payment is the
++ * surcharge: the amount less the amount divided by 1 plus the rate, rounded half up to the cent.
++ */
++@Service
++public class CardSurcharge {
++
++    public static final String CARD_SURCHARGE_PCT = "card_surcharge_pct";
++
++    private final JdbcTemplate jdbc;
++
++    public CardSurcharge(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    public BigDecimal percent() {
++        List<String> rate = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
++                String.class, CARD_SURCHARGE_PCT);
++        return rate.isEmpty() ? BigDecimal.ZERO : new BigDecimal(rate.get(0));
++    }
++
++    /** The surcharge in the amount paid by card, rounded half up to the scale (2 for cents, 0 for yen). */
++    public BigDecimal of(BigDecimal amount, int scale) {
++        BigDecimal rate = percent();
++        if (rate.signum() == 0) {
++            return BigDecimal.ZERO.setScale(scale);
++        }
++        BigDecimal factor = BigDecimal.ONE.add(rate.movePointLeft(2));
++        BigDecimal net = amount.divide(factor, MathContext.DECIMAL128);
++        return amount.subtract(net).setScale(scale, RoundingMode.HALF_UP);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index e1e5897..2fba872 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -39,7 +39,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+     private static final String MINIMUM_CHARGE = "minimum_charge";
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+@@ -59,8 +59,12 @@ public class TestSupportController {
+     private final EntityManager entityManager;
+     private final ExchangeRates exchangeRates;
+ 
++    private final CardSurcharge cardSurcharge;
++
+     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
+-            PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates) {
++            PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
++            CardSurcharge cardSurcharge) {
++        this.cardSurcharge = cardSurcharge;
+         this.exchangeRates = exchangeRates;
+         this.payments = payments;
+         this.entityManager = entityManager;
+@@ -128,6 +132,11 @@ public class TestSupportController {
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                         MINIMUM_CHARGE, minimum.toPlainString());
+             }
++            if (values.get("cardSurchargePct") != null) {
++                BigDecimal rate = percent(values.get("cardSurchargePct"), "settings.cardSurchargePct");
++                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
++                        CardSurcharge.CARD_SURCHARGE_PCT, rate.toPlainString());
++            }
+             if (values.get("usdPer") != null) {
+                 if (!(values.get("usdPer") instanceof Map<?, ?> rates)) {
+                     throw refuse("settings.usdPer must be an object of rates by currency code");
+@@ -316,14 +325,18 @@ public class TestSupportController {
+                 throw refuse("unsupported value of payments[].method: " + method);
+             }
+             boolean foreign = paidIn != clientCurrency && paidAmount != null;
+-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method"},
+-                    id(row.get("clientId")), foreign ? exchangeRates.convert(paidAmount, paidIn, clientCurrency, date(row.get("date"), "payments[].date")) : paidAmount,
++            BigDecimal amount = foreign ? exchangeRates.convert(paidAmount, paidIn, clientCurrency, date(row.get("date"), "payments[].date")) : paidAmount;
++            // Part of a card payment is the workspace's card surcharge, as when one is recorded.
++            BigDecimal surcharge = PaymentMethod.CARD.name().equals(method) && amount != null
++                    ? cardSurcharge.of(amount, clientCurrency.scale()) : BigDecimal.ZERO;
++            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method", "surcharge"},
++                    id(row.get("clientId")), amount,
+                     date(row.get("date"), "payments[].date"),
+                     row.get("reference") == null ? null : row.get("reference").toString(),
+                     flag(row.get("reversed"), "payments[].reversed"),
+                     money(row.get("refunded"), "payments[].refunded"),
+                     row.get("creditNote") == null ? null : id(row.get("creditNote")),
+-                    foreign ? paidIn.name() : null, foreign ? paidAmount : null, method);
++                    foreign ? paidIn.name() : null, foreign ? paidAmount : null, method, surcharge);
+             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
+                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
+                 if (allocation.get("invoiceId") == null) {
+@@ -390,6 +403,11 @@ public class TestSupportController {
+         if (!lateFee.isEmpty()) {
+             settings.put("lateFee", new BigDecimal(lateFee.get(0)));
+         }
++        List<String> cardSurchargePct = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
++                String.class, CardSurcharge.CARD_SURCHARGE_PCT);
++        if (!cardSurchargePct.isEmpty()) {
++            settings.put("cardSurchargePct", new BigDecimal(cardSurchargePct.get(0)));
++        }
+         List<String> minimumCharge = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+                 String.class, MINIMUM_CHARGE);
+         if (!minimumCharge.isEmpty()) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index c2774c3..eb8849b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -62,14 +62,16 @@ public class InvoiceController {
+     /**
+      * A payment made to an opened invoice: the whole amount paid in the {@code currency} it was paid in,
+      * how much of it went to this invoice (to the cent) in the client's currency, its date and the
+-     * reference it quoted in groups of four (null when none).
++     * reference it quoted in groups of four (null when none). {@code surcharge} is the part of it that
++     * was the card surcharge, in the client's currency ("0.00" unless paid by card).
+      */
+     public record PaymentView(Long id, String amount, Currency currency, String allocated, LocalDate date,
+-            String reference) {
++            String reference, PaymentMethod method, String surcharge) {
+         static PaymentView of(Payment p, Long invoiceId, Currency clientCurrency) {
+             return new PaymentView(p.getId(), p.paidAmount().setScale(2).toPlainString(),
+                     p.paidCurrency(clientCurrency), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
+-                    p.getReference() == null ? null : PaymentReference.grouped(p.getReference()));
++                    p.getReference() == null ? null : PaymentReference.grouped(p.getReference()), p.getMethod(),
++                    p.getSurcharge().setScale(2).toPlainString());
+         }
+     }
+ 
+@@ -634,7 +636,8 @@ public class InvoiceController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
+         refuseCashWithoutInvoice(body.method());
+-        invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()));
++        invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()),
++                body.method());
+         return forClient(clientId);
+     }
+ 
+@@ -705,7 +708,8 @@ public class InvoiceController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public List<InvoiceSummary> recordDeposit(@PathVariable Long clientId, @Valid @RequestBody NewDeposit body) {
+         refuseCashWithoutInvoice(body.method());
+-        invoices.recordDeposit(clientId, body.amount(), body.currency(), body.date(), reference(body.reference()))
++        invoices.recordDeposit(clientId, body.amount(), body.currency(), body.date(), reference(body.reference()),
++                body.method())
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+         return forClient(clientId);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index a8bd0ae..53b8260 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -15,6 +15,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.CardSurcharge;
+ import net.officefloor.hq.app.ExchangeRates;
+ import net.officefloor.hq.app.LateFee;
+ import net.officefloor.hq.app.LateInterestRate;
+@@ -45,10 +46,12 @@ public class InvoiceService {
+     private final ExchangeRates exchangeRates;
+     private final LateInterestRate lateInterestRate;
+     private final LateFee lateFee;
++    private final CardSurcharge cardSurcharge;
+ 
+     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
+             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
+-            LateInterestRate lateInterestRate, LateFee lateFee) {
++            LateInterestRate lateInterestRate, LateFee lateFee, CardSurcharge cardSurcharge) {
++        this.cardSurcharge = cardSurcharge;
+         this.lateInterestRate = lateInterestRate;
+         this.lateFee = lateFee;
+         this.exchangeRates = exchangeRates;
+@@ -833,7 +836,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Payment> recordDeposit(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+-            String reference) {
++            String reference, PaymentMethod method) {
+         Optional<Client> client = clients.findById(clientId);
+         if (client.isEmpty()) {
+             return Optional.empty();
+@@ -848,10 +851,12 @@ public class InvoiceService {
+         if (date.isAfter(now)) {
+             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+         }
++        BigDecimal surcharge = surchargeOf(amount, currency, method);
+         Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date, reference)
+-                .paidIn(paidIn, paidAmount, currency));
++                .paidIn(paidIn, paidAmount, currency).by(method).surcharged(surcharge));
++        recordSurcharge(payment, currency);
+         audit.record("DEPOSIT_RECORDED id=" + payment.getId() + " client=" + clientId + " amount="
+-                + amount.setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
++                + amount.subtract(surcharge).setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+         return Optional.of(payment);
+     }
+ 
+@@ -1049,7 +1054,10 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException("Cash must be counted out in "
+                         + invoice.currency().format(invoice.currency().cashStep()) + " coins.");
+             }
+-            BigDecimal amount = converted(paidAmount, paidIn, invoice.currency(), date);
++            BigDecimal received = converted(paidAmount, paidIn, invoice.currency(), date);
++            // Only what is left once the card surcharge is taken out pays the invoice.
++            BigDecimal surcharge = surchargeOf(received, invoice.currency(), method);
++            BigDecimal amount = received.subtract(surcharge);
+             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+             if (due.signum() <= 0) {
+@@ -1101,8 +1109,9 @@ public class InvoiceService {
+                 invoice.roundForCash(rounding);
+                 invoices.saveAndFlush(invoice);
+             }
+-            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, applied, date, reference)
+-                    .paidIn(paidIn, paidAmount, invoice.currency()).by(method));
++            Payment payment = payments.saveAndFlush(Payment.against(invoice, received, applied, date, reference)
++                    .paidIn(paidIn, paidAmount, invoice.currency()).by(method).surcharged(surcharge));
++            recordSurcharge(payment, invoice.currency());
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
+                     + applied.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
+             if (rounding.signum() != 0) {
+@@ -1146,9 +1155,12 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+-            List<QuotedReference> references) {
++            List<QuotedReference> references, PaymentMethod method) {
+         Currency currency = currencyOf(clientId);
+-        BigDecimal amount = converted(paidAmount, paidIn, currency, date);
++        BigDecimal received = converted(paidAmount, paidIn, currency, date);
++        // Only what is left once the card surcharge is taken out pays invoices or is held as credit.
++        BigDecimal surcharge = surchargeOf(received, currency, method);
++        BigDecimal amount = received.subtract(surcharge);
+         List<Invoice> ofClient = loadForClient(clientId);
+         List<Invoice> candidates = ofClient;
+         List<PaymentAllocation> parts = new ArrayList<>();
+@@ -1212,7 +1224,7 @@ public class InvoiceService {
+                     : "Those invoices have already been paid.");
+         }
+         String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
+-        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts);
++        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, method, surcharge);
+     }
+ 
+     /**
+@@ -1310,7 +1322,8 @@ public class InvoiceService {
+      * already been checked; it must be the reference of one of the invoices.
+      */
+     private Payment recordSpread(Long clientId, BigDecimal amount, BigDecimal paidAmount, Currency paidIn,
+-            LocalDate date, String reference, List<PaymentAllocation> parts) {
++            LocalDate date, String reference, List<PaymentAllocation> parts, PaymentMethod method,
++            BigDecimal surcharge) {
+         if (parts.isEmpty()) {
+             throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
+         }
+@@ -1373,8 +1386,9 @@ public class InvoiceService {
+             throw new InvoiceRejectedException(PaymentReference.grouped(reference)
+                     + " is not the reference of any of the invoices being paid.");
+         }
+-        Payment payment = payments.saveAndFlush(Payment.split(clientId, amount, date, reference, parts)
+-                .paidIn(paidIn, paidAmount, currency));
++        Payment payment = payments.saveAndFlush(Payment.split(clientId, amount.add(surcharge), date, reference, parts)
++                .paidIn(paidIn, paidAmount, currency).by(method).surcharged(surcharge));
++        recordSurcharge(payment, currency);
+         for (PaymentAllocation part : parts) {
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + part.getInvoiceId() + " amount="
+                     + part.getAmount().setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
+@@ -1481,6 +1495,19 @@ public class InvoiceService {
+         return drafts.get(compact);
+     }
+ 
++    /** The card surcharge in the amount received by the method (null for a bank transfer): 0 unless by card. */
++    private BigDecimal surchargeOf(BigDecimal received, Currency currency, PaymentMethod method) {
++        return method == PaymentMethod.CARD ? cardSurcharge.of(received, currency.scale()) : BigDecimal.ZERO;
++    }
++
++    /** Records in the audit the card surcharge a payment just recorded carried, if any. */
++    private void recordSurcharge(Payment payment, Currency currency) {
++        if (payment.getSurcharge().signum() > 0) {
++            audit.record("CARD_SURCHARGE payment=" + payment.getId() + " amount="
++                    + payment.getSurcharge().setScale(currency.scale(), RoundingMode.UNNECESSARY).toPlainString());
++        }
++    }
++
+     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
+     private void recordCreditHeld(Payment payment) {
+         BigDecimal credit = payment.credit();
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index 5dd4ce4..2bb6bfa 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -59,6 +59,9 @@ public class Payment {
+     @Enumerated(EnumType.STRING)
+     private PaymentMethod method = PaymentMethod.BANK;
+ 
++    /** The part of the amount that is the card surcharge of a card payment: it pays nothing; 0 otherwise. */
++    private BigDecimal surcharge = BigDecimal.ZERO;
++
+     @ElementCollection
+     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
+     private List<PaymentAllocation> allocations = new ArrayList<>();
+@@ -143,6 +146,17 @@ public class Payment {
+         return this;
+     }
+ 
++    /** Notes the part of the amount that is the card surcharge (null for none). */
++    public Payment surcharged(BigDecimal surcharge) {
++        this.surcharge = surcharge == null ? BigDecimal.ZERO : surcharge;
++        return this;
++    }
++
++    /** The part of the amount that is the card surcharge; 0 for a payment not made by card. */
++    public BigDecimal getSurcharge() {
++        return surcharge == null ? BigDecimal.ZERO : surcharge;
++    }
++
+     public PaymentMethod getMethod() {
+         return method;
+     }
+@@ -205,14 +219,14 @@ public class Payment {
+     }
+ 
+     /**
+-     * The part of this payment applied to no invoice and not refunded: credit on the client's account;
+-     * none once reversed.
++     * The part of this payment applied to no invoice, not refunded and not its card surcharge: credit
++     * on the client's account; none once reversed.
+      */
+     public BigDecimal credit() {
+         if (reversed) {
+             return BigDecimal.ZERO;
+         }
+-        return amount.subtract(refunded).subtract(allocations.stream().map(PaymentAllocation::getAmount)
++        return amount.subtract(getSurcharge()).subtract(refunded).subtract(allocations.stream().map(PaymentAllocation::getAmount)
+                 .reduce(BigDecimal.ZERO, BigDecimal::add));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/PaymentMethod.java b/src/main/java/net/officefloor/hq/app/invoices/PaymentMethod.java
+index b832991..1124303 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/PaymentMethod.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/PaymentMethod.java
+@@ -1,8 +1,11 @@
+ package net.officefloor.hq.app.invoices;
+ 
+-/** How a payment was made: a bank transfer, or cash counted out in coins (see {@code Currency#cashStep()}). */
++/**
++ * How a payment was made: a bank transfer, cash counted out in coins (see {@code Currency#cashStep()}), or a
++ * card, part of which is the workspace's card surcharge (see {@code CardSurcharge}).
++ */
+ public enum PaymentMethod {
+-    BANK, CASH;
++    BANK, CASH, CARD;
+ 
+     /** The method with the name, or null when there is no such method. */
+     public static PaymentMethod of(String name) {
+diff --git a/src/main/resources/db/migration/V45__card_surcharge.sql b/src/main/resources/db/migration/V45__card_surcharge.sql
+new file mode 100644
+index 0000000..4009946
+--- /dev/null
++++ b/src/main/resources/db/migration/V45__card_surcharge.sql
+@@ -0,0 +1,3 @@
++-- The card surcharge a card payment carried: the part of its amount that is the workspace's card
++-- surcharge, which pays no invoice and is held as no credit; 0 for any other payment.
++ALTER TABLE payment ADD COLUMN surcharge DECIMAL(19, 2) DEFAULT 0 NOT NULL;
