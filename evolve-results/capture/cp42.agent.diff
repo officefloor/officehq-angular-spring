@@ -1,0 +1,284 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index cfdd025..56e8c01 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import {
+   InvoiceDetail,
++  InvoiceLineView,
+   InvoiceService,
+   InvoiceSummary,
+   NewAllocation,
+@@ -69,7 +70,7 @@ function problemWithDiscountForm(pct: string, amount: string, cap: string): stri
+   return pct ? problemWithDiscount(pct) : problemWithDiscountAmount(amount);
+ }
+ 
+-// What is wrong with a line, or '' when it can be added.
++// What is wrong with a line, or '' when it can be added or saved.
+ function problemWith(line: NewLine): string {
+   const problems: string[] = [];
+   if (!line.description) {
+@@ -111,7 +112,9 @@ function problemWith(line: NewLine): string {
+ }
+ 
+ // One opened invoice: its status, its lines and its totals. A line may carry its own percentage
+-// discount, shown on the line, with its amount after it, and its own tax. A draft takes new lines and a
++// discount, shown on the line, with its amount after it, and its own tax. A line's edit button loads it
++// into the line form, which then saves the changes to that line (with the same checks, and refused when
++// the subtotal would be less than a fixed discount) instead of adding one. A draft takes new lines and a
+ // percentage or fixed discount, can have lines removed (refused when what is left would be less than a
+ // fixed discount), and can be sent; a change to a sent invoice with no payments puts it back to
+ // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
+@@ -167,6 +170,15 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="line-tax-rate">{{ (l.taxRate ?? inv.taxRate) + '%' }}</td>
+                 <td data-testid="line-tax">{{ money(l.tax) }}</td>
+                 <td>
++                  <button
++                    type="button"
++                    data-testid="line-edit"
++                    [disabled]="saving()"
++                    [attr.aria-label]="'Edit line ' + l.description"
++                    (click)="editLine(l)"
++                  >
++                    Edit
++                  </button>
+                   <button
+                     type="button"
+                     data-testid="line-remove"
+@@ -311,7 +323,7 @@ function problemWith(line: NewLine): string {
+           <p role="alert" data-testid="invoice-void-error">{{ voidError() }}</p>
+         }
+ 
+-        <form [formGroup]="form" (ngSubmit)="addLine(inv.id)" aria-label="Add a line" novalidate>
++        <form [formGroup]="form" (ngSubmit)="saveLine(inv.id)" [attr.aria-label]="editingLineId() === null ? 'Add a line' : 'Edit a line'" novalidate>
+           <label for="line-description">Description</label>
+           <input
+             id="line-description"
+@@ -357,8 +369,11 @@ function problemWith(line: NewLine): string {
+           />
+           <label for="line-exempt">Tax exempt</label>
+           <button type="submit" data-testid="line-form-submit" [disabled]="saving()">
+-            Add line
++            {{ editingLineId() === null ? 'Add line' : 'Save line' }}
+           </button>
++          @if (editingLineId() !== null) {
++            <button type="button" (click)="cancelEdit()">Cancel</button>
++          }
+           @if (error()) {
+             <p role="alert" data-testid="line-form-error">{{ error() }}</p>
+           }
+@@ -427,6 +442,8 @@ export class InvoicePanel {
+   protected readonly invoice = signal<InvoiceDetail | null>(null);
+   protected readonly saving = signal(false);
+   protected readonly error = signal('');
++  // The line loaded into the line form to be changed, or null when the form adds a new line.
++  protected readonly editingLineId = signal<number | null>(null);
+   protected readonly savingDiscount = signal(false);
+   protected readonly discountError = signal('');
+   protected readonly sending = signal(false);
+@@ -462,6 +479,7 @@ export class InvoicePanel {
+       this.reload();
+       this.invoice.set(null);
+       this.form.reset();
++      this.editingLineId.set(null);
+       this.error.set('');
+       this.discountForm.reset();
+       this.discountError.set('');
+@@ -474,7 +492,27 @@ export class InvoicePanel {
+     });
+   }
+ 
+-  protected addLine(invoiceId: number): void {
++  // Loads a line into the line form, so submitting it changes that line instead of adding one.
++  protected editLine(line: InvoiceLineView): void {
++    this.form.setValue({
++      description: line.description,
++      qty: line.qty,
++      unitPrice: line.unitPrice,
++      taxExempt: line.taxExempt,
++      discountPct: Number(line.discountPct) === 0 ? '' : line.discountPct,
++      taxRate: line.taxRate ?? '',
++    });
++    this.editingLineId.set(line.id);
++    this.error.set('');
++  }
++
++  protected cancelEdit(): void {
++    this.form.reset();
++    this.editingLineId.set(null);
++    this.error.set('');
++  }
++
++  protected saveLine(invoiceId: number): void {
+     const raw = this.form.getRawValue();
+     const line: NewLine = {
+       description: raw.description.trim(),
+@@ -498,18 +536,23 @@ export class InvoicePanel {
+     }
+     this.saving.set(true);
+     this.error.set('');
+-    this.service.addLine(invoiceId, line).subscribe({
++    const lineId = this.editingLineId();
++    const request =
++      lineId === null
++        ? this.service.addLine(invoiceId, line)
++        : this.service.updateLine(invoiceId, lineId, line);
++    request.subscribe({
+       next: (detail) => {
+         this.invoice.set(detail);
+         this.changed.emit(detail);
+         this.form.reset();
++        this.editingLineId.set(null);
+         this.saving.set(false);
+       },
+       error: (e: HttpErrorResponse) => {
+         const detail: unknown = e.error?.detail;
+-        this.error.set(
+-          typeof detail === 'string' && detail ? detail : 'The line could not be added.',
+-        );
++        const fallback = lineId === null ? 'The line could not be added.' : 'The line could not be changed.';
++        this.error.set(typeof detail === 'string' && detail ? detail : fallback);
+         this.saving.set(false);
+       },
+     });
+@@ -521,6 +564,10 @@ export class InvoicePanel {
+     this.service.removeLine(invoiceId, lineId).subscribe({
+       next: (detail) => {
+         this.invoice.set(detail);
++        if (this.editingLineId() === lineId) {
++          this.form.reset();
++          this.editingLineId.set(null);
++        }
+         this.changed.emit(detail);
+         this.saving.set(false);
+       },
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index d1b7456..f404c28 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -165,6 +165,13 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines`, line);
+   }
+ 
++  // Changes a line of a draft, or of a sent invoice with no payments (putting it back to draft), with
++  // the same checks as adding one; refused (409) when the subtotal would be less than a fixed
++  // discount. Answers the invoice with its lines and totals worked out again.
++  updateLine(invoiceId: number, lineId: number, line: NewLine): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/lines/${lineId}`, line);
++  }
++
+   // Removes a line from a draft, or from a sent invoice with no payments (putting it back to draft);
+   // refused (409) when what is left would be less than a fixed discount. Answers the invoice with its
+   // remaining lines and new totals.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index ed7e9a0..410734c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -297,6 +297,27 @@ public class Invoice {
+         return true;
+     }
+ 
++    /**
++     * Changes the line with the given id to the given values; whether the invoice had it. Refused when
++     * the subtotal would then be less than a fixed discount on the invoice.
++     */
++    public boolean updateLine(Long lineId, String description, BigDecimal qty, BigDecimal unitPrice,
++            boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++        InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
++        if (line == null) {
++            return false;
++        }
++        BigDecimal changed = new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate).amount();
++        BigDecimal left = subtotal().subtract(line.amount()).add(changed);
++        if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
++            throw new InvoiceRejectedException("This line cannot be changed: the $"
++                    + left.setScale(2).toPlainString() + " subtotal would be less than the $"
++                    + discountAmount.setScale(2).toPlainString() + " discount.");
++        }
++        line.update(description, qty, unitPrice, taxExempt, discountPct, taxRate);
++        return true;
++    }
++
+     /**
+      * The sum of the line amounts, each after its own discount and already to the cent — so the subtotal
+      * matches what a client gets by adding up the lines shown.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index b43578f..2e58a0b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -302,6 +302,16 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    @PutMapping("/api/invoices/{id}/lines/{lineId}")
++    public InvoiceDetail updateLine(@PathVariable Long id, @PathVariable Long lineId,
++            @Valid @RequestBody NewLine body) {
++        return invoices.updateLine(id, lineId, body.description().trim(), body.qty(), body.unitPrice(),
++                Boolean.TRUE.equals(body.taxExempt()),
++                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
++    }
++
+     @DeleteMapping("/api/invoices/{id}/lines/{lineId}")
+     public InvoiceDetail removeLine(@PathVariable Long id, @PathVariable Long lineId) {
+         return invoices.removeLine(id, lineId)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index ab6f36f..3ba8d7b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -58,6 +58,17 @@ public class InvoiceLine {
+         return new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate);
+     }
+ 
++    /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
++    public void update(String description, BigDecimal qty, BigDecimal unitPrice, boolean taxExempt,
++            BigDecimal discountPct, BigDecimal taxRate) {
++        this.description = description;
++        this.qty = qty;
++        this.unitPrice = unitPrice;
++        this.taxExempt = taxExempt;
++        this.discountPct = discountPct;
++        this.taxRate = taxRate;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index e27a17e..08ba00f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -145,6 +145,31 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Changes a line of an invoice; empty if no such invoice or line. The line has already been
++     * checked. Refused when the subtotal would be less than a fixed discount. A sent invoice with no
++     * payments goes back to draft; one with a payment refuses it.
++     */
++    @Transactional
++    public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
++            BigDecimal unitPrice, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        if (found.isEmpty()) {
++            return found;
++        }
++        Invoice invoice = found.get();
++        if (!invoice.hasLine(lineId)) {
++            return Optional.empty();
++        }
++        boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
++        invoice.updateLine(lineId, description, qty, unitPrice, taxExempt, discountPct, taxRate);
++        invoices.saveAndFlush(invoice);
++        if (reopened) {
++            audit.record("INVOICE_REOPENED id=" + invoice.getId());
++        }
++        return found;
++    }
++
+     /**
+      * Gives an invoice a percentage discount, or a fixed amount off when one is given; the one given
+      * clears the other, and the cap (null for none) limits everything taken off, line discounts included. Empty if no such invoice. The values have already been checked; a fixed amount
