@@ -197,10 +197,10 @@ export class ClientInvoices {
 
   // An invoice was duplicated or credited: list the new draft and open it.
   protected duplicated(detail: InvoiceDetail): void {
-    const { id, number, status, listedTotal, issueDate, dueDate, creditOf } = detail;
+    const { id, number, status, listedTotal, issueDate, listedDueDate, creditOf } = detail;
     this.invoices.update((list) => [
       ...list,
-      { id, number, status, total: listedTotal, issueDate, dueDate, creditOf },
+      { id, number, status, total: listedTotal, issueDate, dueDate: listedDueDate, creditOf },
     ]);
     this.selectedId.set(id);
   }
@@ -225,7 +225,7 @@ export class ClientInvoices {
               ...i,
               status: detail.status,
               issueDate: detail.issueDate,
-              dueDate: detail.dueDate,
+              dueDate: detail.listedDueDate,
               total: detail.listedTotal,
             }
           : i,

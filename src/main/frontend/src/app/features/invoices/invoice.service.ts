@@ -128,10 +128,15 @@ export interface InvoiceDetail {
   instalmentRate: string;
   schedule: InstalmentView[];
   planTotal: string | null;
+  // The due date as listed (yyyy-mm-dd): for a plan, its next unpaid instalment's due date.
+  listedDueDate: string | null;
 }
 
 // One instalment of a plan: its number (from 1), the day it falls due (yyyy-mm-dd), and its payment,
-// interest, principal and the balance left after it, decimal strings to the cent.
+// interest, principal and the balance left after it, decimal strings to the cent; what has been paid
+// off it (payments pay the instalments in order) and its status.
+export type InstalmentStatus = 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE';
+
 export interface InstalmentView {
   number: number;
   dueDate: string | null;
@@ -139,6 +144,8 @@ export interface InstalmentView {
   interest: string;
   principal: string;
   balance: string;
+  paid: string;
+  status: InstalmentStatus;
 }
 
 // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the

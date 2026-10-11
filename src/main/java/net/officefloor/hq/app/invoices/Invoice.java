@@ -428,6 +428,73 @@ public class Invoice {
         return schedule(taxRate).stream().map(Instalment::payment).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
+    /**
+     * Each instalment of the plan at the tax rate once the given amount has been paid, on the given
+     * day: payments (with what credit notes took off and anything written off) pay the instalments in
+     * order, each paid off before the next. An instalment not paid off more than {@link #GRACE_DAYS}
+     * days after its due date is overdue; empty when there is no plan.
+     */
+    public List<Instalment.Progress> instalmentProgress(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
+        List<Instalment.Progress> progress = new ArrayList<>();
+        BigDecimal left = paid.add(getCredited()).add(writtenOff(paid, taxRate));
+        for (Instalment instalment : schedule(taxRate)) {
+            BigDecimal part = left.min(instalment.payment()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+            left = left.subtract(part);
+            BigDecimal unpaid = instalment.payment().subtract(part);
+            Instalment.Status status;
+            if (unpaid.signum() <= 0) {
+                status = Instalment.Status.PAID;
+            } else if (instalment.dueDate() != null && today.isAfter(instalment.dueDate().plusDays(GRACE_DAYS))) {
+                status = Instalment.Status.OVERDUE;
+            } else if (part.signum() > 0) {
+                status = Instalment.Status.PART_PAID;
+            } else {
+                status = Instalment.Status.DUE;
+            }
+            progress.add(new Instalment.Progress(instalment, part, unpaid, status));
+        }
+        return progress;
+    }
+
+    /**
+     * What is overdue at the tax rate once the given amount has been paid, on the given day: for a plan,
+     * only what is unpaid on its overdue instalments; otherwise all that is due when it is overdue.
+     */
+    public BigDecimal overdueAmount(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
+        if (statusWhenPaid(paid, taxRate, today) != InvoiceStatus.OVERDUE) {
+            return BigDecimal.ZERO.setScale(2);
+        }
+        if (!hasPlan()) {
+            return amountDue(paid, taxRate);
+        }
+        return instalmentProgress(paid, taxRate, today).stream()
+                .filter(p -> p.status() == Instalment.Status.OVERDUE).map(Instalment.Progress::unpaid)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    }
+
+    /**
+     * The due date as listed once the given amount has been paid: for a plan, the due date of its
+     * next unpaid instalment (its own due date once all are paid); otherwise its own due date.
+     */
+    public LocalDate listedDueDate(BigDecimal paid, BigDecimal taxRate) {
+        if (!hasPlan() || status != InvoiceStatus.SENT) {
+            return dueDate;
+        }
+        return instalmentProgress(paid, taxRate, LocalDate.MIN).stream()
+                .filter(p -> p.unpaid().signum() > 0).map(p -> p.instalment().dueDate())
+                .findFirst().orElse(dueDate);
+    }
+
+    /**
+     * What is still unpaid on the earliest instalment not yet paid off, at the tax rate, once the
+     * given amount has been paid; zero when there is no plan or all are paid.
+     */
+    public BigDecimal earliestUnpaid(BigDecimal paid, BigDecimal taxRate) {
+        return instalmentProgress(paid, taxRate, LocalDate.MIN).stream()
+                .map(Instalment.Progress::unpaid).filter(u -> u.signum() > 0)
+                .findFirst().orElse(BigDecimal.ZERO.setScale(2));
+    }
+
     public List<InvoiceLine> getLines() {
         return lines;
     }
@@ -499,7 +566,8 @@ public class Invoice {
      * tax rate: a sent invoice with something still due more than {@link #GRACE_DAYS} days after its
      * due date is overdue, part paid or not. Held retention is never due, so never makes it overdue;
      * released retention is due {@link #RETENTION_DUE_DAYS} days after its release, and payments go to
-     * the rest of the invoice before it.
+     * the rest of the invoice before it. An invoice spread over instalments is instead overdue when any
+     * of its instalments is (see {@link #instalmentProgress}).
      */
     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
         return statusWhenPaid(paid, null, taxRate, today);
@@ -517,7 +585,12 @@ public class Invoice {
         boolean due = amountDue.signum() > 0;
         BigDecimal retentionDue = amountDue.min(retentionReleased(taxRate)).max(BigDecimal.ZERO);
         boolean restDue = amountDue.subtract(retentionDue).signum() > 0;
-        if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
+        if (hasPlan()) {
+            if (due && instalmentProgress(paid, taxRate, today).stream()
+                    .anyMatch(p -> p.status() == Instalment.Status.OVERDUE)) {
+                return InvoiceStatus.OVERDUE;
+            }
+        } else if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(GRACE_DAYS))) {
             return InvoiceStatus.OVERDUE;
         }
         if (retentionDue.signum() > 0 && today.isAfter(retentionDueDate().plusDays(GRACE_DAYS))) {
@@ -593,8 +666,13 @@ public class Invoice {
     /**
      * Whether paying the amount on top of what was already paid is too small a part payment: under
      * {@link #minimumPart} while leaving something still due (what would be written off counts as settled).
+     * For a plan the least is instead what is still unpaid on its earliest unpaid instalment.
      */
     public boolean isTooSmallPart(BigDecimal amount, BigDecimal paid, BigDecimal taxRate) {
+        if (hasPlan()) {
+            return amount.compareTo(earliestUnpaid(paid, taxRate)) < 0
+                    && amountDue(paid.add(amount), taxRate).signum() > 0;
+        }
         return amount.compareTo(minimumPart(taxRate)) < 0 && amountDue(paid.add(amount), taxRate).signum() > 0;
     }
 

@@ -670,6 +670,11 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("This invoice has already been paid.");
             }
             BigDecimal applied = amount.min(due);
+            if (invoice.hasPlan() && invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
+                throw new InvoiceRejectedException("A payment must be at least the $"
+                        + invoice.earliestUnpaid(paidSoFar, taxRate.percent()).toPlainString()
+                        + " still unpaid on the earliest unpaid instalment, unless it settles the plan.");
+            }
             if (invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
                 throw new InvoiceRejectedException("A part payment must be at least $"
                         + invoice.minimumPart(taxRate.percent()).toPlainString()
@@ -821,6 +826,11 @@ public class InvoiceService {
             if (part.getAmount().compareTo(due) > 0) {
                 throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
                         + number + " is more than the $" + due.toPlainString() + " it has due.");
+            }
+            if (invoice.hasPlan() && invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
+                throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "
+                        + number + " is less than the $" + invoice.earliestUnpaid(paidSoFar, taxRate.percent()).toPlainString()
+                        + " still unpaid on its earliest unpaid instalment, unless it settles the plan.");
             }
             if (invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
                 throw new InvoiceRejectedException("The $" + part.getAmount().setScale(2).toPlainString() + " for "

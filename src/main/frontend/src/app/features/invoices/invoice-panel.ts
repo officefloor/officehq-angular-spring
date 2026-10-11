@@ -10,7 +10,7 @@ import {
   NewDiscount,
   NewLine,
 } from './invoice.service';
-import { TWO_DECIMALS, money, statusLabel } from './invoice-format';
+import { TWO_DECIMALS, instalmentStatusLabel, money, statusLabel } from './invoice-format';
 import { PaymentForm } from './payment-form';
 
 // A percentage from 0 to 100 with at most two decimals, e.g. 15 or 12.5; the server checks it again.
@@ -290,6 +290,8 @@ function problemWith(line: NewLine): string {
                 <th scope="col">Interest</th>
                 <th scope="col">Principal</th>
                 <th scope="col">Balance</th>
+                <th scope="col">Paid</th>
+                <th scope="col">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -301,6 +303,8 @@ function problemWith(line: NewLine): string {
                   <td data-testid="instalment-interest">{{ money(s.interest) }}</td>
                   <td data-testid="instalment-principal">{{ money(s.principal) }}</td>
                   <td data-testid="instalment-balance">{{ money(s.balance) }}</td>
+                  <td data-testid="instalment-paid">{{ money(s.paid) }}</td>
+                  <td data-testid="instalment-status">{{ instalmentStatusLabel(s.status) }}</td>
                 </tr>
               }
             </tbody>
@@ -308,6 +312,7 @@ function problemWith(line: NewLine): string {
               <tr>
                 <th scope="row" colspan="5">Plan total</th>
                 <td data-testid="invoice-plan-total">{{ money(inv.planTotal ?? '0') }}</td>
+                <td colspan="2"></td>
               </tr>
             </tfoot>
           </table>
@@ -631,6 +636,7 @@ export class InvoicePanel {
   protected readonly reversing = signal(false);
   protected readonly reverseError = signal('');
   protected readonly statusLabel = statusLabel;
+  protected readonly instalmentStatusLabel = instalmentStatusLabel;
   protected readonly money = money;
 
   protected readonly form = new FormGroup({

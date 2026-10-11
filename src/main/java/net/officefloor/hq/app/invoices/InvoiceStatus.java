@@ -6,6 +6,8 @@ package net.officefloor.hq.app.invoices;
  * paid late when the payment that cleared it (taking payments in date order) came after its due date;
  * those follow from its payments and are never stored. A sent invoice with something still due
  * more than a week (the grace period) after its due date is overdue, part paid or not; that follows from the date and is never stored.
+ * An invoice spread over instalments is instead overdue when any of its instalments is not paid off a
+ * week after that instalment's due date (payments pay the instalments in order).
  * A sent invoice with no payments can be voided: it is then void for good, owes nothing and takes no
  * payments or changes.
  * A credit note is a draft until it is issued, when it becomes CREDIT_NOTE for good. A sent invoice

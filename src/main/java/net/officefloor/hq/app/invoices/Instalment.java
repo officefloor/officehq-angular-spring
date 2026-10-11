@@ -9,4 +9,13 @@ import java.time.LocalDate;
  */
 public record Instalment(int number, LocalDate dueDate, BigDecimal payment, BigDecimal interest,
         BigDecimal principal, BigDecimal balance) {
+
+    /** Where an instalment is: paid off, part paid, overdue (more than the grace period past due) or due. */
+    public enum Status {
+        PAID, PART_PAID, OVERDUE, DUE
+    }
+
+    /** What has been paid off an instalment, what is still unpaid on it, and its status on a day. */
+    public record Progress(Instalment instalment, BigDecimal paid, BigDecimal unpaid, Status status) {
+    }
 }

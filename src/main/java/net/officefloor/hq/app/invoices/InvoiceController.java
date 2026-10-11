@@ -40,7 +40,7 @@ public class InvoiceController {
             LocalDate issueDate, LocalDate dueDate, Long creditOf) {
         static InvoiceSummary of(Invoice i, BigDecimal taxRate, BigDecimal paid, LocalDate paidOn, LocalDate today) {
             return new InvoiceSummary(i.getId(), i.number(), i.statusWhenPaid(paid, paidOn, taxRate, today),
-                    listedTotal(i, taxRate), i.getIssueDate(), i.getDueDate(), i.getCreditOf());
+                    listedTotal(i, taxRate), i.getIssueDate(), i.listedDueDate(paid, taxRate), i.getCreditOf());
         }
     }
 
@@ -107,14 +107,15 @@ public class InvoiceController {
      * {@code retentionDueDate} the day released retention falls due. {@code instalments} is how many
      * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
      * (without trailing zeros); {@code schedule} lists them and {@code planTotal} is what they add up to
-     * (null without a plan), from which what is paid comes off for the amount due.
+     * (null without a plan), from which what is paid comes off for the amount due. {@code listedDueDate}
+     * is the due date as listed: for a plan, its next unpaid instalment's.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
             String credited, Long creditOf, String listedTotal, String retentionPct, String retention,
             String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
-            String instalmentRate, List<InstalmentView> schedule, String planTotal) {
+            String instalmentRate, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -139,8 +140,8 @@ public class InvoiceController {
                     i.getRetentionPct().stripTrailingZeros().toPlainString(), i.retention(taxRate).toPlainString(),
                     i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate(),
                     i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
-                    i.schedule(taxRate).stream().map(InstalmentView::of).toList(),
-                    i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null);
+                    i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
+                    i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate));
         }
     }
 
@@ -262,13 +263,15 @@ public class InvoiceController {
 
     /**
      * One instalment of a plan: its number, the day it falls due, and its payment, interest, principal
-     * and the balance left after it, decimal strings to the cent.
+     * and the balance left after it, what has been paid off it, decimal strings to the cent; and its status.
      */
     public record InstalmentView(int number, LocalDate dueDate, String payment, String interest, String principal,
-            String balance) {
-        static InstalmentView of(Instalment i) {
+            String balance, String paid, Instalment.Status status) {
+        static InstalmentView of(Instalment.Progress p) {
+            Instalment i = p.instalment();
             return new InstalmentView(i.number(), i.dueDate(), i.payment().toPlainString(),
-                    i.interest().toPlainString(), i.principal().toPlainString(), i.balance().toPlainString());
+                    i.interest().toPlainString(), i.principal().toPlainString(), i.balance().toPlainString(),
+                    p.paid().toPlainString(), p.status());
         }
     }
 
@@ -347,9 +350,7 @@ public class InvoiceController {
             BigDecimal[] sums = owed.computeIfAbsent(i.getClientId(),
                     k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) });
             sums[0] = sums[0].add(due).add(i.retentionHeld(rate));
-            if (i.statusWhenPaid(paid.get(i.getId()), rate, on) == InvoiceStatus.OVERDUE) {
-                sums[1] = sums[1].add(due);
-            }
+            sums[1] = sums[1].add(i.overdueAmount(paid.get(i.getId()), rate, on));
         }
         Map<Long, BigDecimal> credits = invoices.credits();
         credits.keySet().forEach(clientId -> owed.computeIfAbsent(clientId,

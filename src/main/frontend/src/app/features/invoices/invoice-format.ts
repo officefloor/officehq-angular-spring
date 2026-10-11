@@ -1,4 +1,4 @@
-import { InvoiceStatus } from './invoice.service';
+import { InstalmentStatus, InvoiceStatus } from './invoice.service';
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
   DRAFT: 'Draft',
@@ -12,10 +12,20 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   CREDITED: 'Credited',
   RETENTION_HELD: 'Retention held',
 };
+const INSTALMENT_STATUS_LABEL: Record<InstalmentStatus, string> = {
+  PAID: 'Paid',
+  PART_PAID: 'Part paid',
+  OVERDUE: 'Overdue',
+  DUE: 'Due',
+};
 const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
 export function statusLabel(status: InvoiceStatus): string {
   return STATUS_LABEL[status];
+}
+
+export function instalmentStatusLabel(status: InstalmentStatus): string {
+  return INSTALMENT_STATUS_LABEL[status];
 }
 
 // Money from the server is already to the cent, so the number shown is exact.
