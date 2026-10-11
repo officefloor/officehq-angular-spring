@@ -39,6 +39,9 @@ public class Invoice {
      */
     public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("2.00");
 
+    /** A plan's monthly instalment must be worth at least this many US dollars. */
+    public static final BigDecimal MIN_INSTALMENT_USD = new BigDecimal("25.00");
+
     /** The most of the grand total that can be written off as a small balance after a payment. */
     public static final BigDecimal WRITE_OFF_SHARE = new BigDecimal("0.01");
 
@@ -976,6 +979,16 @@ public class Invoice {
         this.instalments = instalments;
         this.instalmentRate = instalmentRate;
         this.planDownPct = planDownPct;
+    }
+
+    /**
+     * Whether the plan's monthly instalment (its first after any down payment) at the tax rate is worth
+     * less than {@link #MIN_INSTALMENT_USD} US dollars at the rate on the date; false without a plan.
+     */
+    public boolean isInstalmentTooSmall(BigDecimal taxRate, LocalDate on) {
+        return schedule(taxRate).stream().filter(i -> i.number() >= 1).findFirst()
+                .map(i -> i.payment().multiply(usdPerOn(on)).compareTo(MIN_INSTALMENT_USD) < 0)
+                .orElse(false);
     }
 
     /** The plan's down payment at the tax rate: its percentage of the grand total, rounded down to the cent. */

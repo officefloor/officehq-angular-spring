@@ -363,7 +363,8 @@ public class InvoiceService {
      * Spreads a draft over the number of monthly instalments at the annual interest rate, after a down
      * payment of the percentage of the grand total; empty if no
      * such invoice. Both have already been checked; any invoice that is not a draft, a credit note, or
-     * one holding back retention is refused.
+     * one holding back retention is refused, as is a plan whose monthly instalment would be worth less
+     * than {@link Invoice#MIN_INSTALMENT_USD} US dollars at today's rates.
      */
     @Transactional
     public Optional<Invoice> setPlan(Long invoiceId, int instalments, BigDecimal instalmentRate,
@@ -380,6 +381,10 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("An invoice holding back retention cannot also be spread over instalments.");
             }
             invoice.setPlan(instalments, instalmentRate, planDownPct);
+            if (invoice.isInstalmentTooSmall(taxRate.percent(), today.date())) {
+                throw new InvoiceRejectedException("The monthly instalment must be worth at least $"
+                        + Invoice.MIN_INSTALMENT_USD.toPlainString() + " at today's exchange rates.");
+            }
             invoices.saveAndFlush(invoice);
         });
         return found;
