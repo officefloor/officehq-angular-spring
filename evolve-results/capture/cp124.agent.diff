@@ -1,0 +1,156 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 29498e0..57014a7 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -36,7 +36,7 @@ export interface Client {
+   // workspace's regional rates when one is listed; null for no region.
+   region: string | null;
+   // The client's tax number without spaces: two letters then ten digits, the last two a check on the
+-  // first eight. With a valid one and a region outside the workspace's home region its invoices are
++  // first eight. With a valid one whose two letters are its region (outside the workspace's home region) its invoices are
+   // reverse charged; null for no number.
+   taxNumber: string | null;
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index f261148..4d71d23 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -369,7 +369,7 @@ function problemWith(line: NewLine): string {
+               <th scope="row" colspan="10">Total</th>
+               <td data-testid="invoice-grand-total">{{ amount(inv.total) }}</td>
+             </tr>
+-            @if (+inv.withholding > 0) {
++            @if (+inv.withholdingPct > 0) {
+               <tr>
+                 <th scope="row" colspan="10">Withheld by the client for its tax office</th>
+                 <td data-testid="invoice-withholding">{{ amount(inv.withholding) }}</td>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index e9d4c86..7a398fd 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -189,8 +189,8 @@ export interface InvoiceDetail {
+   // The day (yyyy-mm-dd) it was written off as a bad debt, null when it was not; everything it still
+   // owed then, late charges and retention included, is in `writtenOff`.
+   writtenOffOn: string | null;
+-  // Whether it is reverse charged: its client is registered (a valid tax number) outside the
+-  // workspace's home region and accounts for the tax itself, so no line is taxed.
++  // Whether it is reverse charged: its client is registered (a valid tax number whose two letters are
++  // their region's code) outside the workspace's home region and accounts for the tax itself, so no line is taxed.
+   reverseCharge: boolean;
+   // What the amount after its discounts plus the surcharge falls short of the workspace's minimum
+   // charge, added to the invoice and taxed at the client's rate; "0.00" when there is none.
+@@ -200,8 +200,11 @@ export interface InvoiceDetail {
+   surchargePct: string;
+   surcharge: string;
+   // What the client withholds for its tax office: its withholding percentage of the amount before tax,
+-  // rounded down to the cent ("0.00" when none). Never owed, so left out of the amount due.
++  // rounded down to the cent ("0.00" when none, or when reverse charged). Never owed, so left out of
++  // the amount due.
+   withholding: string;
++  // The client's withholding percentage (without trailing zeros); "0" when it withholds nothing.
++  withholdingPct: string;
+   // The amount due rounded down to the cash coin below (0.05, or whole yen), and the difference
+   // that makes (signed); once settled in cash, the cash rounding it was settled with.
+   cashDue: string;
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index e4aef2c..8fc3c12 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -90,7 +90,7 @@ public class Client {
+     private String region;
+ 
+     /**
+-     * The client's tax number, without spaces (see {@link TaxNumber}): with a valid one and a region
++     * The client's tax number, without spaces (see {@link TaxNumber}): with a valid one from its region
+      * outside the workspace's home region its invoices are reverse charged; null for no number.
+      */
+     @Column(name = "tax_number")
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index b08614a..00b80b9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -182,10 +182,12 @@ public class Invoice {
+ 
+     /**
+      * The tax number of the invoice's client when the client is in a region other than the workspace's
+-     * home region; read from them, null when it has no number, no region, is in the home region or
+-     * there is no home region. With a valid number the invoice is reverse charged (see {@link #isReverseCharge}).
++     * home region and the number's two letters are that region's code; read from them, null when it has
++     * no number, no region, a number from another region, is in the home region or there is no home
++     * region. With a valid number the invoice is reverse charged (see {@link #isReverseCharge}).
+      */
+     @Formula("(SELECT c.tax_number FROM client c WHERE c.id = client_id AND c.region IS NOT NULL"
++            + " AND UPPER(SUBSTRING(c.tax_number, 1, 2)) = UPPER(c.region)"
+             + " AND c.region <> (SELECT s.setting_value FROM app_setting s WHERE s.name = 'home_region'))")
+     private String outOfRegionTaxNumber;
+ 
+@@ -241,6 +243,11 @@ public class Invoice {
+     @Formula("(SELECT c.withholding_pct FROM client c WHERE c.id = client_id)")
+     private BigDecimal withholdingPct;
+ 
++    /** The percentage of the amount before tax the client withholds for its tax office; 0 when none. */
++    public BigDecimal getWithholdingPct() {
++        return withholdingPct == null ? BigDecimal.ZERO : withholdingPct;
++    }
++
+     /** The client's grace period in days; read from the client. */
+     @Formula("(SELECT c.grace_days FROM client c WHERE c.id = client_id)")
+     private Integer clientGraceDays;
+@@ -747,10 +754,11 @@ public class Invoice {
+ 
+     /**
+      * The withholding: the client's withholding percentage of the amount before tax, rounded down to
+-     * the cent. The client pays it to its tax office instead, so it is never owed. Nothing for a credit note.
++     * the cent. The client pays it to its tax office instead, so it is never owed. Nothing for a credit
++     * note, nor for a reverse-charged invoice: the client pays it all.
+      */
+     public BigDecimal withholding(BigDecimal taxRate) {
+-        if (isCreditNote() || withholdingPct == null || withholdingPct.signum() <= 0) {
++        if (isCreditNote() || isReverseCharge() || withholdingPct == null || withholdingPct.signum() <= 0) {
+             return zero();
+         }
+         return beforeTax(taxRate).multiply(withholdingPct).divide(BigDecimal.valueOf(100))
+@@ -1958,8 +1966,8 @@ public class Invoice {
+     }
+ 
+     /**
+-     * Whether the invoice is reverse charged: its client is registered (a valid tax number) in a region
+-     * other than the workspace's home region and accounts for the tax itself, so no line is taxed.
++     * Whether the invoice is reverse charged: its client is registered (a valid tax number whose two
++     * letters are the region's code) in a region other than the workspace's home region and accounts for the tax itself, so no line is taxed.
+      */
+     public boolean isReverseCharge() {
+         return TaxNumber.isValid(outOfRegionTaxNumber);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 8237b5b..6a11060 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -143,7 +143,8 @@ public class InvoiceController {
+      * {@code surchargePct} (without trailing zeros) is the rush surcharge percentage and {@code surcharge} that share of
+      * the subtotal less the discount, rounded down to the cent; it counts towards the {@code minimumCharge}.
+      * {@code withholding} is what the client withholds for its tax office (0 when none): never owed, so
+-     * left out of the amount due.
++     * left out of the amount due; nothing when reverse charged. {@code withholdingPct} (without trailing zeros)
++     * is the client's withholding percentage.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -153,7 +154,8 @@ public class InvoiceController {
+             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+-            String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding) {
++            String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
++            String withholdingPct) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -195,7 +197,7 @@ public class InvoiceController {
+                     i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),
+                     i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
+                     i.getSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
+-                    i.withholding(taxRate).toPlainString());
++                    i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString());
+         }
+     }
+ 
