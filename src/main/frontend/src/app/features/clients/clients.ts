@@ -152,6 +152,14 @@ const STANDARD_GRACE_DAYS = 7;
           step="0.01"
           formControlName="interestRate"
         />
+        <label for="client-region">Region (optional, taxed at its rate if the workspace lists one)</label>
+        <input
+          id="client-region"
+          data-testid="client-form-region"
+          type="text"
+          maxlength="64"
+          formControlName="region"
+        />
         <label for="client-early-pct">Early-payment discount % (optional)</label>
         <input
           id="client-early-pct"
@@ -244,6 +252,7 @@ export class Clients {
     retentionPct: new FormControl<number | null>(null),
     graceDays: new FormControl<number | null>(null),
     interestRate: new FormControl<number | null>(null),
+    region: new FormControl('', { nonNullable: true }),
     earlyPct: new FormControl<number | null>(null),
     earlyDays: new FormControl<number | null>(null),
     taxExempt: new FormControl(false, { nonNullable: true }),
@@ -279,6 +288,7 @@ export class Clients {
     const graceDays = grace === null || (grace as unknown) === '' ? null : Number(grace);
     const interest = this.form.controls.interestRate.value;
     const interestRate = interest === null || (interest as unknown) === '' ? null : Number(interest);
+    const region = this.form.controls.region.value.trim();
     const taxExempt = this.form.controls.taxExempt.value;
     const currency = this.form.controls.currency.value;
     const early = this.form.controls.earlyPct.value;
@@ -293,6 +303,7 @@ export class Clients {
       retentionPct,
       graceDays,
       interestRate,
+      region,
       earlyPct: earlyPayPct,
       earlyDays: earlyPayDays,
       taxExempt,
@@ -328,6 +339,7 @@ export class Clients {
       retentionPct: retentionPct ?? 0,
       graceDays: graceDays ?? STANDARD_GRACE_DAYS,
       interestRate,
+      region: region || null,
     };
     this.service.add(client).subscribe({
       next: (created) => {

@@ -27,6 +27,9 @@ export interface Client {
   // The client's own annual late-interest rate (0 to 30 percent) charged instead of the workspace's;
   // null for the workspace's, 0 for never charged late interest.
   interestRate: number | null;
+  // The region the client is in (a state, say): its invoices are taxed at the region's rate from the
+  // workspace's regional rates when one is listed; null for no region.
+  region: string | null;
 }
 
 export type NewClient = Omit<Client, 'id'>;

@@ -37,9 +37,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "lateFee", "regionTaxRates");
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine");
@@ -140,6 +140,28 @@ public class TestSupportController {
                             ExchangeRates.USD_PER + code, usdPer.toPlainString());
                 }
             }
+            if (values.get("regionTaxRates") != null) {
+                if (!(values.get("regionTaxRates") instanceof Map<?, ?> rates)) {
+                    throw refuse("settings.regionTaxRates must be an object of percentages by region");
+                }
+                for (Map.Entry<?, ?> e : rates.entrySet()) {
+                    String region = e.getKey().toString();
+                    if (region.isBlank() || e.getValue() == null) {
+                        throw refuse("settings.regionTaxRates needs a region and a rate, not " + region + ": " + e.getValue());
+                    }
+                    BigDecimal rate;
+                    try {
+                        rate = new BigDecimal(String.valueOf(e.getValue()));
+                    } catch (NumberFormatException ex) {
+                        throw refuse("settings.regionTaxRates." + region + " must be a number, not " + e.getValue());
+                    }
+                    if (rate.signum() < 0 || rate.compareTo(BigDecimal.valueOf(100)) > 0) {
+                        throw refuse("settings.regionTaxRates." + region + " must be from 0 to 100, not " + e.getValue());
+                    }
+                    jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                            TaxRate.REGION_TAX_RATE + region, rate.toPlainString());
+                }
+            }
             for (Map<String, Object> rate : rows(values.get("fxRates"), "settings.fxRates")) {
                 only(rate, FX_RATE_FIELDS, "settings.fxRates[]");
                 if (rate.get("from") == null || rate.get("currency") == null || rate.get("usdPer") == null) {
@@ -167,7 +189,7 @@ public class TestSupportController {
             if (Currency.of(currency) == null) {
                 throw refuse("unsupported value of clients[].currency: " + currency);
             }
-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate"},
+            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region"},
                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
                     percent(row.get("discountPct"), "clients[].discountPct"),
                     flag(row.get("taxExempt"), "clients[].taxExempt"), currency,
@@ -175,7 +197,8 @@ public class TestSupportController {
                     days(row.get("earlyPayDays"), "clients[].earlyPayDays"),
                     percent(row.get("retentionPct"), "clients[].retentionPct"),
                     graceDays(row.get("graceDays"), "clients[].graceDays"),
-                    interestRate(row.get("interestRate"), "clients[].interestRate"));
+                    interestRate(row.get("interestRate"), "clients[].interestRate"),
+                    row.get("region") == null ? null : row.get("region").toString());
         }
         for (Map<String, Object> row : rows(fixture.get("invoices"), "invoices")) {
             only(row, INVOICE_FIELDS, "invoices[]");
@@ -325,6 +348,10 @@ public class TestSupportController {
         if (!lateFee.isEmpty()) {
             settings.put("lateFee", new BigDecimal(lateFee.get(0)));
         }
+        Map<String, BigDecimal> regionTaxRates = this.taxRate.regions();
+        if (!regionTaxRates.isEmpty()) {
+            settings.put("regionTaxRates", regionTaxRates);
+        }
         Map<String, BigDecimal> rates = exchangeRates.all();
         if (!rates.isEmpty()) {
             settings.put("usdPer", rates);
@@ -342,7 +369,7 @@ public class TestSupportController {
         if (!settings.isEmpty()) {
             out.put("settings", settings);
         }
-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate FROM client ORDER BY id").stream()
+        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -362,6 +389,9 @@ public class TestSupportController {
                     row.put("graceDays", r.get("GRACE_DAYS"));
                     if (r.get("INTEREST_RATE") != null) {
                         row.put("interestRate", r.get("INTEREST_RATE"));
+                    }
+                    if (r.get("REGION") != null) {
+                        row.put("region", r.get("REGION"));
                     }
                     return row;
                 }).toList());

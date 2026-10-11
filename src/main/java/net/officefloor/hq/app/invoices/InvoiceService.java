@@ -112,7 +112,7 @@ public class InvoiceService {
     public Optional<Invoice> newDraft(Long clientId) {
         return clients.findById(clientId).map(client -> {
             LocalDate issued = today.date();
-            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), client.getCurrency(), issued, dueDateFor(clientId, issued));
+            Invoice draft = Invoice.draft(clientId, client.isTaxExempt(), taxRate.forRegion(client.getRegion()), client.getCurrency(), issued, dueDateFor(clientId, issued));
             draft.setDiscountPct(client.getDiscountPct());
             draft.setRetentionPct(client.getRetentionPct());
             return invoices.save(draft);

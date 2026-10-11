@@ -65,6 +65,12 @@ public class Client {
     @Column(name = "interest_rate")
     private BigDecimal interestRate;
 
+    /**
+     * The region the client is in (a state, say): its invoices are taxed at the region's rate from the
+     * workspace's regional rates when one is listed; null for no region.
+     */
+    private String region;
+
     /** The highest late-interest rate a client can be given, as a percentage. */
     public static final int MAX_INTEREST_RATE = 30;
 
@@ -76,7 +82,7 @@ public class Client {
 
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
             Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
-            Integer graceDays, BigDecimal interestRate) {
+            Integer graceDays, BigDecimal interestRate, String region) {
         this.name = name;
         this.email = email;
         this.termsDays = termsDays;
@@ -88,6 +94,7 @@ public class Client {
         this.retentionPct = retentionPct == null ? BigDecimal.ZERO : retentionPct;
         this.graceDays = graceDays == null ? Invoice.GRACE_DAYS : graceDays;
         this.interestRate = interestRate;
+        this.region = region;
     }
 
     public Long getId() {
@@ -136,5 +143,9 @@ public class Client {
 
     public BigDecimal getInterestRate() {
         return interestRate;
+    }
+
+    public String getRegion() {
+        return region;
     }
 }

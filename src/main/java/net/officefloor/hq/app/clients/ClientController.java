@@ -27,11 +27,11 @@ public class ClientController {
 
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
             boolean taxExempt, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
-            BigDecimal retentionPct, int graceDays, BigDecimal interestRate) {
+            BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
-                    c.getRetentionPct(), c.getGraceDays(), c.getInterestRate());
+                    c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion());
         }
     }
 
@@ -75,7 +75,10 @@ public class ClientController {
             @DecimalMin(value = "0", message = "The interest rate must be from 0 to 30 percent.")
             @DecimalMax(value = "30", message = "The interest rate must be from 0 to 30 percent.")
             @Digits(integer = 2, fraction = 2, message = "The interest rate can have at most two decimals.")
-            BigDecimal interestRate) {
+            BigDecimal interestRate,
+            /** The region the client is in; none when left out or blank. */
+            @Size(max = 64, message = "The region must be at most 64 characters.")
+            String region) {
 
         @AssertTrue(message = "Enter both the early-payment discount and its number of days, or neither.")
         public boolean isEarlyPayComplete() {
@@ -105,6 +108,6 @@ public class ClientController {
     public ClientView add(@Valid @RequestBody NewClient body) {
         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
                 Boolean.TRUE.equals(body.taxExempt()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
-                body.retentionPct(), body.graceDays(), body.interestRate()));
+                body.retentionPct(), body.graceDays(), body.interestRate(), body.region()));
     }
 }

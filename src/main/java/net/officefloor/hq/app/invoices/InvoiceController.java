@@ -152,7 +152,7 @@ public class InvoiceController {
                     i.getDiscountAmount().setScale(2).toPlainString(),
                     i.getDiscountCap() == null ? null : i.getDiscountCap().setScale(2).toPlainString(),
                     i.discount().toPlainString(), i.getDiscountReason(),
-                    taxRate.stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
+                    i.clientTaxRate(taxRate).stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
                     i.total(taxRate).toPlainString(),
                     payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency())).toList(), paid.toPlainString(),
                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,

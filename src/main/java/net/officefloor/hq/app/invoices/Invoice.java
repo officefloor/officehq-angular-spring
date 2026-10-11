@@ -144,6 +144,13 @@ public class Invoice {
     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
     private boolean clientTaxExempt;
 
+    /**
+     * The tax percentage of the client's region, from the workspace's regional rates, charged instead
+     * of the workspace rate; read from them, null when the client has no region or it has no rate.
+     */
+    @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_tax_rate_' || c.region)")
+    private String regionTaxRate;
+
     /** The id of the invoice this credit note credits; null for an ordinary invoice. */
     @Column(name = "credit_of")
     private Long creditOf;
@@ -289,11 +296,12 @@ public class Invoice {
     }
 
     /** A new, empty draft for a client, issued and due on the given dates. */
-    public static Invoice draft(Long clientId, boolean clientTaxExempt, Currency currency, LocalDate issueDate,
-            LocalDate dueDate) {
+    public static Invoice draft(Long clientId, boolean clientTaxExempt, String regionTaxRate, Currency currency,
+            LocalDate issueDate, LocalDate dueDate) {
         Invoice invoice = new Invoice();
         invoice.clientId = clientId;
         invoice.clientTaxExempt = clientTaxExempt;
+        invoice.regionTaxRate = regionTaxRate;
         invoice.clientCurrency = currency.name();
         invoice.status = InvoiceStatus.DRAFT;
         invoice.issueDate = issueDate;
@@ -306,7 +314,7 @@ public class Invoice {
      * discount, issued and due on the given dates. Payments stay with this invoice.
      */
     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
-        Invoice copy = draft(clientId, clientTaxExempt, currency(), issueDate, dueDate);
+        Invoice copy = draft(clientId, clientTaxExempt, regionTaxRate, currency(), issueDate, dueDate);
         copy.discountPct = discountPct;
         copy.discountAmount = discountAmount;
         copy.discountCap = discountCap;
@@ -325,7 +333,7 @@ public class Invoice {
      * discount, taxed as the original's lines are.
      */
     public Invoice creditNote(LocalDate issueDate) {
-        Invoice note = draft(clientId, clientTaxExempt, currency(), issueDate, null);
+        Invoice note = draft(clientId, clientTaxExempt, regionTaxRate, currency(), issueDate, null);
         note.creditOf = id;
         return note;
     }
@@ -1761,18 +1769,24 @@ public class Invoice {
         return result;
     }
 
+    /** The rate lines without their own are taxed at: the client's regional rate, or the given workspace rate when it has none. */
+    public BigDecimal clientTaxRate(BigDecimal workspaceRate) {
+        return regionTaxRate == null ? workspaceRate : new BigDecimal(regionTaxRate.trim());
+    }
+
     /**
-     * Each line's exact tax, in the order of the lines: the line's own rate (a percentage), or the
-     * given workspace rate when it has none, on the line's amount less its share of the discount,
+     * Each line's exact tax, in the order of the lines: the line's own rate (a percentage), or when it
+     * has none the client's regional rate, or the given workspace rate when that has none either, on the line's amount less its share of the discount,
      * unrounded. Tax-exempt lines, and every line of a tax-exempt client, have no tax.
      */
     private List<BigDecimal> exactLineTaxes(BigDecimal taxRate) {
         List<BigDecimal> shares = discountShares();
+        BigDecimal clientRate = clientTaxRate(taxRate);
         List<BigDecimal> taxes = new ArrayList<>(lines.size());
         for (int i = 0; i < lines.size(); i++) {
             InvoiceLine line = lines.get(i);
             taxes.add(clientTaxExempt || line.isTaxExempt() ? BigDecimal.ZERO
-                    : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(taxRate)).movePointLeft(2));
+                    : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(clientRate)).movePointLeft(2));
         }
         return taxes;
     }
