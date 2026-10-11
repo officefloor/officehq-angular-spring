@@ -209,6 +209,9 @@ export interface InvoiceDetail {
   // that makes (signed); once settled in cash, the cash rounding it was settled with.
   cashDue: string;
   cashRounding: string;
+  // The region where the work is done (the place of supply), taxed and reverse charged as for it
+  // instead of the client's region; null for the client's region.
+  supplyRegion: string | null;
 }
 
 // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
@@ -327,6 +330,10 @@ export class InvoiceService {
 
   // Sets a draft's due date (yyyy-mm-dd) by hand; refused (409) when it is before the issue date or
   // more than 120 days after it. Answers the invoice with its new due date.
+  setSupplyRegion(invoiceId: number, supplyRegion: string): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/supply-region`, { supplyRegion });
+  }
+
   setDueDate(invoiceId: number, dueDate: string): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/due-date`, { dueDate });
   }

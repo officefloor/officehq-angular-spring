@@ -354,6 +354,25 @@ public class InvoiceService {
     }
 
     /**
+     * Sets the place of supply of a draft, the region where its work is done (blank for none, so the
+     * client's region applies); empty if no such invoice. Any invoice that is not a draft is refused.
+     */
+    @Transactional
+    public Optional<Invoice> setSupplyRegion(Long invoiceId, String supplyRegion) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (!invoice.isDraft()) {
+                throw new InvoiceRejectedException("Only a draft's place of supply can be set.");
+            }
+            invoice.setSupplyRegion(supplyRegion);
+            invoices.saveAndFlush(invoice);
+            // Read again the rate and tax number of the region of supply.
+            entityManager.refresh(invoice);
+        });
+        return found;
+    }
+
+    /**
      * Sets the rush surcharge of a draft, a percentage of its amount after its discounts; empty if no
      * such invoice. The percentage has already been checked; any invoice that is not a draft, or a
      * credit note, is refused.

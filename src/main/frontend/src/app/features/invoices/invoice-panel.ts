@@ -598,6 +598,23 @@ function problemWith(line: NewLine): string {
           </form>
         }
 
+        @if (inv.status === 'DRAFT' && inv.creditOf === null) {
+          <form [formGroup]="supplyForm" (ngSubmit)="setSupplyRegion(inv.id)" aria-label="Place of supply" novalidate>
+            <label for="invoice-supply-region">
+              Place of supply (region where the work is done; currently
+              <span data-testid="invoice-supply-region-current">{{ inv.supplyRegion ?? "the client's region" }}</span>,
+              leave blank for the client's region)
+            </label>
+            <input id="invoice-supply-region" data-testid="invoice-supply-region" formControlName="region" />
+            <button type="submit" data-testid="invoice-supply-region-submit" [disabled]="savingSupply()">
+              Set place of supply
+            </button>
+            @if (supplyError()) {
+              <p role="alert" data-testid="invoice-supply-region-error">{{ supplyError() }}</p>
+            }
+          </form>
+        }
+
         @if (inv.creditOf === null) {
           <form [formGroup]="surchargeForm" (ngSubmit)="setSurcharge(inv.id)" aria-label="Surcharge" novalidate>
             <label for="surcharge-pct">Rush surcharge (%, 0 to 25, drafts only)</label>
@@ -943,6 +960,12 @@ export class InvoicePanel {
     dueDate: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly supplyForm = new FormGroup({
+    region: new FormControl('', { nonNullable: true }),
+  });
+  protected readonly savingSupply = signal(false);
+  protected readonly supplyError = signal('');
+
   constructor() {
     effect((onCleanup) => {
       const id = this.invoiceId();
@@ -955,6 +978,8 @@ export class InvoicePanel {
       this.discountError.set('');
       this.dueForm.reset();
       this.dueError.set('');
+      this.supplyForm.reset();
+      this.supplyError.set('');
       this.retentionForm.reset();
       this.retentionError.set('');
       this.surchargeForm.reset();
@@ -1124,6 +1149,26 @@ export class InvoicePanel {
   protected splitRecorded(invoiceId: number, list: InvoiceSummary[]): void {
     this.split.emit(list);
     this.service.open(invoiceId).subscribe((detail) => this.invoice.set(detail));
+  }
+
+  protected setSupplyRegion(invoiceId: number): void {
+    this.savingSupply.set(true);
+    this.supplyError.set('');
+    this.service.setSupplyRegion(invoiceId, this.supplyForm.getRawValue().region.trim()).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.supplyForm.reset();
+        this.savingSupply.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.supplyError.set(
+          typeof detail === 'string' && detail ? detail : 'The place of supply could not be set.',
+        );
+        this.savingSupply.set(false);
+      },
+    });
   }
 
   protected setDueDate(invoiceId: number): void {

@@ -90,6 +90,13 @@ public class Invoice {
     @Column(name = "manual_due_date")
     private boolean manualDueDate;
 
+    /**
+     * The region where the work is done (the place of supply): the invoice is taxed at its rate, and
+     * reverse charged as for it, instead of the client's region; null for the client's region.
+     */
+    @Column(name = "supply_region")
+    private String supplyRegion;
+
     @Column(name = "discount_pct")
     private BigDecimal discountPct = BigDecimal.ZERO;
 
@@ -170,14 +177,14 @@ public class Invoice {
      * The tax percentage of the client's region, from the workspace's regional rates, charged instead
      * of the workspace rate; read from them, null when the client has no region or it has no rate.
      */
-    @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_tax_rate_' || c.region)")
+    @Formula("(SELECT s.setting_value FROM app_setting s, client c WHERE c.id = client_id AND s.name = 'region_tax_rate_' || COALESCE(supply_region, c.region))")
     private String regionTaxRate;
 
     /**
      * The dated changes of the client's region's rate, as "from date=rate" joined by commas in date
      * order; null when there are none. Read from the workspace's tax rate changes.
      */
-    @Formula("(SELECT LISTAGG(CAST(t.from_date AS VARCHAR) || '=' || CAST(t.rate AS VARCHAR), ',') WITHIN GROUP (ORDER BY t.from_date, t.id) FROM tax_rate_change t, client c WHERE c.id = client_id AND t.region = c.region)")
+    @Formula("(SELECT LISTAGG(CAST(t.from_date AS VARCHAR) || '=' || CAST(t.rate AS VARCHAR), ',') WITHIN GROUP (ORDER BY t.from_date, t.id) FROM tax_rate_change t, client c WHERE c.id = client_id AND t.region = COALESCE(supply_region, c.region))")
     private String regionRateChanges;
 
     /**
@@ -211,9 +218,9 @@ public class Invoice {
      * no number, no region, a number from another region, is in the home region or there is no home
      * region. With a valid number the invoice is reverse charged (see {@link #isReverseCharge}).
      */
-    @Formula("(SELECT c.tax_number FROM client c WHERE c.id = client_id AND c.region IS NOT NULL"
-            + " AND UPPER(SUBSTRING(c.tax_number, 1, 2)) = UPPER(c.region)"
-            + " AND c.region <> (SELECT s.setting_value FROM app_setting s WHERE s.name = 'home_region'))")
+    @Formula("(SELECT c.tax_number FROM client c WHERE c.id = client_id AND COALESCE(supply_region, c.region) IS NOT NULL"
+            + " AND UPPER(SUBSTRING(c.tax_number, 1, 2)) = UPPER(COALESCE(supply_region, c.region))"
+            + " AND COALESCE(supply_region, c.region) <> (SELECT s.setting_value FROM app_setting s WHERE s.name = 'home_region'))")
     private String outOfRegionTaxNumber;
 
     /** The id of the invoice this credit note credits; null for an ordinary invoice. */
@@ -420,6 +427,7 @@ public class Invoice {
      */
     public Invoice duplicate(LocalDate issueDate, LocalDate dueDate) {
         Invoice copy = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+        copy.supplyRegion = supplyRegion;
         copy.discountPct = discountPct;
         copy.discountAmount = discountAmount;
         copy.discountCap = discountCap;
@@ -441,6 +449,7 @@ public class Invoice {
     public Invoice creditNote(LocalDate issueDate) {
         Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, outOfRegionTaxNumber, currency(), issueDate, null);
         note.creditOf = id;
+        note.supplyRegion = supplyRegion;
         note.creditedIssueDate = this.issueDate;
         return note;
     }
@@ -1535,6 +1544,15 @@ public class Invoice {
     }
 
     /** Whether the due date was set by hand; it is then kept when the invoice is sent. */
+    public String getSupplyRegion() {
+        return supplyRegion;
+    }
+
+    /** Sets the place of supply; blank for none, so the client's region applies. */
+    public void setSupplyRegion(String supplyRegion) {
+        this.supplyRegion = supplyRegion == null || supplyRegion.isBlank() ? null : supplyRegion.trim().toUpperCase();
+    }
+
     public boolean isManualDueDate() {
         return manualDueDate;
     }

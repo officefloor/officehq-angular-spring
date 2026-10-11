@@ -155,7 +155,7 @@ public class InvoiceController {
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
-            String withholdingPct) {
+            String withholdingPct, String supplyRegion) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -197,7 +197,8 @@ public class InvoiceController {
                     i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),
                     i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
                     i.getSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
-                    i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString());
+                    i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
+                    i.getSupplyRegion());
         }
     }
 
@@ -604,6 +605,18 @@ public class InvoiceController {
     @PutMapping("/api/invoices/{id}/due-date")
     public InvoiceDetail setDueDate(@PathVariable Long id, @Valid @RequestBody NewDueDate body) {
         return invoices.setDueDate(id, body.dueDate())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** The region where a draft's work is done; blank for none, so the client's region applies. */
+    public record NewSupplyRegion(
+            @Size(max = 50, message = "The region can be at most 50 characters.") String supplyRegion) {
+    }
+
+    @PutMapping("/api/invoices/{id}/supply-region")
+    public InvoiceDetail setSupplyRegion(@PathVariable Long id, @Valid @RequestBody NewSupplyRegion body) {
+        return invoices.setSupplyRegion(id, body.supplyRegion())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
