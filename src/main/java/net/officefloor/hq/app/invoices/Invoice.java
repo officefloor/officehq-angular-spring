@@ -125,11 +125,11 @@ public class Invoice {
     }
 
     /**
-     * The tax charged at the given rate (a percentage): the rate on the subtotal, before any
-     * discount comes off, rounded half up to the cent.
+     * The tax charged at the given rate (a percentage): the rate on what is left once the discount
+     * has come off the subtotal, rounded half up to the cent.
      */
     public BigDecimal tax(BigDecimal taxRate) {
-        return subtotal().multiply(taxRate).divide(BigDecimal.valueOf(100))
+        return subtotal().subtract(discount()).multiply(taxRate).divide(BigDecimal.valueOf(100))
                 .setScale(2, RoundingMode.HALF_UP);
     }
 

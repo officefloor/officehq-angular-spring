@@ -29,7 +29,7 @@ export interface InvoiceLineView {
 // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
 // percentage taken off the subtotal, without trailing zeros ("12.5"); `discount` is the amount it
 // takes off, rounded half up to the cent; `taxRate` is the workspace's tax percentage (without
-// trailing zeros, "0" when none is set) and `tax` is that rate on the subtotal, before the discount,
+// trailing zeros, "0" when none is set) and `tax` is that rate on the subtotal less the discount,
 // rounded half up to the cent; `total` is the subtotal less the discount plus the tax.
 export interface InvoiceDetail {
   id: number;
