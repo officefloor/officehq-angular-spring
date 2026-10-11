@@ -1222,25 +1222,99 @@ public class Invoice {
     }
 
     /**
-     * Each line's tax, in the order of the lines: the line's own rate (a percentage), or the given
-     * workspace rate when it has none, on the line's amount less its share of the discount, rounded
-     * half up to the cent. Tax-exempt lines, and every line of a tax-exempt client, have no tax.
+     * Each line's exact tax, in the order of the lines: the line's own rate (a percentage), or the
+     * given workspace rate when it has none, on the line's amount less its share of the discount,
+     * unrounded. Tax-exempt lines, and every line of a tax-exempt client, have no tax.
      */
-    public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
+    private List<BigDecimal> exactLineTaxes(BigDecimal taxRate) {
         List<BigDecimal> shares = discountShares();
         List<BigDecimal> taxes = new ArrayList<>(lines.size());
         for (int i = 0; i < lines.size(); i++) {
             InvoiceLine line = lines.get(i);
-            taxes.add(clientTaxExempt || line.isTaxExempt() ? zero()
-                    : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(taxRate)).divide(BigDecimal.valueOf(100))
-                            .setScale(scale(), RoundingMode.HALF_UP));
+            taxes.add(clientTaxExempt || line.isTaxExempt() ? BigDecimal.ZERO
+                    : line.amount(scale()).subtract(shares.get(i)).multiply(line.taxRate(taxRate)).movePointLeft(2));
         }
         return taxes;
     }
 
-    /** The tax charged at the given rate (a percentage): the sum of the line taxes. */
+    /**
+     * Each line's share of the invoice tax, in the order of the lines. The tax's cents are split in
+     * proportion to the lines' exact taxes as the discount is split: each line first gets the whole
+     * cents of its exact share (rounded down), then the cents left over go one each to the lines with
+     * the largest leftover fractions; between equal fractions the cent goes to the line with the
+     * larger exact tax, and between equal exact taxes too to the lower line id. The line taxes add up
+     * to the invoice tax.
+     */
+    public List<BigDecimal> lineTaxes(BigDecimal taxRate) {
+        List<BigDecimal> exact = exactLineTaxes(taxRate);
+        int n = lines.size();
+        BigInteger taxCents = roundTax(exact).movePointRight(scale()).toBigIntegerExact();
+        int common = exact.stream().mapToInt(BigDecimal::scale).max().orElse(0);
+        BigInteger[] weights = new BigInteger[n];
+        BigInteger total = BigInteger.ZERO;
+        for (int i = 0; i < n; i++) {
+            weights[i] = exact.get(i).setScale(common).unscaledValue();
+            total = total.add(weights[i]);
+        }
+        if (total.signum() < 0) {
+            // Split the magnitude, so the leftover cents are always added, then flip the shares back.
+            taxCents = taxCents.negate();
+            total = total.negate();
+            for (int i = 0; i < n; i++) {
+                weights[i] = weights[i].negate();
+            }
+        }
+        BigInteger[] shares = new BigInteger[n];
+        BigInteger[] leftovers = new BigInteger[n];
+        BigInteger given = BigInteger.ZERO;
+        for (int i = 0; i < n; i++) {
+            if (total.signum() == 0) {
+                shares[i] = BigInteger.ZERO;
+                leftovers[i] = BigInteger.ZERO;
+            } else {
+                // The exact share is tax * exact line tax / total exact tax; all fractions share the
+                // total as denominator, so the remainders compare as the fractions do.
+                BigInteger[] qr = taxCents.multiply(weights[i]).divideAndRemainder(total);
+                if (qr[1].signum() < 0) {
+                    qr[0] = qr[0].subtract(BigInteger.ONE);
+                    qr[1] = qr[1].add(total);
+                }
+                shares[i] = qr[0];
+                leftovers[i] = qr[1];
+            }
+            given = given.add(shares[i]);
+        }
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            order.add(i);
+        }
+        order.sort(Comparator.<Integer, BigInteger>comparing(i -> leftovers[i]).reversed()
+                .thenComparing(Comparator.<Integer, BigInteger>comparing(i -> weights[i]).reversed())
+                .thenComparing(i -> lines.get(i).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
+        int left = taxCents.subtract(given).intValueExact();
+        for (int k = 0; k < left; k++) {
+            int i = order.get(k);
+            shares[i] = shares[i].add(BigInteger.ONE);
+        }
+        boolean flipped = exact.stream().reduce(BigDecimal.ZERO, BigDecimal::add).signum() < 0;
+        List<BigDecimal> result = new ArrayList<>(n);
+        for (BigInteger share : shares) {
+            result.add(new BigDecimal(flipped ? share.negate() : share, scale()));
+        }
+        return result;
+    }
+
+    /** The sum of the exact line taxes, rounded once, half up to the cent. */
+    private BigDecimal roundTax(List<BigDecimal> exact) {
+        return exact.stream().reduce(BigDecimal.ZERO, BigDecimal::add).setScale(scale(), RoundingMode.HALF_UP);
+    }
+
+    /**
+     * The tax charged at the given rate (a percentage): every line's exact tax added up and rounded
+     * once, half up to the cent. It is what the line taxes add up to.
+     */
     public BigDecimal tax(BigDecimal taxRate) {
-        return lineTaxes(taxRate).stream().reduce(zero(), BigDecimal::add);
+        return roundTax(exactLineTaxes(taxRate));
     }
 
     /** The grand total: the subtotal less the discount, plus tax at the given rate. */
