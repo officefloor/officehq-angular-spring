@@ -1,0 +1,534 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index b35dd68..1463198 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -502,6 +502,16 @@ function problemWith(line: NewLine): string {
+               <th scope="row" colspan="4">Amount due</th>
+               <td data-testid="invoice-amount-due">{{ amount(inv.amountDue) }}</td>
+             </tr>
++            @if (inv.creditOf === null) {
++              <tr>
++                <th scope="row" colspan="4">Amount due in cash (to the nearest coin)</th>
++                <td data-testid="invoice-cash-due">{{ amount(inv.cashDue) }}</td>
++              </tr>
++              <tr>
++                <th scope="row" colspan="4">Cash rounding</th>
++                <td data-testid="invoice-cash-rounding">{{ amount(inv.cashRounding) }}</td>
++              </tr>
++            }
+             @if (inv.settleAmount !== null) {
+               <tr>
+                 <th scope="row" colspan="4">Settles it if paid now (early-payment discount)</th>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 0a5a741..4e76044 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -184,6 +184,10 @@ export interface InvoiceDetail {
+   // What the amount after its discounts falls short of the workspace's minimum charge, added to the
+   // invoice and taxed at the client's rate; "0.00" when there is none.
+   minimumCharge: string;
++  // The amount due rounded half up to the nearest cash coin (0.05, or whole yen), and the difference
++  // that makes (signed); once settled in cash, the cash rounding it was settled with.
++  cashDue: string;
++  cashRounding: string;
+ }
+ 
+ // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
+@@ -208,11 +212,15 @@ export interface InstalmentView {
+ // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
+ // RF reference the client quoted ('' when none), checked again by the server.
+ // `currency` is the currency it was paid in; the server converts it into the client's currency.
++// How a payment was made: a bank transfer, or cash counted out in coins (0.05, or whole yen).
++export type PaymentMethod = 'BANK' | 'CASH';
++
+ export interface NewPayment {
+   amount: string;
+   currency: Currency;
+   date: string;
+   reference: string;
++  method: PaymentMethod;
+ }
+ 
+ // A line to add to a draft: quantity, unit type, unit price, the line's own discount percentage and
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index e1c3999..4c56cdf 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -7,8 +7,9 @@ import {
+   InvoiceService,
+   InvoiceSummary,
+   NewPayment,
++  PaymentMethod,
+ } from './invoice.service';
+-import { CURRENCIES, Currency, TWO_DECIMALS, symbolOf } from './invoice-format';
++import { CURRENCIES, Currency, TWO_DECIMALS, cents, symbolOf } from './invoice-format';
+ 
+ // Whether a reference passes the ISO 11649 check: its first four characters moved to the end,
+ // letters as numbers (A=10 up to Z=35), mod 97 is 1. Spaces and capitals are ignored by the caller.
+@@ -92,6 +93,25 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
+   return problems.join(' ');
+ }
+ 
++// What is wrong with taking a payment in cash, or '' when nothing is: cash is paid against the open
++// invoice, in the client's own currency, counted out in coins of 0.05 (whole yen for yen). The server
++// applies the same rules.
++function problemWithCash(payment: NewPayment, invoiceOpen: boolean, clientCurrency: Currency): string {
++  if (!invoiceOpen) {
++    return 'Open the invoice the cash is paid against.';
++  }
++  if (payment.currency !== clientCurrency) {
++    return `Cash is paid only in the client's own currency (${clientCurrency}).`;
++  }
++  const step = clientCurrency === 'JPY' ? 100 : 5;
++  if (TWO_DECIMALS.test(payment.amount) && cents(payment.amount) % step !== 0) {
++    return clientCurrency === 'JPY'
++      ? 'Cash is counted out in whole yen.'
++      : 'Cash must be counted out in coins of 0.05.';
++  }
++  return '';
++}
++
+ // Records a payment. It goes to the open invoice (`invoiceId`), or, when none is open, to the client's
+ // invoices whose references are quoted (several may be, separated by commas: RF references or invoice
+ // numbers, applied overdue first, then largest due first; one may state the amount it gets after an
+@@ -114,6 +134,11 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
+           <option [value]="c">{{ c }}</option>
+         }
+       </select>
++      <label for="payment-method">Paid by</label>
++      <select id="payment-method" data-testid="payment-form-method" formControlName="method">
++        <option value="BANK">Bank transfer</option>
++        <option value="CASH">Cash (to the nearest 0.05)</option>
++      </select>
+       <label for="payment-amount">Amount ({{ symbolOf(paidIn()) }})</label>
+       <input
+         id="payment-amount"
+@@ -190,6 +215,7 @@ export class PaymentForm {
+     reference: new FormControl('', { nonNullable: true }),
+     deposit: new FormControl(false, { nonNullable: true }),
+     currency: new FormControl<Currency>('USD', { nonNullable: true }),
++    method: new FormControl<PaymentMethod>('BANK', { nonNullable: true }),
+   });
+   // The currency picked to pay in, as a signal for the amount's label.
+   protected readonly paidIn = toSignal(this.form.controls.currency.valueChanges, {
+@@ -212,13 +238,16 @@ export class PaymentForm {
+       currency: raw.currency,
+       date: raw.date.trim(),
+       reference: raw.reference.replace(/\s/g, '').toUpperCase(),
++      method: raw.method,
+     };
+     if (raw.deposit) {
+       this.recordDeposit(payment);
+       return;
+     }
+     const invoiceId = this.invoiceId();
+-    const problem = problemWithPayment(payment, invoiceId === null);
++    const problem =
++      problemWithPayment(payment, invoiceId === null) ||
++      (payment.method === 'CASH' ? problemWithCash(payment, invoiceId !== null, this.currency()) : '');
+     if (problem) {
+       this.form.markAllAsTouched();
+       this.error.set(problem);
+@@ -264,7 +293,9 @@ export class PaymentForm {
+   // reference or invoice number of one of the client's drafts; the server refuses any other) it is held
+   // for that invoice: used first when it is sent, and by nothing else until then.
+   private recordDeposit(payment: NewPayment): void {
+-    const problem = problemWithPayment(payment, false);
++    const problem =
++      problemWithPayment(payment, false) ||
++      (payment.method === 'CASH' ? 'Cash is taken only against the open invoice, not held as credit.' : '');
+     if (problem) {
+       this.form.markAllAsTouched();
+       this.error.set(problem);
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index c23f7e6..e3b66c8 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -15,6 +15,7 @@ import net.officefloor.hq.app.clients.Currency;
+ import net.officefloor.hq.app.clients.RateTiers;
+ import net.officefloor.hq.app.invoices.Invoice;
+ import net.officefloor.hq.app.invoices.InvoiceRepository;
++import net.officefloor.hq.app.invoices.PaymentMethod;
+ import net.officefloor.hq.app.invoices.PaymentRepository;
+ import org.springframework.context.annotation.Profile;
+ import org.springframework.http.HttpStatus;
+@@ -46,7 +47,7 @@ public class TestSupportController {
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType");
+-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
++    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
+ 
+@@ -309,15 +310,19 @@ public class TestSupportController {
+                 }
+             }
+             BigDecimal paidAmount = cents(row.get("amount"), "payments[].amount");
++            String method = row.get("method") == null ? PaymentMethod.BANK.name() : row.get("method").toString();
++            if (PaymentMethod.of(method) == null) {
++                throw refuse("unsupported value of payments[].method: " + method);
++            }
+             boolean foreign = paidIn != clientCurrency && paidAmount != null;
+-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount"},
++            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method"},
+                     id(row.get("clientId")), foreign ? exchangeRates.convert(paidAmount, paidIn, clientCurrency, date(row.get("date"), "payments[].date")) : paidAmount,
+                     date(row.get("date"), "payments[].date"),
+                     row.get("reference") == null ? null : row.get("reference").toString(),
+                     flag(row.get("reversed"), "payments[].reversed"),
+                     money(row.get("refunded"), "payments[].refunded"),
+                     row.get("creditNote") == null ? null : id(row.get("creditNote")),
+-                    foreign ? paidIn.name() : null, foreign ? paidAmount : null);
++                    foreign ? paidIn.name() : null, foreign ? paidAmount : null, method);
+             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
+                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
+                 if (allocation.get("invoiceId") == null) {
+@@ -536,7 +541,7 @@ public class TestSupportController {
+                             }).toList());
+                     return row;
+                 }).toList());
+-        out.put("payments", jdbc.queryForList("SELECT p.id, p.client_id, p.amount, p.payment_date, p.reference, p.reversed, p.refunded, p.credit_note, "
++        out.put("payments", jdbc.queryForList("SELECT p.id, p.client_id, p.amount, p.payment_date, p.reference, p.reversed, p.refunded, p.credit_note, p.method, "
+                 + "p.paid_currency, p.paid_amount, c.currency FROM payment p LEFT JOIN client c ON c.id = p.client_id ORDER BY p.id")
+                 .stream().map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+@@ -548,6 +553,7 @@ public class TestSupportController {
+                     row.put("reference", r.get("REFERENCE"));
+                     row.put("reversed", r.get("REVERSED"));
+                     row.put("refunded", r.get("REFUNDED"));
++                    row.put("method", r.get("METHOD"));
+                     if (r.get("CREDIT_NOTE") != null) {
+                         row.put("creditNote", r.get("CREDIT_NOTE"));
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Currency.java b/src/main/java/net/officefloor/hq/app/clients/Currency.java
+index 23273c9..e5102d6 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Currency.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Currency.java
+@@ -36,6 +36,22 @@ public enum Currency {
+         return this == CHF ? new BigDecimal("0.05") : BigDecimal.ONE.movePointLeft(scale);
+     }
+ 
++    /** The smallest coin cash is counted out in: whole yen, otherwise 0.05 (there are no one- or two-cent coins). */
++    public BigDecimal cashStep() {
++        return this == JPY ? BigDecimal.ONE : new BigDecimal("0.05");
++    }
++
++    /** The amount rounded half up to the nearest {@link #cashStep()}: what it comes to in cash. */
++    public BigDecimal toCash(BigDecimal amount) {
++        BigDecimal step = cashStep();
++        return amount.divide(step, 0, RoundingMode.HALF_UP).multiply(step).setScale(scale);
++    }
++
++    /** Whether the amount can be counted out in cash: a whole number of {@link #cashStep()}s. */
++    public boolean isCash(BigDecimal amount) {
++        return amount.remainder(cashStep()).signum() == 0;
++    }
++
+     /**
+      * The exact quotient amount / divisor rounded down (towards zero) to this currency's step, worked
+      * out in decimals in one division so that a quotient landing on a step stays on it.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 63becdd..5078bc1 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -228,6 +228,13 @@ public class Invoice {
+     @Column(name = "interest_saved")
+     private BigDecimal interestSaved = BigDecimal.ZERO;
+ 
++    /**
++     * The cash rounding the invoice was settled with in cash: what was paid in cash less what was due
++     * (signed); 0 when none. It is owed on top of the grand total, so nothing is left due or held as credit.
++     */
++    @Column(name = "cash_rounding")
++    private BigDecimal cashRounding = BigDecimal.ZERO;
++
+     /** An issued credit note's grand total, kept when it is issued; null until then. */
+     @Column(name = "credit_total")
+     private BigDecimal creditTotal;
+@@ -701,7 +708,7 @@ public class Invoice {
+     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
+         BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate).subtract(getCredited());
+         return owed.subtract(retentionKept(taxRate)).subtract(getEarlyDiscountTaken())
+-                .subtract(getInterestSaved());
++                .subtract(getInterestSaved()).add(getCashRounding());
+     }
+ 
+     /** The late interest charged, to the cent; 0 when none is. */
+@@ -1165,6 +1172,32 @@ public class Invoice {
+         this.earlyDiscount = amount;
+     }
+ 
++    /** The cash rounding the invoice was settled with, signed; 0 when it was not settled in cash. */
++    public BigDecimal getCashRounding() {
++        return (cashRounding == null ? BigDecimal.ZERO : cashRounding).setScale(scale(), RoundingMode.HALF_UP);
++    }
++
++    /** Settles the invoice in cash with the given rounding (signed). */
++    public void roundForCash(BigDecimal rounding) {
++        this.cashRounding = getCashRounding().add(rounding);
++    }
++
++    /** What is due once the given amount has been paid, in cash: rounded half up to the nearest coin. */
++    public BigDecimal cashDue(BigDecimal paid, BigDecimal taxRate) {
++        return currency().toCash(amountDue(paid, taxRate));
++    }
++
++    /**
++     * The cash rounding shown: the one the invoice was settled with in cash, or else the difference
++     * paying what is due in cash would make (signed).
++     */
++    public BigDecimal cashRounding(BigDecimal paid, BigDecimal taxRate) {
++        if (getCashRounding().signum() != 0) {
++            return getCashRounding();
++        }
++        return cashDue(paid, taxRate).subtract(amountDue(paid, taxRate));
++    }
++
+     /** The interest dropped when the plan was paid off early, to the cent; 0 when it was not. */
+     public BigDecimal getInterestSaved() {
+         return (interestSaved == null ? BigDecimal.ZERO : interestSaved).setScale(scale(), RoundingMode.HALF_UP);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 13c48ff..dd1ac8c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -131,6 +131,8 @@ public class InvoiceController {
+      * {@code writtenOffOn} is the day it was written off as a bad debt (null when it was not); everything
+      * it still owed then is in {@code writtenOff}, and nothing is due. {@code net} is the amount before tax; when
+      * {@code pricesIncludeTax} the tax is inside the subtotal less the discount, which is then the grand total.
++     * {@code cashDue} is the amount due rounded half up to the nearest cash coin (0.05, or whole yen) and
++     * {@code cashRounding} the difference (signed): once settled in cash, the cash rounding it was settled with.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -140,7 +142,7 @@ public class InvoiceController {
+             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+-            String minimumCharge) {
++            String minimumCharge, String cashDue, String cashRounding) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -178,7 +180,8 @@ public class InvoiceController {
+                     Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
+                     i.getInterestSaved().toPlainString(),
+                     i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
+-                    i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString());
++                    i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),
++                    i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString());
+         }
+     }
+ 
+@@ -253,7 +256,9 @@ public class InvoiceController {
+             @NotNull(message = "Enter the date it was paid.")
+             LocalDate date,
+             @Size(max = 64, message = "The reference must be at most 64 characters.")
+-            String reference) {
++            String reference,
++            // How it was paid; a bank transfer when left out.
++            PaymentMethod method) {
+     }
+ 
+     /**
+@@ -271,7 +276,9 @@ public class InvoiceController {
+             LocalDate date,
+             // The reference or invoice number of the client's draft to hold it for; none when left out.
+             @Size(max = 64, message = "The reference must be at most 64 characters.")
+-            String reference) {
++            String reference,
++            // How it was paid; a bank transfer when left out. Cash is taken only against an open invoice.
++            PaymentMethod method) {
+     }
+ 
+     /**
+@@ -368,7 +375,9 @@ public class InvoiceController {
+             @NotNull(message = "Enter the date it was paid.")
+             LocalDate date,
+             @Size(max = 255, message = "The references must be at most 255 characters.")
+-            String reference) {
++            String reference,
++            // How it was paid; a bank transfer when left out. Cash is taken only against an open invoice.
++            PaymentMethod method) {
+     }
+ 
+     private final InvoiceService invoices;
+@@ -605,10 +614,18 @@ public class InvoiceController {
+     @PostMapping("/api/clients/{clientId}/payments")
+     @ResponseStatus(HttpStatus.CREATED)
+     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
++        refuseCashWithoutInvoice(body.method());
+         invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()));
+         return forClient(clientId);
+     }
+ 
++    /** Cash is taken only against the invoice that is open, so never spread over invoices or held as credit. */
++    private static void refuseCashWithoutInvoice(PaymentMethod method) {
++        if (method == PaymentMethod.CASH) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Open the invoice the cash is paid against.");
++        }
++    }
++
+     /**
+      * The quoted reference without spaces, or null when none was; a mistyped one is refused. An
+      * invoice number quoted instead (INV-0000075, any capitals) stands for that invoice's RF reference.
+@@ -668,6 +685,7 @@ public class InvoiceController {
+     @PostMapping("/api/clients/{clientId}/deposits")
+     @ResponseStatus(HttpStatus.CREATED)
+     public List<InvoiceSummary> recordDeposit(@PathVariable Long clientId, @Valid @RequestBody NewDeposit body) {
++        refuseCashWithoutInvoice(body.method());
+         invoices.recordDeposit(clientId, body.amount(), body.currency(), body.date(), reference(body.reference()))
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+         return forClient(clientId);
+@@ -693,7 +711,8 @@ public class InvoiceController {
+     @PostMapping("/api/invoices/{id}/payments")
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
+-        return invoices.recordPayment(id, body.amount(), body.currency(), body.date(), reference(body.reference()))
++        return invoices.recordPayment(id, body.amount(), body.currency(), body.date(), reference(body.reference()),
++                body.method())
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 70dd237..5ea60aa 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -998,11 +998,13 @@ public class InvoiceService {
+      * checked; what it pays beyond what is due is held on the client's account as credit. A draft, an
+      * invoice already paid, or a date after today
+      * or before the invoice's issue date is refused. The reference (null when none was quoted) has
+-     * already been checked; one that belongs to a different invoice is refused.
++     * already been checked; one that belongs to a different invoice is refused. Cash (the method; null
++     * for a bank transfer) must be in the client's own currency and a whole number of its coins; paying
++     * exactly what is due rounded to them settles the invoice, the difference its cash rounding.
+      */
+     @Transactional
+     public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+-            String reference) {
++            String reference, PaymentMethod method) {
+         Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isDraft()) {
+@@ -1017,6 +1019,15 @@ public class InvoiceService {
+             if (invoice.isWrittenOff()) {
+                 throw new InvoiceRejectedException("A written-off invoice takes no more payments.");
+             }
++            boolean cash = method == PaymentMethod.CASH;
++            if (cash && paidIn != null && paidIn != invoice.currency()) {
++                throw new InvoiceRejectedException("Cash is paid only in the client's own currency ("
++                        + invoice.currency() + ").");
++            }
++            if (cash && !invoice.currency().isCash(paidAmount)) {
++                throw new InvoiceRejectedException("Cash must be counted out in "
++                        + invoice.currency().format(invoice.currency().cashStep()) + " coins.");
++            }
+             BigDecimal amount = converted(paidAmount, paidIn, invoice.currency(), date);
+             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+@@ -1038,7 +1049,11 @@ public class InvoiceService {
+                 invoice.saveInterest(saved);
+                 due = payoff;
+             }
+-            BigDecimal applied = amount.min(due);
++            BigDecimal rounding = BigDecimal.ZERO;
++            if (cash && amount.compareTo(invoice.currency().toCash(due)) == 0) {
++                rounding = amount.subtract(due);
++            }
++            BigDecimal applied = amount.min(due.add(rounding));
+             if (invoice.hasPlan() && invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
+                 throw new InvoiceRejectedException("A payment must be at least the "
+                         + invoice.currency().format(invoice.earliestUnpaid(paidSoFar, taxRate.percent()))
+@@ -1061,10 +1076,18 @@ public class InvoiceService {
+                         + " is the reference of a different invoice; this invoice's is "
+                         + PaymentReference.grouped(PaymentReference.of(invoice.getId())) + ".");
+             }
++            if (rounding.signum() != 0) {
++                invoice.roundForCash(rounding);
++                invoices.saveAndFlush(invoice);
++            }
+             Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, applied, date, reference)
+-                    .paidIn(paidIn, paidAmount, invoice.currency()));
++                    .paidIn(paidIn, paidAmount, invoice.currency()).by(method));
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
+                     + applied.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
++            if (rounding.signum() != 0) {
++                audit.record("CASH_ROUNDING id=" + invoice.getId() + " amount="
++                        + rounding.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
++            }
+             if (invoice.currency() != Currency.USD) {
+                 audit.record("FX_DIFFERENCE id=" + invoice.getId() + " payment=" + payment.getId() + " amount="
+                         + invoice.fxDifference(applied, date).toPlainString());
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index dec373d..5dd4ce4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -4,6 +4,8 @@ import jakarta.persistence.CollectionTable;
+ import jakarta.persistence.Column;
+ import jakarta.persistence.ElementCollection;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EnumType;
++import jakarta.persistence.Enumerated;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+@@ -53,6 +55,10 @@ public class Payment {
+     @Column(name = "paid_amount")
+     private BigDecimal paidAmount;
+ 
++    /** How the payment was made: a bank transfer unless it was cash. */
++    @Enumerated(EnumType.STRING)
++    private PaymentMethod method = PaymentMethod.BANK;
++
+     @ElementCollection
+     @CollectionTable(name = "payment_allocation", joinColumns = @JoinColumn(name = "payment_id"))
+     private List<PaymentAllocation> allocations = new ArrayList<>();
+@@ -131,6 +137,16 @@ public class Payment {
+         return this;
+     }
+ 
++    /** Notes how the payment was made (null for a bank transfer). */
++    public Payment by(PaymentMethod method) {
++        this.method = method == null ? PaymentMethod.BANK : method;
++        return this;
++    }
++
++    public PaymentMethod getMethod() {
++        return method;
++    }
++
+     /** The currency the payment was paid in: the given client's currency unless it was paid in another. */
+     public Currency paidCurrency(Currency clientCurrency) {
+         return paidCurrency == null ? clientCurrency : Currency.orUsd(paidCurrency);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/PaymentMethod.java b/src/main/java/net/officefloor/hq/app/invoices/PaymentMethod.java
+new file mode 100644
+index 0000000..b832991
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/PaymentMethod.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.invoices;
++
++/** How a payment was made: a bank transfer, or cash counted out in coins (see {@code Currency#cashStep()}). */
++public enum PaymentMethod {
++    BANK, CASH;
++
++    /** The method with the name, or null when there is no such method. */
++    public static PaymentMethod of(String name) {
++        for (PaymentMethod m : values()) {
++            if (m.name().equals(name)) {
++                return m;
++            }
++        }
++        return null;
++    }
++}
+diff --git a/src/main/resources/db/migration/V43__cash_payment.sql b/src/main/resources/db/migration/V43__cash_payment.sql
+new file mode 100644
+index 0000000..91b46ec
+--- /dev/null
++++ b/src/main/resources/db/migration/V43__cash_payment.sql
+@@ -0,0 +1,5 @@
++-- How a payment was made: BANK (a bank transfer) or CASH, counted out in coins no smaller than 0.05.
++ALTER TABLE payment ADD COLUMN method VARCHAR(8) DEFAULT 'BANK' NOT NULL;
++-- The cash rounding a cash payment settled the invoice with: what it paid in cash less what was due
++-- (signed); 0 when none.
++ALTER TABLE invoice ADD COLUMN cash_rounding DECIMAL(19, 2) DEFAULT 0 NOT NULL;
