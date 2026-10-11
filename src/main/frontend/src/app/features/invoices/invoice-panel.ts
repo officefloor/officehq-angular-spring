@@ -275,7 +275,7 @@ function problemWith(line: NewLine): string {
                 <td data-testid="line-amount">{{ amount(l.amount) }}</td>
                 <td data-testid="line-discount-share">{{ amount(l.discountShare) }}</td>
                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
-                <td data-testid="line-tax-rate">{{ (inv.pricesIncludeTax ? inv.taxRate : (l.taxRate ?? inv.taxRate)) + '%' }}</td>
+                <td data-testid="line-tax-rate">{{ (l.taxRate ?? inv.taxRate) + '%' }}</td>
                 <td data-testid="line-tax">{{ amount(l.tax) }}</td>
                 <td data-testid="line-net">{{ amount(l.net) }}</td>
                 <td>
@@ -358,7 +358,7 @@ function problemWith(line: NewLine): string {
             <tr>
               <th scope="row" colspan="10">
                 @if (inv.pricesIncludeTax) {
-                  Tax included (taxable lines at {{ inv.taxRate }}%)
+                  Tax included (lines at their own rate, otherwise {{ inv.taxRate }}%)
                 } @else {
                   Tax (lines at their own rate, otherwise {{ inv.taxRate }}%)
                 }
