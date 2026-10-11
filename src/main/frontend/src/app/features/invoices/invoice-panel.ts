@@ -257,6 +257,17 @@ function problemWith(line: NewLine): string {
                   >
                     Remove
                   </button>
+                  @if (inv.creditOf === null && inv.status !== 'DRAFT' && inv.status !== 'VOID') {
+                    <button
+                      type="button"
+                      data-testid="line-credit"
+                      [disabled]="crediting()"
+                      [attr.aria-label]="'Credit line ' + l.description"
+                      (click)="creditLine(inv.id, l.id)"
+                    >
+                      Credit
+                    </button>
+                  }
                 </td>
               </tr>
             } @empty {
@@ -1152,6 +1163,25 @@ export class InvoicePanel {
         const detail: unknown = e.error?.detail;
         this.creditError.set(
           typeof detail === 'string' && detail ? detail : 'The credit note could not be started.',
+        );
+        this.crediting.set(false);
+      },
+    });
+  }
+
+  // Adds a copy of the line to the invoice's draft credit note (starting one if needed), then opens it.
+  protected creditLine(invoiceId: number, lineId: number): void {
+    this.crediting.set(true);
+    this.creditError.set('');
+    this.service.creditLine(invoiceId, lineId).subscribe({
+      next: (detail) => {
+        this.crediting.set(false);
+        this.credited.emit(detail);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.creditError.set(
+          typeof detail === 'string' && detail ? detail : 'The line could not be credited.',
         );
         this.crediting.set(false);
       },

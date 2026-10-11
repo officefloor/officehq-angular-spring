@@ -61,6 +61,8 @@ export interface InvoiceLineView {
   tax: string;
   taxExempt: boolean;
   taxRate: string | null;
+  // The id of the invoice line a credit note's line credits; null when none.
+  creditOfLine: number | null;
 }
 
 // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
@@ -337,6 +339,12 @@ export class InvoiceService {
   // Starts an empty draft credit note against a sent invoice, numbered CN-; answers the new draft.
   creditNote(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/credit-note`, null);
+  }
+
+  // Credits a line of a sent invoice: adds a copy of it to the invoice's draft credit note, starting
+  // one when there is none; answers that draft.
+  creditLine(invoiceId: number, lineId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines/${lineId}/credit`, null);
   }
 
   // Voids a sent invoice with no payments; refused (409) for a draft, a void invoice or one with

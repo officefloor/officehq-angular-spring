@@ -42,7 +42,7 @@ public class TestSupportController {
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "lineItems");
-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate");
+    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
@@ -218,13 +218,14 @@ public class TestSupportController {
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 insert("invoice_line", line.get("id"),
-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt", "discount_pct", "tax_rate"},
+                        new String[] {"invoice_id", "description", "qty", "unit_price", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line"},
                         invoiceId, text(line, "description"),
                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
                         cents(line.get("unitPrice"), "invoices[].lineItems[].unitPrice"),
                         flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"),
                         percent(line.get("discountPct"), "invoices[].lineItems[].discountPct"),
-                        line.get("taxRate") == null ? null : percent(line.get("taxRate"), "invoices[].lineItems[].taxRate"));
+                        line.get("taxRate") == null ? null : percent(line.get("taxRate"), "invoices[].lineItems[].taxRate"),
+                        line.get("creditOfLine") == null ? null : id(line.get("creditOfLine")));
             }
         }
         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
@@ -402,7 +403,7 @@ public class TestSupportController {
                         row.put("discountReason", r.get("DISCOUNT_REASON"));
                     }
                     row.put("lineItems", jdbc.queryForList(
-                            "SELECT id, description, qty, unit_price, tax_exempt, discount_pct, tax_rate FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                            "SELECT id, description, qty, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line FROM invoice_line WHERE invoice_id = ? ORDER BY id",
                             r.get("ID")).stream().map(l -> {
                                 Map<String, Object> line = new LinkedHashMap<>();
                                 line.put("id", l.get("ID"));
@@ -413,6 +414,9 @@ public class TestSupportController {
                                 line.put("discountPct", l.get("DISCOUNT_PCT"));
                                 if (l.get("TAX_RATE") != null) {
                                     line.put("taxRate", l.get("TAX_RATE"));
+                                }
+                                if (l.get("CREDIT_OF_LINE") != null) {
+                                    line.put("creditOfLine", l.get("CREDIT_OF_LINE"));
                                 }
                                 return line;
                             }).toList());

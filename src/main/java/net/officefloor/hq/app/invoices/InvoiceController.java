@@ -80,17 +80,19 @@ public class InvoiceController {
      * {@code taxExempt} lines have none. {@code taxRate} (without trailing zeros) is the line's own
      * tax rate, null when it uses the workspace rate. {@code discountPct}
      * (without trailing zeros) is the line's own discount and {@code discount} what it takes off;
-     * {@code amount} is after it.
+     * {@code amount} is after it. {@code creditOfLine} is the id of the line a credit note's line credits, null when none.
      */
     public record LineView(Long id, String description, String qty, String unitPrice, String discountPct,
-            String discount, String amount, String discountShare, String tax, boolean taxExempt, String taxRate) {
+            String discount, String amount, String discountShare, String tax, boolean taxExempt, String taxRate,
+            Long creditOfLine) {
         static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
                     l.getUnitPrice().setScale(2).toPlainString(),
                     l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount(scale).toPlainString(),
                     l.amount(scale).toPlainString(), discountShare.toPlainString(), tax.toPlainString(),
                     l.isTaxExempt(),
-                    l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString());
+                    l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
+                    l.getCreditOfLine());
         }
     }
 
@@ -533,6 +535,17 @@ public class InvoiceController {
         return invoices.creditNote(id)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /**
+     * Credits a line of a sent invoice: adds a copy of it to the invoice's draft credit note, starting
+     * one when there is none; answers that draft.
+     */
+    @PostMapping("/api/invoices/{id}/lines/{lineId}/credit")
+    public InvoiceDetail creditLine(@PathVariable Long id, @PathVariable Long lineId) {
+        return invoices.creditLine(id, lineId)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
     }
 
     @PostMapping("/api/invoices/{id}/send")

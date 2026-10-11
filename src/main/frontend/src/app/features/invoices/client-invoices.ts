@@ -212,13 +212,14 @@ export class ClientInvoices {
     });
   }
 
-  // An invoice was duplicated or credited: list the new draft and open it.
+  // An invoice was duplicated or credited: list the new draft (or show the draft credit note's new
+  // total) and open it.
   protected duplicated(detail: InvoiceDetail): void {
     const { id, number, status, listedTotal, issueDate, listedDueDate, creditOf } = detail;
-    this.invoices.update((list) => [
-      ...list,
-      { id, number, status, total: listedTotal, issueDate, dueDate: listedDueDate, creditOf },
-    ]);
+    const row = { id, number, status, total: listedTotal, issueDate, dueDate: listedDueDate, creditOf };
+    this.invoices.update((list) =>
+      list.some((i) => i.id === id) ? list.map((i) => (i.id === id ? { ...i, ...row } : i)) : [...list, row],
+    );
     this.selectedId.set(id);
   }
 

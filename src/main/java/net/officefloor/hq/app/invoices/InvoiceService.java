@@ -145,20 +145,44 @@ public class InvoiceService {
     @Transactional
     public Optional<Invoice> creditNote(Long invoiceId) {
         return load(invoiceId).map(original -> {
-            if (original.isCreditNote()) {
-                throw new InvoiceRejectedException("A credit note cannot itself be credited.");
-            }
-            if (original.isDraft()) {
-                throw new InvoiceRejectedException("Only a sent invoice can be credited.");
-            }
-            if (original.isVoid()) {
-                throw new InvoiceRejectedException("A void invoice cannot be credited.");
-            }
-            if (original.isWrittenOff()) {
-                throw new InvoiceRejectedException("A written-off invoice cannot be credited.");
-            }
+            requireCreditable(original);
             return invoices.saveAndFlush(original.creditNote(today.date()));
         });
+    }
+
+    /**
+     * Credits a line of the sent invoice: a copy of it, marked as crediting it, is added to the
+     * invoice's draft credit note, or to a new one started today when there is none; answers that
+     * draft, or empty if no such invoice or line. Refused as {@link #creditNote} is.
+     */
+    @Transactional
+    public Optional<Invoice> creditLine(Long invoiceId, Long lineId) {
+        return load(invoiceId).flatMap(original -> original.getLines().stream()
+                .filter(l -> lineId.equals(l.getId())).findFirst().map(line -> {
+                    requireCreditable(original);
+                    Invoice note = loadForClient(original.getClientId()).stream()
+                            .filter(i -> i.isDraft() && original.getId().equals(i.getCreditOf()))
+                            .findFirst()
+                            .orElseGet(() -> original.creditNote(today.date()));
+                    note.addLine(line.creditCopy());
+                    return invoices.saveAndFlush(note);
+                }));
+    }
+
+    /** Refuses to credit a credit note, a draft, a void invoice or a written-off one. */
+    private void requireCreditable(Invoice original) {
+        if (original.isCreditNote()) {
+            throw new InvoiceRejectedException("A credit note cannot itself be credited.");
+        }
+        if (original.isDraft()) {
+            throw new InvoiceRejectedException("Only a sent invoice can be credited.");
+        }
+        if (original.isVoid()) {
+            throw new InvoiceRejectedException("A void invoice cannot be credited.");
+        }
+        if (original.isWrittenOff()) {
+            throw new InvoiceRejectedException("A written-off invoice cannot be credited.");
+        }
     }
 
     /**
@@ -551,6 +575,10 @@ public class InvoiceService {
         if (original == null || original.isDraft() || original.isVoid()) {
             return "The invoice this credits is not a sent invoice, so the credit note cannot be issued.";
         }
+        String overCredit = overCreditRefusal(note, original);
+        if (overCredit != null) {
+            return overCredit;
+        }
         if (original.hasPlan()) {
             BigDecimal rate = taxRate.percent();
             LocalDate on = today.date();
@@ -567,6 +595,38 @@ public class InvoiceService {
             }
         }
         return null;
+    }
+
+    /**
+     * Why the draft credit note would credit more of one of its original's lines than was invoiced,
+     * counting the credit notes already issued against it, or null when it does not.
+     */
+    private String overCreditRefusal(Invoice note, Invoice original) {
+        Map<Long, BigDecimal> inNote = creditedQty(List.of(note));
+        if (inNote.isEmpty()) {
+            return null;
+        }
+        Map<Long, BigDecimal> issued = creditedQty(loadForClient(original.getClientId()).stream()
+                .filter(i -> i.getStatus() == InvoiceStatus.CREDIT_NOTE && original.getId().equals(i.getCreditOf()))
+                .toList());
+        for (InvoiceLine line : original.getLines()) {
+            BigDecimal qty = inNote.get(line.getId());
+            BigDecimal already = issued.getOrDefault(line.getId(), BigDecimal.ZERO);
+            if (qty != null && qty.add(already).compareTo(line.getQty()) > 0) {
+                return "The credit note cannot credit more of \"" + line.getDescription() + "\" than was invoiced: "
+                        + line.getQty().stripTrailingZeros().toPlainString() + " invoiced, "
+                        + already.stripTrailingZeros().toPlainString() + " already credited.";
+            }
+        }
+        return null;
+    }
+
+    /** The quantity the credit notes credit of each line they credit, by the id of the line credited. */
+    private static Map<Long, BigDecimal> creditedQty(List<Invoice> notes) {
+        Map<Long, BigDecimal> credited = new HashMap<>();
+        notes.forEach(note -> note.getLines().stream().filter(l -> l.getCreditOfLine() != null)
+                .forEach(l -> credited.merge(l.getCreditOfLine(), l.getQty(), BigDecimal::add)));
+        return credited;
     }
 
     /**

@@ -40,6 +40,10 @@ public class InvoiceLine {
     @Column(name = "tax_rate")
     private BigDecimal taxRate;
 
+    /** The id of the invoice line this credit note line credits; null when it credits no line in particular. */
+    @Column(name = "credit_of_line")
+    private Long creditOfLine;
+
     protected InvoiceLine() {
     }
 
@@ -56,6 +60,13 @@ public class InvoiceLine {
     /** A new line with the same description, quantity, price, discount, tax rate and exemption. */
     public InvoiceLine copy() {
         return new InvoiceLine(description, qty, unitPrice, taxExempt, discountPct, taxRate);
+    }
+
+    /** A new credit note line crediting this line, with its description, quantity, price, discount, tax rate and exemption. */
+    public InvoiceLine creditCopy() {
+        InvoiceLine credit = copy();
+        credit.creditOfLine = id;
+        return credit;
     }
 
     /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
@@ -95,6 +106,10 @@ public class InvoiceLine {
 
     public BigDecimal getTaxRate() {
         return taxRate;
+    }
+
+    public Long getCreditOfLine() {
+        return creditOfLine;
     }
 
     /** The rate the line is taxed at: its own rate, or the given workspace rate when it has none. */
