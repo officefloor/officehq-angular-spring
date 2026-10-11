@@ -1,0 +1,52 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index baf0da9..31a03ac 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -59,7 +59,7 @@ export interface InvoicePaymentView {
+ // percentage taken off the subtotal, without trailing zeros ("12.5"), and `discountAmount` the fixed
+ // amount taken off instead ("0.00" when the discount is a percentage); `discountCap` is the most taken
+ // off in all, line discounts included (null when uncapped); `discount` is the amount the invoice
+-// discount takes off, rounded half up to the cent and shrunk so the total taken off stays within the cap; `taxRate` is the workspace's tax percentage (without
++// discount takes off, rounded down to the cent (a percentage) and shrunk so the total taken off stays within the cap; `taxRate` is the workspace's tax percentage (without
+ // trailing zeros, "0" when none is set); `discountReason` is why the discount was given (null when none) and `tax` is the sum of the line taxes; `total` is the subtotal less the discount plus the tax.
+ // `payments` are the payments made to it, oldest first; `paid` is what they add up to and
+ // `amountDue` is the total less that and less `writtenOff`: when payments leave less than $1.00 due,
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 239bd70..445319d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -387,14 +387,14 @@ public class Invoice {
+ 
+     /**
+      * The amount taken off: the fixed amount when there is one (never more than the subtotal, should
+-     * lines have been changed since), otherwise the discount percentage of the subtotal, rounded half
+-     * up to the cent. When there is a cap, it limits everything taken off — the line discounts plus
++     * lines have been changed since), otherwise the discount percentage of the subtotal, rounded down
++     * to the cent. When there is a cap, it limits everything taken off — the line discounts plus
+      * this — so this shrinks to what the line discounts leave under the cap, never below zero.
+      */
+     public BigDecimal discount() {
+         BigDecimal discount = discountAmount.signum() > 0
+                 ? discountAmount.min(subtotal()).setScale(2, RoundingMode.HALF_UP)
+-                : subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP);
++                : subtotal().multiply(discountPct).divide(BigDecimal.valueOf(100)).setScale(2, RoundingMode.DOWN);
+         if (discountCap == null) {
+             return discount;
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 3ba8d7b..33be531 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -107,10 +107,10 @@ public class InvoiceLine {
+         return qty.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+     }
+ 
+-    /** The line's discount: its percentage of the gross amount, rounded half up to the cent. */
++    /** The line's discount: its percentage of the gross amount, rounded down to the cent. */
+     public BigDecimal discount() {
+         return grossAmount().multiply(discountPct).divide(BigDecimal.valueOf(100))
+-                .setScale(2, RoundingMode.HALF_UP);
++                .setScale(2, RoundingMode.DOWN);
+     }
+ 
+     /** The line amount: the gross amount less the line's discount. */
