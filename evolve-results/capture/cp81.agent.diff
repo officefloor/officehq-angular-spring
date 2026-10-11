@@ -1,0 +1,244 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index d94b747..4b4ba10 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -1,3 +1,4 @@
++import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
+ import { InvoiceDetail, InvoiceService, InvoiceSummary } from './invoice.service';
+ import { PaymentForm } from './payment-form';
+@@ -10,7 +11,8 @@ import { Currency, money, statusLabel } from './invoice-format';
+ // An invoice looked up by its number is opened as soon as its client's invoices are shown.
+ // A payment recorded in the panel goes to the open invoice; one recorded below the list when no invoice
+ // is open goes to the invoices its references name, or is spread automatically.
+-// The client's unused credit can be refunded from the refund form below the list.
++// The client's unused credit can be refunded from the refund form below the list, or applied now to
++// what they owe with Apply credit.
+ @Component({
+   selector: 'app-client-invoices',
+   imports: [InvoicePanel, PaymentForm, RefundForm],
+@@ -43,6 +45,12 @@ import { Currency, money, statusLabel } from './invoice-format';
+       <button type="button" data-testid="invoice-send-all" [disabled]="sendingAll()" (click)="sendAllDrafts()">
+         Send all drafts
+       </button>
++      <button type="button" data-testid="client-apply-credit" [disabled]="applying()" (click)="applyCredit()">
++        Apply credit
++      </button>
++      @if (applyError()) {
++        <p role="alert" data-testid="client-apply-credit-error">{{ applyError() }}</p>
++      }
+       <table data-testid="invoice-list">
+         <thead>
+           <tr>
+@@ -124,6 +132,8 @@ export class ClientInvoices {
+   protected readonly selectedId = signal<number | null>(null);
+   protected readonly creating = signal(false);
+   protected readonly sendingAll = signal(false);
++  protected readonly applying = signal(false);
++  protected readonly applyError = signal('');
+   // Bumped to make the invoice panel load its invoice again.
+   protected readonly reloadPanel = signal(0);
+   protected readonly statusLabel = statusLabel;
+@@ -133,6 +143,7 @@ export class ClientInvoices {
+     effect((onCleanup) => {
+       const id = this.clientId();
+       this.invoices.set([]);
++      this.applyError.set('');
+       const open = untracked(this.openInvoice);
+       this.selectedId.set(open?.clientId === id ? open.id : null);
+       const sub = this.service.forClient(id).subscribe((list) => this.invoices.set(list));
+@@ -181,6 +192,26 @@ export class ClientInvoices {
+     });
+   }
+ 
++  // Applies the client's unused credit to what they owe: show the invoices' new statuses, and load
++  // the open invoice again so the panel shows its payments.
++  protected applyCredit(): void {
++    this.applying.set(true);
++    this.applyError.set('');
++    this.service.applyCredit(this.clientId()).subscribe({
++      next: (list) => {
++        this.invoices.set(list);
++        this.reloadPanel.update((n) => n + 1);
++        this.applying.set(false);
++        this.changed.emit();
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.applyError.set(typeof detail === 'string' && detail ? detail : 'The credit could not be applied.');
++        this.applying.set(false);
++      },
++    });
++  }
++
+   // An invoice was duplicated or credited: list the new draft and open it.
+   protected duplicated(detail: InvoiceDetail): void {
+     const { id, number, status, listedTotal, issueDate, listedDueDate, creditOf } = detail;
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index bcd3b5f..79021a1 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -301,6 +301,13 @@ export class InvoiceService {
+     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/invoices/send-drafts`, null);
+   }
+ 
++  // Applies the client's unused credit now to what they owe: the oldest payment's credit first, to their
++  // sent invoices in the payment order, never a deposit held for a draft; refused (409) when there is no
++  // credit to use or nothing owed. Answers the client's invoices with their new statuses.
++  applyCredit(clientId: number): Observable<InvoiceSummary[]> {
++    return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/apply-credit`, null);
++  }
++
+   // Copies an invoice into a new draft for the same client: its lines and invoice discount, issued
+   // today and due as any new invoice; payments are not copied. Answers the new draft.
+   duplicate(invoiceId: number): Observable<InvoiceDetail> {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 9240bfa..a930fb3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -604,6 +604,14 @@ public class InvoiceController {
+         return forClient(clientId);
+     }
+ 
++    /** Applies the client's unused credit now to what they owe, in the payment order; answers the client's invoices. */
++    @PostMapping("/api/clients/{clientId}/apply-credit")
++    public List<InvoiceSummary> applyCredit(@PathVariable Long clientId) {
++        invoices.applyCreditNow(clientId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
++        return forClient(clientId);
++    }
++
+     @PostMapping("/api/invoices/{id}/payments")
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index a9df92e..8e89c9b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -8,6 +8,8 @@ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.HashSet;
++import java.util.Iterator;
++import java.util.LinkedHashSet;
+ import java.util.Set;
+ import java.util.List;
+ import java.util.Map;
+@@ -930,12 +932,38 @@ public class InvoiceService {
+             named.removeAll(stated);
+             candidates = ofClient.stream().filter(i -> named.contains(i.getId())).toList();
+         }
++        Map<Long, BigDecimal> dues = new HashMap<>();
++        List<Invoice> sent = inPaymentOrder(candidates, dues);
++        for (Invoice invoice : sent) {
++            BigDecimal due = dues.get(invoice.getId());
++            if (due.signum() <= 0) {
++                continue;
++            }
++            if (left.signum() > 0) {
++                BigDecimal part = left.min(due);
++                parts.add(new PaymentAllocation(invoice.getId(), part));
++                left = left.subtract(part);
++            }
++        }
++        if (parts.isEmpty()) {
++            throw new InvoiceRejectedException(references.isEmpty() ? "The client has no unpaid invoices to pay."
++                    : "Those invoices have already been paid.");
++        }
++        String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
++        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts);
++    }
++
++    /**
++     * The sent invoices among these (not drafts, void invoices or credit notes) in the payment order:
++     * the overdue ones first, earliest due date first, then the rest from the largest amount due to the
++     * smallest; lower id first on a tie. Fills in what each has due.
++     */
++    private List<Invoice> inPaymentOrder(List<Invoice> candidates, Map<Long, BigDecimal> dues) {
+         List<Invoice> unordered = candidates.stream()
+                 .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote())
+                 .toList();
+         Map<Long, BigDecimal> paid = paid(unordered);
+         LocalDate now = today.date();
+-        Map<Long, BigDecimal> dues = new HashMap<>();
+         Set<Long> overdue = new HashSet<>();
+         for (Invoice invoice : unordered) {
+             BigDecimal invoicePaid = paid.get(invoice.getId());
+@@ -951,24 +979,63 @@ public class InvoiceService {
+                 .thenComparing(i -> overdue.contains(i.getId()) ? BigDecimal.ZERO : dues.get(i.getId()),
+                         Comparator.reverseOrder())
+                 .thenComparing(Invoice::getId);
+-        List<Invoice> sent = unordered.stream().sorted(byPriority).toList();
+-        for (Invoice invoice : sent) {
++        return unordered.stream().sorted(byPriority).toList();
++    }
++
++    /**
++     * Uses the client's unused credit now on what they owe: the oldest payment's credit first (lower id
++     * first on the same date), never a deposit held for one of the client's drafts, spread over their
++     * sent invoices in the payment order (see {@link #inPaymentOrder}), each paid off before the next;
++     * each part applied today and recorded in the audit. Empty if no such client. Refused when the
++     * client has no credit to use or owes nothing.
++     */
++    @Transactional
++    public Optional<Long> applyCreditNow(Long clientId) {
++        Optional<Client> client = clients.findById(clientId);
++        if (client.isEmpty()) {
++            return Optional.empty();
++        }
++        Map<String, Long> drafts = draftsByReference(clientId);
++        List<Payment> usable = payments.findForClient(clientId).stream()
++                .filter(p -> heldFor(p, drafts) == null && p.credit().signum() > 0)
++                .toList();
++        if (usable.isEmpty()) {
++            throw new InvoiceRejectedException("The client has no unused credit to apply.");
++        }
++        Map<Long, BigDecimal> dues = new HashMap<>();
++        List<Invoice> owing = inPaymentOrder(loadForClient(clientId), dues).stream()
++                .filter(i -> dues.get(i.getId()).signum() > 0)
++                .toList();
++        if (owing.isEmpty()) {
++            throw new InvoiceRejectedException("The client owes nothing to apply credit to.");
++        }
++        LocalDate now = today.date();
++        Set<Invoice> reached = new LinkedHashSet<>();
++        Iterator<Payment> from = usable.iterator();
++        Payment payment = from.next();
++        BigDecimal credit = payment.credit();
++        for (Invoice invoice : owing) {
+             BigDecimal due = dues.get(invoice.getId());
+-            if (due.signum() <= 0) {
+-                continue;
++            while (due.signum() > 0 && credit != null) {
++                BigDecimal part = credit.min(due);
++                payment.apply(invoice.getId(), part, now);
++                payments.saveAndFlush(payment);
++                audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
++                        + part.setScale(invoice.scale(), RoundingMode.UNNECESSARY).toPlainString());
++                reached.add(invoice);
++                due = due.subtract(part);
++                credit = credit.subtract(part);
++                if (credit.signum() <= 0) {
++                    payment = from.hasNext() ? from.next() : null;
++                    credit = payment == null ? null : payment.credit();
++                }
+             }
+-            if (left.signum() > 0) {
+-                BigDecimal part = left.min(due);
+-                parts.add(new PaymentAllocation(invoice.getId(), part));
+-                left = left.subtract(part);
++            if (credit == null) {
++                break;
+             }
+         }
+-        if (parts.isEmpty()) {
+-            throw new InvoiceRejectedException(references.isEmpty() ? "The client has no unpaid invoices to pay."
+-                    : "Those invoices have already been paid.");
+-        }
+-        String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
+-        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts);
++        reached.forEach(this::recordWriteOff);
++        return Optional.of(clientId);
+     }
+ 
+     /**
