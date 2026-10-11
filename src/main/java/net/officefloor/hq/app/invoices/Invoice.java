@@ -1869,6 +1869,25 @@ public class Invoice {
     }
 
     /**
+     * How many units of the line it credits the credit note's earlier lines (in line order) already give
+     * back, so the given line carries on down the bands from below them.
+     */
+    BigDecimal creditedUnitsBefore(InvoiceLine line) {
+        List<InvoiceLine> ordered = new ArrayList<>(lines);
+        ordered.sort(Comparator.comparing(InvoiceLine::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+        BigDecimal before = BigDecimal.ZERO;
+        for (InvoiceLine other : ordered) {
+            if (other == line) {
+                return before;
+            }
+            if (other.isTiered() && Objects.equals(other.getCreditOfLine(), line.getCreditOfLine())) {
+                before = before.add(other.billedQty());
+            }
+        }
+        return BigDecimal.ZERO;
+    }
+
+    /**
      * How many units of the tiered unit type the client was already billed this calendar month before this
      * invoice: the tiered lines of that unit type on the client's other sent invoices (not credit notes)
      * issued earlier in the same month as this one is priced in (see {@link #pricingDate}), or on the same date with a lower id. Drafts, void

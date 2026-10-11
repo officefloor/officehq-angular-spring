@@ -9,6 +9,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Formula;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import net.officefloor.hq.app.clients.RateTiers;
@@ -47,6 +48,19 @@ public class InvoiceLine {
     /** The id of the invoice line this credit note line credits; null when it credits no line in particular. */
     @Column(name = "credit_of_line")
     private Long creditOfLine;
+
+    /**
+     * For a credit note line crediting a tiered line: how far through the bands the units still to give back reach — the units of
+     * the credited line's unit type its invoice took through the bands up to the end of that line, less those of it already given
+     * back by issued credit notes before this one. Credits are given back from the top down, so the line is charged for the units
+     * just below this. Null for any other line.
+     */
+    @Formula("((SELECT SUM(GREATEST(CASE WHEN e.billing_increment > 0 THEN CEILING(e.qty / e.billing_increment) * e.billing_increment ELSE e.qty END, COALESCE(e.billing_min_units, 0))) FROM invoice_line o, invoice_line e"
+            + " WHERE o.id = credit_of_line AND o.tiers IS NOT NULL AND e.invoice_id = o.invoice_id AND e.tiers IS NOT NULL"
+            + " AND e.unit_type = o.unit_type AND e.id <= o.id)"
+            + " - COALESCE((SELECT SUM(GREATEST(CASE WHEN c.billing_increment > 0 THEN CEILING(c.qty / c.billing_increment) * c.billing_increment ELSE c.qty END, COALESCE(c.billing_min_units, 0))) FROM invoice_line c, invoice cn"
+            + " WHERE c.credit_of_line = credit_of_line AND cn.id = c.invoice_id AND cn.status = 'CREDIT_NOTE' AND cn.id < invoice_id), 0))")
+    private BigDecimal creditedUnitsTop;
 
     /** The unit type the line is billed in (hour, day, ...); null for none. */
     @Column(name = "unit_type")
@@ -288,7 +302,9 @@ public class InvoiceLine {
      */
     public BigDecimal grossAmount(int scale) {
         if (tiers != null) {
-            BigDecimal before = invoice == null ? BigDecimal.ZERO : invoice.tieredUnitsBefore(this);
+            BigDecimal before = creditOfLine != null && creditedUnitsTop != null
+                    ? creditedUnitsTop.subtract(invoice == null ? BigDecimal.ZERO : invoice.creditedUnitsBefore(this)).subtract(billedQty()).max(BigDecimal.ZERO)
+                    : invoice == null ? BigDecimal.ZERO : invoice.tieredUnitsBefore(this);
             RateTiers bands = RateTiers.parse(tiers);
             if (overtime) {
                 bands = new RateTiers(bands.bands().stream()

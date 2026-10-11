@@ -194,7 +194,10 @@ public class InvoiceService {
                             .findFirst()
                             .orElseGet(() -> original.creditNote(today.date()));
                     note.addLine(line.creditCopy());
-                    return invoices.saveAndFlush(note);
+                    Invoice saved = invoices.saveAndFlush(note);
+                    // Read again how far through the bands a credited tiered line's units reach.
+                    entityManager.refresh(saved);
+                    return saved;
                 }));
     }
 
