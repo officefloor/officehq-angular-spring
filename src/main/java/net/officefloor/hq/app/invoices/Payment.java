@@ -44,20 +44,25 @@ public class Payment {
     protected Payment() {
     }
 
-    /** A payment made wholly against one invoice, quoting the reference (null when none). */
-    public static Payment against(Invoice invoice, BigDecimal amount, LocalDate date, String reference) {
+    /**
+     * A payment against one invoice, quoting the reference (null when none): the part applied to the
+     * invoice, any rest of the amount held on the client's account as credit.
+     */
+    public static Payment against(Invoice invoice, BigDecimal amount, BigDecimal applied, LocalDate date,
+            String reference) {
         Payment payment = new Payment();
         payment.clientId = invoice.getClientId();
         payment.amount = amount;
         payment.date = date;
         payment.reference = reference;
-        payment.allocations.add(new PaymentAllocation(invoice.getId(), amount));
+        payment.allocations.add(new PaymentAllocation(invoice.getId(), applied));
         return payment;
     }
 
     /**
      * A payment from the client spread over several of its invoices, quoting the reference (null when
-     * none): each allocation is the part of the amount that goes to one invoice.
+     * none): each allocation is the part of the amount that goes to one invoice; any rest is held on
+     * the client's account as credit.
      */
     public static Payment split(Long clientId, BigDecimal amount, LocalDate date, String reference,
             List<PaymentAllocation> allocations) {

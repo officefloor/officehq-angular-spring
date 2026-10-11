@@ -222,7 +222,7 @@ export class InvoiceService {
   }
 
   // Records a payment against a sent invoice that still has something due; refused (409) when it
-  // is a draft, already paid, the amount is more than is due, or the date is after today or before
+  // is a draft or already paid (anything paid beyond what is due is held as credit), or the date is after today or before
   // the issue date, or the reference is mistyped (400) or another invoice's (409). Answers the invoice with its payments and new status.
   recordPayment(invoiceId: number, payment: NewPayment): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/payments`, payment);
@@ -231,7 +231,7 @@ export class InvoiceService {
   // Records one payment spread over several of the client's invoices; refused (409) unless the parts
   // add up to the payment and each goes to a sent invoice of the client, no more than it has due.
   // With no parts it goes to the invoices whose references are quoted (comma separated), earliest due
-  // date first, refused when one is mistyped (400), not the client's, or they owe less than the payment.
+  // date first, refused when one is mistyped (400) or not the client's; what they do not owe is held as credit.
   // Answers the client's invoices with their new statuses.
   recordSplitPayment(clientId: number, payment: NewSplitPayment): Observable<InvoiceSummary[]> {
     return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment);

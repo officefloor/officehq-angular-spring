@@ -120,7 +120,8 @@ function problemWith(line: NewLine): string {
 // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
 // until nothing is due, less than $1.00 left being written off; the panel lists them with what has
 // been paid, what is still due and what was written off. The
-// server refuses a payment on a draft, over what is due, or dated after today or before the issue date.
+// server refuses a payment on a draft, or dated after today or before the issue date; what a payment
+// pays beyond what is due is held on the client's account as credit.
 // The panel shows the invoice's RF payment reference; a payment may quote one, which must pass the
 // ISO 11649 check and be this invoice's. When parts of a payment are filled in on the list, the
 // payment is spread over those invoices instead; each payment shows how much of it went here.

@@ -427,7 +427,8 @@ public class InvoiceService {
     /**
      * Records a payment of the amount on the date against a sent invoice that still has something
      * due, and records it in the audit; empty if no such invoice. The amount has already been
-     * checked; a draft, an invoice already paid, an amount over what is due, or a date after today
+     * checked; what it pays beyond what is due is held on the client's account as credit. A draft, an
+     * invoice already paid, or a date after today
      * or before the invoice's issue date is refused. The reference (null when none was quoted) has
      * already been checked; one that belongs to a different invoice is refused.
      */
@@ -446,10 +447,8 @@ public class InvoiceService {
             if (due.signum() <= 0) {
                 throw new InvoiceRejectedException("This invoice has already been paid.");
             }
-            if (amount.compareTo(due) > 0) {
-                throw new InvoiceRejectedException("The payment is more than the $" + due.toPlainString() + " due.");
-            }
-            if (invoice.isTooSmallPart(amount, paidSoFar, taxRate.percent())) {
+            BigDecimal applied = amount.min(due);
+            if (invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
                 throw new InvoiceRejectedException("A part payment must be at least $"
                         + invoice.minimumPart(taxRate.percent()).toPlainString()
                         + " (10% of the total), unless it settles the invoice.");
@@ -467,10 +466,11 @@ public class InvoiceService {
                         + " is the reference of a different invoice; this invoice's is "
                         + PaymentReference.grouped(PaymentReference.of(invoice.getId())) + ".");
             }
-            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, date, reference));
+            Payment payment = payments.saveAndFlush(Payment.against(invoice, amount, applied, date, reference));
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
-                    + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                    + applied.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
             recordWriteOff(invoice);
+            recordCreditHeld(payment);
         });
         return found;
     }
@@ -479,11 +479,12 @@ public class InvoiceService {
      * Records one payment of the amount on the date against the client's unpaid sent invoices, earliest
      * due date first (lower id first on the same due date) so overdue invoices are cleared first,
      * paying each off in full before the next.
-     * A payment more than everything the client owes is refused; otherwise it is checked and recorded
-     * as a split payment over the invoices it reaches.
+     * What it pays beyond everything the client owes is held on the client's account as credit; the
+     * rest is checked and recorded as a split payment over the invoices it reaches.
      * References (empty when none, each already checked) instead limit the payment to the client's
      * invoices with those references, applied in the same order; one that is not the reference of any
-     * of the client's invoices is refused, as is a payment more than those invoices owe together.
+     * of the client's invoices is refused; what is paid beyond what those invoices owe together is held
+     * as credit.
      * The payment keeps the reference of the first invoice it reaches.
      */
     @Transactional
@@ -534,12 +535,8 @@ public class InvoiceService {
             throw new InvoiceRejectedException(references.isEmpty() ? "The client has no unpaid invoices to pay."
                     : "Those invoices have already been paid.");
         }
-        if (left.signum() > 0) {
-            throw new InvoiceRejectedException("The payment is more than the $" + owed.setScale(2).toPlainString()
-                    + (references.isEmpty() ? " the client owes." : " those invoices owe together."));
-        }
         String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
-        return recordSplitPayment(clientId, amount, date, reference, parts);
+        return recordSpread(clientId, amount, date, reference, parts, true);
     }
 
     /**
@@ -553,11 +550,21 @@ public class InvoiceService {
     @Transactional
     public Payment recordSplitPayment(Long clientId, BigDecimal amount, LocalDate date, String reference,
             List<PaymentAllocation> parts) {
+        return recordSpread(clientId, amount, date, reference, parts, false);
+    }
+
+    /**
+     * Records the payment spread over the parts as {@link #recordSplitPayment} does, except that when
+     * credit may be held the parts may add up to less than the payment: the rest is held on the
+     * client's account as credit and recorded in the audit.
+     */
+    private Payment recordSpread(Long clientId, BigDecimal amount, LocalDate date, String reference,
+            List<PaymentAllocation> parts, boolean holdCredit) {
         if (parts.isEmpty()) {
             throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
         }
         BigDecimal sum = parts.stream().map(PaymentAllocation::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (sum.compareTo(amount) != 0) {
+        if (holdCredit ? sum.compareTo(amount) > 0 : sum.compareTo(amount) != 0) {
             throw new InvoiceRejectedException("The amounts for the invoices add up to $"
                     + sum.setScale(2).toPlainString() + ", not the $" + amount.setScale(2).toPlainString() + " paid.");
         }
@@ -608,7 +615,17 @@ public class InvoiceService {
                     + part.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
         }
         spreadOver.forEach(this::recordWriteOff);
+        recordCreditHeld(payment);
         return payment;
+    }
+
+    /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
+    private void recordCreditHeld(Payment payment) {
+        BigDecimal credit = payment.credit();
+        if (credit.signum() > 0) {
+            audit.record("CREDIT_HELD payment=" + payment.getId() + " amount="
+                    + credit.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        }
     }
 
     /** Records in the audit what a payment just recorded left written off on the invoice, if anything. */
