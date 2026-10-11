@@ -30,7 +30,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
-    private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "clients", "invoices");
+    private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "lineItems");
@@ -72,6 +73,19 @@ public class TestSupportController {
         if (fixture.get("asOf") != null) {
             LocalDate asOf = date(fixture.get("asOf"), "asOf");
             jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", Today.AS_OF, asOf.toString());
+        }
+        if (fixture.get("settings") != null) {
+            if (!(fixture.get("settings") instanceof Map<?, ?> settings)) {
+                throw refuse("settings must be an object");
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> values = (Map<String, Object>) settings;
+            only(values, SETTINGS_FIELDS, "settings");
+            if (values.get("taxRate") != null) {
+                BigDecimal rate = percent(values.get("taxRate"), "settings.taxRate");
+                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", TaxRate.TAX_RATE,
+                        rate.toPlainString());
+            }
         }
         for (Map<String, Object> row : rows(fixture.get("clients"), "clients")) {
             only(row, CLIENT_FIELDS, "clients[]");
@@ -126,6 +140,11 @@ public class TestSupportController {
                 Today.AS_OF);
         if (!asOf.isEmpty()) {
             out.put("asOf", asOf.get(0));
+        }
+        List<String> taxRate = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+                String.class, TaxRate.TAX_RATE);
+        if (!taxRate.isEmpty()) {
+            out.put("settings", Map.of("taxRate", new BigDecimal(taxRate.get(0))));
         }
         out.put("clients", jdbc.queryForList("SELECT id, name, email FROM client ORDER BY id").stream()
                 .map(r -> {
@@ -219,7 +238,7 @@ public class TestSupportController {
         return number;
     }
 
-    /** A percentage from 0 to 100 with at most two decimals; none given is no discount. */
+    /** A percentage from 0 to 100 with at most two decimals; none given is zero. */
     private static BigDecimal percent(Object value, String field) {
         if (value == null) {
             return BigDecimal.ZERO;

@@ -92,6 +92,10 @@ function problemWith(line: NewLine): string {
               <td data-testid="invoice-discount">{{ money(inv.discount) }}</td>
             </tr>
             <tr>
+              <th scope="row" colspan="3">Tax ({{ inv.taxRate }}%)</th>
+              <td data-testid="invoice-tax">{{ money(inv.tax) }}</td>
+            </tr>
+            <tr>
               <th scope="row" colspan="3">Total</th>
               <td data-testid="invoice-grand-total">{{ money(inv.total) }}</td>
             </tr>

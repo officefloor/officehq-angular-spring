@@ -119,8 +119,17 @@ public class Invoice {
                 .setScale(2, RoundingMode.HALF_UP);
     }
 
-    /** The subtotal less the discount. */
-    public BigDecimal total() {
-        return subtotal().subtract(discount());
+    /**
+     * The tax charged at the given rate (a percentage): the rate on the subtotal, before any
+     * discount comes off, rounded half up to the cent.
+     */
+    public BigDecimal tax(BigDecimal taxRate) {
+        return subtotal().multiply(taxRate).divide(BigDecimal.valueOf(100))
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** The grand total: the subtotal less the discount, plus tax at the given rate. */
+    public BigDecimal total(BigDecimal taxRate) {
+        return subtotal().subtract(discount()).add(tax(taxRate));
     }
 }
