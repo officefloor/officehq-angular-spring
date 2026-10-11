@@ -1,0 +1,194 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index fdc2b46..def7821 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -103,7 +103,8 @@ function problemWith(line: NewLine): string {
+ 
+ // One opened invoice: its status, its lines and its totals. A line may carry its own percentage
+ // discount, shown on the line, with its amount after it, and its own tax. A draft takes new lines and a
+-// percentage or fixed discount, and can be sent; a change to a sent invoice with no payments puts it back to
++// percentage or fixed discount, can have lines removed (refused when what is left would be less than a
++// fixed discount), and can be sent; a change to a sent invoice with no payments puts it back to
+ // draft, and once paid anything the server refuses further changes. A sent invoice takes payments
+ // until nothing is due; the panel lists them with what has been paid and what is still due. The
+ // server refuses a payment on a draft, over what is due, or dated after today or before the issue date.
+@@ -135,6 +136,7 @@ function problemWith(line: NewLine): string {
+               <th scope="col">Discount share</th>
+               <th scope="col">Tax status</th>
+               <th scope="col">Tax</th>
++              <th scope="col">Actions</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -148,10 +150,21 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="line-discount-share">{{ money(l.discountShare) }}</td>
+                 <td data-testid="line-tax-exempt">{{ l.taxExempt ? 'Exempt' : 'Taxable' }}</td>
+                 <td data-testid="line-tax">{{ money(l.tax) }}</td>
++                <td>
++                  <button
++                    type="button"
++                    data-testid="line-remove"
++                    [disabled]="saving()"
++                    [attr.aria-label]="'Remove line ' + l.description"
++                    (click)="removeLine(inv.id, l.id)"
++                  >
++                    Remove
++                  </button>
++                </td>
+               </tr>
+             } @empty {
+               <tr>
+-                <td colspan="8" data-testid="line-empty">No lines yet.</td>
++                <td colspan="9" data-testid="line-empty">No lines yet.</td>
+               </tr>
+             }
+           </tbody>
+@@ -438,6 +451,25 @@ export class InvoicePanel {
+     });
+   }
+ 
++  protected removeLine(invoiceId: number, lineId: number): void {
++    this.saving.set(true);
++    this.error.set('');
++    this.service.removeLine(invoiceId, lineId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.saving.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.error.set(
++          typeof detail === 'string' && detail ? detail : 'The line could not be removed.',
++        );
++        this.saving.set(false);
++      },
++    });
++  }
++
+   protected setDiscount(invoiceId: number): void {
+     const raw = this.discountForm.getRawValue();
+     const pct = raw.pct.trim().replace(/%$/, '').trim();
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 358abd8..b36e064 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -156,6 +156,13 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines`, line);
+   }
+ 
++  // Removes a line from a draft, or from a sent invoice with no payments (putting it back to draft);
++  // refused (409) when what is left would be less than a fixed discount. Answers the invoice with its
++  // remaining lines and new totals.
++  removeLine(invoiceId: number, lineId: number): Observable<InvoiceDetail> {
++    return this.http.delete<InvoiceDetail>(`/api/invoices/${invoiceId}/lines/${lineId}`);
++  }
++
+   // Gives a draft invoice a discount — a percentage (0 to 100, up to two decimals) or a fixed amount
+   // (to the cent, at most the subtotal); the one given clears the other. Answers the invoice with
+   // its new totals.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 561beeb..6a74f80 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -50,7 +50,7 @@ public class Invoice {
+     @Column(name = "discount_cap")
+     private BigDecimal discountCap;
+ 
+-    @OneToMany(cascade = CascadeType.ALL)
++    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+     @JoinColumn(name = "invoice_id", nullable = false)
+     @OrderBy("id")
+     private List<InvoiceLine> lines = new ArrayList<>();
+@@ -186,6 +186,30 @@ public class Invoice {
+         lines.add(line);
+     }
+ 
++    /** Whether the invoice has the line with the given id. */
++    public boolean hasLine(Long lineId) {
++        return lines.stream().anyMatch(l -> lineId.equals(l.getId()));
++    }
++
++    /**
++     * Removes the line with the given id; whether the invoice had it. Refused when what is left would
++     * be less than a fixed discount on the invoice.
++     */
++    public boolean removeLine(Long lineId) {
++        InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
++        if (line == null) {
++            return false;
++        }
++        BigDecimal left = subtotal().subtract(line.amount());
++        if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
++            throw new InvoiceRejectedException("This line cannot be removed: the $"
++                    + left.setScale(2).toPlainString() + " left would be less than the $"
++                    + discountAmount.setScale(2).toPlainString() + " discount.");
++        }
++        lines.remove(line);
++        return true;
++    }
++
+     /**
+      * The sum of the line amounts, each after its own discount and already to the cent — so the subtotal
+      * matches what a client gets by adding up the lines shown.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 6a94067..dc6a2ae 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -17,6 +17,7 @@ import java.util.stream.IntStream;
+ import net.officefloor.hq.app.TaxRate;
+ import net.officefloor.hq.app.Today;
+ import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -279,6 +280,13 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    @DeleteMapping("/api/invoices/{id}/lines/{lineId}")
++    public InvoiceDetail removeLine(@PathVariable Long id, @PathVariable Long lineId) {
++        return invoices.removeLine(id, lineId)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
++    }
++
+     @PutMapping("/api/invoices/{id}/discount")
+     public InvoiceDetail setDiscount(@PathVariable Long id, @Valid @RequestBody NewDiscount body) {
+         return invoices.setDiscount(id, body.discountPct(), body.discountAmount(), body.discountCap())
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 5e3ec7f..b98d6e8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -93,6 +93,30 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Removes a line from an invoice; empty if no such invoice or line. Refused when what is left would
++     * be less than a fixed discount. A sent invoice with no payments goes back to draft; one with a
++     * payment refuses it.
++     */
++    @Transactional
++    public Optional<Invoice> removeLine(Long invoiceId, Long lineId) {
++        Optional<Invoice> found = invoices.findWithLinesById(invoiceId);
++        if (found.isEmpty()) {
++            return found;
++        }
++        Invoice invoice = found.get();
++        if (!invoice.hasLine(lineId)) {
++            return Optional.empty();
++        }
++        boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines removed.");
++        invoice.removeLine(lineId);
++        invoices.saveAndFlush(invoice);
++        if (reopened) {
++            audit.record("INVOICE_REOPENED id=" + invoice.getId());
++        }
++        return found;
++    }
++
+     /**
+      * Gives an invoice a percentage discount, or a fixed amount off when one is given; the one given
+      * clears the other, and the cap (null for none) limits a percentage. Empty if no such invoice. The values have already been checked; a fixed amount
