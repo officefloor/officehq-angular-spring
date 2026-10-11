@@ -1,0 +1,209 @@
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index 94133f3..e1c3999 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -53,7 +53,8 @@ function quotedReferenceChecks(reference: string): boolean {
+ }
+ 
+ // What is wrong with a payment, or '' when it can be recorded. With `several` the reference box may
+-// hold several references separated by commas, each checked on its own.
++// hold several references separated by commas, each checked on its own, and each may state the amount
++// it gets after an equals sign (INV-0000018=50): a number more than zero with at most two decimals.
+ function problemWithPayment(payment: NewPayment, several: boolean): string {
+   const problems: string[] = [];
+   if (!payment.amount) {
+@@ -71,7 +72,7 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
+     : payment.reference
+       ? [payment.reference]
+       : [];
+-  const mistyped = quoted.filter((r) => !quotedReferenceChecks(r));
++  const mistyped = quoted.filter((r) => !quotedReferenceChecks(several ? r.split('=')[0] : r));
+   if (mistyped.length > 0) {
+     problems.push(
+       quoted.length > 1
+@@ -79,12 +80,22 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
+         : 'The payment reference is mistyped: check it against the invoice.',
+     );
+   }
++  const stated = several ? quoted.filter((r) => r.includes('=')) : [];
++  for (const r of stated) {
++    const amount = r.slice(r.indexOf('=') + 1).replace(/^\$/, '');
++    if (!TWO_DECIMALS.test(amount)) {
++      problems.push(`The amount for ${r.split('=')[0]} must be a number with at most two decimals.`);
++    } else if (Number(amount) <= 0) {
++      problems.push(`The amount for ${r.split('=')[0]} must be more than zero.`);
++    }
++  }
+   return problems.join(' ');
+ }
+ 
+ // Records a payment. It goes to the open invoice (`invoiceId`), or, when none is open, to the client's
+ // invoices whose references are quoted (several may be, separated by commas: RF references or invoice
+-// numbers, applied overdue first, then largest due first), or without one to the client's unpaid
++// numbers, applied overdue first, then largest due first; one may state the amount it gets after an
++// equals sign, INV-0000018=50, and only the rest goes to those without one), or without one to the client's unpaid
+ // invoices in that order. What is paid beyond
+ // what is due is held on the client's account as credit. The server refuses a payment on a draft, or dated after today
+ // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
+@@ -121,7 +132,7 @@ function problemWithPayment(payment: NewPayment, several: boolean): string {
+       />
+       <label for="payment-reference">
+         @if (invoiceId() === null) {
+-          References or invoice numbers quoted, separated by commas (optional)
++          References or invoice numbers quoted, separated by commas, each optionally with =amount (optional)
+         } @else {
+           Reference or invoice number quoted (optional)
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index fd512f4..353429f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -543,19 +543,44 @@ public class InvoiceController {
+ 
+     /**
+      * The references quoted, separated by commas, each without spaces and in the order typed (an
+-     * invoice number standing for its RF reference); empty when none was. A mistyped one is refused.
++     * invoice number standing for its RF reference), each with the amount stated after an equals sign
++     * (INV-0000018=50) or none; empty when none was. A mistyped reference, or an amount that is not a
++     * number with at most two decimals, is refused.
+      */
+-    private static List<String> references(String typed) {
++    private static List<QuotedReference> references(String typed) {
+         if (typed == null || typed.isBlank()) {
+             return List.of();
+         }
+         return Arrays.stream(typed.split(","))
+                 .filter(part -> !part.isBlank())
+-                .map(InvoiceController::reference)
++                .map(InvoiceController::quoted)
+                 .distinct()
+                 .toList();
+     }
+ 
++    private static QuotedReference quoted(String part) {
++        int equals = part.indexOf('=');
++        if (equals < 0) {
++            return new QuotedReference(reference(part), null);
++        }
++        String reference = reference(part.substring(0, equals));
++        if (reference == null) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Quote a reference before the amount in "
++                    + part.trim() + ".");
++        }
++        String stated = part.substring(equals + 1).replaceAll("\\s", "").replaceFirst("^\\$", "");
++        if (!stated.matches("-?\\d+(\\.\\d+)?")) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The amount in " + part.trim()
++                    + " must be a number.");
++        }
++        BigDecimal amount = new BigDecimal(stated);
++        if (amount.scale() > 2) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The amount in " + part.trim()
++                    + " can have at most two decimals.");
++        }
++        return new QuotedReference(reference, amount);
++    }
++
+     /** Records a deposit held on the client's account as credit; answers the client's invoices. */
+     @PostMapping("/api/clients/{clientId}/deposits")
+     @ResponseStatus(HttpStatus.CREATED)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 0488164..98786ad 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -867,17 +867,26 @@ public class InvoiceService {
+      * invoices with those references, applied in the same order; one that is not the reference of any
+      * of the client's invoices is refused; what is paid beyond what those invoices owe together is held
+      * as credit.
++     * A reference may state the amount it gets: that amount goes to that invoice, and only the rest of
++     * the payment is applied, in the same order, to the references without one. The amounts stated must
++     * each be more than zero and together no more than the payment; each must be no more than its
++     * invoice has due and at least its minimum part payment (both checked with the other parts).
+      * The payment keeps the reference of the first invoice it reaches.
+      */
+     @Transactional
+     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+-            List<String> references) {
+-        BigDecimal amount = converted(paidAmount, paidIn, currencyOf(clientId), date);
++            List<QuotedReference> references) {
++        Currency currency = currencyOf(clientId);
++        BigDecimal amount = converted(paidAmount, paidIn, currency, date);
+         List<Invoice> ofClient = loadForClient(clientId);
+         List<Invoice> candidates = ofClient;
++        List<PaymentAllocation> parts = new ArrayList<>();
++        BigDecimal left = amount;
+         if (!references.isEmpty()) {
+             Set<Long> named = new HashSet<>();
+-            for (String reference : references) {
++            Set<Long> stated = new HashSet<>();
++            for (QuotedReference quoted : references) {
++                String reference = quoted.reference();
+                 Invoice invoice = ofClient.stream()
+                         .filter(i -> reference.equals(PaymentReference.of(i.getId())))
+                         .findFirst()
+@@ -893,8 +902,25 @@ public class InvoiceService {
+                 if (invoice.isCreditNote()) {
+                     throw new InvoiceRejectedException(invoice.number() + " is a credit note and takes no payments.");
+                 }
+-                named.add(invoice.getId());
++                if (quoted.amount() == null) {
++                    named.add(invoice.getId());
++                    continue;
++                }
++                if (quoted.amount().signum() <= 0) {
++                    throw new InvoiceRejectedException("The amount for " + number + " must be more than zero.");
++                }
++                if (!stated.add(invoice.getId())) {
++                    throw new InvoiceRejectedException("State only one amount for " + number + ".");
++                }
++                parts.add(new PaymentAllocation(invoice.getId(), quoted.amount()));
++                left = left.subtract(quoted.amount());
++            }
++            if (left.signum() < 0) {
++                BigDecimal sum = amount.subtract(left);
++                throw new InvoiceRejectedException("The amounts stated for the invoices add up to "
++                        + currency.format(sum) + ", more than the " + currency.format(amount) + " paid.");
+             }
++            named.removeAll(stated);
+             candidates = ofClient.stream().filter(i -> named.contains(i.getId())).toList();
+         }
+         List<Invoice> unordered = candidates.stream()
+@@ -919,22 +945,18 @@ public class InvoiceService {
+                         Comparator.reverseOrder())
+                 .thenComparing(Invoice::getId);
+         List<Invoice> sent = unordered.stream().sorted(byPriority).toList();
+-        BigDecimal owed = BigDecimal.ZERO;
+-        BigDecimal left = amount;
+-        List<PaymentAllocation> parts = new ArrayList<>();
+         for (Invoice invoice : sent) {
+             BigDecimal due = dues.get(invoice.getId());
+             if (due.signum() <= 0) {
+                 continue;
+             }
+-            owed = owed.add(due);
+             if (left.signum() > 0) {
+                 BigDecimal part = left.min(due);
+                 parts.add(new PaymentAllocation(invoice.getId(), part));
+                 left = left.subtract(part);
+             }
+         }
+-        if (owed.signum() <= 0) {
++        if (parts.isEmpty()) {
+             throw new InvoiceRejectedException(references.isEmpty() ? "The client has no unpaid invoices to pay."
+                     : "Those invoices have already been paid.");
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/QuotedReference.java b/src/main/java/net/officefloor/hq/app/invoices/QuotedReference.java
+new file mode 100644
+index 0000000..58d0548
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/QuotedReference.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.invoices;
++
++import java.math.BigDecimal;
++
++/**
++ * A reference quoted with a payment (RF reference without spaces), with the amount of the payment it
++ * gets when one was stated after an equals sign (INV-0000018=50); null when none was.
++ */
++public record QuotedReference(String reference, BigDecimal amount) {
++}
