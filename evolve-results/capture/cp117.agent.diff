@@ -1,0 +1,444 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 0247709..29498e0 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -23,6 +23,9 @@ export interface Client {
+   earlyPayDays: number | null;
+   // The standard retention percentage (0 to 20) new invoices for the client start with; 0 is none.
+   retentionPct: number;
++  // The percentage (0 to 100) of each invoice's amount before tax the client withholds for its tax
++  // office; 0 is none. The client never pays it.
++  withholdingPct: number;
+   // Days (0 to 30, a week as standard) past its due date an invoice or instalment is given before it
+   // is overdue, earns late interest and is charged the late fee.
+   graceDays: number;
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 5a3dcd4..ff701b6 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -140,6 +140,17 @@ function validTaxNumber(taxNumber: string): boolean {
+           step="0.01"
+           formControlName="retentionPct"
+         />
++        <label for="client-withholding">Tax withheld by the client % (optional)</label>
++        <input
++          id="client-withholding"
++          data-testid="client-form-withholding-pct"
++          type="number"
++          inputmode="decimal"
++          min="0"
++          max="100"
++          step="0.01"
++          formControlName="withholdingPct"
++        />
+         <label for="client-grace">Grace period in days, 0 to 30 (optional, a week if left out)</label>
+         <input
+           id="client-grace"
+@@ -275,6 +286,7 @@ export class Clients {
+     terms: new FormControl<number | null>(null),
+     discountPct: new FormControl<number | null>(null),
+     retentionPct: new FormControl<number | null>(null),
++    withholdingPct: new FormControl<number | null>(null),
+     graceDays: new FormControl<number | null>(null),
+     interestRate: new FormControl<number | null>(null),
+     region: new FormControl('', { nonNullable: true }),
+@@ -311,6 +323,8 @@ export class Clients {
+     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
+     const retention = this.form.controls.retentionPct.value;
+     const retentionPct = retention === null || (retention as unknown) === '' ? null : Number(retention);
++    const withholding = this.form.controls.withholdingPct.value;
++    const withholdingPct = withholding === null || (withholding as unknown) === '' ? null : Number(withholding);
+     const grace = this.form.controls.graceDays.value;
+     const graceDays = grace === null || (grace as unknown) === '' ? null : Number(grace);
+     const interest = this.form.controls.interestRate.value;
+@@ -330,6 +344,7 @@ export class Clients {
+       terms: termsDays,
+       discountPct,
+       retentionPct,
++      withholdingPct,
+       graceDays,
+       interestRate,
+       region,
+@@ -346,6 +361,7 @@ export class Clients {
+       termsDays,
+       discountPct,
+       retentionPct,
++      withholdingPct,
+       graceDays,
+       interestRate,
+       earlyPayPct,
+@@ -370,6 +386,7 @@ export class Clients {
+       earlyPayPct: earlyPayPct ?? 0,
+       earlyPayDays,
+       retentionPct: retentionPct ?? 0,
++      withholdingPct: withholdingPct ?? 0,
+       graceDays: graceDays ?? STANDARD_GRACE_DAYS,
+       interestRate,
+       region: region || null,
+@@ -431,6 +448,7 @@ export class Clients {
+     termsDays: number | null,
+     discountPct: number | null,
+     retentionPct: number | null,
++    withholdingPct: number | null,
+     graceDays: number | null,
+     interestRate: number | null,
+     earlyPayPct: number | null,
+@@ -465,6 +483,13 @@ export class Clients {
+         problems.push('The standard retention can have at most two decimals.');
+       }
+     }
++    if (withholdingPct !== null) {
++      if (!(Number.isFinite(withholdingPct) && withholdingPct >= 0 && withholdingPct <= 100)) {
++        problems.push('The withholding must be from 0 to 100 percent.');
++      } else if (Math.abs(Math.round(withholdingPct * 100) - withholdingPct * 100) > 1e-6) {
++        problems.push('The withholding can have at most two decimals.');
++      }
++    }
+     if (graceDays !== null && !(Number.isInteger(graceDays) && graceDays >= 0 && graceDays <= 30)) {
+       problems.push('The grace period must be from 0 to 30 days.');
+     }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index d7a70da..55f52d9 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -369,6 +369,12 @@ function problemWith(line: NewLine): string {
+               <th scope="row" colspan="10">Total</th>
+               <td data-testid="invoice-grand-total">{{ amount(inv.total) }}</td>
+             </tr>
++            @if (+inv.withholding > 0) {
++              <tr>
++                <th scope="row" colspan="10">Withheld by the client for its tax office</th>
++                <td data-testid="invoice-withholding">{{ amount(inv.withholding) }}</td>
++              </tr>
++            }
+             <tr>
+               <th scope="row" colspan="10">
+                 Retention ({{ inv.retentionPct }}%@if (inv.retentionCap !== null) {, max
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index f8c509b..27bd909 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -194,6 +194,9 @@ export interface InvoiceDetail {
+   // after its discounts rounded down to the cent; not discounted, taxed at the client's rate.
+   surchargePct: string;
+   surcharge: string;
++  // What the client withholds for its tax office: its withholding percentage of the amount before tax,
++  // rounded down to the cent ("0.00" when none). Never owed, so left out of the amount due.
++  withholding: string;
+   // The amount due rounded half up to the nearest cash coin (0.05, or whole yen), and the difference
+   // that makes (signed); once settled in cash, the cash rounding it was settled with.
+   cashDue: string;
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 37202dc..be1636e 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -44,7 +44,7 @@ public class TestSupportController {
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+     private static final String MINIMUM_CHARGE = "minimum_charge";
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType");
+@@ -253,7 +253,7 @@ public class TestSupportController {
+             if (Currency.of(currency) == null) {
+                 throw refuse("unsupported value of clients[].currency: " + currency);
+             }
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number"},
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+                     percent(row.get("discountPct"), "clients[].discountPct"),
+                     flag(row.get("taxExempt"), "clients[].taxExempt"),
+@@ -264,7 +264,8 @@ public class TestSupportController {
+                     graceDays(row.get("graceDays"), "clients[].graceDays"),
+                     interestRate(row.get("interestRate"), "clients[].interestRate"),
+                     row.get("region") == null ? null : row.get("region").toString(),
+-                    row.get("taxNumber") == null ? null : row.get("taxNumber").toString());
++                    row.get("taxNumber") == null ? null : row.get("taxNumber").toString(),
++                    percent(row.get("withholdingPct"), "clients[].withholdingPct"));
+             Long clientId = id(row.get("id") == null
+                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
+             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
+@@ -497,7 +498,7 @@ public class TestSupportController {
+         if (!settings.isEmpty()) {
+             out.put("settings", settings);
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number, withholding_pct FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -515,6 +516,7 @@ public class TestSupportController {
+                         row.put("earlyPayDays", r.get("EARLY_PAY_DAYS"));
+                     }
+                     row.put("retentionPct", r.get("RETENTION_PCT"));
++                    row.put("withholdingPct", r.get("WITHHOLDING_PCT"));
+                     row.put("graceDays", r.get("GRACE_DAYS"));
+                     if (r.get("INTEREST_RATE") != null) {
+                         row.put("interestRate", r.get("INTEREST_RATE"));
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 027125f..e4aef2c 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -62,6 +62,13 @@ public class Client {
+     @Column(name = "retention_pct")
+     private BigDecimal retentionPct = BigDecimal.ZERO;
+ 
++    /**
++     * The percentage (0 to 100) of each invoice's amount before tax the client withholds and pays to its
++     * tax office; 0 is none. It is never owed by the client.
++     */
++    @Column(name = "withholding_pct")
++    private BigDecimal withholdingPct = BigDecimal.ZERO;
++
+     /**
+      * Days past its due date an invoice or instalment for this client is given before it is overdue,
+      * earns late interest and is charged the late fee: 0 to {@link #MAX_GRACE_DAYS}, a week as standard.
+@@ -106,7 +113,7 @@ public class Client {
+ 
+     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
+-            Integer graceDays, BigDecimal interestRate, String region, String taxNumber) {
++            Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct) {
+         this.name = name;
+         this.email = email;
+         this.termsDays = termsDays;
+@@ -121,6 +128,7 @@ public class Client {
+         this.interestRate = interestRate;
+         this.region = region;
+         this.taxNumber = taxNumber;
++        this.withholdingPct = withholdingPct == null ? BigDecimal.ZERO : withholdingPct;
+     }
+ 
+     public Long getId() {
+@@ -167,6 +175,10 @@ public class Client {
+         return retentionPct;
+     }
+ 
++    public BigDecimal getWithholdingPct() {
++        return withholdingPct;
++    }
++
+     public int getGraceDays() {
+         return graceDays;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index c5e9f90..568872d 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -32,13 +32,13 @@ public class ClientController {
+     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
+             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+             BigDecimal retentionPct, int graceDays, BigDecimal interestRate, String region, String taxNumber,
+-            Map<String, RateView> rates) {
++            Map<String, RateView> rates, BigDecimal withholdingPct) {
+         static ClientView of(Client c) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
+                     new TreeMap<>(c.getRates().entrySet().stream().collect(Collectors.toMap(
+-                            Map.Entry::getKey, e -> RateView.of(e.getValue())))));
++                            Map.Entry::getKey, e -> RateView.of(e.getValue())))), c.getWithholdingPct());
+         }
+     }
+ 
+@@ -97,7 +97,12 @@ public class ClientController {
+             @Size(max = 64, message = "The region must be at most 64 characters.")
+             String region,
+             /** The client's tax number; none when left out or blank. */
+-            String taxNumber) {
++            String taxNumber,
++            /** The percentage of the amount before tax the client withholds for its tax office; none when left out. */
++            @DecimalMin(value = "0", message = "The withholding must be from 0 to 100 percent.")
++            @DecimalMax(value = "100", message = "The withholding must be from 0 to 100 percent.")
++            @Digits(integer = 3, fraction = 2, message = "The withholding can have at most two decimals.")
++            BigDecimal withholdingPct) {
+ 
+         @AssertTrue(message = "Enter a tax number of two letters then ten digits whose last two digits check the first eight, or leave it blank.")
+         public boolean isTaxNumberValid() {
+@@ -132,6 +137,6 @@ public class ClientController {
+     public ClientView add(@Valid @RequestBody NewClient body) {
+         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
+-                body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber()));
++                body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 7aaaf84..6f6d72c 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -32,12 +32,12 @@ public class ClientService {
+     @Transactional
+     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct, Integer graceDays,
+-            BigDecimal interestRate, String region, String taxNumber) {
++            BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+         return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, pricesIncludeTax, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays, interestRate,
+-                region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber)));
++                region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber), withholdingPct));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index eb54bf2..1b2f525 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -230,6 +230,10 @@ public class Invoice {
+     @Formula("(SELECT c.early_pay_days FROM client c WHERE c.id = client_id)")
+     private Integer earlyPayDays;
+ 
++    /** The percentage of the amount before tax the client withholds for its tax office; read from the client. */
++    @Formula("(SELECT c.withholding_pct FROM client c WHERE c.id = client_id)")
++    private BigDecimal withholdingPct;
++
+     /** The client's grace period in days; read from the client. */
+     @Formula("(SELECT c.grace_days FROM client c WHERE c.id = client_id)")
+     private Integer clientGraceDays;
+@@ -449,7 +453,7 @@ public class Invoice {
+      */
+     private boolean isSmallEnoughToWriteOff(BigDecimal left, LocalDate on, BigDecimal taxRate) {
+         return left.multiply(usdPerOn(on)).compareTo(WRITE_OFF_LIMIT) < 0
+-                && left.compareTo(total(taxRate).multiply(WRITE_OFF_SHARE)) <= 0;
++                && left.compareTo(owedTotal(taxRate).multiply(WRITE_OFF_SHARE)) <= 0;
+     }
+ 
+     /**
+@@ -727,6 +731,23 @@ public class Invoice {
+                 : retentionReleasedAmount.setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
++    /**
++     * The withholding: the client's withholding percentage of the amount before tax, rounded down to
++     * the cent. The client pays it to its tax office instead, so it is never owed. Nothing for a credit note.
++     */
++    public BigDecimal withholding(BigDecimal taxRate) {
++        if (isCreditNote() || withholdingPct == null || withholdingPct.signum() <= 0) {
++            return zero();
++        }
++        return beforeTax(taxRate).multiply(withholdingPct).divide(BigDecimal.valueOf(100))
++                .setScale(scale(), RoundingMode.DOWN);
++    }
++
++    /** What the client is to pay of the grand total at the tax rate: the grand total less the withholding. */
++    public BigDecimal owedTotal(BigDecimal taxRate) {
++        return total(taxRate).subtract(withholding(taxRate));
++    }
++
+     /**
+      * What the invoice is owed in all, held retention left out: the grand total (the plan total when it
+      * is spread over instalments) less what is credited and held, plus the late fee and interest charged.
+@@ -740,7 +761,7 @@ public class Invoice {
+      * already come off its plan total.
+      */
+     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
+-        BigDecimal owed = hasPlan() ? planTotal(taxRate) : total(taxRate).subtract(getCredited());
++        BigDecimal owed = hasPlan() ? planTotal(taxRate) : owedTotal(taxRate).subtract(getCredited());
+         return owed.subtract(retentionKept(taxRate)).subtract(getEarlyDiscountTaken())
+                 .subtract(getInterestSaved()).add(getCashRounding());
+     }
+@@ -762,7 +783,7 @@ public class Invoice {
+ 
+     /** The most late fee charged: 10% of the grand total at the tax rate, rounded down to the cent. */
+     private BigDecimal lateFeeCap(BigDecimal taxRate) {
+-        return total(taxRate).divide(BigDecimal.TEN).setScale(scale(), RoundingMode.DOWN);
++        return owedTotal(taxRate).divide(BigDecimal.TEN).setScale(scale(), RoundingMode.DOWN);
+     }
+ 
+     /** The late fee's percentage of what is owed when it is charged. */
+@@ -1316,7 +1337,7 @@ public class Invoice {
+ 
+     /** The plan's down payment at the tax rate: its percentage of the grand total, rounded down to the cent. */
+     private BigDecimal downPayment(BigDecimal taxRate) {
+-        return total(taxRate).multiply(planDownPct).divide(BigDecimal.valueOf(100), scale(), RoundingMode.FLOOR);
++        return owedTotal(taxRate).multiply(planDownPct).divide(BigDecimal.valueOf(100), scale(), RoundingMode.FLOOR);
+     }
+ 
+     /**
+@@ -1341,7 +1362,7 @@ public class Invoice {
+         }
+         List<LocalDate> dues = new ArrayList<>(instalments + 1);
+         List<Instalment> schedule = new ArrayList<>();
+-        BigDecimal principal = total(taxRate).setScale(scale(), RoundingMode.HALF_UP);
++        BigDecimal principal = owedTotal(taxRate).setScale(scale(), RoundingMode.HALF_UP);
+         if (planDownPct.signum() > 0) {
+             BigDecimal down = downPayment(taxRate);
+             principal = principal.subtract(down);
+@@ -1384,7 +1405,7 @@ public class Invoice {
+ 
+     /** The principal still owed before the instalment at the index: the balance after the one before it. */
+     private BigDecimal principalBefore(List<Instalment> schedule, int index, BigDecimal taxRate) {
+-        return index == 0 ? total(taxRate).setScale(scale(), RoundingMode.HALF_UP) : schedule.get(index - 1).balance();
++        return index == 0 ? owedTotal(taxRate).setScale(scale(), RoundingMode.HALF_UP) : schedule.get(index - 1).balance();
+     }
+ 
+     /**
+@@ -1721,7 +1742,7 @@ public class Invoice {
+ 
+     /** The least a part payment may be at the tax rate: {@link #MINIMUM_PART_SHARE} of the grand total. */
+     public BigDecimal minimumPart(BigDecimal taxRate) {
+-        return total(taxRate).multiply(MINIMUM_PART_SHARE).setScale(scale(), RoundingMode.HALF_UP);
++        return owedTotal(taxRate).multiply(MINIMUM_PART_SHARE).setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 4f65bf6..82fa2cf 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -139,6 +139,8 @@ public class InvoiceController {
+      * {@code cashRounding} the difference (signed): once settled in cash, the cash rounding it was settled with.
+      * {@code surchargePct} (without trailing zeros) is the rush surcharge percentage and {@code surcharge} that share of
+      * the subtotal less the discount, rounded down to the cent; it counts towards the {@code minimumCharge}.
++     * {@code withholding} is what the client withholds for its tax office (0 when none): never owed, so
++     * left out of the amount due.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -148,7 +150,7 @@ public class InvoiceController {
+             String instalmentRate, String planDownPct, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateFee, String lateWaived,
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+-            String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge) {
++            String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -188,7 +190,8 @@ public class InvoiceController {
+                     i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
+                     i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),
+                     i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
+-                    i.getSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString());
++                    i.getSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
++                    i.withholding(taxRate).toPlainString());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index f0bc419..64a166a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -769,6 +769,10 @@ public class InvoiceService {
+             audit.record("REVERSE_CHARGE id=" + invoice.getId() + " number=" + invoice.number()
+                     + " total=" + invoice.total(taxRate.percent()).toPlainString());
+         }
++        BigDecimal withheld = invoice.withholding(taxRate.percent());
++        if (withheld.signum() > 0) {
++            audit.record("WITHHOLDING id=" + invoice.getId() + " amount=" + withheld.toPlainString());
++        }
+         if (!invoice.hasPlan()) {
+             applyCredit(invoice);
+         }
+diff --git a/src/main/resources/db/migration/V49__client_withholding.sql b/src/main/resources/db/migration/V49__client_withholding.sql
+new file mode 100644
+index 0000000..140ad76
+--- /dev/null
++++ b/src/main/resources/db/migration/V49__client_withholding.sql
+@@ -0,0 +1,3 @@
++-- The percentage (0 to 100, 0 is none) of the amount before tax the client withholds from each invoice
++-- and pays to its tax office instead; it is never owed by the client.
++ALTER TABLE client ADD COLUMN withholding_pct DECIMAL(5, 2) DEFAULT 0 NOT NULL;
