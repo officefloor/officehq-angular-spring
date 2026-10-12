@@ -1,0 +1,314 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index dd0e51a..471aee2 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -799,6 +799,18 @@ function problemWith(line: NewLine): string {
+           <p role="alert" data-testid="invoice-dispute-error">{{ disputeError() }}</p>
+         }
+ 
++        @if (inv.fingerprint !== null) {
++          <p>
++            Fingerprint:
++            <span data-testid="invoice-fingerprint">{{ inv.fingerprint }}</span>
++          </p>
++        }
++        @if (inv.duplicateOf !== null) {
++          <p role="status">
++            Possible duplicate of
++            <span data-testid="invoice-duplicate-of">{{ inv.duplicateOf }}</span>
++          </p>
++        }
+         @if (inv.creditOf === null) {
+           <p>
+             Approval:
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 5c5df06..6558601 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -261,6 +261,11 @@ export interface InvoiceDetail {
+   // The grand total today's prices, rates and client details would give a sent invoice, only when that
+   // differs from its sent total; otherwise null.
+   currentTotal: string | null;
++  // The first 8 characters, in capitals, of the invoice's fingerprint (SHA-256 of the client's id and its lines); null when it has no lines.
++  fingerprint: string | null;
++  // The numbers of the invoices, lowest id first, that this draft is a possible duplicate of (sent to the same
++  // client within the workspace's duplicate window, with the same fingerprint), joined by ', '; null when none.
++  duplicateOf: string | null;
+   // The id of the sent invoice this draft was claimed from as its next progress claim; null when it was not.
+   claimFrom: number | null;
+   // The client's purchase order number for the invoice; null when none was given.
+diff --git a/src/main/java/net/officefloor/hq/app/DuplicateWindow.java b/src/main/java/net/officefloor/hq/app/DuplicateWindow.java
+new file mode 100644
+index 0000000..dc32c94
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/DuplicateWindow.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++
++/**
++ * The workspace's duplicate window: the stored {@code duplicate_days} setting, the number of days before
++ * today in which a sent invoice with the same fingerprint makes a client's draft a possible duplicate;
++ * null when none is set (drafts are then never judged duplicates).
++ */
++@Service
++public class DuplicateWindow {
++
++    public static final String DUPLICATE_DAYS = "duplicate_days";
++
++    private final JdbcTemplate jdbc;
++
++    public DuplicateWindow(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    public Integer days() {
++        List<String> days = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
++                String.class, DUPLICATE_DAYS);
++        return days.isEmpty() ? null : Integer.valueOf(days.get(0).trim());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 2658865..1ff4744 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -41,7 +41,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown", "approvalLimit", "tierApprovalLimits");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays");
+     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
+     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+@@ -180,6 +180,11 @@ public class TestSupportController {
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                         APPROVAL_LIMIT, limit.toPlainString());
+             }
++            if (values.get("duplicateDays") != null) {
++                Integer days = days(values.get("duplicateDays"), "settings.duplicateDays");
++                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
++                        DuplicateWindow.DUPLICATE_DAYS, days.toString());
++            }
+             if (values.get("tierApprovalLimits") != null) {
+                 if (!(values.get("tierApprovalLimits") instanceof Map<?, ?> limits)) {
+                     throw refuse("settings.tierApprovalLimits must be an object of US dollars by tier");
+@@ -656,6 +661,8 @@ public class TestSupportController {
+         if (!approvalLimit.isEmpty()) {
+             settings.put("approvalLimit", new BigDecimal(approvalLimit.get(0)));
+         }
++        jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class,
++                DuplicateWindow.DUPLICATE_DAYS).forEach(v -> settings.put("duplicateDays", Integer.valueOf(v)));
+         Map<String, BigDecimal> tierApprovalLimits = new LinkedHashMap<>();
+         for (ClientTier tier : ClientTier.values()) {
+             jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class,
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 7798d89..c794ba2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1369,9 +1369,11 @@ public class Invoice {
+      * Once sent, an invoice is as it was approved. Every draft of a client with a HIGH payment risk (highRisk)
+      * needs approval, whatever its size, as does every draft that would take its client over its credit limit
+      * (overCreditLimit). A draft whose grand total is more than one and a half times the approval limit, or
+-     * of a HIGH payment risk client, needs {@link #approvalsRequired two approvals} of that same total.
++     * of a HIGH payment risk client, needs {@link #approvalsRequired two approvals} of that same total. So does
++     * a draft that is a possible duplicate of an invoice recently sent to its client (possibleDuplicate).
+      */
+-    public Approval approval(BigDecimal taxRate, LocalDate today, boolean highRisk, boolean overCreditLimit) {
++    public Approval approval(BigDecimal taxRate, LocalDate today, boolean highRisk, boolean overCreditLimit,
++            boolean possibleDuplicate) {
+         if (isCreditNote()) {
+             return Approval.NOT_NEEDED;
+         }
+@@ -1380,7 +1382,7 @@ public class Invoice {
+         }
+         BigDecimal limit = approvalLimit();
+         BigDecimal total = approvalTotal(taxRate);
+-        if (!highRisk && !overCreditLimit && !discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
++        if (!highRisk && !overCreditLimit && !possibleDuplicate && !discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
+             return Approval.NOT_NEEDED;
+         }
+         return approvalsAt(total, today) < approvalsRequired(taxRate) ? Approval.NEEDS_APPROVAL : Approval.APPROVED;
+@@ -2278,6 +2280,25 @@ public class Invoice {
+         return lines;
+     }
+ 
++    /**
++     * The invoice's fingerprint, to spot the same work billed twice: the SHA-256 hash (hex, in capitals) of
++     * the client's id, a '|', then its lines (see {@link InvoiceLine#fingerprint}) sorted and joined with ';'.
++     * Null when it has no lines.
++     */
++    public String fingerprint() {
++        if (lines.isEmpty()) {
++            return null;
++        }
++        String text = clientId + "|" + String.join(";", lines.stream().map(InvoiceLine::fingerprint).sorted().toList());
++        try {
++            byte[] hash = java.security.MessageDigest.getInstance("SHA-256")
++                    .digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
++            return java.util.HexFormat.of().withUpperCase().formatHex(hash);
++        } catch (java.security.NoSuchAlgorithmException e) {
++            throw new IllegalStateException(e);
++        }
++    }
++
+     /** Whether lines can still be added: only a draft is still being written. */
+     public boolean isDraft() {
+         return status == InvoiceStatus.DRAFT;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 6befedb..495509c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -190,8 +190,10 @@ public class InvoiceController {
+             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
+             int approvalsNeeded, int approvals,
+             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate recurringSince, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
+-            List<MilestoneView> milestones, String milestonesPct, Long claimFrom, String sentTotal, String currentTotal) {
+-        static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
++            List<MilestoneView> milestones, String milestonesPct, Long claimFrom, String sentTotal, String currentTotal,
++            String fingerprint, String duplicateOf) {
++        static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval,
++                List<Invoice> duplicates) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+             LocalDate paidOn = i.paidOn(payments, taxRate);
+@@ -238,7 +240,10 @@ public class InvoiceController {
+                     i.milestonesPct().stripTrailingZeros().toPlainString(), i.getClaimFrom(),
+                     i.hasSentFigures() ? i.total(taxRate).toPlainString() : null,
+                     i.hasSentFigures() && i.currentTotal(taxRate).compareTo(i.total(taxRate)) != 0
+-                            ? i.currentTotal(taxRate).toPlainString() : null);
++                            ? i.currentTotal(taxRate).toPlainString() : null,
++                    Optional.ofNullable(i.fingerprint()).map(f -> f.substring(0, 8)).orElse(null),
++                    duplicates.isEmpty() ? null
++                            : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")));
+         }
+     }
+ 
+@@ -505,7 +510,8 @@ public class InvoiceController {
+     }
+ 
+     private InvoiceDetail detail(Invoice i) {
+-        return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()), today.date(), invoices.approval(i));
++        return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()), today.date(), invoices.approval(i),
++                invoices.possibleDuplicateOf(i));
+     }
+ 
+     @GetMapping("/api/clients/{clientId}/invoices")
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index fbeb1b8..37e10f2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -383,6 +383,21 @@ public class InvoiceLine {
+         return minUnits != null && billed.compareTo(minUnits) < 0 ? minUnits : billed;
+     }
+ 
++    /**
++     * The line as it counts towards its invoice's fingerprint: description,quantity,unit price in cents — the
++     * description in lower case with runs of spaces made one and trimmed, the quantity without trailing zeros
++     * and the unit price it is charged at (0 when priced in tiers).
++     */
++    public String fingerprint() {
++        String text = description == null ? "" : description.toLowerCase(java.util.Locale.ROOT).replaceAll(" +", " ").trim();
++        BigDecimal cents = isTiered() || unitPrice == null ? BigDecimal.ZERO : chargedUnitPrice().movePointRight(2);
++        return text + "," + plain(qty) + "," + plain(cents);
++    }
++
++    private static String plain(BigDecimal value) {
++        return value == null || value.signum() == 0 ? "0" : value.stripTrailingZeros().toPlainString();
++    }
++
+     /** Whether the line is priced in progressive tiers rather than at its unit price. */
+     public boolean isTiered() {
+         return tiers != null;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 8844147..4c634d1 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -18,6 +18,7 @@ import java.util.Map;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.CardSurcharge;
++import net.officefloor.hq.app.DuplicateWindow;
+ import net.officefloor.hq.app.ExchangeRates;
+ import net.officefloor.hq.app.FxFee;
+ import net.officefloor.hq.app.LateInterestRate;
+@@ -57,11 +58,14 @@ public class InvoiceService {
+ 
+     private final RegionTerms regionTerms;
+ 
++    private final DuplicateWindow duplicateWindow;
++
+     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
+             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
+             LateInterestRate lateInterestRate, CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList,
+-            RegionTerms regionTerms) {
++            RegionTerms regionTerms, DuplicateWindow duplicateWindow) {
+         this.regionTerms = regionTerms;
++        this.duplicateWindow = duplicateWindow;
+         this.priceList = priceList;
+         this.cardSurcharge = cardSurcharge;
+         this.fxFee = fxFee;
+@@ -1156,6 +1160,10 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException(
+                         invoice.discountIsLarge()
+                                 ? "The discount is more than 20% of the subtotal; approve the invoice before sending it."
++                                : !possibleDuplicateOf(invoice).isEmpty()
++                                        ? "This invoice may be a duplicate of " + possibleDuplicateOf(invoice).stream()
++                                                .map(Invoice::number).collect(java.util.stream.Collectors.joining(", "))
++                                                + "; approve the invoice before sending it."
+                                 : riskOf(invoice.getClientId()).band() == RiskBand.HIGH
+                                         ? "The client pays slowly (HIGH payment risk); approve the invoice before sending it."
+                                         : wouldGoOverLimit(invoice)
+@@ -1195,7 +1203,7 @@ public class InvoiceService {
+             if (approval != Invoice.Approval.NEEDS_APPROVAL) {
+                 throw new InvoiceRejectedException(approval == Invoice.Approval.APPROVED
+                         ? "This invoice is already approved."
+-                        : "This invoice is within the approval limit, its discount is not over 20%, its client is not a HIGH payment risk and it would not take the client over its credit limit, so it needs no approval.");
++                        : "This invoice is within the approval limit, its discount is not over 20%, its client is not a HIGH payment risk, it would not take the client over its credit limit and it is not a possible duplicate, so it needs no approval.");
+             }
+             BigDecimal total = invoice.approvalTotal(rate);
+             invoice.approve(total, on);
+@@ -1302,7 +1310,7 @@ public class InvoiceService {
+         LocalDate on = today.date();
+         return loadForClient(clientId).stream()
+                 .filter(i -> i.isDraft() && !i.isCreditNote() && !i.getId().equals(excludeId)
+-                        && i.approval(rate, on, false, true) == Invoice.Approval.APPROVED)
++                        && i.approval(rate, on, false, true, false) == Invoice.Approval.APPROVED)
+                 .map(i -> i.owedTotal(rate))
+                 .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+     }
+@@ -2523,7 +2531,30 @@ public class InvoiceService {
+         boolean highRisk = invoice.isDraft() && !invoice.isCreditNote() && band == RiskBand.HIGH;
+         invoice.markHighRisk(highRisk);
+         boolean overCreditLimit = invoice.isDraft() && !invoice.isCreditNote() && wouldGoOverLimit(invoice);
+-        return invoice.approval(taxRate.percent(), today.date(), highRisk, overCreditLimit);
++        boolean duplicate = !possibleDuplicateOf(invoice).isEmpty();
++        return invoice.approval(taxRate.percent(), today.date(), highRisk, overCreditLimit, duplicate);
++    }
++
++    /**
++     * The invoices the draft is a possible duplicate of, lowest id first: its client's sent invoices (not
++     * void, not credit notes) issued within the workspace's duplicate window of days before today whose
++     * {@link Invoice#fingerprint fingerprint} is the draft's. Empty for anything but a draft with lines, or
++     * when the workspace has no duplicate window.
++     */
++    @Transactional(readOnly = true)
++    public List<Invoice> possibleDuplicateOf(Invoice invoice) {
++        Integer days = duplicateWindow.days();
++        String fingerprint = invoice.fingerprint();
++        if (days == null || fingerprint == null || !invoice.isDraft() || invoice.isCreditNote()) {
++            return List.of();
++        }
++        LocalDate on = today.date();
++        LocalDate from = on.minusDays(days);
++        return invoices.findByClientIdOrderByIdAsc(invoice.getClientId()).stream()
++                .filter(i -> !i.getId().equals(invoice.getId()) && !i.isDraft() && !i.isVoid() && !i.isCreditNote())
++                .filter(i -> i.getIssueDate() != null && !i.getIssueDate().isBefore(from) && !i.getIssueDate().isAfter(on))
++                .filter(i -> fingerprint.equals(i.fingerprint()))
++                .toList();
+     }
+ 
+     /**
