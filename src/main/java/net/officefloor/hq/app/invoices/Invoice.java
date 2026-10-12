@@ -325,6 +325,23 @@ public class Invoice {
     @Formula("(SELECT LISTAGG(CAST(v.over_usd AS VARCHAR) || '=' || CAST(v.pct AS VARCHAR), ',') WITHIN GROUP (ORDER BY v.over_usd, v.id) FROM volume_discount v)")
     private String volumeDiscounts;
 
+    /** The amount promised to be paid on this overdue invoice by {@link #promiseDate}; null when no promise was made. */
+    @Column(name = "promise_amount")
+    private BigDecimal promiseAmount;
+
+    /** The day the last promise to pay is to be kept by; null when no promise was made. */
+    @Column(name = "promise_date")
+    private LocalDate promiseDate;
+
+    /** The day the last promise to pay was made; null when no promise was made. */
+    @Column(name = "promised_on")
+    private LocalDate promisedOn;
+
+    /** What has been paid to this invoice from the day the last promise was made up to the day it was due by (payments not reversed). */
+    /** What has been paid to this invoice from the day the last promise was made up to its date; worked out by {@link #notePromisePayments}. */
+    @Transient
+    private BigDecimal paidUnderPromise = BigDecimal.ZERO;
+
     @Formula("(SELECT MAX(COALESCE(a.applied_date, p.payment_date)) FROM payment_allocation a, payment p WHERE a.invoice_id = id AND p.id = a.payment_id AND p.reversed = FALSE)")
     private LocalDate lastPaidOn;
 
@@ -1070,6 +1087,59 @@ public class Invoice {
     /** Waives the late interest still unpaid on the given day; interest starts again from then. */
     public void waiveInterest(LocalDate on) {
         this.interestWaivedOn = on;
+    }
+
+    public BigDecimal getPromiseAmount() {
+        return promiseAmount;
+    }
+
+    public LocalDate getPromiseDate() {
+        return promiseDate;
+    }
+
+    public LocalDate getPromisedOn() {
+        return promisedOn;
+    }
+
+    /** Records a promise made on the given day to pay the amount by the date; it has already been checked. */
+    public void promise(BigDecimal amount, LocalDate by, LocalDate on) {
+        this.promiseAmount = amount;
+        this.promiseDate = by;
+        this.promisedOn = on;
+        this.paidUnderPromise = BigDecimal.ZERO;
+    }
+
+    /**
+     * Works out from the payments (any invoice's) what was paid to this invoice from the day the last promise
+     * was made up to its date, taking each part on the day it was applied; reversed payments do not count.
+     */
+    public void notePromisePayments(List<Payment> payments) {
+        paidUnderPromise = BigDecimal.ZERO;
+        if (promisedOn == null || promiseDate == null) {
+            return;
+        }
+        paidUnderPromise = payments.stream().filter(p -> !p.isReversed())
+                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
+                        .filter(a -> {
+                            LocalDate on = a.getDate() == null ? p.getDate() : a.getDate();
+                            return !on.isBefore(promisedOn) && !on.isAfter(promiseDate);
+                        }))
+                .map(PaymentAllocation::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** Whether payments since the last promise was made, up to its date, reached the amount promised. */
+    private boolean promisePaid() {
+        return paidUnderPromise != null && paidUnderPromise.compareTo(promiseAmount) >= 0;
+    }
+
+    /** Whether a promise to pay holds the invoice off on the given day: made, not yet due and not yet paid. */
+    public boolean isPromiseHeld(LocalDate today) {
+        return promiseAmount != null && promiseDate != null && !today.isAfter(promiseDate) && !promisePaid();
+    }
+
+    /** Whether the last promise to pay was broken by the given day: its date passed without the amount being paid. */
+    public boolean isPromiseBroken(LocalDate today) {
+        return promiseAmount != null && promiseDate != null && today.isAfter(promiseDate) && !promisePaid();
     }
 
     /** The day the client disputed the invoice; null when it has never been disputed. */
@@ -2245,6 +2315,12 @@ public class Invoice {
      * paid date (null when not known) is after its due date is paid late.
      */
     public InvoiceStatus statusWhenPaid(BigDecimal paid, LocalDate paidOn, BigDecimal taxRate, LocalDate today) {
+        InvoiceStatus found = statusIgnoringPromise(paid, paidOn, taxRate, today);
+        return found == InvoiceStatus.OVERDUE && isPromiseHeld(today) ? InvoiceStatus.PROMISED : found;
+    }
+
+    /** As {@link #statusWhenPaid(BigDecimal, LocalDate, BigDecimal, LocalDate)}, overdue even while a promise to pay holds. */
+    public InvoiceStatus statusIgnoringPromise(BigDecimal paid, LocalDate paidOn, BigDecimal taxRate, LocalDate today) {
         if (status != InvoiceStatus.SENT) {
             return status;
         }

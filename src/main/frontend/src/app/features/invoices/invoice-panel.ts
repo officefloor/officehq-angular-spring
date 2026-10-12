@@ -638,6 +638,19 @@ function problemWith(line: NewLine): string {
         }
 
         @if (inv.creditOf === null && inv.status !== 'DRAFT' && inv.status !== 'VOID' && inv.status !== 'WRITTEN_OFF') {
+          <form [formGroup]="promiseForm" (ngSubmit)="promise(inv.id)" aria-label="Promise to pay" novalidate>
+            <label for="invoice-promise-amount">Promised amount (at least 10% of what is owed)</label>
+            <input id="invoice-promise-amount" data-testid="invoice-promise-amount" inputmode="decimal" formControlName="amount" [readonly]="promising()" />
+            <label for="invoice-promise-date">Promised by (within 30 days)</label>
+            <input id="invoice-promise-date" type="date" data-testid="invoice-promise-date" formControlName="date" [readonly]="promising()" />
+            <button type="submit" data-testid="invoice-promise-submit" [disabled]="promising()">Record promise to pay</button>
+            @if (promiseError()) {
+              <p role="alert" data-testid="invoice-promise-error">{{ promiseError() }}</p>
+            }
+          </form>
+        }
+
+        @if (inv.creditOf === null && inv.status !== 'DRAFT' && inv.status !== 'VOID' && inv.status !== 'WRITTEN_OFF') {
           <button
             type="button"
             data-testid="invoice-waive"
@@ -974,6 +987,8 @@ export class InvoicePanel {
   protected readonly milestoneError = signal('');
   protected readonly reaching = signal(false);
   protected readonly reachError = signal('');
+  protected readonly promising = signal(false);
+  protected readonly promiseError = signal('');
   protected readonly waiving = signal(false);
   protected readonly waiveError = signal('');
   protected readonly writingOff = signal(false);
@@ -1048,6 +1063,11 @@ export class InvoicePanel {
     pct: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly promiseForm = new FormGroup({
+    amount: new FormControl('', { nonNullable: true }),
+    date: new FormControl('', { nonNullable: true }),
+  });
+
   protected readonly dueForm = new FormGroup({
     dueDate: new FormControl('', { nonNullable: true }),
   });
@@ -1085,6 +1105,8 @@ export class InvoicePanel {
       this.milestoneForm.reset();
       this.milestoneError.set('');
       this.reachError.set('');
+      this.promiseForm.reset();
+      this.promiseError.set('');
       this.waiveError.set('');
       this.writeOffError.set('');
       this.disputeError.set('');
@@ -1402,6 +1424,37 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The milestone could not be marked reached.',
         );
         this.reaching.set(false);
+      },
+    });
+  }
+
+  protected promise(invoiceId: number): void {
+    const { amount, date } = this.promiseForm.getRawValue();
+    if (!/^\d+(\.\d{1,2})?$/.test(amount.trim())) {
+      this.promiseForm.markAllAsTouched();
+      this.promiseError.set('Enter the amount promised, like 250.00.');
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+      this.promiseForm.markAllAsTouched();
+      this.promiseError.set('Enter the date it is promised by, like 2026-04-30.');
+      return;
+    }
+    this.promising.set(true);
+    this.promiseError.set('');
+    this.service.promise(invoiceId, amount.trim(), date.trim()).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.promiseForm.reset();
+        this.promising.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.promiseError.set(
+          typeof detail === 'string' && detail ? detail : 'The promise to pay could not be recorded.',
+        );
+        this.promising.set(false);
       },
     });
   }

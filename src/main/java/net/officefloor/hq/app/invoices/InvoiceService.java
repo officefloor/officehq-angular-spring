@@ -134,6 +134,7 @@ public class InvoiceService {
                 repriceWhereRated(i, now);
             }
             i.accrueLateInterest(found, rate, annual, now);
+            i.notePromisePayments(found);
         });
         judgeWithholdingTogether(all, rate);
         Map<Long, LocalDate> paidOn = new HashMap<>();
@@ -999,6 +1000,48 @@ public class InvoiceService {
         });
         return found;
     }
+
+    /**
+     * Records a promise made today to pay the amount on an overdue invoice by the date, and records it in the
+     * audit; empty if no such invoice. The amount must be at least a tenth of what the invoice owes and no more
+     * than it, the date after today and at most {@link #PROMISE_DAYS} days ahead. An invoice that is not overdue,
+     * or whose last promise was broken, is refused.
+     */
+    @Transactional
+    public Optional<Invoice> promisePayment(Long invoiceId, BigDecimal amount, LocalDate by) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            LocalDate now = today.date();
+            BigDecimal rate = taxRate.percent();
+            BigDecimal paid = paid(List.of(invoice)).get(invoice.getId());
+            if (invoice.isPromiseBroken(now)) {
+                throw new InvoiceRejectedException("The last promise to pay on this invoice was broken; it takes no new one.");
+            }
+            if (invoice.statusIgnoringPromise(paid, null, rate, now) != InvoiceStatus.OVERDUE) {
+                throw new InvoiceRejectedException("Only an overdue invoice can take a promise to pay.");
+            }
+            BigDecimal owed = invoice.amountDue(paid, rate);
+            BigDecimal promised = amount.setScale(2, RoundingMode.HALF_UP);
+            if (promised.compareTo(owed.divide(BigDecimal.TEN, 2, RoundingMode.UP)) < 0) {
+                throw new InvoiceRejectedException("The promise must be at least 10% of what the invoice owes.");
+            }
+            if (promised.compareTo(owed) > 0) {
+                throw new InvoiceRejectedException("The promise can be no more than what the invoice owes.");
+            }
+            if (!by.isAfter(now) || by.isAfter(now.plusDays(PROMISE_DAYS))) {
+                throw new InvoiceRejectedException("The promise must be kept by a date after today and at most "
+                        + PROMISE_DAYS + " days ahead.");
+            }
+            invoice.promise(promised, by, now);
+            invoices.saveAndFlush(invoice);
+            audit.record("PAYMENT_PROMISED id=" + invoice.getId() + " amount=" + promised.toPlainString()
+                    + " date=" + by);
+        });
+        return found;
+    }
+
+    /** The most days ahead a promise to pay can be kept by. */
+    static final int PROMISE_DAYS = 30;
 
     /**
      * Writes off a sent invoice that still has something owed as a bad debt today: everything still

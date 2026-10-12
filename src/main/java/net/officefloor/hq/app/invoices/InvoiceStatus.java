@@ -17,7 +17,9 @@ package net.officefloor.hq.app.invoices;
  * overdue (a payment reaching it resolves the dispute); that follows from the days it was disputed and resolved.
  * A sent invoice billed by milestones with nothing owed now but milestones still to be reached is
  * awaiting a milestone; that follows from its milestones and payments and is never stored.
+ * An overdue invoice with a promise to pay is promised until the promise's date, unless payments since
+ * the promise reach the amount promised; it still earns late interest. That follows from the promise and its payments.
  */
 public enum InvoiceStatus {
-    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, WRITTEN_OFF, DISPUTED, AWAITING_MILESTONE
+    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, WRITTEN_OFF, DISPUTED, AWAITING_MILESTONE, PROMISED
 }

@@ -14,7 +14,8 @@ import { Currency } from './invoice-format';
 // debt is WRITTEN_OFF for good: it owes nothing, earns no more interest and takes no payments.
 // A sent invoice in dispute is DISPUTED until the dispute is resolved: it earns no interest, is not
 // overdue and takes no payments. A sent invoice billed by milestones with nothing owed now but
-// milestones still to be reached is AWAITING_MILESTONE.
+// milestones still to be reached is AWAITING_MILESTONE. An overdue invoice with a promise to pay is
+// PROMISED until the promise's date, unless payments since reach the amount promised.
 export type InvoiceStatus =
   | 'DRAFT'
   | 'SENT'
@@ -27,7 +28,8 @@ export type InvoiceStatus =
   | 'CREDITED'
   | 'WRITTEN_OFF'
   | 'DISPUTED'
-  | 'AWAITING_MILESTONE';
+  | 'AWAITING_MILESTONE'
+  | 'PROMISED';
 
 // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
 // server: the grand total — the lines' subtotal less any discount plus tax.
@@ -477,6 +479,13 @@ export class InvoiceService {
   // invoice is disputed), applied as any credit note is; the interest held back on them is not charged.
   resolveDisputeWithCredit(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/resolve-dispute-credit`, null);
+  }
+
+  // Records a promise made today to pay the amount (at least 10% of what is owed, no more) on an overdue
+  // invoice by the date (after today, at most 30 days ahead). Refused (409) when the invoice is not
+  // overdue or its last promise was broken.
+  promise(invoiceId: number, amount: string, date: string): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/promise`, { amount, date });
   }
 
   // Waives the late interest still unpaid on an overdue invoice; interest starts again

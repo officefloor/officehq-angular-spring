@@ -13,6 +13,7 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   WRITTEN_OFF: 'Written off',
   DISPUTED: 'Disputed',
   AWAITING_MILESTONE: 'Awaiting milestone',
+  PROMISED: 'Promised',
 };
 const MILESTONE_STATUS_LABEL: Record<MilestoneStatus, string> = {
   PENDING: 'Pending',

@@ -7,6 +7,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -653,6 +654,23 @@ public class InvoiceController {
     @PostMapping("/api/invoices/{id}/resolve-dispute-credit")
     public InvoiceDetail resolveDisputeWithCredit(@PathVariable Long id) {
         return invoices.resolveDisputeWithCredit(id)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** A promise to pay an amount on an overdue invoice by a date. */
+    public record NewPromise(
+            @NotNull(message = "Enter the amount promised.")
+            @Positive(message = "The amount promised must be more than zero.")
+            BigDecimal amount,
+            @NotNull(message = "Enter the date the payment is promised by.")
+            LocalDate date) {
+    }
+
+    /** Records a promise to pay on an overdue invoice. */
+    @PostMapping("/api/invoices/{id}/promise")
+    public InvoiceDetail promise(@PathVariable Long id, @Valid @RequestBody NewPromise body) {
+        return invoices.promisePayment(id, body.amount(), body.date())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
