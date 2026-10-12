@@ -217,7 +217,7 @@ public class InvoiceService {
 
     /**
      * A new draft for the invoice's client with copies of its lines and the same invoice discount
-     * and instalment plan (not the client's standard ones), issued today and due as any new invoice is, and records it in the audit; empty if no such
+     * (not the client's standard ones), issued today and due as any new invoice is, and records it in the audit; empty if no such
      * invoice. Payments are not copied.
      */
     @Transactional
@@ -864,39 +864,9 @@ public class InvoiceService {
     }
 
     /**
-     * Spreads a draft over the number of monthly instalments at the annual interest rate, after a down
-     * payment of the percentage of the grand total; empty if no
-     * such invoice. Both have already been checked; any invoice that is not a draft, or a credit note, is refused, as is a plan whose monthly instalment would be worth less
-     * than {@link Invoice#MIN_INSTALMENT_USD} US dollars at today's rates.
-     */
-    @Transactional
-    public Optional<Invoice> setPlan(Long invoiceId, int instalments, BigDecimal instalmentRate,
-            BigDecimal planDownPct) {
-        Optional<Invoice> found = load(invoiceId);
-        found.ifPresent(invoice -> {
-            if (invoice.isCreditNote()) {
-                throw new InvoiceRejectedException("A credit note cannot be spread over instalments.");
-            }
-            if (!invoice.isDraft()) {
-                throw new InvoiceRejectedException("Only a draft can be spread over instalments.");
-            }
-            if (!invoice.getMilestones().isEmpty()) {
-                throw new InvoiceRejectedException("An invoice billed by milestones cannot be spread over instalments.");
-            }
-            invoice.setPlan(instalments, instalmentRate, planDownPct);
-            if (invoice.isInstalmentTooSmall(taxRate.percent(), today.date())) {
-                throw new InvoiceRejectedException("The monthly instalment must be worth at least $"
-                        + Invoice.MIN_INSTALMENT_USD.toPlainString() + " at today's exchange rates.");
-            }
-            invoices.saveAndFlush(invoice);
-        });
-        return found;
-    }
-
-    /**
      * Adds a milestone of the percentage to a draft; empty if no such invoice. The percentage has already
      * been checked to be over 0; one that would take the milestones over 100% is refused, as is any invoice
-     * that is not a draft, a credit note, or one spread over instalments.
+     * that is not a draft, or a credit note.
      */
     @Transactional
     public Optional<Invoice> addMilestone(Long invoiceId, String description, BigDecimal pct) {
@@ -907,9 +877,6 @@ public class InvoiceService {
             }
             if (!invoice.isDraft()) {
                 throw new InvoiceRejectedException("Only a draft can have milestones added.");
-            }
-            if (invoice.hasPlan()) {
-                throw new InvoiceRejectedException("An invoice spread over instalments cannot be billed by milestones.");
             }
             BigDecimal after = invoice.milestonesPct().add(pct);
             if (after.compareTo(BigDecimal.valueOf(100)) > 0) {
@@ -1024,53 +991,11 @@ public class InvoiceService {
             invoice.waiveInterest(today.date());
             withInterest(List.of(invoice));
             BigDecimal waived = invoice.getLateWaived().subtract(before);
-            if (invoice.hasPlan() || waived.signum() <= 0) {
+            if (waived.signum() <= 0) {
                 throw new InvoiceRejectedException("There is no unpaid late interest to waive.");
             }
             invoices.saveAndFlush(invoice);
             audit.record("INTEREST_WAIVED id=" + invoice.getId() + " amount=" + waived.toPlainString());
-        });
-        return found;
-    }
-
-    /**
-     * Skips an instalment of a sent invoice's plan: it pays only its interest, and the instalments after
-     * it are worked out again on the balance still owed (see {@link Invoice#schedule}); records it in the
-     * audit; empty if no such invoice. An instalment that is overdue, paid (even in part) or the last is
-     * refused, as is skipping a second one.
-     */
-    @Transactional
-    public Optional<Invoice> skipInstalment(Long invoiceId, int number) {
-        Optional<Invoice> found = load(invoiceId);
-        found.ifPresent(invoice -> {
-            if (!invoice.hasPlan() || invoice.isDraft() || invoice.isVoid() || invoice.isCreditNote()
-                    || invoice.isWrittenOff()) {
-                throw new InvoiceRejectedException("Only an instalment of a sent plan can be skipped.");
-            }
-            BigDecimal rate = taxRate.percent();
-            BigDecimal paid = paid(List.of(invoice)).get(invoice.getId());
-            List<Instalment.Progress> progress = invoice.instalmentProgress(paid, rate, today.date());
-            Instalment.Progress instalment = progress.stream().filter(p -> p.instalment().number() == number)
-                    .findFirst().orElseThrow(() -> new InvoiceRejectedException("There is no such instalment to skip."));
-            if (number < 1) {
-                throw new InvoiceRejectedException("The down payment cannot be skipped.");
-            }
-            if (instalment == progress.get(progress.size() - 1)) {
-                throw new InvoiceRejectedException("The last instalment cannot be skipped.");
-            }
-            if (instalment.status() == Instalment.Status.OVERDUE) {
-                throw new InvoiceRejectedException("An overdue instalment cannot be skipped.");
-            }
-            if (instalment.paid().signum() > 0) {
-                throw new InvoiceRejectedException("An instalment already paid cannot be skipped.");
-            }
-            if (invoice.getSkippedInstalment() != null) {
-                throw new InvoiceRejectedException("This plan has already skipped an instalment.");
-            }
-            invoice.skipInstalment(number);
-            invoices.saveAndFlush(invoice);
-            withInterest(List.of(invoice));
-            audit.record("INSTALMENT_SKIPPED id=" + invoice.getId() + " instalment=" + number);
         });
         return found;
     }
@@ -1576,8 +1501,7 @@ public class InvoiceService {
 
     /**
      * Why the draft credit note cannot be issued, or null when it can: its original must be a sent
-     * invoice (not void). On a plan it comes off the instalments to come, so the plan must have no
-     * overdue instalment and the credit note cannot be more than the principal still owed before them.
+     * invoice (not void).
      */
     private String creditNoteRefusal(Invoice note) {
         return creditNoteRefusal(note, true);
@@ -1592,21 +1516,6 @@ public class InvoiceService {
         String overCredit = checkOverCredit ? overCreditRefusal(note, original) : null;
         if (overCredit != null) {
             return overCredit;
-        }
-        if (original.hasPlan()) {
-            BigDecimal rate = taxRate.percent();
-            LocalDate on = today.date();
-            withInterest(List.of(original));
-            BigDecimal paid = paid(List.of(original)).get(original.getId());
-            if (original.instalmentProgress(paid, rate, on).stream()
-                    .anyMatch(p -> p.status() == Instalment.Status.OVERDUE)) {
-                return "The plan of the invoice this credits has an overdue instalment, so the credit note cannot be issued.";
-            }
-            BigDecimal principal = original.principalToCome(on, rate);
-            if (note.total(rate).compareTo(principal) > 0) {
-                return "The credit note cannot be more than the " + original.currency().format(principal)
-                        + " principal still owed on the plan's instalments to come.";
-            }
         }
         return null;
     }
@@ -1674,8 +1583,7 @@ public class InvoiceService {
     /**
      * Issues the draft today, due on the client's terms, and records it in the audit (INVOICE_SENT, or
      * ADJUSTMENT_ISSUED for a debit adjustment note); then uses the
-     * client's credit on it (see {@link #applyCredit}), unless it is spread over instalments, whose
-     * schedule is dated from the new issue date.
+     * client's credit on it (see {@link #applyCredit}).
      */
     private void markSent(Invoice invoice) {
         LocalDate issued = today.date();
@@ -1706,9 +1614,7 @@ public class InvoiceService {
         if (withheld.signum() > 0) {
             audit.record("WITHHOLDING id=" + invoice.getId() + " amount=" + withheld.toPlainString());
         }
-        if (!invoice.hasPlan()) {
-            applyCredit(invoice);
-        }
+        applyCredit(invoice);
     }
 
     /**
@@ -1796,7 +1702,7 @@ public class InvoiceService {
         }
         BigDecimal surcharge = surchargeOf(amount, currency, method, date);
         BigDecimal fee = feeOf(amount, paidIn, currency);
-        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date, reference)
+        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date, reference).asDeposit()
                 .paidIn(paidIn, paidAmount, currency).by(method).surcharged(surcharge).feeCharged(fee));
         recordFee(payment, currency);
         recordSurcharge(payment, currency);
@@ -2034,23 +1940,11 @@ public class InvoiceService {
                 invoice.takeEarlyDiscount(early);
                 due = settle;
             }
-            BigDecimal saved = BigDecimal.ZERO;
-            BigDecimal payoff = date.isAfter(now) ? null : invoice.payoff(paidSoFar, taxRate.percent(), now);
-            if (payoff != null && amount.compareTo(payoff) >= 0) {
-                saved = due.subtract(payoff).max(BigDecimal.ZERO);
-                invoice.saveInterest(saved);
-                due = payoff;
-            }
             BigDecimal rounding = BigDecimal.ZERO;
             if (cash && amount.compareTo(invoice.currency().toCash(due)) == 0) {
                 rounding = amount.subtract(due);
             }
             BigDecimal applied = amount.min(due.add(rounding));
-            if (invoice.hasPlan() && invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
-                throw new InvoiceRejectedException("A payment must be at least the "
-                        + invoice.currency().format(invoice.earliestUnpaid(paidSoFar, taxRate.percent()))
-                        + " still unpaid on the earliest unpaid instalment, unless it settles the plan.");
-            }
             if (invoice.isTooSmallPart(applied, paidSoFar, taxRate.percent())) {
                 throw new InvoiceRejectedException("A part payment must be at least "
                         + invoice.currency().format(invoice.minimumPart(paidSoFar, taxRate.percent()))
@@ -2111,10 +2005,6 @@ public class InvoiceService {
             if (early.signum() > 0) {
                 invoices.saveAndFlush(invoice);
                 audit.record("EARLY_DISCOUNT id=" + invoice.getId() + " amount=" + early.toPlainString());
-            }
-            if (payoff != null && amount.compareTo(payoff) >= 0) {
-                invoices.saveAndFlush(invoice);
-                audit.record("PLAN_SETTLED id=" + invoice.getId() + " saved=" + saved.toPlainString());
             }
             recordWriteOff(invoice);
             notesPaid.forEach((note, part) -> {
@@ -2532,11 +2422,6 @@ public class InvoiceService {
             }
             // Only a stated amount must be at least the minimum part: what is applied automatically is whatever is left.
             boolean checked = stated.contains(invoice.getId());
-            if (checked && invoice.hasPlan() && invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
-                throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
-                        + number + " is less than the " + currency.format(invoice.earliestUnpaid(paidSoFar, taxRate.percent()))
-                        + " still unpaid on its earliest unpaid instalment, unless it settles the plan.");
-            }
             if (checked && invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
                 throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
                         + number + " is less than " + currency.format(invoice.minimumPart(paidSoFar, taxRate.percent()))
@@ -3025,12 +2910,10 @@ public class InvoiceService {
             }
             payment.reverse();
             payments.saveAndFlush(payment);
-            // An invoice the payment settled early is no longer paid off, so its early discount or the
-            // interest its plan's payoff dropped lapses.
+            // An invoice the payment settled early is no longer paid off, so its early discount lapses.
             payment.getAllocations().forEach(a -> load(a.getInvoiceId()).ifPresent(invoice -> {
-                if (invoice.getEarlyDiscountTaken().signum() > 0 || invoice.getInterestSaved().signum() > 0) {
+                if (invoice.getEarlyDiscountTaken().signum() > 0) {
                     invoice.takeEarlyDiscount(BigDecimal.ZERO);
-                    invoice.saveInterest(BigDecimal.ZERO);
                     invoices.saveAndFlush(invoice);
                 }
             }));

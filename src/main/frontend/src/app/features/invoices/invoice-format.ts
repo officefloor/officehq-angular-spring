@@ -1,4 +1,4 @@
-import { InstalmentStatus, InvoiceStatus, MilestoneStatus } from './invoice.service';
+import { InvoiceStatus, MilestoneStatus } from './invoice.service';
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
   DRAFT: 'Draft',
@@ -22,12 +22,6 @@ const MILESTONE_STATUS_LABEL: Record<MilestoneStatus, string> = {
   DUE: 'Due',
   DISPUTED: 'Disputed',
 };
-const INSTALMENT_STATUS_LABEL: Record<InstalmentStatus, string> = {
-  PAID: 'Paid',
-  PART_PAID: 'Part paid',
-  OVERDUE: 'Overdue',
-  DUE: 'Due',
-};
 // The currencies a client can be billed in.
 export type Currency = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CHF';
 export const CURRENCIES: readonly Currency[] = ['USD', 'EUR', 'GBP', 'JPY', 'CHF'];
@@ -49,10 +43,6 @@ export function statusLabel(status: InvoiceStatus): string {
 
 export function milestoneStatusLabel(status: MilestoneStatus): string {
   return MILESTONE_STATUS_LABEL[status];
-}
-
-export function instalmentStatusLabel(status: InstalmentStatus): string {
-  return INSTALMENT_STATUS_LABEL[status];
 }
 
 // Money from the server is already to the cent (whole yen for yen), so the number shown is exact:

@@ -24,7 +24,6 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Objects;
 import java.util.List;
@@ -52,27 +51,14 @@ public class Invoice {
      */
     public static final BigDecimal WRITE_OFF_LIMIT = new BigDecimal("0.05");
 
-    /** A plan's monthly instalment must be worth at least this many US dollars. */
-    public static final BigDecimal MIN_INSTALMENT_USD = new BigDecimal("25.00");
-
     /** The most of the grand total that can be written off as a small balance after a payment. */
     public static final BigDecimal WRITE_OFF_SHARE = new BigDecimal("0.01");
 
     /** A part payment must be at least this share of the grand total, unless it settles the invoice. */
     public static final BigDecimal MINIMUM_PART_SHARE = new BigDecimal("0.10");
 
-    /** The fewest and most monthly instalments a plan can have. */
-    public static final int MIN_INSTALMENTS = 2;
-    public static final int MAX_INSTALMENTS = 24;
-
-    /** The highest annual interest rate a plan can charge, as a percentage. */
-    public static final BigDecimal MAX_INSTALMENT_RATE = new BigDecimal("30");
-
     /** The most a draft's surcharge can be, a percentage of its amount after its discounts. */
     public static final BigDecimal MAX_SURCHARGE_PCT = new BigDecimal("25");
-
-    /** The most a plan's down payment can be, a percentage of the grand total. */
-    public static final BigDecimal MAX_PLAN_DOWN_PCT = new BigDecimal("50");
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -143,33 +129,6 @@ public class Invoice {
     @Column(name = "dispute_credit")
     private boolean disputeCredit;
 
-    /** How many monthly instalments the invoice is spread over; null when it has no plan. */
-    @Column(name = "instalments")
-    private Integer instalments;
-
-    /** The annual interest rate of the plan, a percentage from 0 to {@link #MAX_INSTALMENT_RATE}. */
-    @Column(name = "instalment_rate")
-    private BigDecimal instalmentRate = BigDecimal.ZERO;
-
-    /**
-     * The annual rate the plan is worked out at: its own rate, but no more than the legal maximum of
-     * the client's region.
-     */
-    public BigDecimal planRate() {
-        return regionMaxInterest == null ? instalmentRate : instalmentRate.min(new BigDecimal(regionMaxInterest.trim()));
-    }
-
-    /** The plan's down payment, a percentage of the grand total from 0 to {@link #MAX_PLAN_DOWN_PCT}. */
-    @Column(name = "plan_down_pct")
-    private BigDecimal planDownPct = BigDecimal.ZERO;
-
-    /**
-     * The plan fee charged when the plan was set up, in the invoice's currency: added to what is spread
-     * over the instalments, after any down payment; 0 when there is none.
-     */
-    @Column(name = "plan_fee")
-    private BigDecimal planFee = BigDecimal.ZERO;
-
     /**
      * The grand total the invoice was approved at, when it was over the workspace's approval limit;
      * null while it has not been approved.
@@ -229,13 +188,6 @@ public class Invoice {
     /** The id of the sent invoice this draft was claimed from as its next progress claim (see {@link #nextClaim}); null when it was not. */
     @Column(name = "claim_from")
     private Long claimFrom;
-
-    /**
-     * The number of the instalment the client skipped: it pays only its interest and the instalments
-     * after it are worked out again (see {@link #schedule}); null when none was.
-     */
-    @Column(name = "skipped_instalment")
-    private Integer skippedInstalment;
 
     /** Whether the invoice's client is tax exempt, so no line is taxed; read from the client. */
     @Formula("(SELECT c.tax_exempt FROM client c WHERE c.id = client_id)")
@@ -443,13 +395,6 @@ public class Invoice {
     private String interestThresholdUsd;
 
     /**
-     * The workspace's plan fee in US dollars, as stored (the {@code plan_fee} setting); null when none
-     * is set.
-     */
-    @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'plan_fee')")
-    private String planFeeUsd;
-
-    /**
      * The workspace's withholding threshold in US dollars, as stored (the {@code withholding_threshold}
      * setting); null when none is set.
      */
@@ -484,13 +429,6 @@ public class Invoice {
     private BigDecimal earlyDiscount = BigDecimal.ZERO;
 
     /**
-     * The interest of the instalments not yet due that was dropped when the plan was paid off early;
-     * 0 when it was not.
-     */
-    @Column(name = "interest_saved")
-    private BigDecimal interestSaved = BigDecimal.ZERO;
-
-    /**
      * The cash rounding the invoice was settled with in cash: what was paid in cash less what was due
      * (signed); 0 when none. It is owed on top of the grand total, so nothing is left due or held as credit.
      */
@@ -515,13 +453,6 @@ public class Invoice {
     /** How many credit notes have been issued against this invoice; read from them. */
     @Formula("(SELECT COUNT(*) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE' AND cn.adjustment_of IS NULL)")
     private int creditNotesIssued;
-
-    /**
-     * The credit notes issued against this invoice, as "issue date=amount taken off" joined by commas
-     * in the order they were issued; null when there are none. Read from them, for a plan's schedule.
-     */
-    @Formula("(SELECT LISTAGG(CAST(cn.issue_date AS VARCHAR) || '=' || CAST(cn.credit_applied AS VARCHAR), ',') WITHIN GROUP (ORDER BY cn.issue_date, cn.id) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
-    private String creditsIssued;
 
     /**
      * The credit notes issued against this invoice, as "issue date=amount taken off what it owed"
@@ -551,14 +482,6 @@ public class Invoice {
      */
     @Transient
     private BigDecimal lateWaived = BigDecimal.ZERO;
-
-    /**
-     * The late interest each instalment of a plan has been charged (see {@link #accrueLateInterest}), in
-     * the order of the instalments; empty when none is. Not stored, worked out again each time the
-     * invoice is read.
-     */
-    @Transient
-    private List<BigDecimal> instalmentInterest = List.of();
 
     /**
      * The late interest each reached milestone has been charged (see {@link #accrueLateInterest}), by the
@@ -634,10 +557,6 @@ public class Invoice {
         copy.discountCap = discountCap;
         copy.discountReason = discountReason;
         copy.surchargePct = surchargePct;
-        copy.instalments = instalments;
-        copy.instalmentRate = instalmentRate;
-        copy.planDownPct = planDownPct;
-        copy.planFee = planFee;
         lines.forEach(line -> copy.addLine(line.copy()));
         return copy;
     }
@@ -1362,10 +1281,6 @@ public class Invoice {
      * paid, at the tax rate: what it still owes; the rest is left over as credit.
      */
     public BigDecimal creditTaken(BigDecimal amount, BigDecimal paid, BigDecimal taxRate) {
-        if (hasPlan()) {
-            // It comes off the plan's instalments to come instead (see #schedule).
-            return amount;
-        }
         return amount.min(amountDue(paid, taxRate).max(BigDecimal.ZERO));
     }
 
@@ -1396,22 +1311,18 @@ public class Invoice {
     }
 
     /**
-     * What the invoice is owed in all: the grand total (the plan total when it is spread over
-     * instalments) less what is credited, plus the late interest charged.
+     * What the invoice is owed in all: the grand total less what is credited, plus the late interest charged.
      */
     private BigDecimal payable(BigDecimal taxRate) {
         return payableBeforeInterest(taxRate).add(getLateInterest());
     }
 
     /**
-     * As {@link #payable}, but without the late interest charged. A plan's credit notes have
-     * already come off its plan total.
+     * As {@link #payable}, but without the late interest charged.
      */
     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
-        BigDecimal owed = hasPlan() ? planTotal(taxRate)
-                : (isBilledByMilestones() ? reachedTotal(taxRate) : owedTotal(taxRate)).subtract(getCredited());
-        return owed.subtract(getEarlyDiscountTaken())
-                .subtract(getInterestSaved()).add(getCashRounding());
+        BigDecimal owed = (isBilledByMilestones() ? reachedTotal(taxRate) : owedTotal(taxRate)).subtract(getCredited());
+        return owed.subtract(getEarlyDiscountTaken()).add(getCashRounding());
     }
 
     /** The late interest charged, to the cent; 0 when none is. */
@@ -1427,8 +1338,7 @@ public class Invoice {
     /**
      * Works out the late interest charged by the given day, at the annual rate (a percentage), from the
      * payments (those not reversed count), and keeps it as part of what is payable. No late fee is
-     * charged. A sent invoice not
-     * spread over instalments, with something still owed more than {@link #graceDays()} days after its
+     * charged. A sent invoice, with something still owed more than {@link #graceDays()} days after its
      * due date, earns interest from the end of its grace period ({@link #graceDays()} days after its due
      * date), compounded daily at rate / 360 (Actual/360): a balance B owing for
      * d days earns B x ((1 + rate / 100 / 360)^d - 1), rounded half up to the cent. Each payment after
@@ -1436,9 +1346,8 @@ public class Invoice {
      * (earlier interest left out), and a payment pays the invoice, then the interest earned
      * so far. A credit note issued after the grace period ends a period too:
      * what it took off what the invoice owed counts only from its issue date, so the periods before it
-     * earn interest on what was owed before the credit. An invoice spread over instalments instead earns interest
-     * instalment by instalment (see {@link #accrueInstalmentInterest}), none of it charged until the
-     * instalments' interest together reaches {@link #interestThreshold()}. On the day the
+     * earn interest on what was owed before the credit. None of it is charged until it reaches
+     * {@link #interestThreshold()}. On the day the
      * interest was waived (after the day's payments), the interest still unpaid is written off
      * (kept as what was waived) and that day ends a period: interest starts again from it on what is
      * still owed. A written-off invoice is charged only up to the day it was
@@ -1458,21 +1367,12 @@ public class Invoice {
         LocalDate today = writtenOffOn != null && writtenOffOn.isBefore(asOf) ? writtenOffOn : asOf;
         this.lateInterest = BigDecimal.ZERO;
         this.lateWaived = BigDecimal.ZERO;
-        this.instalmentInterest = List.of();
         this.milestoneInterest = Map.of();
         if (status == InvoiceStatus.SENT && !isCreditNote() && isBilledByMilestones()) {
             accrueMilestoneInterest(payments, taxRate, annualRate, today);
             if (getLateInterest().compareTo(interestThreshold()) < 0) {
                 this.lateInterest = BigDecimal.ZERO;
                 this.milestoneInterest = Map.of();
-            }
-            return;
-        }
-        if (status == InvoiceStatus.SENT && !isCreditNote() && hasPlan()) {
-            accrueInstalmentInterest(payments, taxRate, annualRate, today);
-            if (getLateInterest().compareTo(interestThreshold()) < 0) {
-                this.lateInterest = BigDecimal.ZERO;
-                this.instalmentInterest = List.of();
             }
             return;
         }
@@ -1484,7 +1384,7 @@ public class Invoice {
     }
 
     /**
-     * The late interest an invoice (all of a plan's instalments together) must add up to before any of it is charged: the
+     * The late interest an invoice must add up to before any of it is charged: the
      * workspace's threshold in US dollars converted at the issue date's rate, rounded down to the step;
      * 0 when none is set.
      */
@@ -1538,11 +1438,10 @@ public class Invoice {
     }
 
     /**
-     * The total a draft is judged and approved on at the tax rate: the plan total (with its interest and plan fee)
-     * when it has an instalment plan, else the grand total.
+     * The total a draft is judged and approved on at the tax rate: the grand total.
      */
     public BigDecimal approvalTotal(BigDecimal taxRate) {
-        return hasPlan() ? planTotal(taxRate) : total(taxRate);
+        return total(taxRate);
     }
 
     /** The number of days an approval stays good after the day it was given: as many as the client's tier allows. */
@@ -1637,10 +1536,10 @@ public class Invoice {
         this.approvedOn = on;
     }
 
-    /** The late interest charged on an invoice not spread over instalments (see {@link #accrueLateInterest}). */
+    /** The late interest charged on an invoice (see {@link #accrueLateInterest}). */
     private void accrueInvoiceInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
             LocalDate today) {
-        if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || dueDate == null
+        if (status != InvoiceStatus.SENT || isCreditNote() || dueDate == null
                 || !today.isAfter(graceEnd(dueDate))) {
             return;
         }
@@ -1730,47 +1629,8 @@ public class Invoice {
     }
 
     /**
-     * Works out the late interest each instalment of the plan has been charged by the given
-     * day, at the annual rate (a percentage), from the payments (those not
-     * reversed count; what credit notes took off has already come off the schedule). Payments, in the
-     * order they were made, pay each instalment itself and then its interest earned
-     * so far, earliest instalment first. An instalment still not paid off more than
-     * {@link #graceDays()} days after its due date is charged no late fee, and earns interest by the
-     * same rule as an invoice: from the end of its own grace period, compounded daily at rate / 360 (Actual/360), on
-     * what is still unpaid of it, with each payment after its grace period ending a period.
-     */
-    private void accrueInstalmentInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
-            LocalDate today) {
-        if (annualRate == null || annualRate.signum() <= 0) {
-            return;
-        }
-        record Part(LocalDate on, Long paymentId, BigDecimal amount) {
-        }
-        List<Part> inOrder = new ArrayList<>();
-        payments.stream().filter(p -> !p.isReversed())
-                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
-                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
-                .filter(p -> !p.on().isAfter(today))
-                .forEach(inOrder::add);
-        inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
-        if (getInterestSaved().signum() > 0 && !inOrder.isEmpty()) {
-            // The interest dropped by paying the plan off counts as paid with the payment that settled it.
-            inOrder.add(new Part(inOrder.get(inOrder.size() - 1).on(), Long.MAX_VALUE, getInterestSaved()));
-        }
-        List<Instalment> schedule = schedule(taxRate);
-        List<BigDecimal> charges = chargesInOrder(schedule.stream().map(Instalment::dueDate).toList(),
-                schedule.stream().map(Instalment::payment).toList(), Collections.nCopies(schedule.size(), null),
-                inOrder.stream().map(Part::on).toList(),
-                inOrder.stream().map(Part::amount).toList(), annualRate, today);
-        BigDecimal total = charges.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-        charges = charges.stream().map(c -> c.setScale(scale(), RoundingMode.HALF_UP)).toList();
-        this.instalmentInterest = charges;
-        this.lateInterest = total;
-    }
-
-    /**
      * Works out the late interest each reached milestone has been charged by the given day, at the annual
-     * rate (a percentage), by the same rule as a plan's instalments (see {@link #accrueInstalmentInterest}):
+     * rate (a percentage), by the same rule for each amount (see {@link #chargesInOrder}):
      * each reached milestone falls due on its own (see {@link #milestoneDueDate}), and payments (those not
      * reversed, with what credit notes took off counting from the start) pay the reached milestones in
      * due-date order (then id), each milestone's amount and then its interest earned so far. A milestone
@@ -1921,11 +1781,10 @@ public class Invoice {
 
     /**
      * The early-payment discount on offer: the client's early-payment percentage of the amount before
-     * tax (the subtotal less the discount), rounded down to the cent; nothing for a credit note, an invoice
-     * spread over instalments, or one whose client is not a LOW payment risk (see {@link #withholdEarlyPay}).
+     * tax (the subtotal less the discount), rounded down to the cent; nothing for a credit note, or one whose client is not a LOW payment risk (see {@link #withholdEarlyPay}).
      */
     public BigDecimal earlyDiscount(BigDecimal taxRate) {
-        if (earlyPayWithheld || isCreditNote() || hasPlan() || earlyPayDays == null
+        if (earlyPayWithheld || isCreditNote() || earlyPayDays == null
                 || earlyPayPct == null || earlyPayPct.signum() <= 0) {
             return zero();
         }
@@ -1994,278 +1853,8 @@ public class Invoice {
         return cashDue(paid, taxRate).subtract(amountDue(paid, taxRate));
     }
 
-    /** The interest dropped when the plan was paid off early, to the cent; 0 when it was not. */
-    public BigDecimal getInterestSaved() {
-        return (interestSaved == null ? BigDecimal.ZERO : interestSaved).setScale(scale(), RoundingMode.HALF_UP);
-    }
-
-    /** Settles the plan early, dropping the given interest (0 to clear it again). */
-    public void saveInterest(BigDecimal amount) {
-        this.interestSaved = amount;
-    }
-
     /**
-     * What would pay off a sent plan not yet paid off on the given day, once the given amount has been
-     * paid, at the tax rate: the principal still owed on all its instalments, plus what is unpaid of
-     * the interest of the instalments already due (due on or before the day) and any late interest.
-     * Within an instalment what is paid goes to its interest first. Null without a plan, or when
-     * nothing is due.
-     */
-    public BigDecimal payoff(BigDecimal paid, BigDecimal taxRate, LocalDate on) {
-        if (!hasPlan() || status != InvoiceStatus.SENT || isCreditNote() || getInterestSaved().signum() > 0
-                || amountDue(paid, taxRate).signum() <= 0) {
-            return null;
-        }
-        BigDecimal payoff = zero();
-        for (Instalment.Progress p : instalmentProgress(paid, taxRate, on)) {
-            LocalDate due = p.instalment().dueDate();
-            BigDecimal unpaid = due == null || !due.isAfter(on) ? p.unpaid() : p.unpaid().min(p.instalment().principal());
-            payoff = payoff.add(unpaid).add(p.chargesUnpaid());
-        }
-        return payoff;
-    }
-
-    /** The number of the instalment the client skipped; null when none was. */
-    public Integer getSkippedInstalment() {
-        return skippedInstalment;
-    }
-
-    /** Skips the instalment with the given number: it pays only its interest (see {@link #schedule}). */
-    public void skipInstalment(int number) {
-        this.skippedInstalment = number;
-    }
-
-    /** Whether the invoice is spread over monthly instalments. */
-    public boolean hasPlan() {
-        return instalments != null;
-    }
-
-    /** How many monthly instalments the invoice is spread over; null when it has no plan. */
-    public Integer getInstalments() {
-        return instalments;
-    }
-
-    /** The plan's annual interest rate, a percentage; 0 when it has no plan. */
-    public BigDecimal getInstalmentRate() {
-        return instalmentRate;
-    }
-
-    /** The plan's down payment, a percentage of the grand total; 0 when there is none. */
-    public BigDecimal getPlanDownPct() {
-        return planDownPct;
-    }
-
-    /** The plan fee charged when the plan was set up, in the invoice's currency; 0 when there is none. */
-    public BigDecimal getPlanFee() {
-        return planFee.setScale(scale(), RoundingMode.HALF_UP);
-    }
-
-    /**
-     * Spreads the invoice over the number of monthly instalments at the annual rate, after a down
-     * payment of the percentage of the grand total; all have already been checked. Charges the
-     * workspace's plan fee: its US dollars converted at the rate of the pricing date (see {@link #pricingDate}), rounded down to the step.
-     */
-    public void setPlan(int instalments, BigDecimal instalmentRate, BigDecimal planDownPct) {
-        this.instalments = instalments;
-        this.instalmentRate = instalmentRate;
-        this.skippedInstalment = null;
-        this.planDownPct = planDownPct;
-        this.planFee = planFeeUsd == null ? zero()
-                : currency().divideDownToStep(new BigDecimal(planFeeUsd.trim()), usdPerOn(pricingDate()));
-    }
-
-    /**
-     * Whether the plan's monthly instalment (its first after any down payment) at the tax rate is worth
-     * less than {@link #MIN_INSTALMENT_USD} US dollars at the rate on the date; false without a plan.
-     */
-    public boolean isInstalmentTooSmall(BigDecimal taxRate, LocalDate on) {
-        return schedule(taxRate).stream().filter(i -> i.number() >= 1).findFirst()
-                .map(i -> i.payment().multiply(usdPerOn(on)).compareTo(MIN_INSTALMENT_USD) < 0)
-                .orElse(false);
-    }
-
-    /** The plan's down payment at the tax rate: its percentage of the grand total, rounded down to the cent. */
-    private BigDecimal downPayment(BigDecimal taxRate) {
-        return owedTotal(taxRate).multiply(planDownPct).divide(BigDecimal.valueOf(100), scale(), RoundingMode.FLOOR);
-    }
-
-    /**
-     * The plan's schedule at the tax rate, an ordinary loan of the grand total; empty when there is no
-     * plan. With the monthly rate i (the annual rate / 12 / 100) the instalment is P x i / (1 - (1 +
-     * i)^-n), or P / n at 0%, rounded up to the next whole unit of the currency. Each month's interest is the balance still
-     * owed x i, rounded half up to the cent, and its principal the instalment less the interest; the
-     * last instalment (or any earlier one the instalment would overpay) pays off the whole balance left
-     * plus its interest, so the schedule ends at zero. A plan with a down payment starts with it as
-     * instalment 0, due on the issue date with no interest, and the instalments are worked out on what
-     * is left. The plan fee is added to what is spread over the instalments (after any down payment), so
-     * earns their interest. Instalment k falls due k months after the issue date, on the same day (the month's last day when
-     * it is shorter). Each credit note issued against it, in the order they were issued, then re-works
-     * the instalments due after its issue date by the same rule: from the principal still owed before
-     * them less what the credit note took off, over as many instalments, keeping their due dates; the
-     * instalments due before then stay as they were. A skipped instalment (never the last) pays only its
-     * interest, leaving the balance as it was, and the instalments after it are worked out again by the
-     * same rule from that balance over the instalments left, keeping their due dates.
-     */
-    public List<Instalment> schedule(BigDecimal taxRate) {
-        if (!hasPlan()) {
-            return List.of();
-        }
-        List<LocalDate> dues = new ArrayList<>(instalments + 1);
-        List<Instalment> schedule = new ArrayList<>();
-        BigDecimal principal = owedTotal(taxRate).setScale(scale(), RoundingMode.HALF_UP);
-        if (planDownPct.signum() > 0) {
-            BigDecimal down = downPayment(taxRate);
-            principal = principal.subtract(down);
-            dues.add(issueDate);
-            schedule.add(new Instalment(0, issueDate, down, zero(), down, principal));
-        }
-        principal = principal.add(getPlanFee());
-        int downs = dues.size();
-        for (int k = 1; k <= instalments; k++) {
-            dues.add(issueDate == null ? null : issueDate.plusMonths(k));
-        }
-        schedule.addAll(amortiseSkipping(principal, dues.subList(downs, dues.size()), 1));
-        if (creditsIssued != null && !creditsIssued.isBlank()) {
-            for (String credit : creditsIssued.split(",")) {
-                String[] parts = credit.split("=");
-                LocalDate on = LocalDate.parse(parts[0].trim());
-                int kept = Math.max(keptBefore(schedule, on), downs);
-                if (kept == schedule.size()) {
-                    continue;
-                }
-                BigDecimal left = principalBefore(schedule, kept, taxRate)
-                        .subtract(new BigDecimal(parts[1].trim()));
-                List<Instalment> reworked = amortiseSkipping(left, dues.subList(kept, dues.size()),
-                        schedule.get(kept).number());
-                schedule = new ArrayList<>(schedule.subList(0, kept));
-                schedule.addAll(reworked);
-            }
-        }
-        return schedule;
-    }
-
-    /** How many instalments of the schedule fall due on or before the day, so stay as they are. */
-    private static int keptBefore(List<Instalment> schedule, LocalDate on) {
-        int kept = 0;
-        while (kept < schedule.size() && schedule.get(kept).dueDate() != null
-                && !schedule.get(kept).dueDate().isAfter(on)) {
-            kept++;
-        }
-        return kept;
-    }
-
-    /** The principal still owed before the instalment at the index: the balance after the one before it. */
-    private BigDecimal principalBefore(List<Instalment> schedule, int index, BigDecimal taxRate) {
-        return index == 0 ? owedTotal(taxRate).setScale(scale(), RoundingMode.HALF_UP).add(getPlanFee())
-                : schedule.get(index - 1).balance();
-    }
-
-    /**
-     * The principal still owed on a sent plan before its instalments due after the given day, at the
-     * tax rate: what a credit note issued that day can take off at most; zero when none falls due after it.
-     */
-    public BigDecimal principalToCome(LocalDate on, BigDecimal taxRate) {
-        List<Instalment> schedule = schedule(taxRate);
-        int kept = Math.max(keptBefore(schedule, on), planDownPct.signum() > 0 ? 1 : 0);
-        return kept == schedule.size() ? zero() : principalBefore(schedule, kept, taxRate);
-    }
-
-    /**
-     * {@link #amortise} the principal, then, when the skipped instalment is among them and not the last,
-     * make it pay only its interest and work out the instalments after it again (see {@link #schedule}).
-     */
-    private List<Instalment> amortiseSkipping(BigDecimal principal, List<LocalDate> dues, int firstNumber) {
-        List<Instalment> schedule = amortise(principal, dues, firstNumber);
-        int index = skippedInstalment == null ? -1 : skippedInstalment - firstNumber;
-        if (index < 0 || index >= schedule.size() - 1) {
-            return schedule;
-        }
-        BigDecimal balance = index == 0 ? principal.setScale(scale(), RoundingMode.HALF_UP)
-                : schedule.get(index - 1).balance();
-        BigDecimal interest = balance.multiply(planRate().divide(BigDecimal.valueOf(1200), MathContext.DECIMAL128))
-                .setScale(scale(), RoundingMode.HALF_UP);
-        List<Instalment> skipped = new ArrayList<>(schedule.subList(0, index));
-        skipped.add(new Instalment(skippedInstalment, dues.get(index), interest, interest, zero(), balance));
-        skipped.addAll(amortise(balance, dues.subList(index + 1, dues.size()), skippedInstalment + 1));
-        return skipped;
-    }
-
-    /**
-     * An ordinary loan of the principal at the plan's rate (see {@link #planRate}) over one instalment per due date, numbered
-     * from the given number (see {@link #schedule}).
-     */
-    private List<Instalment> amortise(BigDecimal principal, List<LocalDate> dues, int firstNumber) {
-        MathContext mc = MathContext.DECIMAL128;
-        BigDecimal i = planRate().divide(BigDecimal.valueOf(1200), mc);
-        int n = dues.size();
-        BigDecimal payment;
-        if (i.signum() == 0) {
-            payment = principal.divide(BigDecimal.valueOf(n), mc);
-        } else {
-            BigDecimal growth = BigDecimal.ONE.add(i).pow(n, mc);
-            payment = principal.multiply(i).multiply(growth).divide(growth.subtract(BigDecimal.ONE), mc);
-        }
-        payment = payment.setScale(0, RoundingMode.CEILING).setScale(scale());
-        List<Instalment> schedule = new ArrayList<>(n);
-        BigDecimal balance = principal.setScale(scale(), RoundingMode.HALF_UP);
-        for (int k = 1; k <= n; k++) {
-            BigDecimal interest = balance.multiply(i).setScale(scale(), RoundingMode.HALF_UP);
-            BigDecimal owed = balance.add(interest);
-            BigDecimal paid = k == n || payment.compareTo(owed) > 0 ? owed : payment;
-            BigDecimal repaid = paid.subtract(interest);
-            balance = balance.subtract(repaid);
-            schedule.add(new Instalment(firstNumber + k - 1, dues.get(k - 1), paid, interest, repaid, balance));
-        }
-        return schedule;
-    }
-
-    /** The plan total at the tax rate: the sum of the instalments; null when there is no plan. */
-    public BigDecimal planTotal(BigDecimal taxRate) {
-        if (!hasPlan()) {
-            return null;
-        }
-        return schedule(taxRate).stream().map(Instalment::payment).reduce(zero(), BigDecimal::add);
-    }
-
-    /**
-     * Each instalment of the plan at the tax rate once the given amount has been paid, on the given
-     * day: payments (with anything written off) pay the instalments in
-     * order, each itself and then its late interest, each paid off before the next. An instalment not
-     * paid off more than {@link #graceDays()} days after its due date is overdue; empty when there is no
-     * plan.
-     */
-    public List<Instalment.Progress> instalmentProgress(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
-        List<Instalment.Progress> progress = new ArrayList<>();
-        BigDecimal left = paid.add(writtenOff(paid, taxRate)).add(getInterestSaved());
-        List<Instalment> schedule = schedule(taxRate);
-        for (int k = 0; k < schedule.size(); k++) {
-            Instalment instalment = schedule.get(k);
-            BigDecimal part = left.min(instalment.payment()).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
-            left = left.subtract(part);
-            BigDecimal unpaid = instalment.payment().subtract(part);
-            BigDecimal interest = k < instalmentInterest.size() ? instalmentInterest.get(k) : zero();
-            BigDecimal toInterest = left.min(interest).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
-            left = left.subtract(toInterest);
-            BigDecimal interestUnpaid = interest.subtract(toInterest);
-            Instalment.Status status;
-            if (unpaid.signum() <= 0 && interestUnpaid.signum() <= 0) {
-                status = Instalment.Status.PAID;
-            } else if (instalment.dueDate() != null && today.isAfter(graceEnd(instalment.dueDate()))) {
-                status = Instalment.Status.OVERDUE;
-            } else if (part.signum() > 0) {
-                status = Instalment.Status.PART_PAID;
-            } else {
-                status = Instalment.Status.DUE;
-            }
-            progress.add(new Instalment.Progress(instalment, part, unpaid, interest,
-                    interestUnpaid, status));
-        }
-        return progress;
-    }
-
-    /**
-     * What is overdue at the tax rate once the given amount has been paid, on the given day: for a plan,
-     * only what is unpaid on its overdue instalments, their late interest included; billed by milestones,
+     * What is overdue at the tax rate once the given amount has been paid, on the given day: billed by milestones,
      * only what is unpaid on its overdue milestones, their late interest included; otherwise all that is due when it is overdue.
      */
     public BigDecimal overdueAmount(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
@@ -2277,17 +1866,11 @@ public class Invoice {
                     .filter(p -> p.status() == Milestone.Status.OVERDUE).map(Milestone.Progress::owed)
                     .reduce(zero(), BigDecimal::add);
         }
-        if (!hasPlan()) {
-            return amountDue(paid, taxRate).subtract(disputedAmount(paid, taxRate));
-        }
-        return instalmentProgress(paid, taxRate, today).stream()
-                .filter(p -> p.status() == Instalment.Status.OVERDUE).map(Instalment.Progress::owed)
-                .reduce(zero(), BigDecimal::add);
+        return amountDue(paid, taxRate).subtract(disputedAmount(paid, taxRate));
     }
 
     /**
-     * The due date as listed once the given amount has been paid: for a plan, the due date of its
-     * next unpaid instalment (its own due date once all are paid); billed by milestones, the due date of
+     * The due date as listed once the given amount has been paid: billed by milestones, the due date of
      * the next reached milestone (in due-date order) with something owing (its own due date when none has);
      * otherwise its own due date.
      */
@@ -2299,22 +1882,7 @@ public class Invoice {
                             .thenComparing(p -> p.milestone().getId()))
                     .map(Milestone.Progress::dueDate).findFirst().orElse(dueDate);
         }
-        if (!hasPlan() || status != InvoiceStatus.SENT) {
-            return dueDate;
-        }
-        return instalmentProgress(paid, taxRate, LocalDate.MIN).stream()
-                .filter(p -> p.owed().signum() > 0).map(p -> p.instalment().dueDate())
-                .findFirst().orElse(dueDate);
-    }
-
-    /**
-     * What is still unpaid on the earliest instalment not yet paid off, its late interest included, at
-     * the tax rate, once the given amount has been paid; zero when there is no plan or all are paid.
-     */
-    public BigDecimal earliestUnpaid(BigDecimal paid, BigDecimal taxRate) {
-        return instalmentProgress(paid, taxRate, LocalDate.MIN).stream()
-                .map(Instalment.Progress::owed).filter(u -> u.signum() > 0)
-                .findFirst().orElse(zero());
+        return dueDate;
     }
 
     public List<Milestone> getMilestones() {
@@ -2665,8 +2233,7 @@ public class Invoice {
     /**
      * The status on the given day once the given amount has been paid against the grand total at the
      * tax rate: a sent invoice with something still due more than {@link #graceDays()} days after its
-     * due date is overdue, part paid or not. An invoice spread over instalments is instead overdue when any
-     * of its instalments is (see {@link #instalmentProgress}), and one billed by milestones when any of its
+     * due date is overdue, part paid or not. An invoice billed by milestones is instead overdue when any of its
      * milestones is (see {@link #milestoneProgress}).
      */
     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
@@ -2691,12 +2258,7 @@ public class Invoice {
             return InvoiceStatus.DISPUTED;
         }
         boolean restDue = amountDue.subtract(disputed).signum() > 0;
-        if (hasPlan()) {
-            if (due && instalmentProgress(paid, taxRate, today).stream()
-                    .anyMatch(p -> p.status() == Instalment.Status.OVERDUE)) {
-                return InvoiceStatus.OVERDUE;
-            }
-        } else if (isBilledByMilestones()) {
+        if (isBilledByMilestones()) {
             if (restDue && milestoneProgress(paid, taxRate, today).stream()
                     .anyMatch(p -> p.status() == Milestone.Status.OVERDUE)) {
                 return InvoiceStatus.OVERDUE;
@@ -2713,9 +2275,7 @@ public class Invoice {
         if (due) {
             return InvoiceStatus.PART_PAID;
         }
-        List<Instalment> schedule = schedule(taxRate);
-        LocalDate finalDue = hasPlan() ? schedule.get(schedule.size() - 1).dueDate()
-                : isBilledByMilestones() ? milestones.stream().map(this::milestoneDueDate).filter(Objects::nonNull)
+        LocalDate finalDue = isBilledByMilestones() ? milestones.stream().map(this::milestoneDueDate).filter(Objects::nonNull)
                         .max(Comparator.naturalOrder()).orElse(dueDate)
                 : dueDate;
         return paidOn != null && finalDue != null && paidOn.isAfter(finalDue) ? InvoiceStatus.PAID_LATE
@@ -2791,13 +2351,8 @@ public class Invoice {
     /**
      * Whether paying the amount on top of what was already paid is too small a part payment: under
      * {@link #minimumPart} while leaving something still due (what would be written off counts as settled).
-     * For a plan the least is instead what is still unpaid on its earliest unpaid instalment.
      */
     public boolean isTooSmallPart(BigDecimal amount, BigDecimal paid, BigDecimal taxRate) {
-        if (hasPlan()) {
-            return amount.compareTo(earliestUnpaid(paid, taxRate)) < 0
-                    && amountDue(paid.add(amount), taxRate).signum() > 0;
-        }
         return amount.compareTo(minimumPart(paid, taxRate)) < 0 && amountDue(paid.add(amount), taxRate).signum() > 0;
     }
 

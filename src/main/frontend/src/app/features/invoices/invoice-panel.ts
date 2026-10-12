@@ -10,7 +10,7 @@ import {
   NewDiscount,
   NewLine,
 } from './invoice.service';
-import { TWO_DECIMALS, instalmentStatusLabel, milestoneStatusLabel, money, statusLabel, symbolOf } from './invoice-format';
+import { TWO_DECIMALS, milestoneStatusLabel, money, statusLabel, symbolOf } from './invoice-format';
 import { PaymentForm } from './payment-form';
 
 // A percentage from 0 to 100 with at most two decimals, e.g. 15 or 12.5; the server checks it again.
@@ -41,9 +41,6 @@ function problemWithSurcharge(pct: string): string {
   return '';
 }
 
-// A plan of 2 to 24 monthly instalments at an annual rate from 0 to 30 with at most two decimals,
-// after an optional down payment from 0 to 50 percent with at most two decimals; the server checks
-// them again.
 // A milestone needs a description and a percentage over 0 and at most 100 with at most two decimals;
 // the server also refuses one that would take the milestones over 100%.
 function problemWithMilestone(description: string, pct: string): string {
@@ -58,36 +55,6 @@ function problemWithMilestone(description: string, pct: string): string {
   }
   if (!TWO_DECIMALS.test(pct)) {
     return 'The percentage can have at most two decimals.';
-  }
-  return '';
-}
-
-function problemWithPlan(count: string, rate: string, down: string): string {
-  if (!/^\d+$/.test(count)) {
-    return 'The number of instalments must be a whole number, like 3 or 12.';
-  }
-  if (Number(count) < 2 || Number(count) > 24) {
-    return 'The plan must have from 2 to 24 instalments.';
-  }
-  if (!/^-?\d+(\.\d+)?$/.test(rate)) {
-    return 'The interest rate must be a number, like 12 or 7.5.';
-  }
-  if (Number(rate) < 0 || Number(rate) > 30) {
-    return 'The interest rate must be from 0 to 30 percent.';
-  }
-  if (!TWO_DECIMALS.test(rate)) {
-    return 'The interest rate can have at most two decimals.';
-  }
-  if (down !== '') {
-    if (!/^-?\d+(\.\d+)?$/.test(down)) {
-      return 'The down payment must be a number, like 10 or 12.5.';
-    }
-    if (Number(down) < 0 || Number(down) > 50) {
-      return 'The down payment must be from 0 to 50 percent.';
-    }
-    if (!TWO_DECIMALS.test(down)) {
-      return 'The down payment can have at most two decimals.';
-    }
   }
   return '';
 }
@@ -217,10 +184,7 @@ function problemWith(line: NewLine): string {
 // (its period stopping on the end date), which then opens. A sent invoice with percent-complete lines makes its
 // next progress claim once: a draft of those lines that bills only the progress since, which then opens. A draft's due date can be set
 // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
-// server refuses to send it once that date is past. A draft can
-// be spread over 2 to 24 monthly instalments at an annual interest rate (0 to 30); the server
-// works out the schedule from the grand total, dated from the issue date (and again when it is sent),
-// and the amount due is then the plan total less what is paid.
+// server refuses to send it once that date is past.
 @Component({
   selector: 'app-invoice-panel',
   imports: [ReactiveFormsModule, PaymentForm],
@@ -467,71 +431,6 @@ function problemWith(line: NewLine): string {
           }
         }
 
-        @if (inv.instalments !== null) {
-          <table aria-label="Instalments">
-            <caption>
-              {{ inv.instalments }} monthly instalments at {{ inv.instalmentRate }}% a year@if (inv.planDownPct !== '0') {, after a {{ inv.planDownPct }}% down payment}
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">No.</th>
-                <th scope="col">Due</th>
-                <th scope="col">Payment</th>
-                <th scope="col">Interest</th>
-                <th scope="col">Principal</th>
-                <th scope="col">Balance</th>
-                <th scope="col">Paid</th>
-                <th scope="col">Late interest</th>
-                <th scope="col">Status</th>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (s of inv.schedule; track s.number) {
-                <tr [attr.data-testid]="'instalment-row-' + s.number">
-                  <td>{{ s.number }}</td>
-                  <td data-testid="instalment-due">{{ s.dueDate }}</td>
-                  <td data-testid="instalment-payment">{{ amount(s.payment) }}</td>
-                  <td data-testid="instalment-interest">{{ amount(s.interest) }}</td>
-                  <td data-testid="instalment-principal">{{ amount(s.principal) }}</td>
-                  <td data-testid="instalment-balance">{{ amount(s.balance) }}</td>
-                  <td data-testid="instalment-paid">{{ amount(s.paid) }}</td>
-                  <td data-testid="instalment-late-interest">{{ amount(s.lateInterest) }}</td>
-                  <td data-testid="instalment-status">{{ instalmentStatusLabel(s.status) }}</td>
-                  <td>
-                    @if (s.number > 0 && inv.status !== 'DRAFT' && inv.status !== 'VOID') {
-                      <button
-                        type="button"
-                        data-testid="instalment-skip"
-                        [disabled]="skipping()"
-                        [attr.aria-label]="'Skip instalment ' + s.number"
-                        (click)="skipInstalment(inv.id, s.number)"
-                      >
-                        Skip
-                      </button>
-                    }
-                  </td>
-                </tr>
-              }
-            </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row" colspan="5">Plan fee</th>
-                <td data-testid="invoice-plan-fee">{{ amount(inv.planFee) }}</td>
-                <td colspan="5"></td>
-              </tr>
-              <tr>
-                <th scope="row" colspan="5">Plan total</th>
-                <td data-testid="invoice-plan-total">{{ amount(inv.planTotal ?? '0') }}</td>
-                <td colspan="5"></td>
-              </tr>
-            </tfoot>
-          </table>
-          @if (skipError()) {
-            <p role="alert" data-testid="instalment-skip-error">{{ skipError() }}</p>
-          }
-        }
-
         <table aria-label="Payments">
           <thead>
             <tr>
@@ -638,18 +537,6 @@ function problemWith(line: NewLine): string {
                 <td data-testid="invoice-settle-amount">{{ amount(inv.settleAmount) }}</td>
               </tr>
             }
-            @if (inv.payoff !== null) {
-              <tr>
-                <th scope="row" colspan="5">Pays off the plan if paid now</th>
-                <td data-testid="invoice-payoff">{{ amount(inv.payoff) }}</td>
-              </tr>
-            }
-            @if (inv.instalments !== null) {
-              <tr>
-                <th scope="row" colspan="5">Interest saved by paying off early</th>
-                <td data-testid="invoice-interest-saved">{{ amount(inv.interestSaved) }}</td>
-              </tr>
-            }
             @if (inv.fxDifference !== null) {
               <tr>
                 <th scope="row" colspan="5">Exchange difference (US dollars)</th>
@@ -737,7 +624,7 @@ function problemWith(line: NewLine): string {
           </form>
         }
 
-        @if (inv.status === 'DRAFT' && inv.creditOf === null && inv.instalments === null) {
+        @if (inv.status === 'DRAFT' && inv.creditOf === null) {
           <form [formGroup]="milestoneForm" (ngSubmit)="addMilestone(inv.id)" aria-label="Milestone" novalidate>
             <label for="milestone-description">Milestone</label>
             <input id="milestone-description" data-testid="milestone-form-description" formControlName="description" [readonly]="savingMilestone()" />
@@ -746,21 +633,6 @@ function problemWith(line: NewLine): string {
             <button type="submit" data-testid="milestone-form-submit" [disabled]="savingMilestone()">Add milestone</button>
             @if (milestoneError()) {
               <p role="alert" data-testid="milestone-form-error">{{ milestoneError() }}</p>
-            }
-          </form>
-        }
-
-        @if (inv.status === 'DRAFT' && inv.creditOf === null) {
-          <form [formGroup]="planForm" (ngSubmit)="setPlan(inv.id)" aria-label="Instalment plan" novalidate>
-            <label for="plan-count">Monthly instalments (2 to 24)</label>
-            <input id="plan-count" data-testid="plan-form-count" inputmode="numeric" formControlName="count" />
-            <label for="plan-rate">Annual interest rate (%, 0 to 30)</label>
-            <input id="plan-rate" data-testid="plan-form-rate" inputmode="decimal" formControlName="rate" />
-            <label for="plan-down">Down payment (% of the total, 0 to 50, optional)</label>
-            <input id="plan-down" data-testid="plan-form-down" inputmode="decimal" formControlName="down" />
-            <button type="submit" data-testid="plan-form-submit" [disabled]="savingPlan()">Set plan</button>
-            @if (planError()) {
-              <p role="alert" data-testid="plan-form-error">{{ planError() }}</p>
             }
           </form>
         }
@@ -1098,15 +970,11 @@ export class InvoicePanel {
   protected readonly dueError = signal('');
   protected readonly savingSurcharge = signal(false);
   protected readonly surchargeError = signal('');
-  protected readonly savingPlan = signal(false);
-  protected readonly planError = signal('');
   protected readonly savingMilestone = signal(false);
   protected readonly milestoneError = signal('');
   protected readonly reaching = signal(false);
   protected readonly reachError = signal('');
   protected readonly waiving = signal(false);
-  protected readonly skipping = signal(false);
-  protected readonly skipError = signal('');
   protected readonly waiveError = signal('');
   protected readonly writingOff = signal(false);
   protected readonly writeOffError = signal('');
@@ -1140,7 +1008,6 @@ export class InvoicePanel {
   protected readonly statusLabel = statusLabel;
   // A payment's amount is shown in the currency it was paid in.
   protected readonly money = money;
-  protected readonly instalmentStatusLabel = instalmentStatusLabel;
   protected readonly milestoneStatusLabel = milestoneStatusLabel;
   // An amount shown in the currency of the open invoice's client.
   protected amount(value: string): string {
@@ -1174,12 +1041,6 @@ export class InvoicePanel {
 
   protected readonly surchargeForm = new FormGroup({
     pct: new FormControl('', { nonNullable: true }),
-  });
-
-  protected readonly planForm = new FormGroup({
-    count: new FormControl('', { nonNullable: true }),
-    rate: new FormControl('', { nonNullable: true }),
-    down: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly milestoneForm = new FormGroup({
@@ -1221,13 +1082,10 @@ export class InvoicePanel {
       this.poError.set('');
       this.surchargeForm.reset();
       this.surchargeError.set('');
-      this.planForm.reset();
-      this.planError.set('');
       this.milestoneForm.reset();
       this.milestoneError.set('');
       this.reachError.set('');
       this.waiveError.set('');
-      this.skipError.set('');
       this.writeOffError.set('');
       this.disputeError.set('');
       this.sendError.set('');
@@ -1502,36 +1360,6 @@ export class InvoicePanel {
     });
   }
 
-  protected setPlan(invoiceId: number): void {
-    const raw = this.planForm.getRawValue();
-    const count = raw.count.trim();
-    const rate = raw.rate.trim().replace(/%$/, '').trim();
-    const down = raw.down.trim().replace(/%$/, '').trim();
-    const problem = problemWithPlan(count, rate, down);
-    if (problem) {
-      this.planForm.markAllAsTouched();
-      this.planError.set(problem);
-      return;
-    }
-    this.savingPlan.set(true);
-    this.planError.set('');
-    this.service.setPlan(invoiceId, count, rate, down || '0').subscribe({
-      next: (detail) => {
-        this.invoice.set(detail);
-        this.changed.emit(detail);
-        this.planForm.reset();
-        this.savingPlan.set(false);
-      },
-      error: (e: HttpErrorResponse) => {
-        const detail: unknown = e.error?.detail;
-        this.planError.set(
-          typeof detail === 'string' && detail ? detail : 'The plan could not be set.',
-        );
-        this.savingPlan.set(false);
-      },
-    });
-  }
-
   protected addMilestone(invoiceId: number): void {
     const { description, pct } = this.milestoneForm.getRawValue();
     const problem = problemWithMilestone(description, pct.trim());
@@ -1593,25 +1421,6 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The late charges could not be waived.',
         );
         this.waiving.set(false);
-      },
-    });
-  }
-
-  protected skipInstalment(invoiceId: number, instalment: number): void {
-    this.skipping.set(true);
-    this.skipError.set('');
-    this.service.skipInstalment(invoiceId, instalment).subscribe({
-      next: (detail) => {
-        this.invoice.set(detail);
-        this.changed.emit(detail);
-        this.skipping.set(false);
-      },
-      error: (e: HttpErrorResponse) => {
-        const detail: unknown = e.error?.detail;
-        this.skipError.set(
-          typeof detail === 'string' && detail ? detail : 'The instalment could not be skipped.',
-        );
-        this.skipping.set(false);
       },
     });
   }

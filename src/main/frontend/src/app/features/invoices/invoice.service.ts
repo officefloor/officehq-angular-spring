@@ -167,20 +167,7 @@ export interface InvoiceDetail {
   creditOf: number | null;
   // The total as listed: negative for a credit note.
   listedTotal: string;
-  // How many monthly instalments it is spread over (null without a plan), at the annual
-  // `instalmentRate` (without trailing zeros); `schedule` lists them and `planTotal` is what they add
-  // up to (null without a plan). The amount due on a planned invoice is the plan total less what is paid.
-  instalments: number | null;
-  instalmentRate: string;
-  // The plan's down payment, a percentage of the grand total without trailing zeros ("0" when none);
-  // when there is one it is instalment 0 of the schedule, due on the issue date with no interest.
-  planDownPct: string;
-  // The plan fee charged when the plan was set up ("0.00" when none), added to what is spread over
-  // the instalments after any down payment, so it earns their interest and counts in the plan total.
-  planFee: string;
-  schedule: InstalmentView[];
-  planTotal: string | null;
-  // The due date as listed (yyyy-mm-dd): for a plan, its next unpaid instalment's due date.
+  // The due date as listed (yyyy-mm-dd): billed by milestones, its next unpaid milestone's due date.
   listedDueDate: string | null;
   // The currency the client is billed in: every amount is in it (whole yen for a yen client).
   currency: Currency;
@@ -193,10 +180,6 @@ export interface InvoiceDetail {
   lateInterest: string;
   // The late interest written off by waiving it ("0.00" when none was).
   lateWaived: string;
-  // What would pay off its plan today (null without a plan or once it is paid off), and the interest
-  // of instalments not yet due that paying it off early dropped ("0.00" when none was).
-  payoff: string | null;
-  interestSaved: string;
   // For a client billed in another currency, the exchange difference in US dollars of the payments
   // applied to it (negative for a loss); null for a dollar invoice.
   fxDifference: string | null;
@@ -226,12 +209,11 @@ export interface InvoiceDetail {
   withholding: string;
   // The client's withholding percentage (without trailing zeros); "0" when it withholds nothing.
   withholdingPct: string;
-  // Whether a draft must be approved before it is sent: its grand total (before any withholding), or its
-  // plan total (with interest and plan fee) when it has an instalment plan, is over the workspace's approval limit, its discount takes off more than a fifth of the subtotal, or its
+  // Whether a draft must be approved before it is sent: its grand total (before any withholding) is over the workspace's approval limit, its discount takes off more than a fifth of the subtotal, or its
   // client is a HIGH payment risk, or sending it would take the client over its credit limit,
   // and it has not been approved at exactly its total within as many days as its client's tier allows (90 KEY, 7 NEW, else 30). Credit notes never need approval.
   approval: 'NOT_NEEDED' | 'NEEDS_APPROVAL' | 'APPROVED';
-  // The grand total (or plan total, for a draft with a plan) it was approved at; null when it was not approved.
+  // The grand total it was approved at; null when it was not approved.
   approvedTotal: string | null;
   // The day it was approved (yyyy-mm-dd); null when it was not. The approval lapses after its client's tier's days (90 KEY, 7 NEW, else 30).
   approvedOn: string | null;
@@ -305,24 +287,6 @@ export interface MilestoneView {
   interestUnpaid: string;
   status: MilestoneStatus;
   disputedOn: string | null;
-}
-
-// One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
-// interest, principal and the balance left after it, decimal strings to the cent; what has been paid
-// off it (payments pay the instalments in order, each itself first, then its late interest), the late interest it
-// has been charged ("0.00" when none) and its status.
-export type InstalmentStatus = 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE';
-
-export interface InstalmentView {
-  number: number;
-  dueDate: string | null;
-  payment: string;
-  interest: string;
-  principal: string;
-  balance: string;
-  paid: string;
-  lateInterest: string;
-  status: InstalmentStatus;
 }
 
 // A payment to record against a sent invoice: the amount as entered, the date (yyyy-mm-dd) and the
@@ -461,13 +425,6 @@ export class InvoiceService {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/surcharge`, { surchargePct });
   }
 
-  // Spreads a draft over monthly instalments (2 to 24) at an annual interest rate (0 to 30, up to two
-  // decimals), after a down payment of a percentage of the grand total (0 to 50, up to two decimals);
-  // refused (400) outside that, or (409) when it is not a draft.
-  setPlan(invoiceId: number, instalments: string, instalmentRate: string, planDownPct: string): Observable<InvoiceDetail> {
-    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/plan`, { instalments, instalmentRate, planDownPct });
-  }
-
   // Adds a milestone (a description and a percentage over 0 with at most two decimals) to a draft;
   // refused (409) when the milestones would add up to more than 100%.
   addMilestone(invoiceId: number, description: string, pct: string): Observable<InvoiceDetail> {
@@ -526,12 +483,6 @@ export class InvoiceService {
   // from today on what is still owed. Refused (409) when there is nothing to waive.
   waiveInterest(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/waive-interest`, null);
-  }
-
-  // Skips an instalment of a sent plan: it pays only its interest and the instalments after it are
-  // worked out again. Refused (409) for an overdue, paid or last instalment.
-  skipInstalment(invoiceId: number, instalment: number): Observable<InvoiceDetail> {
-    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/instalments/${instalment}/skip`, null);
   }
 
   // Sends a draft invoice, issuing it today and due on the client's terms, or keeping a due date set

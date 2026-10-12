@@ -73,7 +73,7 @@ public class Client {
     private BigDecimal withholdingPct = BigDecimal.ZERO;
 
     /**
-     * Days past its due date an invoice or instalment for this client is given before it is overdue,
+     * Days past its due date an invoice for this client is given before it is overdue,
      * and earns late interest: 0 to {@link #MAX_GRACE_DAYS}; null for their region's, else a week.
      */
     @Column(name = "grace_days")

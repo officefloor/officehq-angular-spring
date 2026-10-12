@@ -36,7 +36,7 @@ export interface Client {
   // The percentage (0 to 100) taken off every price the client's lines take from its rate card or the
   // price list, each band's price included; 0 is none. A price typed on a line is not reduced.
   rateDiscountPct: number;
-  // Days (0 to 30) past its due date an invoice or instalment is given before it is overdue and earns
+  // Days (0 to 30) past its due date an invoice is given before it is overdue and earns
   // late interest; null for the grace period of the client's region, else a week.
   graceDays: number | null;
   // The client's own annual late-interest rate (0 to 30 percent) charged instead of the workspace's;

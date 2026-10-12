@@ -51,6 +51,9 @@ public class Payment {
     /** Whether the payment has been reversed (a bounced cheque): it then no longer counts. */
     private boolean reversed;
 
+    /** Whether the payment was recorded as a deposit, held as credit and applied to no invoice. */
+    private boolean deposit;
+
     /** The credit note whose rest this payment holds as credit; null for a payment from the client. */
     @Column(name = "credit_note")
     private Long creditNote;
@@ -135,6 +138,12 @@ public class Payment {
         payment.date = date;
         payment.reference = reference;
         return payment;
+    }
+
+    /** Marks the payment as recorded as a deposit; answers it. */
+    public Payment asDeposit() {
+        this.deposit = true;
+        return this;
     }
 
     /**

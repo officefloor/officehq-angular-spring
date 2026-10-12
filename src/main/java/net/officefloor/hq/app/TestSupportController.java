@@ -41,7 +41,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays", "holidays");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays", "holidays");
     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
@@ -50,16 +50,15 @@ public class TestSupportController {
     private static final String INTEREST_THRESHOLD = "interest_threshold";
     /** The setting holding the workspace's withholding threshold in US dollars (see Invoice#withholding). */
     private static final String WITHHOLDING_THRESHOLD = "withholding_threshold";
-    private static final String PLAN_FEE = "plan_fee";
     /** The setting holding the workspace's approval limit in US dollars (see Invoice#approval). */
     private static final String APPROVAL_LIMIT = "approval_limit";
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier", "upliftPct");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "adjustmentOf", "lineItems", "milestones");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "interestWaivedOn", "writtenOffOn", "surchargePct", "supplyRegion", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "adjustmentOf", "lineItems", "milestones");
     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct");
-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "heldFor", "allocations", "currency", "method", "remittance");
+    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "heldFor", "allocations", "currency", "method", "remittance", "deposit");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
 
@@ -201,11 +200,6 @@ public class TestSupportController {
                     jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                             APPROVAL_LIMIT + "_" + tier.name(), limit.toPlainString());
                 }
-            }
-            if (values.get("planFee") != null) {
-                BigDecimal fee = money(values.get("planFee"), "settings.planFee");
-                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
-                        PLAN_FEE, fee.toPlainString());
             }
             if (values.get("cardSurchargePct") != null) {
                 BigDecimal rate = percent(values.get("cardSurchargePct"), "settings.cardSurchargePct");
@@ -469,7 +463,7 @@ public class TestSupportController {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since", "sent_total", "sent_tax", "rebilled_on", "replaces", "adjustment_of"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "interest_waived_on", "written_off_on", "surcharge_pct", "supply_region", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since", "sent_total", "sent_tax", "rebilled_on", "replaces", "adjustment_of"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
@@ -479,18 +473,13 @@ public class TestSupportController {
                     row.get("discountReason") == null ? null : row.get("discountReason").toString(),
                     flag(row.get("manualDueDate"), "invoices[].manualDueDate"),
                     creditOf == null ? null : id(creditOf),
-                    instalments(row.get("instalments"), "invoices[].instalments"),
-                    instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"),
-                    planDownPct(row.get("planDownPct"), "invoices[].planDownPct"),
                     row.get("interestWaivedOn") == null ? null
                             : date(row.get("interestWaivedOn"), "invoices[].interestWaivedOn"),
                     row.get("writtenOffOn") == null ? null
                             : date(row.get("writtenOffOn"), "invoices[].writtenOffOn"),
-                    skippedInstalment(row.get("skippedInstalment"), "invoices[].skippedInstalment"),
                     surchargePct(row.get("surchargePct"), "invoices[].surchargePct"),
                     row.get("supplyRegion") == null || row.get("supplyRegion").toString().isBlank() ? null
                             : row.get("supplyRegion").toString(),
-                    money(row.get("planFee"), "invoices[].planFee"),
                     row.get("approvedTotal") == null ? null : money(row.get("approvedTotal"), "invoices[].approvedTotal"),
                     row.get("approvedOn") == null ? null : date(row.get("approvedOn"), "invoices[].approvedOn"),
                     approvals(row.get("approvals"), row.get("approvedTotal") != null),
@@ -590,7 +579,7 @@ public class TestSupportController {
                             : date(row.get("date"), "payments[].date")) : BigDecimal.ZERO;
             // Part of a payment in another currency is the workspace's conversion fee, as when one is recorded.
             BigDecimal fee = foreign ? fxFee.of(amount, clientCurrency.scale()) : BigDecimal.ZERO;
-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method", "surcharge", "fx_fee", "remittance", "held_for"},
+            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method", "surcharge", "fx_fee", "remittance", "held_for", "deposit"},
                     id(row.get("clientId")), amount,
                     date(row.get("date"), "payments[].date"),
                     row.get("reference") == null ? null : row.get("reference").toString(),
@@ -599,7 +588,8 @@ public class TestSupportController {
                     row.get("creditNote") == null ? null : id(row.get("creditNote")),
                     foreign ? paidIn.name() : null, foreign ? paidAmount : null, method, surcharge, fee,
                     row.get("remittance") == null ? null : row.get("remittance").toString(),
-                    row.get("heldFor") == null ? null : id(row.get("heldFor")));
+                    row.get("heldFor") == null ? null : id(row.get("heldFor")),
+                    flag(row.get("deposit"), "payments[].deposit"));
             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
                 if (allocation.get("invoiceId") == null) {
@@ -673,11 +663,6 @@ public class TestSupportController {
                 String.class, MINIMUM_CHARGE);
         if (!minimumCharge.isEmpty()) {
             settings.put("minimumCharge", new BigDecimal(minimumCharge.get(0)));
-        }
-        List<String> planFee = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
-                String.class, PLAN_FEE);
-        if (!planFee.isEmpty()) {
-            settings.put("planFee", new BigDecimal(planFee.get(0)));
         }
         List<String> approvalLimit = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
                 String.class, APPROVAL_LIMIT);
@@ -837,7 +822,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since, sent_total, sent_tax, rebilled_on, replaces, adjustment_of FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, interest_waived_on, written_off_on, surcharge_pct, supply_region, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since, sent_total, sent_tax, rebilled_on, replaces, adjustment_of FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -858,12 +843,6 @@ public class TestSupportController {
                     if (r.get("WRITTEN_OFF_ON") != null) {
                         row.put("writtenOffOn", r.get("WRITTEN_OFF_ON").toString());
                     }
-                    if (r.get("INSTALMENTS") != null) {
-                        row.put("instalments", r.get("INSTALMENTS"));
-                    }
-                    row.put("instalmentRate", r.get("INSTALMENT_RATE"));
-                    row.put("planDownPct", r.get("PLAN_DOWN_PCT"));
-                    row.put("planFee", r.get("PLAN_FEE"));
                     if (r.get("APPROVED_TOTAL") != null) {
                         row.put("approvedTotal", r.get("APPROVED_TOTAL"));
                     }
@@ -906,9 +885,6 @@ public class TestSupportController {
                     }
                     if (r.get("ADJUSTMENT_OF") != null) {
                         row.put("adjustmentOf", r.get("ADJUSTMENT_OF"));
-                    }
-                    if (r.get("SKIPPED_INSTALMENT") != null) {
-                        row.put("skippedInstalment", r.get("SKIPPED_INSTALMENT"));
                     }
                     if (r.get("CREDIT_OF") != null) {
                         row.put("creditOf", r.get("CREDIT_OF"));
@@ -974,7 +950,7 @@ public class TestSupportController {
                             }).toList());
                     return row;
                 }).toList());
-        out.put("payments", jdbc.queryForList("SELECT p.id, p.client_id, p.amount, p.payment_date, p.reference, p.reversed, p.refunded, p.credit_note, p.held_for, p.method, p.remittance, "
+        out.put("payments", jdbc.queryForList("SELECT p.id, p.client_id, p.amount, p.payment_date, p.reference, p.reversed, p.refunded, p.credit_note, p.held_for, p.method, p.remittance, p.deposit, "
                 + "p.paid_currency, p.paid_amount, c.currency FROM payment p LEFT JOIN client c ON c.id = p.client_id ORDER BY p.id")
                 .stream().map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
@@ -987,6 +963,7 @@ public class TestSupportController {
                     row.put("reversed", r.get("REVERSED"));
                     row.put("refunded", r.get("REFUNDED"));
                     row.put("method", r.get("METHOD"));
+                    row.put("deposit", r.get("DEPOSIT"));
                     if (r.get("REMITTANCE") != null) {
                         row.put("remittance", r.get("REMITTANCE"));
                     }
@@ -1213,23 +1190,6 @@ public class TestSupportController {
         return rate;
     }
 
-    /** A whole number of instalments from 2 to 24; null (no plan) when left out. */
-    private static Integer instalments(Object value, String field) {
-        if (value == null) {
-            return null;
-        }
-        try {
-            int count = new BigDecimal(value.toString()).intValueExact();
-            if (count < Invoice.MIN_INSTALMENTS || count > Invoice.MAX_INSTALMENTS) {
-                throw refuse(field + " must be from " + Invoice.MIN_INSTALMENTS + " to " + Invoice.MAX_INSTALMENTS
-                        + ", not " + value);
-            }
-            return count;
-        } catch (NumberFormatException | ArithmeticException e) {
-            throw refuse(field + " must be a whole number, not " + value);
-        }
-    }
-
     /**
      * The approvals an invoice has (0, 1 or 2); left out, an approved invoice has one and any other none.
      */
@@ -1246,40 +1206,6 @@ public class TestSupportController {
         } catch (NumberFormatException | ArithmeticException e) {
             throw refuse("invoices[].approvals must be a whole number, not " + value);
         }
-    }
-
-    /** The number of a plan's skipped instalment, from 1; null (none skipped) when left out. */
-    private static Integer skippedInstalment(Object value, String field) {
-        if (value == null) {
-            return null;
-        }
-        try {
-            int number = new BigDecimal(value.toString()).intValueExact();
-            if (number < 1 || number > Invoice.MAX_INSTALMENTS) {
-                throw refuse(field + " must be from 1 to " + Invoice.MAX_INSTALMENTS + ", not " + value);
-            }
-            return number;
-        } catch (NumberFormatException | ArithmeticException e) {
-            throw refuse(field + " must be a whole number, not " + value);
-        }
-    }
-
-    /** An annual interest rate from 0 to 30 with at most two decimals; none given is zero. */
-    private static BigDecimal instalmentRate(Object value, String field) {
-        BigDecimal rate = percent(value, field);
-        if (rate.compareTo(Invoice.MAX_INSTALMENT_RATE) > 0) {
-            throw refuse(field + " must be from 0 to " + Invoice.MAX_INSTALMENT_RATE + ", not " + value);
-        }
-        return rate;
-    }
-
-    /** A plan's down payment percentage from 0 to 50 with at most two decimals; none given is zero. */
-    private static BigDecimal planDownPct(Object value, String field) {
-        BigDecimal pct = percent(value, field);
-        if (pct.compareTo(Invoice.MAX_PLAN_DOWN_PCT) > 0) {
-            throw refuse(field + " must be from 0 to " + Invoice.MAX_PLAN_DOWN_PCT + ", not " + value);
-        }
-        return pct;
     }
 
     /** A true/false flag; false when left out. */

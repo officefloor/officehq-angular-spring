@@ -139,20 +139,12 @@ public class InvoiceController {
      * it, payments taken in date order; null while it is not fully paid. {@code credited} is what
      * issued credit notes take off it; {@code creditOf} the id of the invoice a credit note credits
      * (null for an ordinary invoice) and {@code listedTotal} the total as listed, negative for a credit note.
-     * {@code instalments} is how many
-     * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
-     * (without trailing zeros), after a down payment of {@code planDownPct} percent of the grand total
-     * (without trailing zeros; instalment 0 when not 0), with the {@code planFee} charged when it was set up added to
-     * what is spread over the instalments; {@code schedule} lists them and {@code planTotal} is what they add up to
-     * (null without a plan), from which what is paid comes off for the amount due. {@code listedDueDate}
-     * is the due date as listed: for a plan, its next unpaid instalment's. {@code currency} is the
+     * {@code listedDueDate} is the due date as listed: billed by milestones, its next unpaid milestone's. {@code currency} is the
      * currency its client is billed in, which every amount is in (whole yen for a yen client).
      * {@code earlyDiscount} is the early-payment discount it was settled with (0 when none), and
      * {@code settleAmount} what would settle it today while its early-payment window is open and its client is a LOW payment risk (null otherwise).
      * {@code lateInterest} is the late interest charged on it so far, part of the amount due;
-     * {@code lateWaived} is the late interest written off by waiving it (0 when none was). {@code payoff} is what would pay off its
-     * plan today (null without a plan or once it is paid off), and {@code interestSaved} the interest
-     * of instalments not yet due that paying it off early dropped (0 when none was). {@code fxDifference}
+     * {@code lateWaived} is the late interest written off by waiving it (0 when none was). {@code fxDifference}
      * is, for a client billed in another currency, the exchange difference in US dollars of the payments
      * applied to it (see {@link Invoice#fxDifference(List)}); null for a dollar invoice.
      * {@code writtenOffOn} is the day it was written off as a bad debt (null when it was not); everything
@@ -165,7 +157,7 @@ public class InvoiceController {
      * {@code withholding} is what the client withholds for its tax office (0 when none): never owed, so
      * left out of the amount due; nothing when reverse charged. {@code withholdingPct} (without trailing zeros)
      * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
-     * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total (the plan total, with a plan) it was approved at and {@code approvedOn} the day (null when it was not);
+     * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not);
      * {@code approvalsNeeded} is how many approvals it still needs before it is sent (0 when none) and {@code approvals} how many it has at its total.
      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not);
      * {@code recurUntil} is the last day it bills for when recurring (null for no end), and {@code recurringSince} the day its plan began
@@ -186,10 +178,9 @@ public class InvoiceController {
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, String net, boolean pricesIncludeTax, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
-            String credited, Long creditOf, String listedTotal, Integer instalments,
-            String instalmentRate, String planDownPct, String planFee, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
+            String credited, Long creditOf, String listedTotal, LocalDate listedDueDate,
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
-            String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+            String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
             int approvalsNeeded, int approvals,
@@ -221,16 +212,11 @@ public class InvoiceController {
                     payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency())).toList(), paid.toPlainString(),
                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
                     i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
-                    i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
-                    i.getPlanDownPct().stripTrailingZeros().toPlainString(), i.getPlanFee().toPlainString(),
-                    i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
-                    i.hasPlan() ? i.planTotal(taxRate).toPlainString() : null, i.listedDueDate(paid, taxRate),
+                    i.listedDueDate(paid, taxRate),
                     i.currency(), i.getEarlyDiscountTaken().toPlainString(),
                     Optional.ofNullable(i.settleAmount(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
                     i.getLateInterest().toPlainString(),
                     i.getLateWaived().toPlainString(),
-                    Optional.ofNullable(i.payoff(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
-                    i.getInterestSaved().toPlainString(),
                     i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
                     i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),
                     i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
@@ -440,43 +426,6 @@ public class InvoiceController {
             BigDecimal surchargePct) {
     }
 
-    /**
-     * A plan to spread a draft over: a whole number of monthly instalments from 2 to 24 and an annual
-     * interest rate from 0 to 30 with at most two decimals, and a down payment from 0 to 50 percent of
-     * the grand total with at most two decimals (none when left out).
-     */
-    public record NewPlan(
-            @NotNull(message = "Enter the number of instalments.")
-            @DecimalMin(value = "2", message = "The plan must have from 2 to 24 instalments.")
-            @DecimalMax(value = "24", message = "The plan must have from 2 to 24 instalments.")
-            @Digits(integer = 2, fraction = 0, message = "The number of instalments must be a whole number.")
-            BigDecimal instalments,
-            @NotNull(message = "Enter the annual interest rate.")
-            @DecimalMin(value = "0", message = "The interest rate must be from 0 to 30 percent.")
-            @DecimalMax(value = "30", message = "The interest rate must be from 0 to 30 percent.")
-            @Digits(integer = 2, fraction = 2, message = "The interest rate can have at most two decimals.")
-            BigDecimal instalmentRate,
-            @DecimalMin(value = "0", message = "The down payment must be from 0 to 50 percent.")
-            @DecimalMax(value = "50", message = "The down payment must be from 0 to 50 percent.")
-            @Digits(integer = 2, fraction = 2, message = "The down payment can have at most two decimals.")
-            BigDecimal planDownPct) {
-    }
-
-    /**
-     * One instalment of a plan: its number, the day it falls due, and its payment, interest, principal
-     * and the balance left after it, what has been paid off it and the late interest it
-     * has been charged, decimal strings to the cent; and its status.
-     */
-    public record InstalmentView(int number, LocalDate dueDate, String payment, String interest, String principal,
-            String balance, String paid, String lateInterest, Instalment.Status status) {
-        static InstalmentView of(Instalment.Progress p) {
-            Instalment i = p.instalment();
-            return new InstalmentView(i.number(), i.dueDate(), i.payment().toPlainString(),
-                    i.interest().toPlainString(), i.principal().toPlainString(), i.balance().toPlainString(),
-                    p.paid().toPlainString(), p.lateInterest().toPlainString(), p.status());
-        }
-    }
-
     /** A due date to set on a draft by hand. */
     public record NewDueDate(
             @NotNull(message = "Enter the due date.")
@@ -645,14 +594,6 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 
-    @PutMapping("/api/invoices/{id}/plan")
-    public InvoiceDetail setPlan(@PathVariable Long id, @Valid @RequestBody NewPlan body) {
-        return invoices.setPlan(id, body.instalments().intValueExact(), body.instalmentRate(),
-                body.planDownPct() == null ? BigDecimal.ZERO : body.planDownPct())
-                .map(this::detail)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
-    }
-
     @PostMapping("/api/invoices/{id}/milestones")
     public InvoiceDetail addMilestone(@PathVariable Long id, @Valid @RequestBody NewMilestone body) {
         return invoices.addMilestone(id, body.description().trim(), body.pct())
@@ -720,14 +661,6 @@ public class InvoiceController {
     @PostMapping("/api/invoices/{id}/waive-interest")
     public InvoiceDetail waiveInterest(@PathVariable Long id) {
         return invoices.waiveInterest(id)
-                .map(this::detail)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
-    }
-
-    /** Skips an instalment of a sent invoice's plan, re-working the instalments after it. */
-    @PostMapping("/api/invoices/{id}/instalments/{number}/skip")
-    public InvoiceDetail skipInstalment(@PathVariable Long id, @PathVariable int number) {
-        return invoices.skipInstalment(id, number)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
