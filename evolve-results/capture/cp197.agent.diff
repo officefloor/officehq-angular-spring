@@ -1,0 +1,124 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 0797e9b..d47bb62 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -1798,10 +1798,15 @@ export class InvoicePanel {
+     this.savingRecurring.set(true);
+     this.recurringError.set('');
+     const recurUntil = this.recurUntilForm.getRawValue().recurUntil.trim();
++    const creditedBefore = Number(this.invoice()?.credited ?? 0);
+     this.service.setRecurUntil(invoiceId, recurUntil || null).subscribe({
+       next: (detail) => {
+         this.invoice.set(detail);
+         this.changed.emit(detail);
++        // Ending the plan inside a billed period issues a credit note for the days after it.
++        if (Number(detail.credited) !== creditedBefore) {
++          this.creditIssued.emit(detail);
++        }
+         this.recurUntilForm.reset();
+         this.savingRecurring.set(false);
+         this.generateWaiting();
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index d020495..69255d6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -673,6 +673,28 @@ public class Invoice {
+         this.recurUntil = recurUntil;
+     }
+ 
++    /**
++     * Credit note lines for the days this invoice billed after the given end date: for each line with a service period ending after
++     * it, a credit copy for the part of its period after the end date, stopping on the end date it had before when that was earlier
++     * (those days were credited already). Lines without a period are not credited.
++     */
++    public List<InvoiceLine> creditsAfter(LocalDate end, LocalDate before) {
++        List<InvoiceLine> credits = new ArrayList<>();
++        for (InvoiceLine line : lines) {
++            if (!line.hasPeriod()) {
++                continue;
++            }
++            LocalDate from = line.getPeriodStart().isAfter(end) ? line.getPeriodStart() : end.plusDays(1);
++            LocalDate to = before != null && before.isBefore(line.getPeriodEnd()) ? before : line.getPeriodEnd();
++            if (!from.isAfter(to)) {
++                InvoiceLine credit = line.creditCopy();
++                credit.setPeriod(from, to);
++                credits.add(credit);
++            }
++        }
++        return credits;
++    }
++
+     /** The id of the recurring invoice this draft was generated from; null when it was not. */
+     public Long getRecurringFrom() {
+         return recurringFrom;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 303f19d..05e5777 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -216,6 +216,10 @@ public class InvoiceService {
+ 
+     /**
+      * Sets the last day the recurring invoice bills for (null for no end); empty if no such invoice. A credit note is refused.
++     * When a sent recurring invoice has already billed days after the new end date, the plan ends early: a credit note dated
++     * today credits each line with a service period for the part of its period after the end date (up to the end date it had
++     * before, past which those days were credited already), charged by the day and taxed like the original (lines without a
++     * period are not credited), and is issued as any credit note is (what is beyond what the invoice owes is held as credit).
+      */
+     @Transactional
+     public Optional<Invoice> setRecurUntil(Long invoiceId, LocalDate recurUntil) {
+@@ -224,12 +228,37 @@ public class InvoiceService {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException("A credit note cannot be recurring.");
+             }
++            LocalDate before = invoice.getRecurUntil();
+             invoice.setRecurUntil(recurUntil);
+             invoices.saveAndFlush(invoice);
++            if (recurUntil != null && invoice.isRecurring() && !invoice.isDraft() && !invoice.isVoid()
++                    && !invoice.isWrittenOff()) {
++                creditAfterEnd(invoice, recurUntil, before);
++            }
+         });
+         return found;
+     }
+ 
++    /** Issues the credit note for the days the invoice billed after its plan's new end date (see {@link #setRecurUntil}). */
++    private void creditAfterEnd(Invoice invoice, LocalDate end, LocalDate before) {
++        List<InvoiceLine> credits = invoice.creditsAfter(end, before);
++        if (credits.isEmpty()) {
++            return;
++        }
++        Invoice note = invoice.creditNote(today.date());
++        credits.forEach(note::addLine);
++        Invoice draft = invoices.saveAndFlush(note);
++        entityManager.refresh(draft);
++        // Its days are bounded by the end dates, so only what stops any credit note from being issued applies.
++        String refusal = creditNoteRefusal(draft, false);
++        if (refusal != null) {
++            throw new InvoiceRejectedException(refusal);
++        }
++        issue(draft);
++        entityManager.refresh(invoice);
++        withInterest(List.of(invoice));
++    }
++
+     /**
+      * Generates the next period's draft of a sent recurring invoice (see {@link Invoice#nextPeriod}), issued today and
+      * due as any new invoice is, and records it in the audit; empty if no such invoice. A draft, an invoice that is
+@@ -1333,11 +1362,16 @@ public class InvoiceService {
+      * overdue instalment and the credit note cannot be more than the principal still owed before them.
+      */
+     private String creditNoteRefusal(Invoice note) {
++        return creditNoteRefusal(note, true);
++    }
++
++    /** As {@link #creditNoteRefusal(Invoice)}, checking that it credits no more of a line than was invoiced only when asked. */
++    private String creditNoteRefusal(Invoice note, boolean checkOverCredit) {
+         Invoice original = load(note.getCreditOf()).orElse(null);
+         if (original == null || original.isDraft() || original.isVoid()) {
+             return "The invoice this credits is not a sent invoice, so the credit note cannot be issued.";
+         }
+-        String overCredit = overCreditRefusal(note, original);
++        String overCredit = checkOverCredit ? overCreditRefusal(note, original) : null;
+         if (overCredit != null) {
+             return overCredit;
+         }
