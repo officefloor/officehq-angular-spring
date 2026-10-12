@@ -1,0 +1,68 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 35e5754..aabc2a9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -504,6 +504,13 @@ public class Invoice {
+     @Transient
+     private boolean earlyPayWithheld;
+ 
++    /**
++     * Whether the approval limit is halved because the client is a MEDIUM payment risk (see
++     * {@link #halveApprovalLimit}); not stored, worked out again each time the invoice is read.
++     */
++    @Transient
++    private boolean approvalLimitHalved;
++
+     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+     @JoinColumn(name = "invoice_id", nullable = false)
+     @OrderBy("id")
+@@ -1261,13 +1268,23 @@ public class Invoice {
+ 
+     /**
+      * The grand total above which a draft needs approval: the approval limit (the client tier's, else the workspace's) in US dollars
+-     * converted at the issue date's rate, rounded down to the step; null when none is set.
++     * converted at the issue date's rate, rounded down to the step; null when none is set. A MEDIUM payment risk
++     * client's limit is halved in US dollars before it is converted.
+      */
+     private BigDecimal approvalLimit() {
+         if (approvalLimitUsd == null) {
+             return null;
+         }
+-        return currency().divideDownToStep(new BigDecimal(approvalLimitUsd.trim()), usdPerOn(issueDate));
++        BigDecimal usd = new BigDecimal(approvalLimitUsd.trim());
++        if (approvalLimitHalved) {
++            usd = usd.divide(BigDecimal.valueOf(2));
++        }
++        return currency().divideDownToStep(usd, usdPerOn(issueDate));
++    }
++
++    /** Halves the approval limit (or restores it): a MEDIUM payment risk client has half the limit. */
++    public void halveApprovalLimit(boolean halved) {
++        this.approvalLimitHalved = halved;
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 0bb7793..b38f395 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -140,6 +140,7 @@ public class InvoiceService {
+                     .filter(o -> o.getClientId().equals(i.getClientId()) && !o.getId().equals(i.getId())).toList();
+             RiskBand band = riskOf(others, paidOn).band();
+             i.withholdEarlyPay(band != RiskBand.LOW);
++            i.halveApprovalLimit(band == RiskBand.MEDIUM);
+             if (band == RiskBand.HIGH) {
+                 i.accrueLateInterest(found, rate, annual, HIGH_RISK_INTEREST_PREMIUM, now);
+             }
+@@ -2465,8 +2466,9 @@ public class InvoiceService {
+     /** Whether the invoice needs approval before it is sent (see {@link Invoice#approval}), as of today. */
+     @Transactional(readOnly = true)
+     public Invoice.Approval approval(Invoice invoice) {
+-        boolean highRisk = invoice.isDraft() && !invoice.isCreditNote()
+-                && riskOf(invoice.getClientId()).band() == RiskBand.HIGH;
++        RiskBand band = riskOf(invoice.getClientId()).band();
++        invoice.halveApprovalLimit(band == RiskBand.MEDIUM);
++        boolean highRisk = invoice.isDraft() && !invoice.isCreditNote() && band == RiskBand.HIGH;
+         boolean overCreditLimit = invoice.isDraft() && !invoice.isCreditNote() && wouldGoOverLimit(invoice);
+         return invoice.approval(taxRate.percent(), today.date(), highRisk, overCreditLimit);
+     }
