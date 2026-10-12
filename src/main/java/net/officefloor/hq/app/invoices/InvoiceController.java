@@ -150,6 +150,7 @@ public class InvoiceController {
      * left out of the amount due; nothing when reverse charged. {@code withholdingPct} (without trailing zeros)
      * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
      * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not).
+     * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not).
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
@@ -160,7 +161,8 @@ public class InvoiceController {
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
-            String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn) {
+            String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
+            boolean recurring, Long recurringFrom) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -204,7 +206,8 @@ public class InvoiceController {
                     i.chargedSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
                     i.getSupplyRegion(), i.approval(taxRate, today),
-                    i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn());
+                    i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
+                    i.isRecurring(), i.getRecurringFrom());
         }
     }
 
@@ -646,6 +649,26 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail duplicate(@PathVariable Long id) {
         return invoices.duplicate(id)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** Whether the invoice repeats every period. */
+    public record NewRecurring(@NotNull(message = "Say whether the invoice is recurring.") Boolean recurring) {
+    }
+
+    @PutMapping("/api/invoices/{id}/recurring")
+    public InvoiceDetail setRecurring(@PathVariable Long id, @Valid @RequestBody NewRecurring body) {
+        return invoices.setRecurring(id, body.recurring())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** Generates the next period's draft of a sent recurring invoice; answers the new draft. */
+    @PostMapping("/api/invoices/{id}/generate")
+    @ResponseStatus(HttpStatus.CREATED)
+    public InvoiceDetail generate(@PathVariable Long id) {
+        return invoices.generateNext(id)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

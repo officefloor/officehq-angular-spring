@@ -193,6 +193,11 @@ public class InvoiceLine {
         this.periodEnd = periodEnd;
     }
 
+    /** Whether the line is billed for a service period. */
+    public boolean hasPeriod() {
+        return periodStart != null && periodEnd != null;
+    }
+
     public LocalDate getPeriodStart() {
         return periodStart;
     }

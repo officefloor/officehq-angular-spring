@@ -168,6 +168,55 @@ public class InvoiceService {
     }
 
     /**
+     * Marks the invoice as recurring, or not; empty if no such invoice. A credit note is refused. The invoice
+     * is otherwise unchanged, so a sent one stays sent.
+     */
+    @Transactional
+    public Optional<Invoice> setRecurring(Long invoiceId, boolean recurring) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note cannot be recurring.");
+            }
+            invoice.setRecurring(recurring);
+            invoices.saveAndFlush(invoice);
+        });
+        return found;
+    }
+
+    /**
+     * Generates the next period's draft of a sent recurring invoice (see {@link Invoice#nextPeriod}), issued today and
+     * due as any new invoice is, and records it in the audit; empty if no such invoice. A draft, an invoice that is
+     * not recurring or has no line with a service period, or one that has already generated its next period is refused.
+     */
+    @Transactional
+    public Optional<Invoice> generateNext(Long invoiceId) {
+        return load(invoiceId).map(original -> {
+            if (original.isDraft()) {
+                throw new InvoiceRejectedException("Only a sent invoice can generate its next period.");
+            }
+            if (!original.isRecurring() || original.isCreditNote()) {
+                throw new InvoiceRejectedException("The invoice is not recurring.");
+            }
+            if (original.isVoid()) {
+                throw new InvoiceRejectedException("A void invoice cannot generate its next period.");
+            }
+            if (original.latestPeriodEnd() == null) {
+                throw new InvoiceRejectedException("The invoice has no line with a service period to repeat.");
+            }
+            if (invoices.existsByRecurringFrom(original.getId())) {
+                throw new InvoiceRejectedException("The invoice has already generated its next period.");
+            }
+            LocalDate issued = today.date();
+            Invoice next = invoices.saveAndFlush(original.nextPeriod(issued, dueDateFor(original.getClientId(), issued)));
+            // Read again how far through the bands a copied tiered line's units reach.
+            entityManager.refresh(next);
+            audit.record("INVOICE_GENERATED from=" + original.number() + " to=" + next.number());
+            return next;
+        });
+    }
+
+    /**
      * A new, empty draft credit note against the sent invoice, issued today; empty if no such invoice.
      * A draft, a void invoice or a credit note is refused.
      */

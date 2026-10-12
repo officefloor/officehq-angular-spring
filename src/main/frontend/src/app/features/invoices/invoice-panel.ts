@@ -227,7 +227,8 @@ function problemWith(line: NewLine): string {
 // client); the server refuses to void a draft or one with a recorded
 // payment, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
 // cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
-// be duplicated into a new draft for the same client, which then opens. A draft's due date can be set
+// be duplicated into a new draft for the same client, which then opens. An invoice can be marked as
+// recurring; a sent recurring invoice generates the next period's draft once, which then opens. A draft's due date can be set
 // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
 // server refuses to send it once that date is past. A draft can hold back retention, a percentage of
 // the amount before tax, the subtotal less the discount (0 to 20); while held it is not part of the amount due, and once nothing else is due
@@ -749,6 +750,28 @@ function problemWith(line: NewLine): string {
           }
         }
 
+        @if (inv.creditOf === null) {
+          <label>
+            <input
+              type="checkbox"
+              data-testid="invoice-recurring"
+              [checked]="inv.recurring"
+              [disabled]="savingRecurring()"
+              (change)="setRecurring(inv.id, $any($event.target).checked)"
+            />
+            Recurring
+          </label>
+          @if (recurringError()) {
+            <p role="alert" data-testid="invoice-recurring-error">{{ recurringError() }}</p>
+          }
+          <button type="button" data-testid="invoice-generate" [disabled]="generating()" (click)="generate(inv.id)">
+            Generate next period
+          </button>
+          @if (generateError()) {
+            <p role="alert" data-testid="invoice-generate-error">{{ generateError() }}</p>
+          }
+        }
+
         <button
           type="button"
           data-testid="invoice-duplicate"
@@ -943,6 +966,12 @@ export class InvoicePanel {
   protected readonly sendError = signal('');
   protected readonly duplicating = signal(false);
   protected readonly duplicateError = signal('');
+  protected readonly savingRecurring = signal(false);
+  protected readonly recurringError = signal('');
+  protected readonly generating = signal(false);
+  protected readonly generateError = signal('');
+  // An invoice to generate the next period of once its recurring box has been saved; null for none.
+  private generateAfterSave: number | null = null;
   protected readonly crediting = signal(false);
   protected readonly creditError = signal('');
   protected readonly voiding = signal(false);
@@ -1040,6 +1069,8 @@ export class InvoicePanel {
       this.approveError.set('');
       this.voidError.set('');
       this.duplicateError.set('');
+      this.recurringError.set('');
+      this.generateError.set('');
       this.creditError.set('');
       this.reverseError.set('');
       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
@@ -1490,6 +1521,59 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The invoice could not be duplicated.',
         );
         this.duplicating.set(false);
+      },
+    });
+  }
+
+  protected setRecurring(invoiceId: number, recurring: boolean): void {
+    this.savingRecurring.set(true);
+    this.recurringError.set('');
+    this.service.setRecurring(invoiceId, recurring).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.savingRecurring.set(false);
+        this.generateWaiting();
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.recurringError.set(
+          typeof detail === 'string' && detail ? detail : 'The invoice could not be marked as recurring.',
+        );
+        this.savingRecurring.set(false);
+        this.generateWaiting();
+      },
+    });
+  }
+
+  // Generates the next period as asked while the recurring box was being saved.
+  private generateWaiting(): void {
+    const id = this.generateAfterSave;
+    this.generateAfterSave = null;
+    if (id !== null) {
+      this.generate(id);
+    }
+  }
+
+  // Generates the next period's draft, which the list then shows and opens (as a duplicate is).
+  protected generate(invoiceId: number): void {
+    this.generating.set(true);
+    this.generateError.set('');
+    if (this.savingRecurring()) {
+      this.generateAfterSave = invoiceId;
+      return;
+    }
+    this.service.generate(invoiceId).subscribe({
+      next: (detail) => {
+        this.generating.set(false);
+        this.duplicated.emit(detail);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.generateError.set(
+          typeof detail === 'string' && detail ? detail : 'The next period could not be generated.',
+        );
+        this.generating.set(false);
       },
     });
   }

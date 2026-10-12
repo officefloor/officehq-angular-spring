@@ -177,6 +177,14 @@ public class Invoice {
     @Column(name = "approved_on")
     private LocalDate approvedOn;
 
+    /** Whether the invoice repeats every period: once sent, it can generate the next period's draft (see {@link #nextPeriod}). */
+    @Column(name = "recurring")
+    private boolean recurring;
+
+    /** The id of the recurring invoice this draft was generated from as its next period; null when it was not. */
+    @Column(name = "recurring_from")
+    private Long recurringFrom;
+
     /**
      * The number of the instalment the client skipped: it pays only its interest and the instalments
      * after it are worked out again (see {@link #schedule}); null when none was.
@@ -510,6 +518,51 @@ public class Invoice {
         copy.planFee = planFee;
         lines.forEach(line -> copy.addLine(line.copy()));
         return copy;
+    }
+
+    /**
+     * The next period's draft of this recurring invoice for the same client, issued and due on the given dates: a copy of
+     * each line with a service period, moved to the whole calendar month after the latest period end on the invoice (lines
+     * without a period are one-off charges and are not copied), with this invoice's percentage discount and surcharge.
+     * The draft is recurring too and remembers it was generated from this invoice.
+     */
+    public Invoice nextPeriod(LocalDate issueDate, LocalDate dueDate) {
+        Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+        next.supplyRegion = supplyRegion;
+        next.discountPct = discountPct;
+        next.surchargePct = surchargePct;
+        next.recurring = true;
+        next.recurringFrom = id;
+        LocalDate start = latestPeriodEnd().plusMonths(1).withDayOfMonth(1);
+        LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
+        for (InvoiceLine line : lines) {
+            if (line.hasPeriod()) {
+                InvoiceLine copy = line.copy();
+                copy.setPeriod(start, end);
+                next.addLine(copy);
+            }
+        }
+        return next;
+    }
+
+    /** The latest service period end of the invoice's lines; null when no line has a period. */
+    public LocalDate latestPeriodEnd() {
+        return lines.stream().filter(InvoiceLine::hasPeriod).map(InvoiceLine::getPeriodEnd)
+                .max(LocalDate::compareTo).orElse(null);
+    }
+
+    /** Whether the invoice repeats every period. */
+    public boolean isRecurring() {
+        return recurring;
+    }
+
+    public void setRecurring(boolean recurring) {
+        this.recurring = recurring;
+    }
+
+    /** The id of the recurring invoice this draft was generated from; null when it was not. */
+    public Long getRecurringFrom() {
+        return recurringFrom;
     }
 
     /**

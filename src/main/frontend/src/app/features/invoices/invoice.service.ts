@@ -227,6 +227,10 @@ export interface InvoiceDetail {
   // The region where the work is done (the place of supply), taxed and reverse charged as for it
   // instead of the client's region; null for the client's region.
   supplyRegion: string | null;
+  // Whether the invoice repeats every period: once sent, it can generate the next period's draft.
+  recurring: boolean;
+  // The id of the recurring invoice this draft was generated from as its next period; null when it was not.
+  recurringFrom: number | null;
 }
 
 // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
@@ -429,6 +433,18 @@ export class InvoiceService {
   // today and due as any new invoice; payments are not copied. Answers the new draft.
   duplicate(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/duplicate`, null);
+  }
+
+  // Marks an invoice as recurring, or not; answers the invoice.
+  setRecurring(invoiceId: number, recurring: boolean): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/recurring`, { recurring });
+  }
+
+  // Generates the next period's draft of a sent recurring invoice: its lines with a service period moved
+  // to the calendar month after the latest period end, with its percentage discount and surcharge,
+  // issued today and due as any new invoice. Answers the new draft.
+  generate(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/generate`, null);
   }
 
   // Starts an empty draft credit note against a sent invoice, numbered CN-; answers the new draft.

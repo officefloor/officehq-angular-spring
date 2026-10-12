@@ -15,4 +15,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     @EntityGraph(attributePaths = "lines")
     Optional<Invoice> findWithLinesById(Long id);
+
+    /** Whether a draft has been generated from the recurring invoice as its next period. */
+    boolean existsByRecurringFrom(Long recurringFrom);
 }
