@@ -1,0 +1,93 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 814dbba..61bd11c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -9,6 +9,7 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
++import jakarta.persistence.Transient;
+ import org.hibernate.annotations.Formula;
+ import java.math.BigDecimal;
+ import java.util.Objects;
+@@ -162,6 +163,10 @@ public class InvoiceLine {
+     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
+     private Invoice invoice;
+ 
++    /** The line this changed line is priced in the place of, carrying on through the bands from where it did; null for none. */
++    @Transient
++    private InvoiceLine inPlaceOf;
++
+     protected InvoiceLine() {
+     }
+ 
+@@ -286,6 +291,26 @@ public class InvoiceLine {
+         return change;
+     }
+ 
++    /**
++     * A line for an adjustment note billing the change of this line's amount to the changed line's (priced in this
++     * line's place, with what it has already billed): the changed line's description, quantity 1 and the difference as
++     * its price when the amount went up, or quantity -1 and the (negative) difference as its price, for a credit note,
++     * when it went down; with the changed line's tax rate or exemption and no discount. Null when the amount is the same.
++     */
++    InvoiceLine amountChange(InvoiceLine changed, int scale) {
++        changed.inPlaceOf = this;
++        if (changed.percentComplete != null && percentComplete != null) {
++            changed.billedPct = billedPct;
++        }
++        BigDecimal difference = changed.amount(scale).subtract(amount(scale));
++        changed.inPlaceOf = null;
++        if (difference.signum() == 0) {
++            return null;
++        }
++        BigDecimal qty = difference.signum() > 0 ? BigDecimal.ONE : BigDecimal.ONE.negate();
++        return new InvoiceLine(changed.description, qty, difference, changed.taxExempt, BigDecimal.ZERO, changed.taxRate);
++    }
++
+     /** Whether two amounts are the same: both none, or equal in value. */
+     private static boolean same(BigDecimal a, BigDecimal b) {
+         return a == null ? b == null : b != null && a.compareTo(b) == 0;
+@@ -576,6 +601,7 @@ public class InvoiceLine {
+         if (tiers != null) {
+             BigDecimal before = creditOfLine != null && creditedUnitsTop != null
+                     ? creditedUnitsTop.subtract(invoice == null ? BigDecimal.ZERO : invoice.creditedUnitsBefore(this)).subtract(billedQty()).max(BigDecimal.ZERO)
++                    : inPlaceOf != null ? (inPlaceOf.invoice == null ? BigDecimal.ZERO : inPlaceOf.invoice.tieredUnitsBefore(inPlaceOf))
+                     : invoice == null ? BigDecimal.ZERO : invoice.tieredUnitsBefore(this);
+             RateTiers bands = RateTiers.parse(tiers);
+             if (overtime) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 880a8b7..36d2f9f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -715,8 +715,8 @@ public class InvoiceService {
+      * checked. Refused when the subtotal would be less than a fixed discount. A sent invoice is left as it
+      * was sent and the change is made by adjustment notes instead: a change of quantity alone by one note for
+      * the difference (a debit note for more, a credit note for less), a change of percent complete alone likewise by one
+-     * note for the difference of the two percentages' amounts (see {@link InvoiceLine#percentChange}), any other change by a credit note taking
+-     * the old line off and a debit note billing the new one.
++     * note for the difference of the two percentages' amounts (see {@link InvoiceLine#percentChange}), any other change by one
++     * note for the change in the line's amount (see {@link InvoiceLine#amountChange}).
+      */
+     @Transactional
+     public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
+@@ -745,9 +745,16 @@ public class InvoiceService {
+                     issueAdjustmentCredit(invoice, change);
+                 }
+             } else if (!old.sameButQty(changed)) {
+-                refuseDuplicateAdjustment(invoice, List.of(changed), List.of(old.creditCopy()));
+-                issueAdjustmentCredit(invoice, old.creditCopy());
+-                issueDebitNote(invoice, changed);
++                InvoiceLine change = old.amountChange(changed, invoice.scale());
++                if (change == null) {
++                    // The amount is the same: the line is left as it was sent.
++                } else if (change.getQty().signum() > 0) {
++                    refuseDuplicateAdjustment(invoice, List.of(change), List.of());
++                    issueDebitNote(invoice, change);
++                } else {
++                    refuseDuplicateAdjustment(invoice, List.of(), List.of(change));
++                    issueAdjustmentCredit(invoice, change);
++                }
+             } else if (qty.compareTo(old.getQty()) > 0) {
+                 refuseDuplicateAdjustment(invoice, List.of(old.copy().withQty(qty.subtract(old.getQty()))), List.of());
+                 issueDebitNote(invoice, old.copy().withQty(qty.subtract(old.getQty())));
