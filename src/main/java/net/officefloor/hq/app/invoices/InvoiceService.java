@@ -1450,6 +1450,8 @@ public class InvoiceService {
                                                 + "; approve the invoice before sending it."
                                 : riskOf(invoice.getClientId()).band() == RiskBand.HIGH
                                         ? "The client pays slowly (HIGH payment risk); approve the invoice before sending it."
+                                : secondReminderUnpaid(invoice.getClientId())
+                                        ? "The client has an invoice still overdue after its second reminder; approve the invoice before sending it."
                                         : wouldGoOverLimit(invoice)
                                                 ? creditLimitRefusal(invoice) + " Approve the invoice before sending it."
                                                 : "The grand total is over the approval limit; approve the invoice before sending it.");
@@ -1594,7 +1596,7 @@ public class InvoiceService {
         LocalDate on = today.date();
         return loadForClient(clientId).stream()
                 .filter(i -> i.isDraft() && !i.isCreditNote() && !i.getId().equals(excludeId)
-                        && i.approval(rate, on, false, true, false) == Invoice.Approval.APPROVED)
+                        && i.approval(rate, on, false, true, false, false) == Invoice.Approval.APPROVED)
                 .map(i -> i.owedTotal(rate))
                 .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
     }
@@ -2024,8 +2026,8 @@ public class InvoiceService {
     /**
      * Records a payment of the amount on the date against a sent invoice that still has something
      * due, and records it in the audit; empty if no such invoice. The amount has already been
-     * checked; what it pays beyond what is due is held on the client's account as credit. A draft, an
-     * invoice already paid, or a date after today
+     * checked; what it pays beyond what is due is held on the client's account as credit. A draft (unless
+     * its client is on hold, see {@link #payOverdueThenHold}), an invoice already paid, or a date after today
      * or before the invoice's issue date is refused. The reference (null when none was quoted) has
      * already been checked; one that belongs to a different invoice is refused. Cash (the method; null
      * for a bank transfer) must be in the client's own currency and a whole number of its coins; paying
@@ -2038,7 +2040,8 @@ public class InvoiceService {
             String reference, PaymentMethod method, String remittance) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
-            if (invoice.isDraft()) {
+            // A client on hold pays its overdue invoices first, whatever invoice is open, even a draft.
+            if (invoice.isDraft() && !onHold(invoice.getClientId())) {
                 throw new InvoiceRejectedException("Send the invoice before recording a payment.");
             }
             if (invoice.isVoid()) {
@@ -2464,7 +2467,7 @@ public class InvoiceService {
         if (client.isEmpty()) {
             return Optional.empty();
         }
-        if (client.get().isOnHold() || longDispute(clientId)) {
+        if (client.get().isOnHold() || longDispute(clientId) || finalNoticeUnpaid(clientId)) {
             throw new InvoiceRejectedException("The client is on hold: lift the hold before applying their credit.");
         }
         Map<String, Long> drafts = holdersByReference(clientId);
@@ -2782,11 +2785,46 @@ public class InvoiceService {
     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
     /**
      * Whether the client is on hold: put on hold by hand, its balance less what is in dispute is over its credit limit,
-     * or it has a long dispute (see {@link #longDispute}); false if no such client.
+     * it has a long dispute (see {@link #longDispute}), or its final notice is unpaid (see {@link #finalNoticeUnpaid});
+     * false if no such client.
      */
     @Transactional(readOnly = true)
     public boolean onHold(Long clientId) {
-        return clients.findById(clientId).map(c -> c.isOnHold() || overLimit(c) || longDispute(c.getId())).orElse(false);
+        return clients.findById(clientId)
+                .map(c -> c.isOnHold() || overLimit(c) || longDispute(c.getId()) || finalNoticeUnpaid(c.getId()))
+                .orElse(false);
+    }
+
+    /**
+     * Whether the client has an invoice still overdue today after its final notice (its third reminder) went out:
+     * the client is then on hold until no such invoice is overdue.
+     */
+    @Transactional(readOnly = true)
+    public boolean finalNoticeUnpaid(Long clientId) {
+        return overdueAfterReminders(clientId, DunningLevel.FINAL.reminders());
+    }
+
+    /**
+     * Whether the client has an invoice still overdue today after its second reminder went out: every draft
+     * of the client then needs approval.
+     */
+    @Transactional(readOnly = true)
+    public boolean secondReminderUnpaid(Long clientId) {
+        return overdueAfterReminders(clientId, DunningLevel.REMINDER_2.reminders());
+    }
+
+    /** Whether any of the client's sent invoices is overdue today with at least that many reminders sent on it. */
+    private boolean overdueAfterReminders(Long clientId, int reminders) {
+        List<Invoice> chased = loadForClient(clientId).stream()
+                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote() && i.getReminders().size() >= reminders)
+                .toList();
+        if (chased.isEmpty()) {
+            return false;
+        }
+        Map<Long, BigDecimal> paid = paid(chased);
+        LocalDate now = today.date();
+        return chased.stream().anyMatch(i ->
+                i.statusWhenPaid(paid.get(i.getId()), taxRate.percent(), now) == InvoiceStatus.OVERDUE);
     }
 
     /** How many days a dispute may stay open before its client is put on hold. */
@@ -2880,7 +2918,8 @@ public class InvoiceService {
         invoice.markHighRisk(highRisk);
         boolean overCreditLimit = invoice.isDraft() && !invoice.isCreditNote() && wouldGoOverLimit(invoice);
         boolean duplicate = !possibleDuplicateOf(invoice).isEmpty();
-        return invoice.approval(taxRate.percent(), today.date(), highRisk, overCreditLimit, duplicate);
+        boolean remindersIgnored = invoice.isDraft() && !invoice.isCreditNote() && secondReminderUnpaid(invoice.getClientId());
+        return invoice.approval(taxRate.percent(), today.date(), highRisk, overCreditLimit, duplicate, remindersIgnored);
     }
 
     /**

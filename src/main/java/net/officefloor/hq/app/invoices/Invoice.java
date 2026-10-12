@@ -1651,10 +1651,11 @@ public class Invoice {
      * needs approval, whatever its size, as does every draft that would take its client over its credit limit
      * (overCreditLimit). A draft whose grand total is more than one and a half times the approval limit, or
      * of a HIGH payment risk client, needs {@link #approvalsRequired two approvals} of that same total. So does
-     * a draft that is a possible duplicate of an invoice recently sent to its client (possibleDuplicate).
+     * a draft that is a possible duplicate of an invoice recently sent to its client (possibleDuplicate). Every
+     * draft of a client with an invoice still overdue after its second reminder (remindersIgnored) needs approval.
      */
     public Approval approval(BigDecimal taxRate, LocalDate today, boolean highRisk, boolean overCreditLimit,
-            boolean possibleDuplicate) {
+            boolean possibleDuplicate, boolean remindersIgnored) {
         if (isCreditNote()) {
             return Approval.NOT_NEEDED;
         }
@@ -1663,7 +1664,7 @@ public class Invoice {
         }
         BigDecimal limit = approvalLimit();
         BigDecimal total = approvalTotal(taxRate);
-        if (!highRisk && !overCreditLimit && !possibleDuplicate && !discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
+        if (!highRisk && !overCreditLimit && !possibleDuplicate && !remindersIgnored && !discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
             return Approval.NOT_NEEDED;
         }
         return approvalsAt(total, today) < approvalsRequired(taxRate) ? Approval.NEEDS_APPROVAL : Approval.APPROVED;

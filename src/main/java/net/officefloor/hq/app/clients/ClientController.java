@@ -37,16 +37,16 @@ public class ClientController {
             BigDecimal effectiveCreditLimit) {
         /**
          * The client, on hold when held by hand, while over its credit limit (overLimit) or while it has a
-         * dispute open over 30 days (longDispute), with its payment risk
+         * dispute open over 30 days or an invoice overdue after its final notice (autoHold), with its payment risk
          * score (null when nothing is paid in full) and band, and the credit limit that counts for it (half of
          * what is set for a HIGH payment risk).
          */
-        static ClientView of(Client c, boolean overLimit, boolean longDispute, InvoiceService.Risk risk, BigDecimal effectiveCreditLimit) {
+        static ClientView of(Client c, boolean overLimit, boolean autoHold, InvoiceService.Risk risk, BigDecimal effectiveCreditLimit) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
                     c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
-                    c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold() || overLimit || longDispute, overLimit,
+                    c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold() || overLimit || autoHold, overLimit,
                     risk.score() == null ? null : risk.score().toPlainString(), risk.band(), c.getTier(), c.getUpliftPct(),
                     effectiveCreditLimit);
         }
@@ -169,7 +169,7 @@ public class ClientController {
     }
 
     private ClientView view(Client c) {
-        return ClientView.of(c, invoices.overLimit(c.getId()), invoices.longDispute(c.getId()), invoices.riskOf(c.getId()), invoices.creditLimitOf(c));
+        return ClientView.of(c, invoices.overLimit(c.getId()), invoices.longDispute(c.getId()) || invoices.finalNoticeUnpaid(c.getId()), invoices.riskOf(c.getId()), invoices.creditLimitOf(c));
     }
 
     @GetMapping
@@ -189,7 +189,8 @@ public class ClientController {
     /**
      * Puts the client on hold, or lifts the hold when it is on hold; answers the client. A client over its
      * credit limit is on hold until its balance is back within it, and one with a dispute open over 30 days until
-     * it is resolved, so its hold cannot be lifted.
+     * it is resolved, and one with an invoice overdue after its final notice until that invoice is paid, so its
+     * hold cannot be lifted.
      */
     @PostMapping("/{id}/hold")
     public ClientView toggleHold(@PathVariable Long id) {
@@ -200,6 +201,10 @@ public class ClientController {
         if (invoices.longDispute(id)) {
             throw new ClientRejectedException(
                     "The client has a dispute open for over 30 days, so it stays on hold until that dispute is resolved.");
+        }
+        if (invoices.finalNoticeUnpaid(id)) {
+            throw new ClientRejectedException(
+                    "The client has an invoice still overdue after its final notice, so it stays on hold until it is paid.");
         }
         return clients.toggleHold(id).map(this::view)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
