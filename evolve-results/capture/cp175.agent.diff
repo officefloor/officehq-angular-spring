@@ -1,0 +1,119 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index 7f9e3ec..cdef91a 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -101,6 +101,7 @@ import { Currency, money, statusLabel } from './invoice-format';
+         (changed)="totalChanged($event)"
+         (split)="splitRecorded($event)"
+         (duplicated)="duplicated($event)"
++        (generated)="generated($event)"
+         (credited)="duplicated($event)"
+         (creditIssued)="creditIssued()"
+       />
+@@ -226,6 +227,14 @@ export class ClientInvoices {
+     this.selectedId.set(id);
+   }
+ 
++  // The next period was generated: list it and open it; when it was sent at once the client's balance moved.
++  protected generated(detail: InvoiceDetail): void {
++    this.duplicated(detail);
++    if (detail.status !== 'DRAFT') {
++      this.changed.emit();
++    }
++  }
++
+   // A credit note was issued against the open invoice: list it with the invoices' new statuses.
+   protected creditIssued(): void {
+     this.service.forClient(this.clientId()).subscribe((list) => this.invoices.set(list));
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 06f9554..fec2775 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -1013,6 +1013,8 @@ export class InvoicePanel {
+   readonly split = output<InvoiceSummary[]>();
+   // A new draft copied from this invoice, to be listed and opened.
+   readonly duplicated = output<InvoiceDetail>();
++  // The next period was generated: the new invoice, sent at once when nothing stopped it.
++  readonly generated = output<InvoiceDetail>();
+   // A new draft credit note against this invoice, to be listed and opened.
+   readonly credited = output<InvoiceDetail>();
+   // A credit note was issued against the invoice (this invoice's new detail), so the client's invoices
+@@ -1777,7 +1779,7 @@ export class InvoicePanel {
+     this.service.generate(invoiceId).subscribe({
+       next: (detail) => {
+         this.generating.set(false);
+-        this.duplicated.emit(detail);
++        this.generated.emit(detail);
+       },
+       error: (e: HttpErrorResponse) => {
+         const detail: unknown = e.error?.detail;
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 9ab9afb..4340100 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -525,7 +525,7 @@ export class InvoiceService {
+ 
+   // Generates the next period's draft of a sent recurring invoice: its lines with a service period moved
+   // to the calendar month after the latest period end, with its percentage discount and surcharge,
+-  // issued today and due as any new invoice. Answers the new draft.
++  // issued today and due as any new invoice, and sent at once when nothing stops it. Answers the new invoice.
+   generate(invoiceId: number): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/generate`, null);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index b4de3d1..be04429 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -207,7 +207,8 @@ public class InvoiceService {
+      * Generates the next period's draft of a sent recurring invoice (see {@link Invoice#nextPeriod}), issued today and
+      * due as any new invoice is, and records it in the audit; empty if no such invoice. A draft, an invoice that is
+      * not recurring or has no line with a service period, one that has already generated its next period, one whose next
+-     * period would start after its end date, or one for a client on hold is refused.
++     * period would start after its end date, or one for a client on hold is refused. The draft is sent at once, as
++     * {@link #send} would, when nothing stops it: no approval, deposit or more than the client's credit limit needed.
+      */
+     @Transactional
+     public Optional<Invoice> generateNext(Long invoiceId) {
+@@ -238,6 +239,9 @@ public class InvoiceService {
+             // Read again how far through the bands a copied tiered line's units reach.
+             entityManager.refresh(next);
+             audit.record("INVOICE_GENERATED from=" + original.number() + " to=" + next.number());
++            if (sendable(next) && creditLimitRefusal(next) == null) {
++                markSent(next);
++            }
+             return next;
+         });
+     }
+@@ -1077,11 +1081,7 @@ public class InvoiceService {
+             return;
+         }
+         loadForClient(clientId).stream()
+-                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty()
+-                        && !invoice.dueDatePassedBy(today.date())
+-                        && approval(invoice) != Invoice.Approval.NEEDS_APPROVAL
+-                        && milestoneRefusal(invoice) == null
+-                        && (invoice.isCreditNote() || depositRefusal(invoice) == null))
++                .filter(this::sendable)
+                 .forEach(invoice -> {
+                     if (!invoice.isCreditNote()) {
+                         // Read again the client's sent invoices: one sent just before counts towards its month's volume.
+@@ -1095,6 +1095,19 @@ public class InvoiceService {
+                 });
+     }
+ 
++    /**
++     * Whether nothing but the client's credit limit stops the draft being sent as {@link #send} would: it has
++     * lines, its due date set by hand is not past, it needs no approval, its milestones allow it and any
++     * deposit it needs is held. The client's hold is checked by the caller.
++     */
++    private boolean sendable(Invoice invoice) {
++        return invoice.isDraft() && !invoice.getLines().isEmpty()
++                && !invoice.dueDatePassedBy(today.date())
++                && approval(invoice) != Invoice.Approval.NEEDS_APPROVAL
++                && milestoneRefusal(invoice) == null
++                && (invoice.isCreditNote() || depositRefusal(invoice) == null);
++    }
++
+     /**
+      * What the client owes: what is still due on its sent invoices (late interest included, withholding
+      * left out), less its unused credit. Void invoices and credit notes
