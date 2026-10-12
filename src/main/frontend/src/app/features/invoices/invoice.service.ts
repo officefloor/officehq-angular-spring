@@ -132,6 +132,9 @@ export interface InvoicePaymentView {
 // `amountDue` is the total less that and less `writtenOff`: when payments leave less than $0.05 due (and no more than 1% of the grand total),
 // the rest is written off ("0.00" when nothing is). `reference` is its ISO 11649 RF payment reference, made from
 // the seven digits of its number, in groups of four (RF16 0000 075).
+// How far an overdue invoice is chased; each level after NONE is a reminder sent in turn.
+export type DunningLevel = 'NONE' | 'REMINDER_1' | 'REMINDER_2' | 'FINAL' | 'COLLECTIONS';
+
 export interface InvoiceDetail {
   id: number;
   number: string;
@@ -262,6 +265,9 @@ export interface InvoiceDetail {
   adjustmentOf: number | null;
   // What the adjustment notes issued against this invoice add up to, a credit note's negative.
   adjusted: string;
+  // How far the invoice is chased (NONE unless it is overdue), and the days its reminders went out, earliest first.
+  dunning: DunningLevel;
+  reminders: string[];
   // The client's purchase order number for the invoice; null when none was given.
   poNumber: string | null;
   // The milestones it is billed by (empty when it is billed whole), and what their percentages add up
@@ -487,6 +493,13 @@ export class InvoiceService {
   promise(invoiceId: number, amount: string, date: string): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/promise`, { amount, date });
   }
+
+  // Sends today the reminder for the dunning level an overdue invoice has reached; refused when it is at
+  // NONE or that reminder has already gone out.
+  remind(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/remind`, {});
+  }
+
 
   // Waives the late interest still unpaid on an overdue invoice; interest starts again
   // from today on what is still owed. Refused (409) when there is nothing to waive.

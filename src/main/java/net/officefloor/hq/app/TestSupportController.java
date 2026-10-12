@@ -55,7 +55,7 @@ public class TestSupportController {
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier", "upliftPct");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "interestWaivedOn", "writtenOffOn", "surchargePct", "supplyRegion", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "adjustmentOf", "promiseAmount", "promiseDate", "promisedOn", "lineItems", "milestones");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "interestWaivedOn", "writtenOffOn", "surchargePct", "supplyRegion", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "adjustmentOf", "promiseAmount", "promiseDate", "promisedOn", "reminders", "lineItems", "milestones");
     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct", "interestOf");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "heldFor", "allocations", "currency", "method", "remittance", "deposit");
@@ -123,6 +123,7 @@ public class TestSupportController {
         jdbc.execute("DELETE FROM client_rate");
         jdbc.execute("DELETE FROM price_list_rate");
         jdbc.execute("DELETE FROM holiday");
+        jdbc.execute("DELETE FROM invoice_reminder");
         for (String table : List.of("payment", "invoice_milestone", "invoice_line", "invoice", "client")) {
             jdbc.execute("DELETE FROM " + table);
             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH 1");
@@ -533,6 +534,15 @@ public class TestSupportController {
                         line.get("billedPct") == null ? null : percent(line.get("billedPct"), "invoices[].lineItems[].billedPct"),
                         line.get("interestOf") == null ? null : id(line.get("interestOf")));
             }
+            if (row.get("reminders") != null) {
+                if (!(row.get("reminders") instanceof List<?> sent)) {
+                    throw refuse("invoices[].reminders must be a list of dates");
+                }
+                for (Object on : sent) {
+                    jdbc.update("INSERT INTO invoice_reminder (invoice_id, sent_on) VALUES (?, ?)", invoiceId,
+                            date(on, "invoices[].reminders[]"));
+                }
+            }
             BigDecimal pctSum = BigDecimal.ZERO;
             for (Map<String, Object> milestone : rows(row.get("milestones"), "invoices[].milestones")) {
                 only(milestone, MILESTONE_FIELDS, "invoices[].milestones[]");
@@ -911,6 +921,9 @@ public class TestSupportController {
                     if (r.get("SUPPLY_REGION") != null) {
                         row.put("supplyRegion", r.get("SUPPLY_REGION"));
                     }
+                    row.put("reminders", jdbc.queryForList(
+                            "SELECT sent_on FROM invoice_reminder WHERE invoice_id = ? ORDER BY sent_on", LocalDate.class,
+                            r.get("ID")).stream().map(LocalDate::toString).toList());
                     row.put("milestones", jdbc.queryForList(
                             "SELECT id, description, pct, reached_on, disputed_on FROM invoice_milestone WHERE invoice_id = ? ORDER BY id",
                             r.get("ID")).stream().map(m -> {

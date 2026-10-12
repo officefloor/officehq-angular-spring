@@ -664,6 +664,16 @@ function problemWith(line: NewLine): string {
           <p role="alert" data-testid="invoice-waive-error">{{ waiveError() }}</p>
         }
 
+        @if (inv.creditOf === null && inv.status !== 'DRAFT') {
+          <p>Dunning level: <span data-testid="invoice-dunning">{{ inv.dunning }}</span></p>
+          <button type="button" data-testid="invoice-remind" [disabled]="reminding()" (click)="remind(inv.id)">
+            Remind
+          </button>
+          @if (remindError()) {
+            <p role="alert" data-testid="invoice-remind-error">{{ remindError() }}</p>
+          }
+        }
+
         @if (inv.creditOf === null && inv.status !== 'WRITTEN_OFF') {
           <button type="button" data-testid="invoice-write-off" [disabled]="writingOff()" (click)="writeOff(inv.id)">
             Write off
@@ -998,6 +1008,8 @@ export class InvoicePanel {
   protected readonly reachError = signal('');
   protected readonly promising = signal(false);
   protected readonly promiseError = signal('');
+  protected readonly reminding = signal(false);
+  protected readonly remindError = signal('');
   protected readonly waiving = signal(false);
   protected readonly waiveError = signal('');
   protected readonly writingOff = signal(false);
@@ -1118,6 +1130,7 @@ export class InvoicePanel {
       this.reachError.set('');
       this.promiseForm.reset();
       this.promiseError.set('');
+      this.remindError.set('');
       this.waiveError.set('');
       this.writeOffError.set('');
       this.disputeError.set('');
@@ -1467,6 +1480,23 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The promise to pay could not be recorded.',
         );
         this.promising.set(false);
+      },
+    });
+  }
+
+  protected remind(invoiceId: number): void {
+    this.reminding.set(true);
+    this.remindError.set('');
+    this.service.remind(invoiceId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.reminding.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.remindError.set(typeof detail === 'string' && detail ? detail : 'The reminder could not be sent.');
+        this.reminding.set(false);
       },
     });
   }

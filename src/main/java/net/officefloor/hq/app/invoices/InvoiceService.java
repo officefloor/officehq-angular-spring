@@ -127,8 +127,9 @@ public class InvoiceService {
         BigDecimal annual = lateInterestRate.percent();
         LocalDate now = today.date();
         all.forEach(i -> {
-            // Loaded with its lines only: read its milestones now, while the session is open.
+            // Loaded with its lines only: read its milestones and reminders now, while the session is open.
             Hibernate.initialize(i.getMilestones());
+            i.initializeReminders();
             i.priceAsOf(now);
             if (i.isDraft() && !i.isCreditNote()) {
                 repriceWhereRated(i, now);
@@ -1113,6 +1114,32 @@ public class InvoiceService {
             invoices.saveAndFlush(invoice);
             audit.record("PAYMENT_PROMISED id=" + invoice.getId() + " amount=" + promised.toPlainString()
                     + " date=" + by);
+        });
+        return found;
+    }
+
+    /**
+     * Sends today the reminder for the dunning level an invoice has reached, and records it in the audit; empty if
+     * no such invoice. Refused when the invoice is at NONE or the reminder for its level has already gone out.
+     */
+    @Transactional
+    public Optional<Invoice> remind(Long invoiceId) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            LocalDate now = today.date();
+            List<Invoice> one = List.of(invoice);
+            InvoiceStatus status = invoice.statusWhenPaid(paid(one).get(invoice.getId()),
+                    paidOn(one).get(invoice.getId()), taxRate.percent(), now);
+            DunningLevel level = invoice.dunningLevel(status, now);
+            if (level == DunningLevel.NONE) {
+                throw new InvoiceRejectedException("This invoice is not far enough overdue to be chased.");
+            }
+            if (invoice.getReminders().size() >= level.reminders()) {
+                throw new InvoiceRejectedException("The " + level + " reminder has already gone out.");
+            }
+            invoice.remind(now);
+            invoices.saveAndFlush(invoice);
+            audit.record("REMINDER_SENT id=" + invoice.getId() + " level=" + level);
         });
         return found;
     }

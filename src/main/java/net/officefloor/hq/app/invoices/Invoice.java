@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.invoices;
 
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -14,6 +16,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
+import org.hibernate.Hibernate;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.Formula;
@@ -546,6 +549,14 @@ public class Invoice {
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
     private List<Milestone> milestones = new ArrayList<>();
+
+    /** The days the dunning reminders on this invoice went out, earliest first (see {@link #dunningLevel}). */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @CollectionTable(name = "invoice_reminder", joinColumns = @JoinColumn(name = "invoice_id"))
+    @Column(name = "sent_on")
+    @OrderBy
+    private List<LocalDate> reminders = new ArrayList<>();
 
     protected Invoice() {
     }
@@ -1106,6 +1117,47 @@ public class Invoice {
 
     public LocalDate getPromisedOn() {
         return promisedOn;
+    }
+
+    public List<LocalDate> getReminders() {
+        return List.copyOf(reminders);
+    }
+
+    /** Reads the reminders now, while the session is open. */
+    void initializeReminders() {
+        Hibernate.initialize(reminders);
+    }
+
+    /**
+     * The dunning level of the invoice at the given status on the given day: NONE unless it is overdue and at least
+     * 7 days past its due date; REMINDER_1 from 7 days; REMINDER_2 from 21 days once the first reminder went out at
+     * least 14 days before; FINAL from 45 days once the second went out; COLLECTIONS from 60 days once the final
+     * notice went out.
+     */
+    public DunningLevel dunningLevel(InvoiceStatus status, LocalDate today) {
+        if (status != InvoiceStatus.OVERDUE || dueDate == null) {
+            return DunningLevel.NONE;
+        }
+        long overdue = ChronoUnit.DAYS.between(dueDate, today);
+        int sent = reminders.size();
+        if (overdue < 7) {
+            return DunningLevel.NONE;
+        }
+        if (overdue < 21 || sent < 1 || ChronoUnit.DAYS.between(reminders.get(0), today) < 14) {
+            return DunningLevel.REMINDER_1;
+        }
+        if (overdue < 45 || sent < 2) {
+            return DunningLevel.REMINDER_2;
+        }
+        if (overdue < 60 || sent < 3) {
+            return DunningLevel.FINAL;
+        }
+        return DunningLevel.COLLECTIONS;
+    }
+
+    /** Records that the reminder for the next dunning level went out on the given day; it has already been checked. */
+    public void remind(LocalDate on) {
+        reminders.add(on);
     }
 
     /** Records a promise made on the given day to pay the amount by the date; it has already been checked. */

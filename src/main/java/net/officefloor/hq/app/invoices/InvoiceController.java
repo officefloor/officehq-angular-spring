@@ -188,7 +188,7 @@ public class InvoiceController {
             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate recurringSince, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
             List<MilestoneView> milestones, String milestonesPct, Long claimFrom, String sentTotal, String currentTotal,
             String fingerprint, String duplicateOf, LocalDate rebilledOn, String replaces, String replacedBy,
-            Long adjustmentOf, String adjusted) {
+            Long adjustmentOf, String adjusted, DunningLevel dunning, List<LocalDate> reminders) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval,
                 List<Invoice> duplicates) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
@@ -200,9 +200,10 @@ public class InvoiceController {
             List<LineView> lines = IntStream.range(0, shares.size())
                     .mapToObj(n -> LineView.of(i.getLines().get(n), i.scale(), shares.get(n), taxes.get(n),
                             inside.get(n), i.isDisputed())).toList();
+            InvoiceStatus status = i.statusWhenPaid(paid, paidOn, taxRate, today);
             return new InvoiceDetail(i.getId(), i.number(),
                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
-                    i.statusWhenPaid(paid, paidOn, taxRate, today), i.getIssueDate(), i.getDueDate(),
+                    status, i.getIssueDate(), i.getDueDate(),
                     lines, i.subtotal().toPlainString(),
                     i.getDiscountPct().stripTrailingZeros().toPlainString(),
                     i.getDiscountAmount().setScale(2).toPlainString(),
@@ -238,7 +239,7 @@ public class InvoiceController {
                             : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")),
                     i.getRebilledOn(), i.getReplaces() == null ? null : InvoiceNumber.of(i.getReplaces()),
                     i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()),
-                    i.getAdjustmentOf(), i.getAdjusted().toPlainString());
+                    i.getAdjustmentOf(), i.getAdjusted().toPlainString(), i.dunningLevel(status, today), i.getReminders());
         }
     }
 
@@ -671,6 +672,14 @@ public class InvoiceController {
     @PostMapping("/api/invoices/{id}/promise")
     public InvoiceDetail promise(@PathVariable Long id, @Valid @RequestBody NewPromise body) {
         return invoices.promisePayment(id, body.amount(), body.date())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** Sends the dunning reminder for the level an overdue invoice has reached. */
+    @PostMapping("/api/invoices/{id}/remind")
+    public InvoiceDetail remind(@PathVariable Long id) {
+        return invoices.remind(id)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
