@@ -1324,8 +1324,28 @@ public class InvoiceService {
         return found;
     }
 
-    /** Writes off the invoice on the day, everything it still owes then, and records it in the audit. */
+    /**
+     * Writes off the invoice on the day, everything it still owes then, and records it in the audit; then its sent
+     * debit notes that still owe something go with it, each written off the same day and recorded the same way.
+     */
     private void writeOff(Invoice invoice, LocalDate on, BigDecimal paid, BigDecimal rate) {
+        writeOffOne(invoice, on, paid, rate);
+        for (Invoice note : invoices.findByClientIdOrderByIdAsc(invoice.getClientId())) {
+            if (!invoice.getId().equals(note.getAdjustmentOf()) || note.isDraft() || note.isVoid()
+                    || note.isCreditNote() || note.isWrittenOff()) {
+                continue;
+            }
+            load(note.getId()).ifPresent(loaded -> {
+                BigDecimal notePaid = paid(List.of(loaded)).get(loaded.getId());
+                if (loaded.amountDue(notePaid, rate).signum() > 0) {
+                    writeOffOne(loaded, on, notePaid, rate);
+                }
+            });
+        }
+    }
+
+    /** Writes off the one invoice on the day, everything it still owes then, and records it in the audit. */
+    private void writeOffOne(Invoice invoice, LocalDate on, BigDecimal paid, BigDecimal rate) {
         invoice.writeOff(on);
         withInterest(List.of(invoice));
         BigDecimal amount = invoice.writtenOff(paid, rate);
