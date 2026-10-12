@@ -146,7 +146,7 @@ public class InvoiceController {
      * is the due date as listed: for a plan, its next unpaid instalment's. {@code currency} is the
      * currency its client is billed in, which every amount is in (whole yen for a yen client).
      * {@code earlyDiscount} is the early-payment discount it was settled with (0 when none), and
-     * {@code settleAmount} what would settle it today while its early-payment window is open (null otherwise).
+     * {@code settleAmount} what would settle it today while its early-payment window is open and its client is a LOW payment risk (null otherwise).
      * {@code lateInterest} is the late interest charged on it so far, part of the amount due;
      * {@code lateWaived} is the late interest written off by waiving it (0 when none was). {@code payoff} is what would pay off its
      * plan today (null without a plan or once it is paid off), and {@code interestSaved} the interest

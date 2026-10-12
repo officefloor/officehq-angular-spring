@@ -492,6 +492,13 @@ public class Invoice {
     @Transient
     private Map<Long, BigDecimal> milestoneInterest = Map.of();
 
+    /**
+     * Whether the early-payment discount is withheld because the client is not a LOW payment risk on its
+     * other invoices (see {@link #withholdEarlyPay}); not stored, worked out again each time the invoice is read.
+     */
+    @Transient
+    private boolean earlyPayWithheld;
+
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
@@ -1623,11 +1630,11 @@ public class Invoice {
 
     /**
      * The early-payment discount on offer: the client's early-payment percentage of the amount before
-     * tax (the subtotal less the discount), rounded down to the cent; nothing for a credit note, or an invoice
-     * spread over instalments.
+     * tax (the subtotal less the discount), rounded down to the cent; nothing for a credit note, an invoice
+     * spread over instalments, or one whose client is not a LOW payment risk (see {@link #withholdEarlyPay}).
      */
     public BigDecimal earlyDiscount(BigDecimal taxRate) {
-        if (isCreditNote() || hasPlan() || earlyPayDays == null
+        if (earlyPayWithheld || isCreditNote() || hasPlan() || earlyPayDays == null
                 || earlyPayPct == null || earlyPayPct.signum() <= 0) {
             return zero();
         }
@@ -1653,6 +1660,11 @@ public class Invoice {
             return null;
         }
         return due.subtract(earlyDiscount(taxRate)).max(zero());
+    }
+
+    /** Withholds the early-payment discount (or offers it again): only a LOW payment risk client gets it. */
+    public void withholdEarlyPay(boolean withheld) {
+        this.earlyPayWithheld = withheld;
     }
 
     /** The early discount the invoice was settled with, to the cent; 0 when none was taken. */

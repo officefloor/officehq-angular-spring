@@ -185,7 +185,8 @@ export interface InvoiceDetail {
   // The currency the client is billed in: every amount is in it (whole yen for a yen client).
   currency: Currency;
   // The early-payment discount it was settled with ("0.00" when none was taken), and what would
-  // settle it today while its early-payment window is open (null otherwise).
+  // settle it today while its early-payment window is open and its client is a LOW payment risk on its
+  // other invoices (null otherwise).
   earlyDiscount: string;
   settleAmount: string | null;
   // The late interest charged on it so far ("0.00" when none): part of `amountDue`.

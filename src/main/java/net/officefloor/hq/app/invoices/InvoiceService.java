@@ -138,7 +138,9 @@ public class InvoiceService {
         list.forEach(i -> {
             List<Invoice> others = all.stream()
                     .filter(o -> o.getClientId().equals(i.getClientId()) && !o.getId().equals(i.getId())).toList();
-            if (riskOf(others, paidOn).band() == RiskBand.HIGH) {
+            RiskBand band = riskOf(others, paidOn).band();
+            i.withholdEarlyPay(band != RiskBand.LOW);
+            if (band == RiskBand.HIGH) {
                 i.accrueLateInterest(found, rate, annual, HIGH_RISK_INTEREST_PREMIUM, now);
             }
         });
@@ -1446,6 +1448,7 @@ public class InvoiceService {
         }
         usable.addAll(others);
         BigDecimal early = BigDecimal.ZERO;
+        invoice.withholdEarlyPay(bandOfOthers(invoice) != RiskBand.LOW);
         BigDecimal settle = invoice.settleAmount(paidSoFar, taxRate.percent(), now);
         if (settle != null && usable.stream().map(Payment::credit).filter(c -> c.signum() > 0)
                 .reduce(BigDecimal.ZERO, BigDecimal::add).compareTo(settle) >= 0) {
@@ -2424,6 +2427,13 @@ public class InvoiceService {
         RiskBand band = score.compareTo(BigDecimal.valueOf(15)) < 0 ? RiskBand.LOW
                 : score.compareTo(BigDecimal.valueOf(30)) < 0 ? RiskBand.MEDIUM : RiskBand.HIGH;
         return new Risk(score, band);
+    }
+
+    /** The payment risk band the client's invoices other than this one give (see {@link #riskOf(Long)}). */
+    private RiskBand bandOfOthers(Invoice invoice) {
+        List<Invoice> others = loadForClient(invoice.getClientId()).stream()
+                .filter(o -> !o.getId().equals(invoice.getId())).toList();
+        return riskOf(others, paidOn(others)).band();
     }
 
     /** Whether the invoice needs approval before it is sent (see {@link Invoice#approval}), as of today. */
