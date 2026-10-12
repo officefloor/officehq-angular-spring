@@ -226,7 +226,7 @@ export interface InvoiceDetail {
   withholdingPct: string;
   // Whether a draft must be approved before it is sent: its grand total (before any withholding) is
   // over the workspace's approval limit, its discount takes off more than a fifth of the subtotal, or its
-  // client is a HIGH payment risk,
+  // client is a HIGH payment risk, or sending it would take the client over its credit limit,
   // and it has not been approved at exactly its total within the last 30 days. Credit notes never need approval.
   approval: 'NOT_NEEDED' | 'NEEDS_APPROVAL' | 'APPROVED';
   // The grand total it was approved at; null when it was not approved.
@@ -447,8 +447,8 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/milestones/${milestoneId}/dispute`, null);
   }
 
-  // Approves a draft whose grand total is over the workspace's approval limit, or whose discount is
-  // more than a fifth of the subtotal. Refused (409) when it
+  // Approves a draft whose grand total is over the workspace's approval limit, whose discount is
+  // more than a fifth of the subtotal, or that would take its client over its credit limit. Refused (409) when it
   // needs no approval.
   approve(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/approve`, null);

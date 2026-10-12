@@ -1233,9 +1233,10 @@ public class Invoice {
      * fifth of the subtotal, needs none; otherwise it is approved while its grand total is exactly the total
      * it was approved at and no more than {@link #APPROVAL_DAYS} days have passed since it was approved.
      * Once sent, an invoice is as it was approved. Every draft of a client with a HIGH payment risk (highRisk)
-     * needs approval, whatever its size.
+     * needs approval, whatever its size, as does every draft that would take its client over its credit limit
+     * (overCreditLimit).
      */
-    public Approval approval(BigDecimal taxRate, LocalDate today, boolean highRisk) {
+    public Approval approval(BigDecimal taxRate, LocalDate today, boolean highRisk, boolean overCreditLimit) {
         if (isCreditNote()) {
             return Approval.NOT_NEEDED;
         }
@@ -1244,7 +1245,7 @@ public class Invoice {
         }
         BigDecimal limit = approvalLimit();
         BigDecimal total = total(taxRate);
-        if (!highRisk && !discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
+        if (!highRisk && !overCreditLimit && !discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
             return Approval.NOT_NEEDED;
         }
         if (approvedTotal == null || total.compareTo(approvedTotal) != 0) {

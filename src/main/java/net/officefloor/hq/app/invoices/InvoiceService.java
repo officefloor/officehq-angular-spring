@@ -263,7 +263,7 @@ public class InvoiceService {
             // Read again how far through the bands a copied tiered line's units reach.
             entityManager.refresh(next);
             audit.record("INVOICE_GENERATED from=" + original.number() + " to=" + next.number());
-            if (sendable(next) && creditLimitRefusal(next) == null) {
+            if (sendable(next) && withinLimitOrApproved(next)) {
                 markSent(next);
             }
             return next;
@@ -1125,13 +1125,16 @@ public class InvoiceService {
                                 ? "The discount is more than 20% of the subtotal; approve the invoice before sending it."
                                 : riskOf(invoice.getClientId()).band() == RiskBand.HIGH
                                         ? "The client pays slowly (HIGH payment risk); approve the invoice before sending it."
-                                        : "The grand total is over the approval limit; approve the invoice before sending it.");
+                                        : wouldGoOverLimit(invoice)
+                                                ? creditLimitRefusal(invoice) + " Approve the invoice before sending it."
+                                                : "The grand total is over the approval limit; approve the invoice before sending it.");
             }
             String noDeposit = depositRefusal(invoice);
             if (noDeposit != null) {
                 throw new InvoiceRejectedException(noDeposit);
             }
-            String overLimit = creditLimitRefusal(invoice);
+            // An approved invoice may take the client over its credit limit (the client then goes on hold).
+            String overLimit = approval(invoice) == Invoice.Approval.APPROVED ? null : creditLimitRefusal(invoice);
             if (overLimit != null) {
                 throw new InvoiceRejectedException(overLimit);
             }
@@ -1141,8 +1144,8 @@ public class InvoiceService {
     }
 
     /**
-     * Approves a draft whose grand total is over the workspace's approval limit, or whose discount takes
-     * off more than a fifth of the subtotal, keeping that total and the day,
+     * Approves a draft whose grand total is over the workspace's approval limit, whose discount takes
+     * off more than a fifth of the subtotal, or that would take its client over its credit limit, keeping that total and the day,
      * and records it in the audit; empty if no such invoice. An invoice that needs no approval, or is
      * already approved at its total, is refused.
      */
@@ -1159,7 +1162,7 @@ public class InvoiceService {
             if (approval != Invoice.Approval.NEEDS_APPROVAL) {
                 throw new InvoiceRejectedException(approval == Invoice.Approval.APPROVED
                         ? "This invoice is already approved."
-                        : "This invoice is within the approval limit, its discount is not over 20% and its client is not a HIGH payment risk, so it needs no approval.");
+                        : "This invoice is within the approval limit, its discount is not over 20%, its client is not a HIGH payment risk and it would not take the client over its credit limit, so it needs no approval.");
             }
             BigDecimal total = invoice.total(rate);
             invoice.approve(total, on);
@@ -1172,8 +1175,8 @@ public class InvoiceService {
     /**
      * Sends each of the client's drafts that has at least one line, lowest id first, as {@link #send}
      * would; drafts with no lines, whose due date set by
-     * hand is already past, that need approval, or that would take the client over its credit limit
-     * (judged on its balance after the drafts sent before them), stay drafts.
+     * hand is already past, or that need approval (including those that would take the client over its credit
+     * limit, judged on its balance after the drafts sent before them, and are not approved), stay drafts.
      */
     @Transactional
     public void sendAllDrafts(Long clientId) {
@@ -1186,13 +1189,24 @@ public class InvoiceService {
                     if (!invoice.isCreditNote()) {
                         // Read again the client's sent invoices: one sent just before counts towards its month's volume.
                         entityManager.refresh(invoice);
-                        if (creditLimitRefusal(invoice) == null) {
+                        if (withinLimitOrApproved(invoice)) {
                             markSent(invoice);
                         }
                     } else if (creditNoteRefusal(invoice) == null) {
                         issue(invoice);
                     }
                 });
+    }
+
+    /**
+     * Whether the draft may be sent as far as its client's credit limit goes: it is approved, or sending it
+     * would not take the client over the limit. A client already over its limit (on hold) sends nothing.
+     */
+    private boolean withinLimitOrApproved(Invoice invoice) {
+        if (overLimit(invoice.getClientId())) {
+            return false;
+        }
+        return approval(invoice) == Invoice.Approval.APPROVED || creditLimitRefusal(invoice) == null;
     }
 
     /**
@@ -2365,7 +2379,21 @@ public class InvoiceService {
     public Invoice.Approval approval(Invoice invoice) {
         boolean highRisk = invoice.isDraft() && !invoice.isCreditNote()
                 && riskOf(invoice.getClientId()).band() == RiskBand.HIGH;
-        return invoice.approval(taxRate.percent(), today.date(), highRisk);
+        boolean overCreditLimit = invoice.isDraft() && !invoice.isCreditNote() && wouldGoOverLimit(invoice);
+        return invoice.approval(taxRate.percent(), today.date(), highRisk, overCreditLimit);
+    }
+
+    /**
+     * Whether sending the draft as it stands would take its client's balance over its credit limit (see
+     * {@link #creditLimitRefusal}, without repricing its lines); false when the client has no limit.
+     */
+    private boolean wouldGoOverLimit(Invoice invoice) {
+        Client client = clients.findById(invoice.getClientId()).orElse(null);
+        if (client == null || client.getCreditLimit() == null) {
+            return false;
+        }
+        BigDecimal after = balance(client.getId()).add(invoice.owedTotal(taxRate.percent()));
+        return after.compareTo(client.getCreditLimit()) > 0;
     }
 
     /** Whether the client's balance is over its credit limit; false if no such client or it has no limit. */
