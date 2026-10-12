@@ -1838,8 +1838,9 @@ public class InvoiceService {
         LocalDate issued = today.date();
         // An adjustment note is priced as of the invoice it adjusts.
         repriceFromRates(invoice, null, invoice.isAdjustment() ? invoice.pricingDate() : issued);
-        // A replacement carrying on the chasing keeps its due date (see Invoice#markSent).
-        invoice.markSent(issued, cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued)));
+        // A replacement carrying on the chasing keeps its due date (see Invoice#markSent). With a holiday
+        // calendar a due date on a weekend or a holiday moves to the next business day.
+        invoice.markSent(issued, holidays.onBusinessDay(cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued))));
         invoice.keepSentFigures(taxRate.percent());
         invoices.saveAndFlush(invoice);
         if (invoice.isAdjustment()) {

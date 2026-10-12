@@ -70,6 +70,26 @@ public class Holidays {
         return day;
     }
 
+    /**
+     * The given day, or when the workspace keeps a holiday calendar and it falls on a Saturday, a Sunday or a
+     * holiday (as observed), the next business day after it; the day itself without a calendar.
+     */
+    public LocalDate onBusinessDay(LocalDate day) {
+        return calendar().map(days -> onBusinessDay(day, days)).orElse(day);
+    }
+
+    /** The given day, or the next business day after it when it is not one with the given calendar. */
+    public static LocalDate onBusinessDay(LocalDate day, Set<LocalDate> holidays) {
+        Set<LocalDate> observed = new HashSet<>();
+        holidays.forEach(holiday -> observed.add(observed(holiday)));
+        LocalDate business = day;
+        while (business.getDayOfWeek() == DayOfWeek.SATURDAY || business.getDayOfWeek() == DayOfWeek.SUNDAY
+                || observed.contains(business)) {
+            business = business.plusDays(1);
+        }
+        return business;
+    }
+
     /** The weekday a holiday is observed on: the Friday before a Saturday, the Monday after a Sunday. */
     public static LocalDate observed(LocalDate holiday) {
         return switch (holiday.getDayOfWeek()) {
