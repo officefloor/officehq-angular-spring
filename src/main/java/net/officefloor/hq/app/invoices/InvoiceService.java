@@ -127,7 +127,7 @@ public class InvoiceService {
 
     /**
      * An empty draft for the client, issued today, due on the client's terms and starting with the
-     * client's standard discount and retention; empty if no such client.
+     * client's standard discount; empty if no such client.
      */
     @Transactional
     public Optional<Invoice> newDraft(Long clientId) {
@@ -137,7 +137,6 @@ public class InvoiceService {
                     taxRate.changesFor(client.getRegion()), taxRate.roundsDown(client.getRegion()),
                     outOfHomeRegion(client) ? client.getTaxNumber() : null, client.getCurrency(), issued, dueDateFor(clientId, issued));
             draft.setDiscountPct(client.getDiscountPct());
-            draft.setRetentionPct(client.getRetentionPct());
             return invoices.save(draft);
         });
     }
@@ -149,8 +148,8 @@ public class InvoiceService {
     }
 
     /**
-     * A new draft for the invoice's client with copies of its lines and the same invoice discount,
-     * retention and instalment plan (not the client's standard ones), issued today and due as any new invoice is, and records it in the audit; empty if no such
+     * A new draft for the invoice's client with copies of its lines and the same invoice discount
+     * and instalment plan (not the client's standard ones), issued today and due as any new invoice is, and records it in the audit; empty if no such
      * invoice. Payments are not copied.
      */
     @Transactional
@@ -492,38 +491,9 @@ public class InvoiceService {
     }
 
     /**
-     * Sets the percentage of a draft's amount before tax held back as retention, and the most it holds
-     * back (null for no cap); empty if no such invoice.
-     * The percentage has already been checked; any invoice that is not a draft, or a credit note, is refused.
-     */
-    @Transactional
-    public Optional<Invoice> setRetention(Long invoiceId, BigDecimal retentionPct, BigDecimal retentionCap) {
-        Optional<Invoice> found = load(invoiceId);
-        found.ifPresent(invoice -> {
-            if (invoice.isCreditNote()) {
-                throw new InvoiceRejectedException("A credit note holds back no retention.");
-            }
-            if (!invoice.isDraft()) {
-                throw new InvoiceRejectedException("Retention can only be set on a draft.");
-            }
-            if (invoice.hasPlan() && retentionPct.signum() > 0) {
-                throw new InvoiceRejectedException("An invoice spread over instalments cannot also hold back retention.");
-            }
-            if (retentionCap != null) {
-                requireWhole(invoice.currency(), retentionCap, "The retention cap");
-            }
-            invoice.setRetentionPct(retentionPct);
-            invoice.setRetentionCap(retentionCap);
-            invoices.saveAndFlush(invoice);
-        });
-        return found;
-    }
-
-    /**
      * Spreads a draft over the number of monthly instalments at the annual interest rate, after a down
      * payment of the percentage of the grand total; empty if no
-     * such invoice. Both have already been checked; any invoice that is not a draft, a credit note, or
-     * one holding back retention is refused, as is a plan whose monthly instalment would be worth less
+     * such invoice. Both have already been checked; any invoice that is not a draft, or a credit note, is refused, as is a plan whose monthly instalment would be worth less
      * than {@link Invoice#MIN_INSTALMENT_USD} US dollars at today's rates.
      */
     @Transactional
@@ -537,63 +507,12 @@ public class InvoiceService {
             if (!invoice.isDraft()) {
                 throw new InvoiceRejectedException("Only a draft can be spread over instalments.");
             }
-            if (invoice.getRetentionPct().signum() > 0) {
-                throw new InvoiceRejectedException("An invoice holding back retention cannot also be spread over instalments.");
-            }
             invoice.setPlan(instalments, instalmentRate, planDownPct);
             if (invoice.isInstalmentTooSmall(taxRate.percent(), today.date())) {
                 throw new InvoiceRejectedException("The monthly instalment must be worth at least $"
                         + Invoice.MIN_INSTALMENT_USD.toPlainString() + " at today's exchange rates.");
             }
             invoices.saveAndFlush(invoice);
-        });
-        return found;
-    }
-
-    /**
-     * Releases the given amount of the retention held back on a sent invoice today (all that is still
-     * held when it is null), adding it to the amount due (all that is released falling due
-     * {@link Invoice#RETENTION_DUE_DAYS} days after the latest release), and records the amount
-     * released in the audit; empty if no such invoice. Refused while anything other than retention
-     * already released is still due, when there is no retention held to release, or when the amount is
-     * more than is held.
-     */
-    @Transactional
-    public Optional<Invoice> releaseRetention(Long invoiceId, BigDecimal amount) {
-        Optional<Invoice> found = load(invoiceId);
-        found.ifPresent(invoice -> {
-            if (invoice.isDraft() || invoice.isVoid() || invoice.isCreditNote()) {
-                throw new InvoiceRejectedException("Retention can only be released on a sent invoice.");
-            }
-            if (invoice.isWrittenOff()) {
-                throw new InvoiceRejectedException("The retention was written off with the invoice.");
-            }
-            BigDecimal rate = taxRate.percent();
-            BigDecimal held = invoice.retentionHeld(rate);
-            if (held.signum() <= 0) {
-                throw new InvoiceRejectedException("There is no retention held to release.");
-            }
-            BigDecimal release = amount == null ? held
-                    : amount.setScale(invoice.currency().scale(), RoundingMode.HALF_UP);
-            if (amount != null) {
-                requireWhole(invoice.currency(), amount, "The amount to release");
-                if (amount.signum() <= 0) {
-                    throw new InvoiceRejectedException("The amount to release must be more than zero.");
-                }
-                if (amount.compareTo(held) > 0) {
-                    throw new InvoiceRejectedException("The amount to release cannot be more than the "
-                            + invoice.currency().format(held) + " still held.");
-                }
-            }
-            BigDecimal due = invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), rate);
-            BigDecimal elseDue = due.subtract(due.min(invoice.retentionReleased(rate).add(invoice.getRetentionInterest())).max(BigDecimal.ZERO));
-            if (elseDue.signum() > 0) {
-                throw new InvoiceRejectedException("The retention can only be released once nothing else is due; "
-                        + invoice.currency().format(elseDue) + " is still due.");
-            }
-            invoice.releaseRetention(today.date(), release);
-            invoices.saveAndFlush(invoice);
-            audit.record("RETENTION_RELEASED id=" + invoice.getId() + " amount=" + release.toPlainString());
         });
         return found;
     }
@@ -667,7 +586,7 @@ public class InvoiceService {
 
     /**
      * Writes off a sent invoice that still has something owed as a bad debt today: everything still
-     * owed on it, late charges and retention included, and records what was written off in the audit;
+     * owed on it, late charges included, and records what was written off in the audit;
      * empty if no such invoice. It then owes nothing, earns no more interest and takes no payments. A
      * draft, a void invoice, a credit note, one already written off or one with nothing owed is refused.
      */
@@ -689,7 +608,7 @@ public class InvoiceService {
             }
             BigDecimal rate = taxRate.percent();
             BigDecimal paid = paid(List.of(invoice)).get(invoice.getId());
-            if (invoice.amountDue(paid, rate).add(invoice.retentionHeld(rate)).signum() <= 0) {
+            if (invoice.amountDue(paid, rate).signum() <= 0) {
                 throw new InvoiceRejectedException("There is nothing owed on this invoice to write off.");
             }
             invoice.writeOff(today.date());
@@ -1012,7 +931,7 @@ public class InvoiceService {
 
     /**
      * What the client owes: what is still due on its sent invoices (late interest included, withholding
-     * left out) plus the retention held on them, less its unused credit. Void invoices and credit notes
+     * left out), less its unused credit. Void invoices and credit notes
      * do not count (a credit note comes off its original).
      */
     @Transactional(readOnly = true)
@@ -1023,7 +942,7 @@ public class InvoiceService {
         Map<Long, BigDecimal> paid = paid(sent);
         BigDecimal owed = BigDecimal.ZERO.setScale(2);
         for (Invoice i : sent) {
-            owed = owed.add(i.amountDue(paid.get(i.getId()), rate)).add(i.retentionHeld(rate));
+            owed = owed.add(i.amountDue(paid.get(i.getId()), rate));
         }
         return owed.subtract(credits().getOrDefault(clientId, BigDecimal.ZERO)).setScale(2);
     }
@@ -1142,7 +1061,7 @@ public class InvoiceService {
 
     /**
      * Issues the draft credit note today and records it in the audit: its grand total comes off what
-     * its original still owes, then the retention it holds back; any rest is held on the client's
+     * its original still owes; any rest is held on the client's
      * account as a credit payment dated today, also recorded in the audit.
      */
     private void issue(Invoice note) {
@@ -1152,12 +1071,12 @@ public class InvoiceService {
         entityManager.refresh(original);
         withInterest(List.of(original));
         BigDecimal total = note.total(rate);
-        BigDecimal[] taken = original.creditTaken(total, paid(List.of(original)).get(original.getId()), rate);
-        note.markIssued(today.date(), rate, taken[0], taken[1]);
+        BigDecimal taken = original.creditTaken(total, paid(List.of(original)).get(original.getId()), rate);
+        note.markIssued(today.date(), rate, taken);
         invoices.saveAndFlush(note);
         audit.record("CREDIT_NOTE_ISSUED id=" + note.getId() + " number=" + note.number() + " invoice="
                 + note.getCreditOf() + " total=" + total.toPlainString());
-        BigDecimal rest = total.subtract(taken[0]);
+        BigDecimal rest = total.subtract(taken);
         if (rest.signum() > 0) {
             recordCreditHeld(payments.saveAndFlush(Payment.fromCreditNote(note, rest)));
         }

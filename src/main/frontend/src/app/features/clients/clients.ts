@@ -154,17 +154,6 @@ function validTaxNumber(taxNumber: string): boolean {
           step="0.01"
           formControlName="discountPct"
         />
-        <label for="client-retention">Standard retention % (optional)</label>
-        <input
-          id="client-retention"
-          data-testid="client-form-retention-pct"
-          type="number"
-          inputmode="decimal"
-          min="0"
-          max="20"
-          step="0.01"
-          formControlName="retentionPct"
-        />
         <label for="client-withholding">Tax withheld by the client % (optional)</label>
         <input
           id="client-withholding"
@@ -359,7 +348,6 @@ export class Clients {
     }),
     terms: new FormControl<number | null>(null),
     discountPct: new FormControl<number | null>(null),
-    retentionPct: new FormControl<number | null>(null),
     withholdingPct: new FormControl<number | null>(null),
     minimumCharge: new FormControl<number | null>(null),
     creditLimit: new FormControl<number | null>(null),
@@ -423,8 +411,6 @@ export class Clients {
     const termsDays = terms === null || (terms as unknown) === '' ? null : Number(terms);
     const discount = this.form.controls.discountPct.value;
     const discountPct = discount === null || (discount as unknown) === '' ? null : Number(discount);
-    const retention = this.form.controls.retentionPct.value;
-    const retentionPct = retention === null || (retention as unknown) === '' ? null : Number(retention);
     const withholding = this.form.controls.withholdingPct.value;
     const withholdingPct = withholding === null || (withholding as unknown) === '' ? null : Number(withholding);
     const minimum = this.form.controls.minimumCharge.value;
@@ -453,7 +439,6 @@ export class Clients {
       email,
       terms: termsDays,
       discountPct,
-      retentionPct,
       withholdingPct,
       minimumCharge,
       creditLimit,
@@ -477,7 +462,6 @@ export class Clients {
       email,
       termsDays,
       discountPct,
-      retentionPct,
       withholdingPct,
       minimumCharge,
       creditLimit,
@@ -506,7 +490,6 @@ export class Clients {
       currency,
       earlyPayPct: earlyPayPct ?? 0,
       earlyPayDays,
-      retentionPct: retentionPct ?? 0,
       withholdingPct: withholdingPct ?? 0,
       minimumCharge,
       creditLimit,
@@ -572,7 +555,6 @@ export class Clients {
     email: string,
     termsDays: number | null,
     discountPct: number | null,
-    retentionPct: number | null,
     withholdingPct: number | null,
     minimumCharge: number | null,
     creditLimit: number | null,
@@ -602,13 +584,6 @@ export class Clients {
         problems.push('The standard discount must be from 0 to 100 percent.');
       } else if (Math.abs(Math.round(discountPct * 100) - discountPct * 100) > 1e-6) {
         problems.push('The standard discount can have at most two decimals.');
-      }
-    }
-    if (retentionPct !== null) {
-      if (!(Number.isFinite(retentionPct) && retentionPct >= 0 && retentionPct <= 20)) {
-        problems.push('The standard retention must be from 0 to 20 percent.');
-      } else if (Math.abs(Math.round(retentionPct * 100) - retentionPct * 100) > 1e-6) {
-        problems.push('The standard retention can have at most two decimals.');
       }
     }
     if (withholdingPct !== null) {

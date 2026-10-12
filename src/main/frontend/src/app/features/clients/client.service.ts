@@ -24,8 +24,6 @@ export interface Client {
   // paid off within earlyPayDays of its issue date (null when there is none).
   earlyPayPct: number;
   earlyPayDays: number | null;
-  // The standard retention percentage (0 to 20) new invoices for the client start with; 0 is none.
-  retentionPct: number;
   // The percentage (0 to 100) of each invoice's amount before tax the client withholds for its tax
   // office; 0 is none. The client never pays it.
   withholdingPct: number;

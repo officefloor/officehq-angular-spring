@@ -10,7 +10,6 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   VOID: 'Void',
   CREDIT_NOTE: 'Credit note',
   CREDITED: 'Credited',
-  RETENTION_HELD: 'Retention held',
   WRITTEN_OFF: 'Written off',
   DISPUTED: 'Disputed',
 };

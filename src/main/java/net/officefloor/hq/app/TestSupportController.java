@@ -54,9 +54,9 @@ public class TestSupportController {
     /** The setting holding the workspace's approval limit in US dollars (see Invoice#approval). */
     private static final String APPROVAL_LIMIT = "approval_limit";
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "poNumber", "lineItems");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "poNumber", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method", "remittance");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
@@ -380,14 +380,13 @@ public class TestSupportController {
             if (tier == null) {
                 throw refuse("unsupported value of clients[].tier: " + row.get("tier"));
             }
-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct", "minimum_charge", "rate_discount_pct", "tax_exempt_until", "credit_limit", "on_hold", "tier"},
+            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct", "minimum_charge", "rate_discount_pct", "tax_exempt_until", "credit_limit", "on_hold", "tier"},
                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
                     percent(row.get("discountPct"), "clients[].discountPct"),
                     flag(row.get("taxExempt"), "clients[].taxExempt"),
                     flag(row.get("pricesIncludeTax"), "clients[].pricesIncludeTax"), currency,
                     percent(row.get("earlyPayPct"), "clients[].earlyPayPct"),
                     days(row.get("earlyPayDays"), "clients[].earlyPayDays"),
-                    percent(row.get("retentionPct"), "clients[].retentionPct"),
                     graceDays(row.get("graceDays"), "clients[].graceDays"),
                     interestRate(row.get("interestRate"), "clients[].interestRate"),
                     row.get("region") == null ? null : row.get("region").toString(),
@@ -444,7 +443,7 @@ public class TestSupportController {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "po_number"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "po_number"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
@@ -454,12 +453,6 @@ public class TestSupportController {
                     row.get("discountReason") == null ? null : row.get("discountReason").toString(),
                     flag(row.get("manualDueDate"), "invoices[].manualDueDate"),
                     row.get("creditOf") == null ? null : id(row.get("creditOf")),
-                    percent(row.get("retentionPct"), "invoices[].retentionPct"),
-                    row.get("retentionCap") == null ? null : money(row.get("retentionCap"), "invoices[].retentionCap"),
-                    row.get("retentionReleasedOn") == null ? null
-                            : date(row.get("retentionReleasedOn"), "invoices[].retentionReleasedOn"),
-                    row.get("retentionReleasedAmount") == null ? null
-                            : money(row.get("retentionReleasedAmount"), "invoices[].retentionReleasedAmount"),
                     instalments(row.get("instalments"), "invoices[].instalments"),
                     instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"),
                     planDownPct(row.get("planDownPct"), "invoices[].planDownPct"),
@@ -562,25 +555,22 @@ public class TestSupportController {
                         allocation.get("date") == null ? null : date(allocation.get("date"), "payments[].allocations[].date"));
             }
         }
-        // An issued credit note keeps its grand total, which comes off what its original owes, then the
-        // retention it holds back, in the order they were issued; any rest is the client's credit.
+        // An issued credit note keeps its grand total, which comes off what its original owes, in the
+        // order they were issued; any rest is the client's credit.
         BigDecimal rate = taxRate.percent();
         for (Long noteId : jdbc.queryForList("SELECT id FROM invoice WHERE status = 'CREDIT_NOTE' ORDER BY id", Long.class)) {
             Invoice note = invoices.findWithLinesById(noteId).orElseThrow();
             BigDecimal total = note.total(rate);
             BigDecimal applied = BigDecimal.ZERO;
-            BigDecimal toRetention = BigDecimal.ZERO;
             Invoice original = invoices.findWithLinesById(note.getCreditOf()).orElse(null);
             if (original != null) {
                 entityManager.refresh(original);
                 BigDecimal paid = payments.paidTo(List.of(original.getId())).stream()
                         .map(r -> (BigDecimal) r[1]).findFirst().orElse(BigDecimal.ZERO);
-                BigDecimal[] taken = original.creditTaken(total, paid, rate);
-                applied = taken[0];
-                toRetention = taken[1];
+                applied = original.creditTaken(total, paid, rate);
             }
-            jdbc.update("UPDATE invoice SET credit_total = ?, credit_applied = ?, credit_retention = ? WHERE id = ?",
-                    total, applied, toRetention, noteId);
+            jdbc.update("UPDATE invoice SET credit_total = ?, credit_applied = ? WHERE id = ?",
+                    total, applied, noteId);
         }
         // Keep generated ids clear of the seeded ones.
         for (String table : List.of("client", "invoice", "invoice_line", "payment")) {
@@ -721,7 +711,7 @@ public class TestSupportController {
         if (!settings.isEmpty()) {
             out.put("settings", settings);
         }
-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number, withholding_pct, minimum_charge, rate_discount_pct, tax_exempt_until, credit_limit, on_hold, tier FROM client ORDER BY id").stream()
+        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, grace_days, interest_rate, region, tax_number, withholding_pct, minimum_charge, rate_discount_pct, tax_exempt_until, credit_limit, on_hold, tier FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -738,7 +728,6 @@ public class TestSupportController {
                     if (r.get("EARLY_PAY_DAYS") != null) {
                         row.put("earlyPayDays", r.get("EARLY_PAY_DAYS"));
                     }
-                    row.put("retentionPct", r.get("RETENTION_PCT"));
                     row.put("withholdingPct", r.get("WITHHOLDING_PCT"));
                     row.put("rateDiscountPct", r.get("RATE_DISCOUNT_PCT"));
                     row.put("onHold", r.get("ON_HOLD"));
@@ -788,7 +777,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, po_number FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, po_number FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -802,16 +791,6 @@ public class TestSupportController {
                     row.put("manualDueDate", r.get("MANUAL_DUE_DATE"));
                     if (r.get("DISCOUNT_CAP") != null) {
                         row.put("discountCap", r.get("DISCOUNT_CAP"));
-                    }
-                    row.put("retentionPct", r.get("RETENTION_PCT"));
-                    if (r.get("RETENTION_CAP") != null) {
-                        row.put("retentionCap", r.get("RETENTION_CAP"));
-                    }
-                    if (r.get("RETENTION_RELEASED_ON") != null) {
-                        row.put("retentionReleasedOn", r.get("RETENTION_RELEASED_ON").toString());
-                    }
-                    if (r.get("RETENTION_RELEASED_AMOUNT") != null) {
-                        row.put("retentionReleasedAmount", r.get("RETENTION_RELEASED_AMOUNT"));
                     }
                     if (r.get("INTEREST_WAIVED_ON") != null) {
                         row.put("interestWaivedOn", r.get("INTEREST_WAIVED_ON").toString());

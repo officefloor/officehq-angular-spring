@@ -26,20 +26,6 @@ function problemWithDiscount(pct: string): string {
   return '';
 }
 
-// A retention percentage from 0 to 20 with at most two decimals, e.g. 5 or 2.5; the server checks it again.
-function problemWithRetention(pct: string): string {
-  if (!/^-?\d+(\.\d+)?$/.test(pct)) {
-    return 'The retention must be a number, like 5 or 2.5.';
-  }
-  if (Number(pct) < 0 || Number(pct) > 20) {
-    return 'The retention must be from 0 to 20 percent.';
-  }
-  if (!TWO_DECIMALS.test(pct)) {
-    return 'The retention can have at most two decimals.';
-  }
-  return '';
-}
-
 // A surcharge percentage from 0 to 25 with at most two decimals, e.g. 10 or 7.5; the server checks it again.
 function problemWithSurcharge(pct: string): string {
   if (!/^-?\d+(\.\d+)?$/.test(pct)) {
@@ -98,37 +84,6 @@ function problemWithDiscountAmount(amount: string): string {
   }
   if (!TWO_DECIMALS.test(amount)) {
     return 'The discount amount can have at most two decimals.';
-  }
-  return '';
-}
-
-// A cap on the retention held back: money, not negative and to the cent, e.g. 500 or 250.50.
-function problemWithRetentionCap(cap: string): string {
-  if (!/^-?\d+(\.\d+)?$/.test(cap)) {
-    return 'The retention cap must be a number, like 500 or 250.50.';
-  }
-  if (Number(cap) < 0) {
-    return 'The retention cap cannot be negative.';
-  }
-  if (!TWO_DECIMALS.test(cap)) {
-    return 'The retention cap can have at most two decimals.';
-  }
-  return '';
-}
-
-// An amount of retention to release: money, more than zero and to the cent, and no more than is held.
-function problemWithRelease(amount: string, held: string): string {
-  if (!/^-?\d+(\.\d+)?$/.test(amount)) {
-    return 'The amount to release must be a number, like 500 or 250.50.';
-  }
-  if (Number(amount) <= 0) {
-    return 'The amount to release must be more than zero.';
-  }
-  if (!TWO_DECIMALS.test(amount)) {
-    return 'The amount to release can have at most two decimals.';
-  }
-  if (Number(amount) > Number(held)) {
-    return 'The amount to release cannot be more than is still held.';
   }
   return '';
 }
@@ -240,11 +195,8 @@ function problemWith(line: NewLine): string {
 // recurring, until an end date its generated drafts keep; a sent recurring invoice generates the next period's draft once
 // (its period stopping on the end date), which then opens. A draft's due date can be set
 // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
-// server refuses to send it once that date is past. A draft can hold back retention, a percentage of
-// the amount before tax, the subtotal less the discount (0 to 20); while held it is not part of the amount due, and once nothing else is due
-// it can be released on the sent invoice, all of it or an amount of what is still held, all that is
-// released falling due 30 days after the latest release. A draft without retention can
-// instead be spread over 2 to 24 monthly instalments at an annual interest rate (0 to 30); the server
+// server refuses to send it once that date is past. A draft can
+// be spread over 2 to 24 monthly instalments at an annual interest rate (0 to 30); the server
 // works out the schedule from the grand total, dated from the issue date (and again when it is sent),
 // and the amount due is then the plan total less what is paid.
 @Component({
@@ -408,20 +360,6 @@ function problemWith(line: NewLine): string {
               <tr>
                 <th scope="row" colspan="10">Withheld by the client for its tax office</th>
                 <td data-testid="invoice-withholding">{{ amount(inv.withholding) }}</td>
-              </tr>
-            }
-            <tr>
-              <th scope="row" colspan="10">
-                Retention ({{ inv.retentionPct }}%@if (inv.retentionCap !== null) {, max
-                  {{ amount(inv.retentionCap) }}}@if (inv.retentionReleasedOn) {, released
-                  {{ inv.retentionReleasedOn }}, due {{ inv.retentionDueDate }}}@if (+inv.retentionHeld > 0) {, held back})
-              </th>
-              <td data-testid="invoice-retention">{{ amount(inv.retention) }}</td>
-            </tr>
-            @if (+inv.retention > 0) {
-              <tr>
-                <th scope="row" colspan="10">Retention still held</th>
-                <td data-testid="invoice-retention-held">{{ amount(inv.retentionHeld) }}</td>
               </tr>
             }
           </tfoot>
@@ -626,8 +564,7 @@ function problemWith(line: NewLine): string {
           inv.creditOf === null &&
           inv.status !== 'PAID' &&
           inv.status !== 'PAID_LATE' &&
-          inv.status !== 'CREDITED' &&
-          inv.status !== 'RETENTION_HELD'
+          inv.status !== 'CREDITED'
         ) {
           <app-payment-form
             [clientId]="inv.clientId"
@@ -693,21 +630,6 @@ function problemWith(line: NewLine): string {
         }
 
         @if (inv.status === 'DRAFT' && inv.creditOf === null) {
-          <form [formGroup]="retentionForm" (ngSubmit)="setRetention(inv.id)" aria-label="Retention" novalidate>
-            <label for="retention-pct">Retention (%, 0 to 20)</label>
-            <input id="retention-pct" data-testid="retention-form-pct" inputmode="decimal" formControlName="pct" />
-            <label for="retention-cap">capped at ({{ symbol() }}, optional)</label>
-            <input id="retention-cap" data-testid="retention-form-cap" inputmode="decimal" formControlName="cap" />
-            <button type="submit" data-testid="retention-form-submit" [disabled]="savingRetention()">
-              Set retention
-            </button>
-            @if (retentionError()) {
-              <p role="alert" data-testid="retention-form-error">{{ retentionError() }}</p>
-            }
-          </form>
-        }
-
-        @if (inv.status === 'DRAFT' && inv.creditOf === null) {
           <form [formGroup]="planForm" (ngSubmit)="setPlan(inv.id)" aria-label="Instalment plan" novalidate>
             <label for="plan-count">Monthly instalments (2 to 24)</label>
             <input id="plan-count" data-testid="plan-form-count" inputmode="numeric" formControlName="count" />
@@ -720,29 +642,6 @@ function problemWith(line: NewLine): string {
               <p role="alert" data-testid="plan-form-error">{{ planError() }}</p>
             }
           </form>
-        }
-
-        @if (
-          inv.creditOf === null &&
-          inv.status !== 'DRAFT' &&
-          inv.status !== 'VOID' &&
-          +inv.retentionHeld > 0
-        ) {
-          <form [formGroup]="releaseForm" (ngSubmit)="releaseRetention(inv.id, inv.retentionHeld)" aria-label="Release retention" novalidate>
-            <label for="retention-release-amount">Amount to release ({{ symbol() }}, empty for all still held)</label>
-            <input
-              id="retention-release-amount"
-              data-testid="retention-release-amount"
-              inputmode="decimal"
-              formControlName="amount"
-            />
-            <button type="submit" data-testid="invoice-release-retention" [disabled]="releasing()">
-              Release retention
-            </button>
-          </form>
-        }
-        @if (releaseError()) {
-          <p role="alert" data-testid="invoice-release-error">{{ releaseError() }}</p>
         }
 
         @if (inv.creditOf === null && inv.status !== 'DRAFT' && inv.status !== 'VOID' && inv.status !== 'WRITTEN_OFF') {
@@ -1026,14 +925,10 @@ export class InvoicePanel {
   protected readonly discountError = signal('');
   protected readonly savingDue = signal(false);
   protected readonly dueError = signal('');
-  protected readonly savingRetention = signal(false);
-  protected readonly retentionError = signal('');
   protected readonly savingSurcharge = signal(false);
   protected readonly surchargeError = signal('');
   protected readonly savingPlan = signal(false);
   protected readonly planError = signal('');
-  protected readonly releasing = signal(false);
-  protected readonly releaseError = signal('');
   protected readonly waiving = signal(false);
   protected readonly skipping = signal(false);
   protected readonly skipError = signal('');
@@ -1097,17 +992,8 @@ export class InvoicePanel {
     reason: new FormControl('', { nonNullable: true }),
   });
 
-  protected readonly retentionForm = new FormGroup({
-    pct: new FormControl('', { nonNullable: true }),
-    cap: new FormControl('', { nonNullable: true }),
-  });
-
   protected readonly surchargeForm = new FormGroup({
     pct: new FormControl('', { nonNullable: true }),
-  });
-
-  protected readonly releaseForm = new FormGroup({
-    amount: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly planForm = new FormGroup({
@@ -1148,14 +1034,10 @@ export class InvoicePanel {
       this.supplyError.set('');
       this.poForm.reset();
       this.poError.set('');
-      this.retentionForm.reset();
-      this.retentionError.set('');
       this.surchargeForm.reset();
       this.surchargeError.set('');
       this.planForm.reset();
       this.planError.set('');
-      this.releaseForm.reset();
-      this.releaseError.set('');
       this.waiveError.set('');
       this.skipError.set('');
       this.writeOffError.set('');
@@ -1403,35 +1285,6 @@ export class InvoicePanel {
     });
   }
 
-  protected setRetention(invoiceId: number): void {
-    const raw = this.retentionForm.getRawValue();
-    const pct = raw.pct.trim().replace(/%$/, '').trim();
-    const cap = raw.cap.trim().replace(/^\$/, '').trim();
-    const problem = problemWithRetention(pct) || (cap ? problemWithRetentionCap(cap) : '');
-    if (problem) {
-      this.retentionForm.markAllAsTouched();
-      this.retentionError.set(problem);
-      return;
-    }
-    this.savingRetention.set(true);
-    this.retentionError.set('');
-    this.service.setRetention(invoiceId, pct, cap || undefined).subscribe({
-      next: (detail) => {
-        this.invoice.set(detail);
-        this.changed.emit(detail);
-        this.retentionForm.reset();
-        this.savingRetention.set(false);
-      },
-      error: (e: HttpErrorResponse) => {
-        const detail: unknown = e.error?.detail;
-        this.retentionError.set(
-          typeof detail === 'string' && detail ? detail : 'The retention could not be set.',
-        );
-        this.savingRetention.set(false);
-      },
-    });
-  }
-
   protected setSurcharge(invoiceId: number): void {
     const pct = this.surchargeForm.getRawValue().pct.trim().replace(/%$/, '').trim();
     const problem = problemWithSurcharge(pct);
@@ -1485,33 +1338,6 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The plan could not be set.',
         );
         this.savingPlan.set(false);
-      },
-    });
-  }
-
-  protected releaseRetention(invoiceId: number, held: string): void {
-    const amount = this.releaseForm.getRawValue().amount.trim();
-    const problem = amount ? problemWithRelease(amount, held) : '';
-    if (problem) {
-      this.releaseForm.markAllAsTouched();
-      this.releaseError.set(problem);
-      return;
-    }
-    this.releasing.set(true);
-    this.releaseError.set('');
-    this.service.releaseRetention(invoiceId, amount || undefined).subscribe({
-      next: (detail) => {
-        this.invoice.set(detail);
-        this.releaseForm.reset();
-        this.changed.emit(detail);
-        this.releasing.set(false);
-      },
-      error: (e: HttpErrorResponse) => {
-        const detail: unknown = e.error?.detail;
-        this.releaseError.set(
-          typeof detail === 'string' && detail ? detail : 'The retention could not be released.',
-        );
-        this.releasing.set(false);
       },
     });
   }

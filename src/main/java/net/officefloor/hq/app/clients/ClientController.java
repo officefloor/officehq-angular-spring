@@ -31,7 +31,7 @@ public class ClientController {
 
     public record ClientView(Long id, String name, String email, Integer termsDays, BigDecimal discountPct,
             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
-            BigDecimal retentionPct, Integer graceDays, BigDecimal interestRate, String region, String taxNumber,
+            Integer graceDays, BigDecimal interestRate, String region, String taxNumber,
             List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
             LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold, boolean overLimit, String riskScore, InvoiceService.RiskBand riskBand, ClientTier tier) {
         /**
@@ -41,7 +41,7 @@ public class ClientController {
         static ClientView of(Client c, boolean overLimit, InvoiceService.Risk risk) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
-                    c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
+                    c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
                     c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold() || overLimit, overLimit,
                     risk.score() == null ? null : risk.score().toPlainString(), risk.band(), c.getTier());
@@ -90,10 +90,6 @@ public class ClientController {
             @Min(value = 1, message = "The early-payment window must be from 1 to 365 days.")
             @Max(value = 365, message = "The early-payment window must be from 1 to 365 days.")
             Integer earlyPayDays,
-            @DecimalMin(value = "0", message = "The standard retention must be from 0 to 20 percent.")
-            @DecimalMax(value = "20", message = "The standard retention must be from 0 to 20 percent.")
-            @Digits(integer = 2, fraction = 2, message = "The standard retention can have at most two decimals.")
-            BigDecimal retentionPct,
             /** The client's grace period in days; the standard week when left out. */
             @Min(value = 0, message = "The grace period must be from 0 to 30 days.")
             @Max(value = Client.MAX_GRACE_DAYS, message = "The grace period must be from 0 to 30 days.")
@@ -177,7 +173,7 @@ public class ClientController {
     public ClientView add(@Valid @RequestBody NewClient body) {
         return view(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
-                body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge(),
+                body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge(),
                 body.rateDiscountPct(), body.taxExemptUntil(), body.creditLimit(), ClientTier.orStandard(body.tier())));
     }
 

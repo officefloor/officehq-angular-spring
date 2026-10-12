@@ -65,10 +65,6 @@ public class Client {
     @Column(name = "early_pay_days")
     private Integer earlyPayDays;
 
-    /** The standard retention percentage (0 to 20) new invoices for this client start with; 0 is none. */
-    @Column(name = "retention_pct")
-    private BigDecimal retentionPct = BigDecimal.ZERO;
-
     /**
      * The percentage (0 to 100) of each invoice's amount before tax the client withholds and pays to its
      * tax office; 0 is none. It is never owed by the client.
@@ -153,7 +149,7 @@ public class Client {
     }
 
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
-            boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
+            boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge,
             BigDecimal rateDiscountPct, LocalDate taxExemptUntil, BigDecimal creditLimit, ClientTier tier) {
         this.name = name;
@@ -168,7 +164,6 @@ public class Client {
         this.currency = currency == null ? Currency.USD : currency;
         this.earlyPayPct = earlyPayPct == null ? BigDecimal.ZERO : earlyPayPct;
         this.earlyPayDays = earlyPayDays;
-        this.retentionPct = retentionPct == null ? BigDecimal.ZERO : retentionPct;
         this.graceDays = graceDays;
         this.interestRate = interestRate;
         this.region = region;
@@ -220,10 +215,6 @@ public class Client {
 
     public Integer getEarlyPayDays() {
         return earlyPayDays;
-    }
-
-    public BigDecimal getRetentionPct() {
-        return retentionPct;
     }
 
     public BigDecimal getWithholdingPct() {

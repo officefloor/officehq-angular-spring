@@ -53,7 +53,7 @@ public class InvoiceController {
 
     /**
      * What a client still owes across its sent invoices (drafts do not count), after discounts, tax
-     * and payments, retention included whether held or released, less the client's unused credit (so it can be below zero), how much of what is due
+     * and payments, less the client's unused credit (so it can be below zero), how much of what is due
      * is overdue, and the unused credit; decimal strings to the cent.
      */
     public record ClientBalance(Long clientId, String balance, String overdue, String credit) {
@@ -129,10 +129,7 @@ public class InvoiceController {
      * it, payments taken in date order; null while it is not fully paid. {@code credited} is what
      * issued credit notes take off it; {@code creditOf} the id of the invoice a credit note credits
      * (null for an ordinary invoice) and {@code listedTotal} the total as listed, negative for a credit note.
-     * {@code retentionPct} (without trailing zeros) is the share of the amount before tax (subtotal less discount) held back as
-     * {@code retention}, rounded down to the cent and never more than {@code retentionCap} (null for no cap); {@code retentionHeld} is what is still held back (not
-     * part of the amount due), {@code retentionReleasedOn} the day of the latest release (null while none is released) and
-     * {@code retentionDueDate} the day all that is released falls due. {@code instalments} is how many
+     * {@code instalments} is how many
      * monthly instalments it is spread over (null without a plan) at the annual {@code instalmentRate}
      * (without trailing zeros), after a down payment of {@code planDownPct} percent of the grand total
      * (without trailing zeros; instalment 0 when not 0), with the {@code planFee} charged when it was set up added to
@@ -168,8 +165,7 @@ public class InvoiceController {
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, String net, boolean pricesIncludeTax, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
-            String credited, Long creditOf, String listedTotal, String retentionPct, String retentionCap, String retention,
-            String retentionHeld, LocalDate retentionReleasedOn, LocalDate retentionDueDate, Integer instalments,
+            String credited, Long creditOf, String listedTotal, Integer instalments,
             String instalmentRate, String planDownPct, String planFee, List<InstalmentView> schedule, String planTotal, LocalDate listedDueDate,
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
@@ -199,10 +195,6 @@ public class InvoiceController {
                     payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency())).toList(), paid.toPlainString(),
                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
                     i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
-                    i.getRetentionPct().stripTrailingZeros().toPlainString(),
-                    i.getRetentionCap() == null ? null : i.getRetentionCap().setScale(2).toPlainString(),
-                    i.retention(taxRate).toPlainString(),
-                    i.retentionHeld(taxRate).toPlainString(), i.getRetentionReleasedOn(), i.retentionDueDate(),
                     i.getInstalments(), i.getInstalmentRate().stripTrailingZeros().toPlainString(),
                     i.getPlanDownPct().stripTrailingZeros().toPlainString(), i.getPlanFee().toPlainString(),
                     i.instalmentProgress(paid, taxRate, today).stream().map(InstalmentView::of).toList(),
@@ -371,21 +363,6 @@ public class InvoiceController {
             LocalDate date) {
     }
 
-    /**
-     * A retention to hold back on a draft: a percentage from 0 to 20 with at most two decimals, and
-     * optionally the most it holds back (null for no cap).
-     */
-    public record NewRetention(
-            @NotNull(message = "Enter a retention percentage.")
-            @DecimalMin(value = "0", message = "The retention must be from 0 to 20 percent.")
-            @DecimalMax(value = "20", message = "The retention must be from 0 to 20 percent.")
-            @Digits(integer = 2, fraction = 2, message = "The retention can have at most two decimals.")
-            BigDecimal retentionPct,
-            @DecimalMin(value = "0", message = "The retention cap cannot be negative.")
-            @Digits(integer = 10, fraction = 2, message = "The retention cap can have at most two decimals.")
-            BigDecimal retentionCap) {
-    }
-
     /** A rush surcharge on a draft: a percentage from 0 to 25 with at most two decimals. */
     public record NewSurcharge(
             @NotNull(message = "Enter a surcharge percentage.")
@@ -393,16 +370,6 @@ public class InvoiceController {
             @DecimalMax(value = "25", message = "The surcharge must be from 0 to 25 percent.")
             @Digits(integer = 2, fraction = 2, message = "The surcharge can have at most two decimals.")
             BigDecimal surchargePct) {
-    }
-
-    /**
-     * How much of the retention held to release: more than zero with at most two decimals; null
-     * releases all that is still held.
-     */
-    public record NewRelease(
-            @DecimalMin(value = "0", inclusive = false, message = "The amount to release must be more than zero.")
-            @Digits(integer = 17, fraction = 2, message = "The amount to release can have at most two decimals.")
-            BigDecimal amount) {
     }
 
     /**
@@ -511,7 +478,7 @@ public class InvoiceController {
             BigDecimal due = i.amountDue(paid.get(i.getId()), rate);
             BigDecimal[] sums = owed.computeIfAbsent(i.getClientId(),
                     k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) });
-            sums[0] = sums[0].add(due).add(i.retentionHeld(rate));
+            sums[0] = sums[0].add(due);
             sums[1] = sums[1].add(i.overdueAmount(paid.get(i.getId()), rate, on));
         }
         Map<Long, BigDecimal> credits = invoices.credits();
@@ -595,13 +562,6 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 
-    @PutMapping("/api/invoices/{id}/retention")
-    public InvoiceDetail setRetention(@PathVariable Long id, @Valid @RequestBody NewRetention body) {
-        return invoices.setRetention(id, body.retentionPct(), body.retentionCap())
-                .map(this::detail)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
-    }
-
     @PutMapping("/api/invoices/{id}/surcharge")
     public InvoiceDetail setSurcharge(@PathVariable Long id, @Valid @RequestBody NewSurcharge body) {
         return invoices.setSurcharge(id, body.surchargePct())
@@ -613,18 +573,6 @@ public class InvoiceController {
     public InvoiceDetail setPlan(@PathVariable Long id, @Valid @RequestBody NewPlan body) {
         return invoices.setPlan(id, body.instalments().intValueExact(), body.instalmentRate(),
                 body.planDownPct() == null ? BigDecimal.ZERO : body.planDownPct())
-                .map(this::detail)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
-    }
-
-    /**
-     * Releases the given amount of the retention held back on a sent invoice (all that is still held
-     * without one) once nothing else is due.
-     */
-    @PostMapping("/api/invoices/{id}/release-retention")
-    public InvoiceDetail releaseRetention(@PathVariable Long id,
-            @Valid @RequestBody(required = false) NewRelease body) {
-        return invoices.releaseRetention(id, body == null ? null : body.amount())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

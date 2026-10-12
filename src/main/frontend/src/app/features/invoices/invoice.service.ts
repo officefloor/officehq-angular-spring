@@ -10,8 +10,7 @@ import { Currency } from './invoice-format';
 // The server works this out from its payments and today's date. A VOID invoice was voided while sent
 // and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
 // A credit note is a DRAFT until it is issued, then CREDIT_NOTE for good; a sent invoice whose issued
-// credit notes leave nothing due, with nothing paid, is CREDITED. A sent invoice with nothing due
-// but retention still held back is RETENTION_HELD instead of PAID. A sent invoice written off as a bad
+// credit notes leave nothing due, with nothing paid, is CREDITED. A sent invoice written off as a bad
 // debt is WRITTEN_OFF for good: it owes nothing, earns no more interest and takes no payments.
 // A sent invoice in dispute is DISPUTED until the dispute is resolved: it earns no interest, is not
 // overdue and takes no payments.
@@ -25,7 +24,6 @@ export type InvoiceStatus =
   | 'VOID'
   | 'CREDIT_NOTE'
   | 'CREDITED'
-  | 'RETENTION_HELD'
   | 'WRITTEN_OFF'
   | 'DISPUTED';
 
@@ -163,17 +161,6 @@ export interface InvoiceDetail {
   creditOf: number | null;
   // The total as listed: negative for a credit note.
   listedTotal: string;
-  // The percentage of the amount before tax held back (without trailing zeros), and `retention`, that share
-  // rounded down to the cent and never more than `retentionCap` (null when uncapped); `retentionHeld` is
-  // what is still held back, not part of `amountDue`.
-  retentionPct: string;
-  retentionCap: string | null;
-  retention: string;
-  retentionHeld: string;
-  // The day (yyyy-mm-dd) of the latest release of retention, and the day what was released falls due;
-  // null while none has been released.
-  retentionReleasedOn: string | null;
-  retentionDueDate: string | null;
   // How many monthly instalments it is spread over (null without a plan), at the annual
   // `instalmentRate` (without trailing zeros); `schedule` lists them and `planTotal` is what they add
   // up to (null without a plan). The amount due on a planned invoice is the plan total less what is paid.
@@ -207,7 +194,7 @@ export interface InvoiceDetail {
   // applied to it (negative for a loss); null for a dollar invoice.
   fxDifference: string | null;
   // The day (yyyy-mm-dd) it was written off as a bad debt, null when it was not; everything it still
-  // owed then, late charges and retention included, is in `writtenOff`.
+  // owed then, late charges included, is in `writtenOff`.
   writtenOffOn: string | null;
   // The day (yyyy-mm-dd) it was last disputed, null when never, and the day that dispute was resolved,
   // null while it is open.
@@ -398,12 +385,6 @@ export class InvoiceService {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/due-date`, { dueDate });
   }
 
-  // Sets the percentage of a draft's amount before tax held back as retention (0 to 20, up to two decimals),
-  // with an optional cap on the amount held back; refused (400) outside that, or (409) when it is not a draft.
-  setRetention(invoiceId: number, retentionPct: string, retentionCap?: string): Observable<InvoiceDetail> {
-    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/retention`, { retentionPct, retentionCap });
-  }
-
   // Sets the rush surcharge of a draft, a percentage of its amount after its discounts (0 to 25, up to
   // two decimals); refused (400) outside that, or (409) when it is not a draft.
   setSurcharge(invoiceId: number, surchargePct: string): Observable<InvoiceDetail> {
@@ -412,16 +393,9 @@ export class InvoiceService {
 
   // Spreads a draft over monthly instalments (2 to 24) at an annual interest rate (0 to 30, up to two
   // decimals), after a down payment of a percentage of the grand total (0 to 50, up to two decimals);
-  // refused (400) outside that, or (409) when it is not a draft or holds back retention.
+  // refused (400) outside that, or (409) when it is not a draft.
   setPlan(invoiceId: number, instalments: string, instalmentRate: string, planDownPct: string): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/plan`, { instalments, instalmentRate, planDownPct });
-  }
-
-  // Releases an amount of the retention held back on a sent invoice (all still held when left out),
-  // adding it to the amount due; refused (400) for an amount of zero or less or with more than two
-  // decimals, or (409) more than is held, while anything else is due or when there is nothing to release.
-  releaseRetention(invoiceId: number, amount?: string): Observable<InvoiceDetail> {
-    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, { amount });
   }
 
   // Approves a draft whose grand total is over the workspace's approval limit, or whose discount is

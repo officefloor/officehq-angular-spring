@@ -52,12 +52,6 @@ public class Invoice {
     /** A part payment must be at least this share of the grand total, unless it settles the invoice. */
     public static final BigDecimal MINIMUM_PART_SHARE = new BigDecimal("0.10");
 
-    /** The most retention a draft can hold back, as a percentage of the amount before tax. */
-    public static final BigDecimal MAX_RETENTION_PCT = new BigDecimal("20");
-
-    /** Released retention falls due this many days after the day it was released. */
-    public static final int RETENTION_DUE_DAYS = 30;
-
     /** The fewest and most monthly instalments a plan can have. */
     public static final int MIN_INSTALMENTS = 2;
     public static final int MAX_INSTALMENTS = 24;
@@ -113,27 +107,9 @@ public class Invoice {
     @Column(name = "discount_reason")
     private String discountReason;
 
-    @Column(name = "retention_pct")
-    private BigDecimal retentionPct = BigDecimal.ZERO;
-
     /** The rush surcharge, a percentage of the amount after the discounts, 0 to {@link #MAX_SURCHARGE_PCT}. */
     @Column(name = "surcharge_pct")
     private BigDecimal surchargePct = BigDecimal.ZERO;
-
-    /** The most retention held back, in the invoice's currency; null is no cap. */
-    @Column(name = "retention_cap")
-    private BigDecimal retentionCap;
-
-    /** The day of the latest release of retention; null while none has been released. */
-    @Column(name = "retention_released_on")
-    private LocalDate retentionReleasedOn;
-
-    /**
-     * How much of the retention has been released in all; null with a release day means everything
-     * that was held was released (a release recorded before part of it could be).
-     */
-    @Column(name = "retention_released_amount")
-    private BigDecimal retentionReleasedAmount;
 
     /** The day the late interest still unpaid was last waived; null when never. */
     @Column(name = "interest_waived_on")
@@ -418,23 +394,15 @@ public class Invoice {
     private BigDecimal creditTotal;
 
     /**
-     * What this credit note took off its original when issued (what it owed, then retention it held);
-     * null until then. Any rest of its grand total was held on the client's account as credit.
+     * What this credit note took off what its original owed when issued; null until then. Any rest
+     * of its grand total was held on the client's account as credit.
      */
     @Column(name = "credit_applied")
     private BigDecimal creditApplied;
 
-    /** The part of {@link #creditApplied} that cleared retention its original held back. */
-    @Column(name = "credit_retention")
-    private BigDecimal creditRetention = BigDecimal.ZERO;
-
     /** What the credit notes issued against this invoice took off it; read from them. */
     @Formula("(SELECT COALESCE(SUM(cn.credit_applied), 0) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
     private BigDecimal credited = BigDecimal.ZERO;
-
-    /** The part of what is credited that cleared retention held back; read from the credit notes. */
-    @Formula("(SELECT COALESCE(SUM(cn.credit_retention), 0) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
-    private BigDecimal retentionCredited = BigDecimal.ZERO;
 
     /** How many credit notes have been issued against this invoice; read from them. */
     @Formula("(SELECT COUNT(*) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
@@ -449,10 +417,10 @@ public class Invoice {
 
     /**
      * The credit notes issued against this invoice, as "issue date=amount taken off what it owed"
-     * (retention cleared left out) joined by commas; null when there are none. Read from them, so that
-     * each counts against late interest only from its issue date.
+     * joined by commas; null when there are none. Read from them, so that each counts against late
+     * interest only from its issue date.
      */
-    @Formula("(SELECT LISTAGG(CAST(cn.issue_date AS VARCHAR) || '=' || CAST(COALESCE(cn.credit_applied, 0) - COALESCE(cn.credit_retention, 0) AS VARCHAR), ',') WITHIN GROUP (ORDER BY cn.issue_date, cn.id) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
+    @Formula("(SELECT LISTAGG(CAST(cn.issue_date AS VARCHAR) || '=' || CAST(COALESCE(cn.credit_applied, 0) AS VARCHAR), ',') WITHIN GROUP (ORDER BY cn.issue_date, cn.id) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
     private String creditsOwedTaken;
 
     /**
@@ -468,10 +436,6 @@ public class Invoice {
      */
     @Transient
     private LocalDate pricedToday;
-
-    /** The part of {@link #lateInterest} charged on released retention (see {@link #accrueRetentionInterest}); not stored. */
-    @Transient
-    private BigDecimal retentionInterest = BigDecimal.ZERO;
 
     /**
      * The late interest written off when they were waived (see {@link #accrueLateInterest}); not
@@ -526,9 +490,7 @@ public class Invoice {
         copy.discountAmount = discountAmount;
         copy.discountCap = discountCap;
         copy.discountReason = discountReason;
-        copy.retentionPct = retentionPct;
         copy.surchargePct = surchargePct;
-        copy.retentionCap = retentionCap;
         copy.instalments = instalments;
         copy.instalmentRate = instalmentRate;
         copy.planDownPct = planDownPct;
@@ -737,12 +699,11 @@ public class Invoice {
 
     /**
      * Issues a draft credit note on the given date, keeping its grand total at the tax rate and what
-     * its original took of it (the part of that clearing held retention).
+     * its original took of it.
      */
-    public void markIssued(LocalDate issueDate, BigDecimal taxRate, BigDecimal applied, BigDecimal toRetention) {
+    public void markIssued(LocalDate issueDate, BigDecimal taxRate, BigDecimal applied) {
         this.creditTotal = total(taxRate);
         this.creditApplied = applied;
-        this.creditRetention = toRetention;
         this.status = InvoiceStatus.CREDIT_NOTE;
         this.issueDate = issueDate;
     }
@@ -839,36 +800,6 @@ public class Invoice {
     /** Sets the rush surcharge percentage; it has already been checked. */
     public void setSurchargePct(BigDecimal surchargePct) {
         this.surchargePct = surchargePct;
-    }
-
-    /** The percentage of the amount before tax held back as retention, 0 to {@link #MAX_RETENTION_PCT}. */
-    public BigDecimal getRetentionPct() {
-        return retentionPct;
-    }
-
-    /** Sets the percentage held back as retention; it has already been checked. */
-    public void setRetentionPct(BigDecimal retentionPct) {
-        this.retentionPct = retentionPct;
-    }
-
-    /** The most retention held back; null is no cap. */
-    public BigDecimal getRetentionCap() {
-        return retentionCap;
-    }
-
-    /** Sets the most retention held back (null for no cap); it has already been checked. */
-    public void setRetentionCap(BigDecimal retentionCap) {
-        this.retentionCap = retentionCap;
-    }
-
-    /** The day of the latest release of retention; null while none has been released. */
-    public LocalDate getRetentionReleasedOn() {
-        return retentionReleasedOn;
-    }
-
-    /** The day released retention falls due, {@link #RETENTION_DUE_DAYS} after the latest release; null while none is released. */
-    public LocalDate retentionDueDate() {
-        return retentionReleasedOn == null ? null : retentionReleasedOn.plusDays(RETENTION_DUE_DAYS);
     }
 
     /** The day the late interest still unpaid was last waived; null when never. */
@@ -997,80 +928,22 @@ public class Invoice {
 
     /**
      * Writes the invoice off as a bad debt on the given day: everything still owed on it then, late
-     * charges and retention included, is written off, and it stops earning interest.
+     * charges included, is written off, and it stops earning interest.
      */
     public void writeOff(LocalDate on) {
         this.writtenOffOn = on;
     }
 
     /**
-     * Releases the given amount of the retention held on the given day, so it is added to the amount
-     * due; it has already been checked against what is held.
+     * How much of a credit note of the amount comes off this invoice once the given amount has been
+     * paid, at the tax rate: what it still owes; the rest is left over as credit.
      */
-    public void releaseRetention(LocalDate on, BigDecimal amount) {
-        BigDecimal before = retentionReleasedAmount == null ? BigDecimal.ZERO : retentionReleasedAmount;
-        this.retentionReleasedAmount = before.add(amount);
-        this.retentionReleasedOn = on;
-    }
-
-    /**
-     * The retention: the retention percentage of the amount before tax (the subtotal less the
-     * discount), rounded down to the cent, and never more than the retention cap when there is one.
-     * Tax is never held back, so the tax rate does not change it.
-     */
-    public BigDecimal retention(BigDecimal taxRate) {
-        if (isCreditNote()) {
-            return zero();
-        }
-        BigDecimal retention = beforeTax(taxRate).multiply(retentionPct).divide(BigDecimal.valueOf(100))
-                .setScale(scale(), RoundingMode.DOWN);
-        return retentionCap == null ? retention : retention.min(retentionCap.setScale(scale(), RoundingMode.DOWN));
-    }
-
-    /**
-     * The retention still held back at the tax rate: all of it less what has been released and what
-     * credit notes have cleared of it. Nothing once the invoice is written off.
-     */
-    public BigDecimal retentionHeld(BigDecimal taxRate) {
-        return isWrittenOff() ? zero() : retentionKept(taxRate);
-    }
-
-    /** As {@link #retentionHeld}, but still what was held back when the invoice was written off. */
-    private BigDecimal retentionKept(BigDecimal taxRate) {
-        if (retentionReleasedOn != null && retentionReleasedAmount == null) {
-            return zero();
-        }
-        BigDecimal cleared = retentionCredited == null ? BigDecimal.ZERO : retentionCredited;
-        BigDecimal released = retentionReleasedAmount == null ? BigDecimal.ZERO : retentionReleasedAmount;
-        return retention(taxRate).subtract(cleared).subtract(released).max(BigDecimal.ZERO)
-                .setScale(scale(), RoundingMode.HALF_UP);
-    }
-
-    /**
-     * How a credit note of the amount comes off this invoice once the given amount has been paid, at
-     * the tax rate: first what it still owes, then the retention it holds back. The part taken off in
-     * all, and of that the part clearing retention; the rest is left over as credit.
-     */
-    public BigDecimal[] creditTaken(BigDecimal amount, BigDecimal paid, BigDecimal taxRate) {
+    public BigDecimal creditTaken(BigDecimal amount, BigDecimal paid, BigDecimal taxRate) {
         if (hasPlan()) {
             // It comes off the plan's instalments to come instead (see #schedule).
-            return new BigDecimal[] { amount, BigDecimal.ZERO };
+            return amount;
         }
-        BigDecimal toDue = amount.min(amountDue(paid, taxRate).max(BigDecimal.ZERO));
-        BigDecimal toRetention = amount.subtract(toDue).min(retentionKept(taxRate));
-        return new BigDecimal[] { toDue.add(toRetention), toRetention };
-    }
-
-    /**
-     * The retention released at the tax rate: nothing until some is released, then what was released
-     * (all of it for a release recorded without an amount).
-     */
-    public BigDecimal retentionReleased(BigDecimal taxRate) {
-        if (retentionReleasedOn == null) {
-            return zero();
-        }
-        return retentionReleasedAmount == null ? retention(taxRate)
-                : retentionReleasedAmount.setScale(scale(), RoundingMode.HALF_UP);
+        return amount.min(amountDue(paid, taxRate).max(BigDecimal.ZERO));
     }
 
     /**
@@ -1097,8 +970,8 @@ public class Invoice {
     }
 
     /**
-     * What the invoice is owed in all, held retention left out: the grand total (the plan total when it
-     * is spread over instalments) less what is credited and held, plus the late interest charged.
+     * What the invoice is owed in all: the grand total (the plan total when it is spread over
+     * instalments) less what is credited, plus the late interest charged.
      */
     private BigDecimal payable(BigDecimal taxRate) {
         return payableBeforeInterest(taxRate).add(getLateInterest());
@@ -1110,7 +983,7 @@ public class Invoice {
      */
     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
         BigDecimal owed = hasPlan() ? planTotal(taxRate) : owedTotal(taxRate).subtract(getCredited());
-        return owed.subtract(retentionKept(taxRate)).subtract(getEarlyDiscountTaken())
+        return owed.subtract(getEarlyDiscountTaken())
                 .subtract(getInterestSaved()).add(getCashRounding());
     }
 
@@ -1133,7 +1006,7 @@ public class Invoice {
      * date), compounded daily at rate / 360 (Actual/360): a balance B owing for
      * d days earns B x ((1 + rate / 100 / 360)^d - 1), rounded half up to the cent. Each payment after
      * the grace period ends a period; every period earns interest on what the invoice still owed during it
-     * (earlier interest and retention left out), and a payment pays the invoice, then the interest earned
+     * (earlier interest left out), and a payment pays the invoice, then the interest earned
      * so far. A credit note issued after the grace period ends a period too:
      * what it took off what the invoice owed counts only from its issue date, so the periods before it
      * earn interest on what was owed before the credit. An invoice spread over instalments instead earns interest
@@ -1142,15 +1015,13 @@ public class Invoice {
      * interest was waived (after the day's payments), the interest still unpaid is written off
      * (kept as what was waived) and that day ends a period: interest starts again from it on what is
      * still owed. A written-off invoice is charged only up to the day it was
-     * written off. Released retention still unpaid also earns interest (see
-     * {@link #accrueRetentionInterest}).
+     * written off.
      */
     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate, LocalDate asOf) {
         annualRate = lateInterestRate(annualRate);
         LocalDate today = writtenOffOn != null && writtenOffOn.isBefore(asOf) ? writtenOffOn : asOf;
         this.lateInterest = BigDecimal.ZERO;
         this.lateWaived = BigDecimal.ZERO;
-        this.retentionInterest = BigDecimal.ZERO;
         this.instalmentInterest = List.of();
         if (status == InvoiceStatus.SENT && !isCreditNote() && hasPlan()) {
             accrueInstalmentInterest(payments, taxRate, annualRate, today);
@@ -1161,11 +1032,9 @@ public class Invoice {
             return;
         }
         accrueInvoiceInterest(payments, taxRate, annualRate, today);
-        accrueRetentionInterest(payments, taxRate, annualRate, today);
         if (getLateInterest().add(getLateWaived()).compareTo(interestThreshold()) < 0) {
             this.lateInterest = BigDecimal.ZERO;
             this.lateWaived = BigDecimal.ZERO;
-            this.retentionInterest = BigDecimal.ZERO;
         }
     }
 
@@ -1252,7 +1121,7 @@ public class Invoice {
         this.approvedOn = on;
     }
 
-    /** The late interest charged on the invoice itself, released retention left out (see {@link #accrueLateInterest}). */
+    /** The late interest charged on an invoice not spread over instalments (see {@link #accrueLateInterest}). */
     private void accrueInvoiceInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
             LocalDate today) {
         if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || dueDate == null
@@ -1273,7 +1142,7 @@ public class Invoice {
         // What a credit note took off what the invoice owed counts only from its issue date: until then
         // the invoice still owed it. One issued during the grace period, or later than today, comes off
         // from the start.
-        BigDecimal owed = payableBeforeInterest(taxRate).subtract(retentionReleased(taxRate));
+        BigDecimal owed = payableBeforeInterest(taxRate);
         if (creditsOwedTaken != null && !creditsOwedTaken.isBlank()) {
             for (String credit : creditsOwedTaken.split(",")) {
                 String[] parts = credit.split("=");
@@ -1342,104 +1211,6 @@ public class Invoice {
         }
         this.lateInterest = charged.subtract(interestWaived);
         this.lateWaived = interestWaived;
-    }
-
-    /**
-     * Works out the late interest released retention has been charged by the given day, at the annual
-     * rate (a percentage), and adds it to the late interest. Payments, in the order they were made, pay
-     * the rest of the invoice with its late interest first; what is left of them pays the
-     * released retention, then its interest earned so far. Released retention still unpaid more than
-     * {@link #graceDays()} days after it falls due ({@link #retentionDueDate()}) earns interest by the
-     * same rule as an invoice: from the end of its grace period, compounded daily at rate / 360
-     * (Actual/360), with each payment after its grace period ending a period. Charges waived on a day
-     * after the grace period ends are written off as for the invoice, and interest starts again from then.
-     */
-    private void accrueRetentionInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
-            LocalDate today) {
-        LocalDate due = retentionDueDate();
-        if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || due == null
-                || annualRate == null || annualRate.signum() <= 0 || !today.isAfter(due.plusDays(graceDays()))) {
-            return;
-        }
-        BigDecimal released = retentionReleased(taxRate);
-        if (released.signum() <= 0) {
-            return;
-        }
-        record Part(LocalDate on, Long paymentId, BigDecimal amount) {
-        }
-        List<Part> inOrder = payments.stream().filter(p -> !p.isReversed())
-                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
-                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
-                .filter(p -> !p.on().isAfter(today))
-                .sorted(Comparator.comparing(Part::on).thenComparing(Part::paymentId)).toList();
-        // What the payments leave once the rest of the invoice and its interest are paid.
-        BigDecimal ahead = payableBeforeInterest(taxRate).subtract(released).add(getLateInterest());
-        List<Part> toRetention = new ArrayList<>();
-        for (Part part : inOrder) {
-            BigDecimal toAhead = part.amount().min(ahead).max(BigDecimal.ZERO);
-            ahead = ahead.subtract(toAhead);
-            if (part.amount().subtract(toAhead).signum() > 0) {
-                toRetention.add(new Part(part.on(), part.paymentId(), part.amount().subtract(toAhead)));
-            }
-        }
-        LocalDate graceEnd = due.plusDays(graceDays());
-        BigDecimal paidInGrace = toRetention.stream().filter(p -> !p.on().isAfter(graceEnd))
-                .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (released.subtract(paidInGrace).signum() <= 0) {
-            return;
-        }
-        BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
-        BigDecimal owed = released;
-        BigDecimal charged = BigDecimal.ZERO;
-        BigDecimal unpaidInterest = BigDecimal.ZERO;
-        BigDecimal waived = BigDecimal.ZERO;
-        LocalDate from = graceEnd;
-        LocalDate waiveOn = interestWaivedOn != null && interestWaivedOn.isAfter(graceEnd)
-                && !interestWaivedOn.isAfter(today) ? interestWaivedOn : null;
-        for (Part part : toRetention) {
-            if (waiveOn != null && part.on().isAfter(waiveOn)) {
-                if (owed.signum() > 0) {
-                    BigDecimal earned = interestOn(owed, daily, interestDays(from, waiveOn));
-                    charged = charged.add(earned);
-                    unpaidInterest = unpaidInterest.add(earned);
-                }
-                from = waiveOn;
-                waived = unpaidInterest;
-                unpaidInterest = BigDecimal.ZERO;
-                waiveOn = null;
-            }
-            if (part.on().isAfter(from) && owed.signum() > 0) {
-                BigDecimal earned = interestOn(owed, daily, interestDays(from, part.on()));
-                charged = charged.add(earned);
-                unpaidInterest = unpaidInterest.add(earned);
-                from = part.on();
-            }
-            BigDecimal toOwed = part.amount().min(owed).max(BigDecimal.ZERO);
-            BigDecimal rest = part.amount().subtract(toOwed);
-            BigDecimal toInterest = rest.min(unpaidInterest).max(BigDecimal.ZERO);
-            unpaidInterest = unpaidInterest.subtract(toInterest);
-            owed = owed.subtract(toOwed).subtract(rest.subtract(toInterest));
-        }
-        if (waiveOn != null) {
-            if (owed.signum() > 0) {
-                BigDecimal earned = interestOn(owed, daily, interestDays(from, waiveOn));
-                charged = charged.add(earned);
-                unpaidInterest = unpaidInterest.add(earned);
-            }
-            from = waiveOn;
-            waived = unpaidInterest;
-        }
-        if (owed.signum() > 0) {
-            charged = charged.add(interestOn(owed, daily, interestDays(from, today)));
-        }
-        this.retentionInterest = charged.subtract(waived);
-        this.lateInterest = this.lateInterest.add(retentionInterest);
-        this.lateWaived = this.lateWaived.add(waived);
-    }
-
-    /** The part of the late interest charged on released retention, to the cent; 0 when none is. */
-    public BigDecimal getRetentionInterest() {
-        return retentionInterest.setScale(scale(), RoundingMode.HALF_UP);
     }
 
     /**
@@ -1560,11 +1331,11 @@ public class Invoice {
 
     /**
      * The early-payment discount on offer: the client's early-payment percentage of the amount before
-     * tax (the subtotal less the discount), rounded down to the cent; nothing for a credit note, or an invoice holding back
-     * retention or spread over instalments.
+     * tax (the subtotal less the discount), rounded down to the cent; nothing for a credit note, or an invoice
+     * spread over instalments.
      */
     public BigDecimal earlyDiscount(BigDecimal taxRate) {
-        if (isCreditNote() || hasPlan() || retentionPct.signum() > 0 || earlyPayDays == null
+        if (isCreditNote() || hasPlan() || earlyPayDays == null
                 || earlyPayPct == null || earlyPayPct.signum() <= 0) {
             return zero();
         }
@@ -2045,9 +1816,7 @@ public class Invoice {
     /**
      * The status on the given day once the given amount has been paid against the grand total at the
      * tax rate: a sent invoice with something still due more than {@link #graceDays()} days after its
-     * due date is overdue, part paid or not. Held retention is never due, so never makes it overdue;
-     * released retention is due {@link #RETENTION_DUE_DAYS} days after its release, and payments go to
-     * the rest of the invoice before it. An invoice spread over instalments is instead overdue when any
+     * due date is overdue, part paid or not. An invoice spread over instalments is instead overdue when any
      * of its instalments is (see {@link #instalmentProgress}).
      */
     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
@@ -2071,8 +1840,7 @@ public class Invoice {
         if (isWhollyDisputed() || (due && disputed.compareTo(amountDue) >= 0)) {
             return InvoiceStatus.DISPUTED;
         }
-        BigDecimal retentionDue = amountDue.min(retentionReleased(taxRate).add(getRetentionInterest())).max(BigDecimal.ZERO);
-        boolean restDue = amountDue.subtract(retentionDue).subtract(disputed).signum() > 0;
+        boolean restDue = amountDue.subtract(disputed).signum() > 0;
         if (hasPlan()) {
             if (due && instalmentProgress(paid, taxRate, today).stream()
                     .anyMatch(p -> p.status() == Instalment.Status.OVERDUE)) {
@@ -2080,12 +1848,6 @@ public class Invoice {
             }
         } else if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(graceDays()))) {
             return InvoiceStatus.OVERDUE;
-        }
-        if (retentionDue.signum() > 0 && today.isAfter(retentionDueDate().plusDays(graceDays()))) {
-            return InvoiceStatus.OVERDUE;
-        }
-        if (!due && retentionHeld(taxRate).signum() > 0) {
-            return InvoiceStatus.RETENTION_HELD;
         }
         if (paid.signum() <= 0) {
             return !due && getCredited().signum() > 0 ? InvoiceStatus.CREDITED : status;
@@ -2102,11 +1864,11 @@ public class Invoice {
     /**
      * The date the invoice was fully paid: the date of the payment that cleared its grand total at the
      * tax rate, taking the parts of payments (not reversed) in the order they were applied (credit used
-     * counts on the day it was applied); null while something is still due or retention is held.
+     * counts on the day it was applied); null while something is still due.
      */
     public LocalDate paidOn(List<Payment> payments, BigDecimal taxRate) {
         BigDecimal total = payable(taxRate);
-        if (status != InvoiceStatus.SENT || isWrittenOff() || total.signum() <= 0 || retentionHeld(taxRate).signum() > 0) {
+        if (status != InvoiceStatus.SENT || isWrittenOff() || total.signum() <= 0) {
             return null;
         }
         record Part(LocalDate on, Long paymentId, BigDecimal amount) {
@@ -2127,7 +1889,7 @@ public class Invoice {
 
     /**
      * What is still due once the given amount has been paid: the grand total less it, less what credit
-     * notes have credited, less the retention still held, less anything written off — so nothing once
+     * notes have credited, less anything written off — so nothing once
      * payments leave less than {@link #WRITE_OFF_LIMIT} that is no more than {@link #WRITE_OFF_SHARE}
      * of the grand total. A credit note itself, and a written-off
      * invoice, have nothing due.
@@ -2143,11 +1905,11 @@ public class Invoice {
      * What is written off once the given amount has been paid: when payments leave less than
      * {@link #WRITE_OFF_LIMIT} still due that is no more than {@link #WRITE_OFF_SHARE} of the grand
      * total, all of what is left; otherwise nothing. Once the invoice is
-     * written off as a bad debt, everything it still owed then, late charges and retention included.
+     * written off as a bad debt, everything it still owed then, late charges included.
      */
     public BigDecimal writtenOff(BigDecimal paid, BigDecimal taxRate) {
         if (isWrittenOff() && !isCreditNote()) {
-            return payable(taxRate).add(retentionKept(taxRate)).subtract(paid).max(BigDecimal.ZERO)
+            return payable(taxRate).subtract(paid).max(BigDecimal.ZERO)
                     .setScale(scale(), RoundingMode.HALF_UP);
         }
         BigDecimal left = payable(taxRate).subtract(paid);
