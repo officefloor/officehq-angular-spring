@@ -1,0 +1,82 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index e4da0d3..655e0dd 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -391,6 +391,18 @@ public class Invoice {
+         this.creditedBeforeTax = creditedBeforeTax;
+     }
+ 
++    /**
++     * What the credit notes and adjustment credit notes of this invoice take off its amount before tax, for its
++     * early-payment discount; null when not worked out. Not stored.
++     */
++    @Transient
++    private BigDecimal earlyCreditedBeforeTax;
++
++    /** Tells the invoice what its credit notes and adjustment credit notes take off its amount before tax. */
++    public void creditEarlyPayWith(BigDecimal creditedBeforeTax) {
++        this.earlyCreditedBeforeTax = creditedBeforeTax;
++    }
++
+     /** The percentage of the amount before tax the client withholds for its tax office; 0 when none. */
+     public BigDecimal getWithholdingPct() {
+         return withholdingPct == null ? BigDecimal.ZERO : withholdingPct;
+@@ -2134,14 +2146,18 @@ public class Invoice {
+ 
+     /**
+      * The early-payment discount on offer: the client's early-payment percentage of the amount before
+-     * tax (the subtotal less the discount), rounded down to the cent; nothing for a credit note, or one whose client is not a LOW payment risk (see {@link #withholdEarlyPay}).
++     * tax (the subtotal less the discount) less what its credit notes and adjustment credit notes take off it before tax,
++     * rounded down to the cent; nothing for a credit note or a debit note, or one whose client is not a LOW payment risk
++     * (see {@link #withholdEarlyPay}).
+      */
+     public BigDecimal earlyDiscount(BigDecimal taxRate) {
+-        if (earlyPayWithheld || isCreditNote() || earlyPayDays == null
++        if (earlyPayWithheld || isCreditNote() || isAdjustment() || earlyPayDays == null
+                 || earlyPayPct == null || earlyPayPct.signum() <= 0) {
+             return zero();
+         }
+-        return beforeTax(taxRate).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
++        BigDecimal beforeTax = beforeTax(taxRate);
++        BigDecimal base = earlyCreditedBeforeTax == null ? beforeTax : beforeTax.subtract(earlyCreditedBeforeTax);
++        return base.max(zero()).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index f60cd2a..b3cbdb4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -162,13 +162,22 @@ public class InvoiceService {
+ 
+     /**
+      * Tells each sent invoice and debit note what it is judged together with for withholding (see
+-     * {@link Invoice#judgeWithholdingWith}): an invoice with its issued adjustment notes, credit notes taken off.
++     * {@link Invoice#judgeWithholdingWith}): an invoice with its issued adjustment notes, credit notes taken off; and each
++     * invoice what its credit notes and adjustment credit notes take off its amount before tax for its early-payment
++     * discount (see {@link Invoice#creditEarlyPayWith}).
+      */
+     private static void judgeWithholdingTogether(List<Invoice> all, BigDecimal rate) {
+         Map<Long, BigDecimal> together = new HashMap<>();
+         Map<Long, BigDecimal> credited = new HashMap<>();
++        Map<Long, BigDecimal> allCredited = new HashMap<>();
+         for (Invoice i : all) {
+-            if (i.isDraft() || i.isVoid() || (i.isCreditNote() && !i.isAdjustment())) {
++            if (i.isDraft() || i.isVoid()) {
++                continue;
++            }
++            if (i.isCreditNote()) {
++                allCredited.merge(i.isAdjustment() ? i.getAdjustmentOf() : i.getCreditOf(), i.beforeTax(rate), BigDecimal::add);
++            }
++            if (i.isCreditNote() && !i.isAdjustment()) {
+                 continue;
+             }
+             Long group = i.isAdjustment() ? i.getAdjustmentOf() : i.getId();
+@@ -185,6 +194,7 @@ public class InvoiceService {
+             Long group = i.isAdjustment() ? i.getAdjustmentOf() : i.getId();
+             BigDecimal others = together.getOrDefault(group, BigDecimal.ZERO).subtract(i.beforeTax(rate));
+             i.judgeWithholdingWith(others, i.isAdjustment() ? BigDecimal.ZERO : credited.getOrDefault(group, BigDecimal.ZERO));
++            i.creditEarlyPayWith(i.isAdjustment() ? BigDecimal.ZERO : allCredited.getOrDefault(i.getId(), BigDecimal.ZERO));
+         }
+     }
+ 
