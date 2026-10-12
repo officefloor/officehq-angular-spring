@@ -2090,40 +2090,29 @@ public class Invoice {
 
     /**
      * Each milestone's amount at the tax rate, in the order of the milestones: its percentage of what the
-     * client pays ({@link #owedTotal}, the grand total less the withholding), rounded down to the cent, with
-     * the cents left over (of the milestones' share of it, rounded half up) going one each to the largest
-     * remainders, the lower id first on a tie, so they add up exactly.
+     * client pays ({@link #owedTotal}, the grand total less the withholding), rounded down to the cent, except
+     * the last milestone, which takes whatever is left of the milestones' share of it (rounded half up) so they
+     * add up exactly.
      */
     public List<BigDecimal> milestoneAmounts(BigDecimal taxRate) {
         int scale = scale();
         BigDecimal units = owedTotal(taxRate).movePointRight(scale);
         BigDecimal hundred = BigDecimal.valueOf(100);
         int n = milestones.size();
-        BigInteger[] floors = new BigInteger[n];
-        BigDecimal[] remainders = new BigDecimal[n];
-        BigInteger sum = BigInteger.ZERO;
-        for (int k = 0; k < n; k++) {
-            BigDecimal exact = units.multiply(milestones.get(k).getPct()).divide(hundred);
-            floors[k] = exact.setScale(0, RoundingMode.FLOOR).toBigInteger();
-            remainders[k] = exact.subtract(new BigDecimal(floors[k]));
-            sum = sum.add(floors[k]);
+        List<BigDecimal> amounts = new ArrayList<>(n);
+        if (n == 0) {
+            return amounts;
         }
         BigInteger target = units.multiply(milestonesPct()).divide(hundred).setScale(0, RoundingMode.HALF_UP)
                 .toBigInteger();
-        List<Integer> order = new ArrayList<>();
-        for (int k = 0; k < n; k++) {
-            order.add(k);
+        BigInteger sum = BigInteger.ZERO;
+        for (int k = 0; k < n - 1; k++) {
+            BigInteger floor = units.multiply(milestones.get(k).getPct()).divide(hundred)
+                    .setScale(0, RoundingMode.FLOOR).toBigInteger();
+            sum = sum.add(floor);
+            amounts.add(new BigDecimal(floor).movePointLeft(scale).setScale(scale));
         }
-        order.sort(Comparator.comparing((Integer k) -> remainders[k]).reversed()
-                .thenComparing(k -> milestones.get(k).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
-        int left = target.subtract(sum).intValue();
-        for (int k = 0; k < left && k < n; k++) {
-            floors[order.get(k)] = floors[order.get(k)].add(BigInteger.ONE);
-        }
-        List<BigDecimal> amounts = new ArrayList<>(n);
-        for (BigInteger f : floors) {
-            amounts.add(new BigDecimal(f).movePointLeft(scale).setScale(scale));
-        }
+        amounts.add(new BigDecimal(target.subtract(sum)).movePointLeft(scale).setScale(scale));
         return amounts;
     }
 
