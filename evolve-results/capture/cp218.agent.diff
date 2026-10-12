@@ -1,0 +1,343 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 2d43830..384c275 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -499,6 +499,12 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="invoice-early-discount">{{ amount(inv.earlyDiscount) }}</td>
+               </tr>
+             }
++            @if (inv.creditOf === null) {
++              <tr>
++                <th scope="row" colspan="5">Reminder fees</th>
++                <td data-testid="invoice-reminder-fees">{{ amount(inv.reminderFees) }}</td>
++              </tr>
++            }
+             @if (inv.creditOf === null) {
+               <tr>
+                 <th scope="row" colspan="5">Late interest</th>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 3c10551..3de1fa7 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -183,6 +183,9 @@ export interface InvoiceDetail {
+   settleAmount: string | null;
+   // The late interest charged on it so far ("0.00" when none): part of `amountDue`.
+   lateInterest: string;
++  // The reminder fees charged on it ("0.00" when none): each reminder's level fee in US dollars, converted
++  // at the rate on the day it went out and rounded down. Part of `amountDue`; earns no interest.
++  reminderFees: string;
+   // The late interest written off by waiving it ("0.00" when none was).
+   lateWaived: string;
+   // For a client billed in another currency, the exchange difference in US dollars of the payments
+diff --git a/src/main/java/net/officefloor/hq/app/ReminderFees.java b/src/main/java/net/officefloor/hq/app/ReminderFees.java
+new file mode 100644
+index 0000000..ef744a5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ReminderFees.java
+@@ -0,0 +1,42 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.Map;
++import java.util.TreeMap;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++import net.officefloor.hq.app.invoices.DunningLevel;
++
++/**
++ * The fees the workspace charges for its reminders, the {@code reminder_fee_<level>} settings: an amount in US
++ * dollars charged on an invoice when the reminder of that dunning level goes out (invoices read them themselves,
++ * see Invoice). A level with no fee set charges none.
++ */
++@Service
++public class ReminderFees {
++
++    /** The prefix of the setting holding a level's fee, followed by the level (reminder_fee_FINAL). */
++    public static final String REMINDER_FEE = "reminder_fee_";
++
++    private final JdbcTemplate jdbc;
++
++    public ReminderFees(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    /** Every level's fee in US dollars, by level. */
++    public Map<String, BigDecimal> all() {
++        Map<String, BigDecimal> fees = new TreeMap<>();
++        jdbc.queryForList("SELECT name, setting_value FROM app_setting WHERE name LIKE ? ORDER BY name", REMINDER_FEE + "%")
++                .forEach(r -> fees.put(((String) r.get("NAME")).substring(REMINDER_FEE.length()),
++                        new BigDecimal((String) r.get("SETTING_VALUE"))));
++        return fees;
++    }
++
++    /** Sets the level's fee in US dollars, replacing any it had. */
++    public void set(DunningLevel level, BigDecimal usd) {
++        jdbc.update("DELETE FROM app_setting WHERE name = ?", REMINDER_FEE + level.name());
++        jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", REMINDER_FEE + level.name(),
++                usd.toPlainString());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index a1b073f..56a2d2b 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -15,6 +15,7 @@ import net.officefloor.hq.app.clients.ClientTier;
+ import net.officefloor.hq.app.clients.Currency;
+ import net.officefloor.hq.app.clients.RateDiscount;
+ import net.officefloor.hq.app.clients.RateTiers;
++import net.officefloor.hq.app.invoices.DunningLevel;
+ import net.officefloor.hq.app.invoices.Invoice;
+ import net.officefloor.hq.app.invoices.InvoiceRepository;
+ import net.officefloor.hq.app.invoices.PaymentMethod;
+@@ -41,7 +42,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays", "holidays");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays", "holidays", "reminderFees");
+     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
+     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+@@ -87,10 +88,14 @@ public class TestSupportController {
+ 
+     private final RegionTerms regionTerms;
+ 
++    private final ReminderFees reminderFees;
++
+     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
+             PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
+             CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList, Today today, LateInterestRate lateInterestRate, Holidays holidays,
+-            VolumeDiscounts volumeDiscounts, RegionGrace regionGrace, RegionTerms regionTerms) {
++            VolumeDiscounts volumeDiscounts, RegionGrace regionGrace, RegionTerms regionTerms,
++            ReminderFees reminderFees) {
++        this.reminderFees = reminderFees;
+         this.regionTerms = regionTerms;
+         this.regionGrace = regionGrace;
+         this.volumeDiscounts = volumeDiscounts;
+@@ -291,6 +296,23 @@ public class TestSupportController {
+                             percent(e.getValue(), "settings.regionMaxInterest." + region));
+                 }
+             }
++            if (values.get("reminderFees") != null) {
++                if (!(values.get("reminderFees") instanceof Map<?, ?> fees)) {
++                    throw refuse("settings.reminderFees must be an object of US dollar amounts by dunning level");
++                }
++                for (Map.Entry<?, ?> e : fees.entrySet()) {
++                    DunningLevel level;
++                    try {
++                        level = DunningLevel.valueOf(e.getKey().toString());
++                    } catch (IllegalArgumentException ex) {
++                        throw refuse("unsupported dunning level in settings.reminderFees: " + e.getKey());
++                    }
++                    if (level == DunningLevel.NONE || e.getValue() == null) {
++                        throw refuse("settings.reminderFees needs a reminder level and a fee, not " + e.getKey() + ": " + e.getValue());
++                    }
++                    reminderFees.set(level, money(e.getValue(), "settings.reminderFees." + level));
++                }
++            }
+             if (values.get("regionGraceDays") != null) {
+                 if (!(values.get("regionGraceDays") instanceof Map<?, ?> graces)) {
+                     throw refuse("settings.regionGraceDays must be an object of days by region");
+@@ -707,6 +729,10 @@ public class TestSupportController {
+         if (!regionMaxInterest.isEmpty()) {
+             settings.put("regionMaxInterest", regionMaxInterest);
+         }
++        Map<String, BigDecimal> reminderFees = this.reminderFees.all();
++        if (!reminderFees.isEmpty()) {
++            settings.put("reminderFees", reminderFees);
++        }
+         Map<String, Integer> regionGraceDays = this.regionGrace.all();
+         if (!regionGraceDays.isEmpty()) {
+             settings.put("regionGraceDays", regionGraceDays);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 8815e90..8438366 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -328,6 +328,13 @@ public class Invoice {
+     @Formula("(SELECT LISTAGG(CAST(v.over_usd AS VARCHAR) || '=' || CAST(v.pct AS VARCHAR), ',') WITHIN GROUP (ORDER BY v.over_usd, v.id) FROM volume_discount v)")
+     private String volumeDiscounts;
+ 
++    /**
++     * The workspace's reminder fees in US dollars, as "dunning level=fee" joined by commas; null when there are none.
++     * Read from the {@code reminder_fee_<level>} settings.
++     */
++    @Formula("(SELECT LISTAGG(SUBSTRING(s.name, 14) || '=' || s.setting_value, ',') WITHIN GROUP (ORDER BY s.name) FROM app_setting s WHERE s.name LIKE 'reminder_fee_%')")
++    private String reminderFeesUsd;
++
+     /** The amount promised to be paid on this overdue invoice by {@link #promiseDate}; null when no promise was made. */
+     @Column(name = "promise_amount")
+     private BigDecimal promiseAmount;
+@@ -1155,6 +1162,56 @@ public class Invoice {
+         return DunningLevel.COLLECTIONS;
+     }
+ 
++    /** A reminder fee charged on the invoice: the fee, in its currency, charged the day the reminder went out. */
++    public record ReminderFee(LocalDate on, DunningLevel level, BigDecimal amount) {
++    }
++
++    /**
++     * The fee for a reminder of the level sent on the day: the workspace's fee for the level in US dollars,
++     * converted at the day's rate and rounded down to the step; nothing when the level has none.
++     */
++    public BigDecimal reminderFee(DunningLevel level, LocalDate on) {
++        if (reminderFeesUsd == null || reminderFeesUsd.isBlank()) {
++            return zero();
++        }
++        for (String entry : reminderFeesUsd.split(",")) {
++            String[] parts = entry.split("=");
++            if (parts[0].trim().equals(level.name())) {
++                return currency().divideDownToStep(new BigDecimal(parts[1].trim()), usdPerOn(on));
++            }
++        }
++        return zero();
++    }
++
++    /**
++     * The reminder fees charged on the invoice, earliest first: each reminder that went out (the n-th at the n-th
++     * level after NONE) carries its level's fee from its day (see {@link #reminderFee}); those with no fee, and those
++     * after the invoice was written off, charge nothing. A credit note is charged none.
++     */
++    public List<ReminderFee> reminderFees() {
++        List<ReminderFee> fees = new ArrayList<>();
++        if (isCreditNote()) {
++            return fees;
++        }
++        DunningLevel[] levels = DunningLevel.values();
++        for (int n = 0; n < reminders.size() && n + 1 < levels.length; n++) {
++            LocalDate on = reminders.get(n);
++            if (writtenOffOn != null && on.isAfter(writtenOffOn)) {
++                continue;
++            }
++            BigDecimal fee = reminderFee(levels[n + 1], on);
++            if (fee.signum() > 0) {
++                fees.add(new ReminderFee(on, levels[n + 1], fee));
++            }
++        }
++        return fees;
++    }
++
++    /** The reminder fees charged on the invoice added up (see {@link #reminderFees}); 0 when none are. */
++    public BigDecimal getReminderFees() {
++        return reminderFees().stream().map(ReminderFee::amount).reduce(zero(), BigDecimal::add);
++    }
++
+     /** Records that the reminder for the next dunning level went out on the given day; it has already been checked. */
+     public void remind(LocalDate on) {
+         reminders.add(on);
+@@ -1440,10 +1497,11 @@ public class Invoice {
+     }
+ 
+     /**
+-     * What the invoice is owed in all: the grand total less what is credited, plus the late interest charged.
++     * What the invoice is owed in all: the grand total less what is credited, plus the reminder fees and the late
++     * interest charged.
+      */
+     private BigDecimal payable(BigDecimal taxRate) {
+-        return payableBeforeInterest(taxRate).add(getLateInterest());
++        return payableBeforeInterest(taxRate).add(getReminderFees()).add(getLateInterest());
+     }
+ 
+     /**
+@@ -1680,7 +1738,10 @@ public class Invoice {
+         if (annualRate == null || annualRate.signum() <= 0) {
+             return;
+         }
+-        record Part(LocalDate on, Long paymentId, BigDecimal amount, boolean credit) {
++        record Part(LocalDate on, Long paymentId, BigDecimal amount, boolean credit, boolean fee) {
++            Part(LocalDate on, Long paymentId, BigDecimal amount, boolean credit) {
++                this(on, paymentId, amount, credit, false);
++            }
+         }
+         List<Part> inOrder = new ArrayList<>();
+         payments.stream().filter(p -> !p.isReversed())
+@@ -1703,8 +1764,19 @@ public class Invoice {
+                 }
+             }
+         }
++        // A reminder fee charged after the grace period ends a period too; it earns no interest itself.
++        BigDecimal unpaidFees = BigDecimal.ZERO;
++        for (ReminderFee fee : reminderFees()) {
++            if (!fee.on().isAfter(today)) {
++                if (fee.on().isAfter(graceEnd(dueDate))) {
++                    inOrder.add(new Part(fee.on(), Long.MIN_VALUE + 1, fee.amount(), false, true));
++                } else {
++                    unpaidFees = unpaidFees.add(fee.amount());
++                }
++            }
++        }
+         inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
+-        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(graceEnd(dueDate)))
++        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.fee() && !p.on().isAfter(graceEnd(dueDate)))
+                 .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+         if (owed.subtract(paidInGrace).signum() <= 0) {
+             return;
+@@ -1740,8 +1812,14 @@ public class Invoice {
+                 owed = owed.subtract(part.amount());
+                 continue;
+             }
++            if (part.fee()) {
++                unpaidFees = unpaidFees.add(part.amount());
++                continue;
++            }
+             BigDecimal toOwed = part.amount().min(owed).max(BigDecimal.ZERO);
+-            BigDecimal rest = part.amount().subtract(toOwed);
++            BigDecimal toFees = part.amount().subtract(toOwed).min(unpaidFees).max(BigDecimal.ZERO);
++            unpaidFees = unpaidFees.subtract(toFees);
++            BigDecimal rest = part.amount().subtract(toOwed).subtract(toFees);
+             BigDecimal toInterest = rest.min(unpaidInterest).max(BigDecimal.ZERO);
+             unpaidInterest = unpaidInterest.subtract(toInterest);
+             owed = owed.subtract(toOwed).subtract(rest.subtract(toInterest));
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 9a1812c..68552c9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -145,6 +145,7 @@ public class InvoiceController {
+      * {@code earlyDiscount} is the early-payment discount it was settled with (0 when none), and
+      * {@code settleAmount} what would settle it today while its early-payment window is open and its client is a LOW payment risk (null otherwise).
+      * {@code lateInterest} is the late interest charged on it so far, part of the amount due;
++     * {@code reminderFees} is the reminder fees charged on it (see {@link Invoice#reminderFees}), part of the amount due;
+      * {@code lateWaived} is the late interest written off by waiving it (0 when none was). {@code fxDifference}
+      * is, for a client billed in another currency, the exchange difference in US dollars of the payments
+      * applied to it (see {@link Invoice#fxDifference(List)}); null for a dollar invoice.
+@@ -180,7 +181,7 @@ public class InvoiceController {
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, String net, boolean pricesIncludeTax, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
+             String credited, Long creditOf, String listedTotal, LocalDate listedDueDate,
+-            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
++            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String reminderFees, String lateWaived,
+             String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
+@@ -218,6 +219,7 @@ public class InvoiceController {
+                     i.currency(), i.getEarlyDiscountTaken().toPlainString(),
+                     Optional.ofNullable(i.settleAmount(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
+                     i.getLateInterest().toPlainString(),
++                    i.getReminderFees().toPlainString(),
+                     i.getLateWaived().toPlainString(),
+                     i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
+                     i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index dfdc4b9..10fc3ee 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1119,7 +1119,8 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Sends today the reminder for the dunning level an invoice has reached, and records it in the audit; empty if
++     * Sends today the reminder for the dunning level an invoice has reached, charging the level's reminder fee (see
++     * {@link Invoice#reminderFee}), and records both in the audit; empty if
+      * no such invoice. Refused when the invoice is at NONE or the reminder for its level has already gone out.
+      */
+     @Transactional
+@@ -1140,6 +1141,10 @@ public class InvoiceService {
+             invoice.remind(now);
+             invoices.saveAndFlush(invoice);
+             audit.record("REMINDER_SENT id=" + invoice.getId() + " level=" + level);
++            BigDecimal fee = invoice.reminderFee(level, now);
++            if (fee.signum() > 0) {
++                audit.record("REMINDER_FEE id=" + invoice.getId() + " amount=" + fee.toPlainString());
++            }
+         });
+         return found;
+     }
