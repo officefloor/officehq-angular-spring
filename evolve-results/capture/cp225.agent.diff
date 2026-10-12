@@ -1,0 +1,73 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 1826358..ad53b58 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -248,6 +248,36 @@ public class InvoiceLine {
+                 && same(percentComplete, other.percentComplete) && Objects.equals(interestOf, other.interestOf);
+     }
+ 
++    /**
++     * Whether the other line is this progress line with only its percent complete changed: both billed by progress, the
++     * same quantity and the same in every other way, but a different percentage.
++     */
++    boolean onlyPercentChanged(InvoiceLine other) {
++        return percentComplete != null && other.percentComplete != null
++                && percentComplete.compareTo(other.percentComplete) != 0 && same(qty, other.qty)
++                && Objects.equals(description, other.description) && Objects.equals(unitType, other.unitType)
++                && same(unitPrice, other.unitPrice) && Objects.equals(tiers, other.tiers)
++                && same(increment, other.increment) && same(minUnits, other.minUnits)
++                && overtime == other.overtime && taxExempt == other.taxExempt
++                && same(discountPct, other.discountPct) && same(taxRate, other.taxRate)
++                && Objects.equals(periodStart, other.periodStart) && Objects.equals(periodEnd, other.periodEnd)
++                && Objects.equals(interestOf, other.interestOf);
++    }
++
++    /**
++     * A line for an adjustment note billing the change of this progress line's percent complete to the given one: a copy
++     * billing the higher percentage of its full amount less the lower, each rounded half up on its own (what was billed
++     * before is left alone). It is billed on a debit note when the percentage went up, or a credited copy taken off on a
++     * credit note when it went down.
++     */
++    InvoiceLine percentChange(BigDecimal newPct) {
++        boolean up = newPct.compareTo(percentComplete) > 0;
++        InvoiceLine change = up ? copy() : creditCopy();
++        change.percentComplete = up ? newPct : percentComplete;
++        change.billedPct = up ? percentComplete : newPct;
++        return change;
++    }
++
+     /** Whether two amounts are the same: both none, or equal in value. */
+     private static boolean same(BigDecimal a, BigDecimal b) {
+         return a == null ? b == null : b != null && a.compareTo(b) == 0;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 33c24ec..001edd5 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -681,7 +681,8 @@ public class InvoiceService {
+      * Changes a line of an invoice; empty if no such invoice or line. The line has already been
+      * checked. Refused when the subtotal would be less than a fixed discount. A sent invoice is left as it
+      * was sent and the change is made by adjustment notes instead: a change of quantity alone by one note for
+-     * the difference (a debit note for more, a credit note for less), any other change by a credit note taking
++     * the difference (a debit note for more, a credit note for less), a change of percent complete alone likewise by one
++     * note for the difference of the two percentages' amounts (see {@link InvoiceLine#percentChange}), any other change by a credit note taking
+      * the old line off and a debit note billing the new one.
+      */
+     @Transactional
+@@ -701,7 +702,16 @@ public class InvoiceService {
+             InvoiceLine old = lineOf(invoice, lineId);
+             InvoiceLine changed = newLine(invoice, description, qty, unitType, unitPrice, overtime, taxExempt, discountPct,
+                     taxRate, periodStart, periodEnd, percentComplete);
+-            if (!old.sameButQty(changed)) {
++            if (old.onlyPercentChanged(changed)) {
++                InvoiceLine change = old.percentChange(percentComplete);
++                if (percentComplete.compareTo(old.getPercentComplete()) > 0) {
++                    refuseDuplicateAdjustment(invoice, List.of(change), List.of());
++                    issueDebitNote(invoice, change);
++                } else {
++                    refuseDuplicateAdjustment(invoice, List.of(), List.of(change));
++                    issueAdjustmentCredit(invoice, change);
++                }
++            } else if (!old.sameButQty(changed)) {
+                 refuseDuplicateAdjustment(invoice, List.of(changed), List.of(old.creditCopy()));
+                 issueAdjustmentCredit(invoice, old.creditCopy());
+                 issueDebitNote(invoice, changed);
