@@ -2828,8 +2828,9 @@ public class InvoiceService {
     /**
      * The invoices the draft is a possible duplicate of, lowest id first: its client's sent invoices (not
      * void, not credit notes, not rebilled or fully credited) issued within the workspace's duplicate window of days before today whose
-     * {@link Invoice#fingerprint fingerprint} is the draft's. Empty for anything but a draft with lines, or
-     * when the workspace has no duplicate window.
+     * {@link Invoice#fingerprint fingerprint} is the draft's, and its client's earlier drafts (lower id, not credit or
+     * adjustment notes) with the same fingerprint. Empty for anything but a draft with lines, or when the workspace
+     * has no duplicate window.
      */
     @Transactional(readOnly = true)
     public List<Invoice> possibleDuplicateOf(Invoice invoice) {
@@ -2838,8 +2839,12 @@ public class InvoiceService {
         if (days == null || fingerprint == null || !invoice.isDraft() || invoice.isCreditNote()) {
             return List.of();
         }
-        return duplicateCandidates(invoice, adjusted(invoices.findByClientIdOrderByIdAsc(invoice.getClientId())), days)
-                .stream().filter(i -> fingerprint.equals(i.fingerprint())).toList();
+        List<Invoice> all = adjusted(invoices.findByClientIdOrderByIdAsc(invoice.getClientId()));
+        List<Invoice> candidates = new ArrayList<>(duplicateCandidates(invoice, all, days));
+        all.stream().filter(i -> i.isDraft() && !i.isCreditNote() && !i.isAdjustment()
+                && invoice.getId() != null && i.getId() < invoice.getId()).forEach(candidates::add);
+        return candidates.stream().filter(i -> fingerprint.equals(i.fingerprint()))
+                .sorted(Comparator.comparing(Invoice::getId)).toList();
     }
 
     /**
