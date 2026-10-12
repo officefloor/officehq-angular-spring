@@ -1,0 +1,42 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 9a4ac92..ac353a8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1696,16 +1696,21 @@ public class InvoiceService {
+                 .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+     }
+ 
+-    /** The share of a HIGH-risk client's draft's grand total its deposits must cover before it is sent. */
++    /**
++     * The share of a draft's grand total its deposits must cover before it is sent, for a HIGH-risk client or one
++     * with an invoice still overdue after its second reminder.
++     */
+     private static final BigDecimal DEPOSIT_SHARE = new BigDecimal("0.30");
+ 
+     /**
+-     * Why the draft of a HIGH payment risk client cannot be sent yet, or null when it can: the deposits
+-     * held for it, at what they are worth in the client's currency (after any conversion fee or card
+-     * surcharge), must add up to at least 30% of its grand total.
++     * Why the draft cannot be sent yet, or null when it can: for a HIGH payment risk client, or a client with an
++     * invoice still overdue after its second reminder (unless the draft replaces a rebilled invoice, billing work
++     * already invoiced), the deposits held for it, at what they are worth in the client's currency (after any
++     * conversion fee or card surcharge), must add up to at least 30% of its grand total.
+      */
+     private String depositRefusal(Invoice invoice) {
+-        if (riskOf(invoice.getClientId()).band() != RiskBand.HIGH) {
++        boolean highRisk = riskOf(invoice.getClientId()).band() == RiskBand.HIGH;
++        if (!highRisk && (invoice.getReplaces() != null || !secondReminderUnpaid(invoice.getClientId()))) {
+             return null;
+         }
+         Map<String, Long> drafts = draftsByReference(invoice.getClientId());
+@@ -1719,7 +1724,9 @@ public class InvoiceService {
+             return null;
+         }
+         Currency currency = invoice.currency();
+-        return "The client pays slowly (HIGH payment risk): deposits of at least " + currency.format(needed)
++        return (highRisk ? "The client pays slowly (HIGH payment risk)"
++                : "The client has an invoice still overdue after its second reminder")
++                + ": deposits of at least " + currency.format(needed)
+                 + " (30% of the grand total) must be held for this invoice before it is sent; "
+                 + currency.format(held) + " is held.";
+     }
