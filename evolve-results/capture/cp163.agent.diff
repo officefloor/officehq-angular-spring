@@ -1,0 +1,599 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 37d5a36..90fc19d 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -316,6 +316,21 @@ function problemWith(line: NewLine): string {
+                       Credit
+                     </button>
+                   }
++                  @if (canDisputeLines(inv)) {
++                    @if (l.disputed) {
++                      <span data-testid="line-disputed">In dispute</span>
++                    } @else {
++                      <button
++                        type="button"
++                        data-testid="line-dispute"
++                        [disabled]="disputing()"
++                        [attr.aria-label]="'Dispute line ' + l.description"
++                        (click)="disputeLine(inv.id, l.id)"
++                      >
++                        Dispute
++                      </button>
++                    }
++                  }
+                 </td>
+               </tr>
+             } @empty {
+@@ -543,6 +558,12 @@ function problemWith(line: NewLine): string {
+               <th scope="row" colspan="5">Amount due</th>
+               <td data-testid="invoice-amount-due">{{ amount(inv.amountDue) }}</td>
+             </tr>
++            @if (inv.creditOf === null) {
++              <tr>
++                <th scope="row" colspan="5">In dispute</th>
++                <td data-testid="invoice-disputed">{{ amount(inv.disputed) }}</td>
++              </tr>
++            }
+             @if (inv.creditOf === null) {
+               <tr>
+                 <th scope="row" colspan="5">Amount due in cash (rounded down to the coin below)</th>
+@@ -735,7 +756,7 @@ function problemWith(line: NewLine): string {
+           <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
+         }
+ 
+-        @if (inv.status === 'DISPUTED') {
++        @if (inv.disputedOn && !inv.disputeResolvedOn) {
+           <button type="button" data-testid="invoice-resolve" [disabled]="disputing()" (click)="resolveDispute(inv.id)">
+             Resolve dispute
+           </button>
+@@ -1531,6 +1552,29 @@ export class InvoicePanel {
+     });
+   }
+ 
++  // Lines of a sent invoice (not a credit note) can be disputed unless the whole invoice already is.
++  protected canDisputeLines(inv: InvoiceDetail): boolean {
++    const wholly = !!inv.disputedOn && !inv.disputeResolvedOn && !inv.lines.some((l) => l.disputed);
++    return inv.creditOf === null && !wholly && !['DRAFT', 'VOID', 'WRITTEN_OFF', 'PAID', 'PAID_LATE', 'CREDITED'].includes(inv.status);
++  }
++
++  protected disputeLine(invoiceId: number, lineId: number): void {
++    this.disputing.set(true);
++    this.disputeError.set('');
++    this.service.disputeLine(invoiceId, lineId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.disputing.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.disputeError.set(typeof detail === 'string' && detail ? detail : 'The line could not be disputed.');
++        this.disputing.set(false);
++      },
++    });
++  }
++
+   protected resolveDispute(invoiceId: number): void {
+     this.disputing.set(true);
+     this.disputeError.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index db13201..f5aa336 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -54,6 +54,8 @@ export interface InvoiceSummary {
+ // `amount` is after it. `unitType` is the unit the line is billed in (hour, day, ...), null when none.
+ export interface InvoiceLineView {
+   id: number;
++  // Whether the line is in the invoice's open dispute.
++  disputed: boolean;
+   description: string;
+   qty: string;
+   unitType: string | null;
+@@ -208,6 +210,9 @@ export interface InvoiceDetail {
+   // null while it is open.
+   disputedOn: string | null;
+   disputeResolvedOn: string | null;
++  // The amount in dispute: the disputed lines after their share of the invoice discount, with their tax
++  // (all that is due when the whole invoice is disputed), never more than is due; "0.00" with no open dispute.
++  disputed: string;
+   // Whether it is reverse charged: its client is registered (a valid tax number whose two letters are
+   // their region's code) outside the workspace's home region and accounts for the tax itself, so no line is taxed.
+   reverseCharge: boolean;
+@@ -432,6 +437,13 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/dispute`, null);
+   }
+ 
++  // Puts one line of a sent invoice in dispute: from the dispute date it earns no interest and is not
++  // overdue, while the rest of the invoice is owed as usual. Refused (409) as `dispute` is, and for a line
++  // already in dispute.
++  disputeLine(invoiceId: number, lineId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines/${lineId}/dispute`, null);
++  }
++
+   // Ends the dispute on an invoice; interest runs again from today on what is still owed.
+   resolveDispute(invoiceId: number): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/resolve-dispute`, null);
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 389113c..33dfff6 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -56,7 +56,7 @@ public class TestSupportController {
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "disputedOn", "disputeResolvedOn", "poNumber", "lineItems");
+-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd");
++    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method", "remittance");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
+@@ -474,7 +474,7 @@ public class TestSupportController {
+                     throw refuse("invoices[].lineItems[].periodEnd must not be before periodStart");
+                 }
+                 insert("invoice_line", line.get("id"),
+-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end"},
++                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end", "disputed"},
+                         invoiceId, text(line, "description"),
+                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
+                         price[0], price[1],
+@@ -486,7 +486,8 @@ public class TestSupportController {
+                         lineRate(invoiceId, line, "increment"), lineRate(invoiceId, line, "min_units"),
+                         flag(line.get("overtime"), "invoices[].lineItems[].overtime"),
+                         price[2], price[3],
+-                        period[0], period[1]);
++                        period[0], period[1],
++                        flag(line.get("disputed"), "invoices[].lineItems[].disputed"));
+             }
+         }
+         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
+@@ -827,7 +828,7 @@ public class TestSupportController {
+                         row.put("supplyRegion", r.get("SUPPLY_REGION"));
+                     }
+                     row.put("lineItems", jdbc.queryForList(
+-                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end FROM invoice_line WHERE invoice_id = ? ORDER BY id",
++                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end, disputed FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+                                 Map<String, Object> line = new LinkedHashMap<>();
+                                 line.put("id", l.get("ID"));
+@@ -839,6 +840,7 @@ public class TestSupportController {
+                                 line.put("unitPrice", l.get("UNIT_PRICE"));
+                                 line.put("taxExempt", l.get("TAX_EXEMPT"));
+                                 line.put("overtime", l.get("OVERTIME"));
++                                line.put("disputed", l.get("DISPUTED"));
+                                 line.put("discountPct", l.get("DISCOUNT_PCT"));
+                                 if (l.get("TAX_RATE") != null) {
+                                     line.put("taxRate", l.get("TAX_RATE"));
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 3ef2994..0fe6b2a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -868,19 +868,91 @@ public class Invoice {
+     }
+ 
+     /**
+-     * Whether the invoice is in dispute: it earns no interest, is not overdue and takes no payments
+-     * until the dispute is resolved.
++     * Whether the invoice is in dispute: what is in dispute (see {@link #disputedAmount}) earns no interest
++     * and is not overdue until the dispute is resolved.
+      */
+     public boolean isDisputed() {
+         return disputedOn != null && disputeResolvedOn == null;
+     }
+ 
+-    /** Puts the invoice in dispute from the given day. */
++    /** Whether the dispute is over particular lines rather than the whole invoice. */
++    public boolean hasDisputedLines() {
++        return lines.stream().anyMatch(InvoiceLine::isDisputed);
++    }
++
++    /**
++     * Whether the whole invoice is in dispute (an open dispute over no particular lines): it then takes no
++     * payments until the dispute is resolved.
++     */
++    public boolean isWhollyDisputed() {
++        return isDisputed() && !hasDisputedLines();
++    }
++
++    /** Puts the whole invoice in dispute from the given day. */
+     public void dispute(LocalDate on) {
++        lines.forEach(l -> l.setDisputed(false));
+         this.disputedOn = on;
+         this.disputeResolvedOn = null;
+     }
+ 
++    /**
++     * Puts the line in dispute: it joins an open dispute over other lines, or starts a new dispute from the
++     * given day (the lines of an earlier, resolved dispute leave it).
++     */
++    public void disputeLine(InvoiceLine line, LocalDate on) {
++        if (!isDisputed()) {
++            lines.forEach(l -> l.setDisputed(false));
++            this.disputedOn = on;
++            this.disputeResolvedOn = null;
++        }
++        line.setDisputed(true);
++    }
++
++    /**
++     * What the disputed lines come to at the tax rate: each line's amount after its share of the invoice
++     * discount, with its tax.
++     */
++    public BigDecimal disputedLinesAmount(BigDecimal taxRate) {
++        List<BigDecimal> shares = discountShares();
++        List<BigDecimal> taxes = lineTaxes(taxRate);
++        List<BigDecimal> inside = lineTaxesInside(taxRate);
++        BigDecimal amount = zero();
++        for (int i = 0; i < lines.size(); i++) {
++            if (!lines.get(i).isDisputed()) {
++                continue;
++            }
++            BigDecimal line = lines.get(i).amount(scale()).subtract(shares.get(i));
++            if (!clientPricesIncludeTax) {
++                line = line.add(taxes.get(i));
++            } else if (isReverseCharge()) {
++                line = line.subtract(inside.get(i));
++            }
++            amount = amount.add(line);
++        }
++        return amount;
++    }
++
++    /**
++     * Whether, once the given amount has been paid, all that is still due is in dispute, so the invoice takes
++     * no payments until the dispute is resolved.
++     */
++    public boolean onlyDisputedDue(BigDecimal paid, BigDecimal taxRate) {
++        return isDisputed() && amountDue(paid, taxRate).subtract(disputedAmount(paid, taxRate)).signum() <= 0;
++    }
++
++    /**
++     * What is in dispute at the tax rate once the given amount has been paid: nothing when there is no open
++     * dispute; all that is due when the whole invoice is disputed; otherwise the disputed lines (see
++     * {@link #disputedLinesAmount}), but never more than is due — payments go to the rest of the invoice first.
++     */
++    public BigDecimal disputedAmount(BigDecimal paid, BigDecimal taxRate) {
++        if (!isDisputed() || isCreditNote() || isWrittenOff()) {
++            return zero();
++        }
++        BigDecimal due = amountDue(paid, taxRate).max(zero());
++        return isWhollyDisputed() ? due : disputedLinesAmount(taxRate).min(due);
++    }
++
+     /** Resolves the dispute on the given day; interest runs again from then. */
+     public void resolveDispute(LocalDate on) {
+         this.disputeResolvedOn = on;
+@@ -1193,6 +1265,7 @@ public class Invoice {
+             return;
+         }
+         LocalDate overdueOn = dueDate.plusDays(graceDays() + 1);
++        BigDecimal disputedLines = hasDisputedLines() ? disputedLinesAmount(taxRate) : null;
+         BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
+         BigDecimal charged = BigDecimal.ZERO;
+         BigDecimal unpaidInterest = BigDecimal.ZERO;
+@@ -1203,7 +1276,7 @@ public class Invoice {
+         for (Part part : inOrder) {
+             if (waiveOn != null && part.on().isAfter(waiveOn)) {
+                 if (owed.signum() > 0) {
+-                    BigDecimal earned = interestOn(owed, daily, interestDays(from, waiveOn));
++                    BigDecimal earned = earnedOn(owed, disputedLines, daily, from, waiveOn);
+                     charged = charged.add(earned);
+                     unpaidInterest = unpaidInterest.add(earned);
+                 }
+@@ -1213,7 +1286,7 @@ public class Invoice {
+                 waiveOn = null;
+             }
+             if (part.on().isAfter(from) && owed.signum() > 0) {
+-                BigDecimal earned = interestOn(owed, daily, interestDays(from, part.on()));
++                BigDecimal earned = earnedOn(owed, disputedLines, daily, from, part.on());
+                 charged = charged.add(earned);
+                 unpaidInterest = unpaidInterest.add(earned);
+                 from = part.on();
+@@ -1230,7 +1303,7 @@ public class Invoice {
+         }
+         if (waiveOn != null) {
+             if (owed.signum() > 0) {
+-                BigDecimal earned = interestOn(owed, daily, interestDays(from, waiveOn));
++                BigDecimal earned = earnedOn(owed, disputedLines, daily, from, waiveOn);
+                 charged = charged.add(earned);
+                 unpaidInterest = unpaidInterest.add(earned);
+             }
+@@ -1238,7 +1311,7 @@ public class Invoice {
+             interestWaived = unpaidInterest;
+         }
+         if (owed.signum() > 0) {
+-            charged = charged.add(interestOn(owed, daily, interestDays(from, today)));
++            charged = charged.add(earnedOn(owed, disputedLines, daily, from, today));
+         }
+         this.lateInterest = charged.subtract(interestWaived);
+         this.lateWaived = interestWaived;
+@@ -1416,12 +1489,34 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The days from one day to another that earn interest: those spent in dispute (from the day it was
+-     * disputed up to the day it was resolved, or for good while it is still open) earn none.
++     * The interest what the invoice owes earns from one day to another at the daily growth factor. While
++     * disputed lines are in dispute (from the day they were disputed up to the day it was resolved, or for
++     * good while it is still open) only what is owed besides them (disputedLines) earns interest, the days
++     * before and after earning on all that is owed; each part is rounded half up to the cent. With no disputed
++     * lines (null), the days the whole invoice spent in dispute earn nothing (see {@link #interestDays}).
++     */
++    private BigDecimal earnedOn(BigDecimal owed, BigDecimal disputedLines, BigDecimal daily, LocalDate from, LocalDate to) {
++        if (disputedLines == null || disputedOn == null) {
++            return interestOn(owed, daily, interestDays(from, to));
++        }
++        LocalDate start = from.isAfter(disputedOn) ? from : disputedOn;
++        LocalDate end = disputeResolvedOn == null || to.isBefore(disputeResolvedOn) ? to : disputeResolvedOn;
++        if (!start.isBefore(end)) {
++            return interestOn(owed, daily, ChronoUnit.DAYS.between(from, to));
++        }
++        return interestOn(owed, daily, ChronoUnit.DAYS.between(from, start))
++                .add(interestOn(owed.subtract(disputedLines).max(BigDecimal.ZERO), daily, ChronoUnit.DAYS.between(start, end)))
++                .add(interestOn(owed, daily, ChronoUnit.DAYS.between(end, to)));
++    }
++
++    /**
++     * The days from one day to another that earn interest: those the whole invoice spent in dispute (from the
++     * day it was disputed up to the day it was resolved, or for good while it is still open) earn none. A
++     * dispute over particular lines takes no days off (see {@link #earnedOn}).
+      */
+     private long interestDays(LocalDate from, LocalDate to) {
+         long days = ChronoUnit.DAYS.between(from, to);
+-        if (disputedOn == null || days <= 0) {
++        if (disputedOn == null || days <= 0 || hasDisputedLines()) {
+             return days;
+         }
+         LocalDate start = from.isAfter(disputedOn) ? from : disputedOn;
+@@ -1786,7 +1881,7 @@ public class Invoice {
+             return zero();
+         }
+         if (!hasPlan()) {
+-            return amountDue(paid, taxRate);
++            return amountDue(paid, taxRate).subtract(disputedAmount(paid, taxRate));
+         }
+         return instalmentProgress(paid, taxRate, today).stream()
+                 .filter(p -> p.status() == Instalment.Status.OVERDUE).map(Instalment.Progress::owed)
+@@ -1945,13 +2040,14 @@ public class Invoice {
+         if (isWrittenOff()) {
+             return InvoiceStatus.WRITTEN_OFF;
+         }
+-        if (isDisputed()) {
+-            return InvoiceStatus.DISPUTED;
+-        }
+         BigDecimal amountDue = amountDue(paid, taxRate);
+         boolean due = amountDue.signum() > 0;
++        BigDecimal disputed = disputedAmount(paid, taxRate);
++        if (isWhollyDisputed() || (due && disputed.compareTo(amountDue) >= 0)) {
++            return InvoiceStatus.DISPUTED;
++        }
+         BigDecimal retentionDue = amountDue.min(retentionReleased(taxRate).add(getRetentionInterest())).max(BigDecimal.ZERO);
+-        boolean restDue = amountDue.subtract(retentionDue).signum() > 0;
++        boolean restDue = amountDue.subtract(retentionDue).subtract(disputed).signum() > 0;
+         if (hasPlan()) {
+             if (due && instalmentProgress(paid, taxRate, today).stream()
+                     .anyMatch(p -> p.status() == Instalment.Status.OVERDUE)) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 4214297..588a272 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -101,8 +101,9 @@ public class InvoiceController {
+     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
+             String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,
+             Long creditOfLine, boolean tiered, String billedQty, boolean overtime, String basePrice,
+-            LocalDate periodStart, LocalDate periodEnd) {
+-        static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax) {
++            LocalDate periodStart, LocalDate periodEnd, boolean disputed) {
++        static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax,
++                boolean inDispute) {
+             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
+                     l.getUnitType(), l.chargedUnitPrice().setScale(2).toPlainString(),
+                     l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount(scale).toPlainString(),
+@@ -111,7 +112,8 @@ public class InvoiceController {
+                     l.isTaxExempt(),
+                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
+                     l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString(), l.isOvertime(),
+-                    l.getUnitPrice().setScale(2).toPlainString(), l.getPeriodStart(), l.getPeriodEnd());
++                    l.getUnitPrice().setScale(2).toPlainString(), l.getPeriodStart(), l.getPeriodEnd(),
++                    inDispute && l.isDisputed());
+         }
+     }
+ 
+@@ -156,7 +158,8 @@ public class InvoiceController {
+      * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
+      * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not).
+      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not).
+-     * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open).
++     * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open);
++     * {@code disputed} is the amount in dispute (see {@link Invoice#disputedAmount}), 0 when none is.
+      * {@code poNumber} is the client's purchase order number (null when none).
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+@@ -169,7 +172,7 @@ public class InvoiceController {
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
+-            boolean recurring, Long recurringFrom, LocalDate disputedOn, LocalDate disputeResolvedOn, String poNumber) {
++            boolean recurring, Long recurringFrom, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -179,7 +182,7 @@ public class InvoiceController {
+             List<BigDecimal> inside = i.lineTaxesInside(taxRate);
+             List<LineView> lines = IntStream.range(0, shares.size())
+                     .mapToObj(n -> LineView.of(i.getLines().get(n), i.scale(), shares.get(n), taxes.get(n),
+-                            inside.get(n))).toList();
++                            inside.get(n), i.isDisputed())).toList();
+             return new InvoiceDetail(i.getId(), i.number(),
+                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
+                     i.statusWhenPaid(paid, paidOn, taxRate, today), i.getIssueDate(), i.getDueDate(),
+@@ -214,7 +217,8 @@ public class InvoiceController {
+                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
+                     i.getSupplyRegion(), approval,
+                     i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
+-                    i.isRecurring(), i.getRecurringFrom(), i.getDisputedOn(), i.getDisputeResolvedOn(), i.getPoNumber());
++                    i.isRecurring(), i.getRecurringFrom(), i.getDisputedOn(), i.getDisputeResolvedOn(),
++                    i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber());
+         }
+     }
+ 
+@@ -633,6 +637,14 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /** Puts one line of a sent invoice in dispute. */
++    @PostMapping("/api/invoices/{id}/lines/{lineId}/dispute")
++    public InvoiceDetail disputeLine(@PathVariable Long id, @PathVariable Long lineId) {
++        return invoices.disputeLine(id, lineId)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /** Ends the dispute on an invoice. */
+     @PostMapping("/api/invoices/{id}/resolve-dispute")
+     public InvoiceDetail resolveDispute(@PathVariable Long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 49e3090..ef7d62e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -94,6 +94,12 @@ public class InvoiceLine {
+      */
+     private boolean overtime;
+ 
++    /**
++     * Whether the client disputes the line: from its invoice's dispute date until the dispute is resolved, the
++     * line (after its share of the invoice discount, with its tax) earns no interest and is not overdue.
++     */
++    private boolean disputed;
++
+     /**
+      * Whether the line's price comes from the rates for its unit type (its client's rate card, or else the price
+      * list): on a draft it follows the card when that rate is changed, and sending reprices it at the rates in force
+@@ -278,6 +284,16 @@ public class InvoiceLine {
+         return unitPrice;
+     }
+ 
++    /** Whether the client disputes the line. */
++    public boolean isDisputed() {
++        return disputed;
++    }
++
++    /** Puts the line in dispute, or takes it out. */
++    public void setDisputed(boolean disputed) {
++        this.disputed = disputed;
++    }
++
+     /** Whether the line is charged at time and a half. */
+     public boolean isOvertime() {
+         return overtime;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 0d2b9c8..db8b502 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -715,6 +715,50 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Puts one line of a sent invoice in dispute, and records it in the audit with the amount then in dispute;
++     * empty if no such invoice. The line joins an open dispute over other lines, or starts one today. From the
++     * dispute date the disputed lines (after their share of the discount, with their tax) earn no interest and
++     * are not overdue, while the rest of the invoice is owed as usual. Refused as {@link #dispute} is, and for a
++     * line not on the invoice, one already disputed, or while the whole invoice is in dispute.
++     */
++    @Transactional
++    public Optional<Invoice> disputeLine(Long invoiceId, Long lineId) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isDraft()) {
++                throw new InvoiceRejectedException("A draft cannot be disputed; only a sent invoice can.");
++            }
++            if (invoice.isVoid()) {
++                throw new InvoiceRejectedException("A void invoice cannot be disputed.");
++            }
++            if (invoice.isCreditNote()) {
++                throw new InvoiceRejectedException("A credit note cannot be disputed.");
++            }
++            if (invoice.isWrittenOff()) {
++                throw new InvoiceRejectedException("A written-off invoice cannot be disputed.");
++            }
++            if (invoice.isWhollyDisputed()) {
++                throw new InvoiceRejectedException("The whole invoice is already in dispute.");
++            }
++            InvoiceLine line = invoice.getLines().stream().filter(l -> lineId.equals(l.getId())).findFirst()
++                    .orElseThrow(() -> new InvoiceRejectedException("There is no such line on this invoice."));
++            if (invoice.isDisputed() && line.isDisputed()) {
++                throw new InvoiceRejectedException("This line is already in dispute.");
++            }
++            BigDecimal rate = taxRate.percent();
++            if (invoice.amountDue(paid(List.of(invoice)).get(invoice.getId()), rate).signum() <= 0) {
++                throw new InvoiceRejectedException("There is nothing due on this invoice to dispute.");
++            }
++            invoice.disputeLine(line, today.date());
++            invoices.saveAndFlush(invoice);
++            withInterest(List.of(invoice));
++            BigDecimal amount = invoice.disputedAmount(paid(List.of(invoice)).get(invoice.getId()), rate);
++            audit.record("INVOICE_DISPUTED id=" + invoice.getId() + " amount=" + amount.toPlainString());
++        });
++        return found;
++    }
++
+     /**
+      * Resolves the dispute on an invoice today, and records it in the audit; empty if no such invoice.
+      * Interest runs again from today on what is still owed. Refused when it is not in dispute.
+@@ -1399,7 +1443,7 @@ public class InvoiceService {
+             if (invoice.isWrittenOff()) {
+                 throw new InvoiceRejectedException("A written-off invoice takes no more payments.");
+             }
+-            if (invoice.isDisputed()) {
++            if (invoice.onlyDisputedDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent())) {
+                 throw new InvoiceRejectedException("The invoice is in dispute: resolve the dispute before recording a payment.");
+             }
+             boolean cash = method == PaymentMethod.CASH;
+@@ -1558,7 +1602,7 @@ public class InvoiceService {
+                 if (invoice.isCreditNote()) {
+                     throw new InvoiceRejectedException(invoice.number() + " is a credit note and takes no payments.");
+                 }
+-                if (invoice.isDisputed()) {
++                if (invoice.onlyDisputedDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent())) {
+                     throw new InvoiceRejectedException(number + " is in dispute and takes no payments.");
+                 }
+                 if (quoted.amount() == null) {
+@@ -1647,14 +1691,18 @@ public class InvoiceService {
+      */
+     private List<Invoice> inPaymentOrder(List<Invoice> candidates, Map<Long, BigDecimal> dues) {
+         List<Invoice> unordered = candidates.stream()
+-                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote() && !i.isDisputed())
++                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote())
+                 .toList();
+-        Map<Long, BigDecimal> paid = paid(unordered);
++        Map<Long, BigDecimal> allPaid = paid(unordered);
++        unordered = unordered.stream()
++                .filter(i -> !i.onlyDisputedDue(allPaid.get(i.getId()), taxRate.percent())).toList();
++        Map<Long, BigDecimal> paid = allPaid;
+         LocalDate now = today.date();
+         Set<Long> overdue = new HashSet<>();
+         for (Invoice invoice : unordered) {
+             BigDecimal invoicePaid = paid.get(invoice.getId());
+-            dues.put(invoice.getId(), invoice.amountDue(invoicePaid, taxRate.percent()));
++            dues.put(invoice.getId(), invoice.amountDue(invoicePaid, taxRate.percent())
++                    .subtract(invoice.disputedAmount(invoicePaid, taxRate.percent())));
+             if (invoice.statusWhenPaid(invoicePaid, taxRate.percent(), now) == InvoiceStatus.OVERDUE) {
+                 overdue.add(invoice.getId());
+             }
+@@ -1777,7 +1825,7 @@ public class InvoiceService {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException(invoice.number() + " is a credit note and takes no payments.");
+             }
+-            if (invoice.isDisputed()) {
++            if (invoice.onlyDisputedDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent())) {
+                 throw new InvoiceRejectedException(number + " is in dispute and takes no payments.");
+             }
+             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+diff --git a/src/main/resources/db/migration/V73__line_dispute.sql b/src/main/resources/db/migration/V73__line_dispute.sql
+new file mode 100644
+index 0000000..71a3041
+--- /dev/null
++++ b/src/main/resources/db/migration/V73__line_dispute.sql
+@@ -0,0 +1,3 @@
++-- Whether the line is in the invoice's dispute (from the invoice's disputed_on until it is resolved): only the
++-- disputed lines then earn no interest and are not overdue. An open dispute with no line in it covers the whole invoice.
++ALTER TABLE invoice_line ADD COLUMN disputed BOOLEAN NOT NULL DEFAULT FALSE;
