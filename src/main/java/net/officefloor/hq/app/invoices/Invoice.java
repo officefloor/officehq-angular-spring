@@ -328,6 +328,13 @@ public class Invoice {
     @Formula("(SELECT LISTAGG(CAST(v.over_usd AS VARCHAR) || '=' || CAST(v.pct AS VARCHAR), ',') WITHIN GROUP (ORDER BY v.over_usd, v.id) FROM volume_discount v)")
     private String volumeDiscounts;
 
+    /**
+     * The workspace's reminder fees in US dollars, as "dunning level=fee" joined by commas; null when there are none.
+     * Read from the {@code reminder_fee_<level>} settings.
+     */
+    @Formula("(SELECT LISTAGG(SUBSTRING(s.name, 14) || '=' || s.setting_value, ',') WITHIN GROUP (ORDER BY s.name) FROM app_setting s WHERE s.name LIKE 'reminder_fee_%')")
+    private String reminderFeesUsd;
+
     /** The amount promised to be paid on this overdue invoice by {@link #promiseDate}; null when no promise was made. */
     @Column(name = "promise_amount")
     private BigDecimal promiseAmount;
@@ -1155,6 +1162,56 @@ public class Invoice {
         return DunningLevel.COLLECTIONS;
     }
 
+    /** A reminder fee charged on the invoice: the fee, in its currency, charged the day the reminder went out. */
+    public record ReminderFee(LocalDate on, DunningLevel level, BigDecimal amount) {
+    }
+
+    /**
+     * The fee for a reminder of the level sent on the day: the workspace's fee for the level in US dollars,
+     * converted at the day's rate and rounded down to the step; nothing when the level has none.
+     */
+    public BigDecimal reminderFee(DunningLevel level, LocalDate on) {
+        if (reminderFeesUsd == null || reminderFeesUsd.isBlank()) {
+            return zero();
+        }
+        for (String entry : reminderFeesUsd.split(",")) {
+            String[] parts = entry.split("=");
+            if (parts[0].trim().equals(level.name())) {
+                return currency().divideDownToStep(new BigDecimal(parts[1].trim()), usdPerOn(on));
+            }
+        }
+        return zero();
+    }
+
+    /**
+     * The reminder fees charged on the invoice, earliest first: each reminder that went out (the n-th at the n-th
+     * level after NONE) carries its level's fee from its day (see {@link #reminderFee}); those with no fee, and those
+     * after the invoice was written off, charge nothing. A credit note is charged none.
+     */
+    public List<ReminderFee> reminderFees() {
+        List<ReminderFee> fees = new ArrayList<>();
+        if (isCreditNote()) {
+            return fees;
+        }
+        DunningLevel[] levels = DunningLevel.values();
+        for (int n = 0; n < reminders.size() && n + 1 < levels.length; n++) {
+            LocalDate on = reminders.get(n);
+            if (writtenOffOn != null && on.isAfter(writtenOffOn)) {
+                continue;
+            }
+            BigDecimal fee = reminderFee(levels[n + 1], on);
+            if (fee.signum() > 0) {
+                fees.add(new ReminderFee(on, levels[n + 1], fee));
+            }
+        }
+        return fees;
+    }
+
+    /** The reminder fees charged on the invoice added up (see {@link #reminderFees}); 0 when none are. */
+    public BigDecimal getReminderFees() {
+        return reminderFees().stream().map(ReminderFee::amount).reduce(zero(), BigDecimal::add);
+    }
+
     /** Records that the reminder for the next dunning level went out on the given day; it has already been checked. */
     public void remind(LocalDate on) {
         reminders.add(on);
@@ -1440,10 +1497,11 @@ public class Invoice {
     }
 
     /**
-     * What the invoice is owed in all: the grand total less what is credited, plus the late interest charged.
+     * What the invoice is owed in all: the grand total less what is credited, plus the reminder fees and the late
+     * interest charged.
      */
     private BigDecimal payable(BigDecimal taxRate) {
-        return payableBeforeInterest(taxRate).add(getLateInterest());
+        return payableBeforeInterest(taxRate).add(getReminderFees()).add(getLateInterest());
     }
 
     /**
@@ -1680,7 +1738,10 @@ public class Invoice {
         if (annualRate == null || annualRate.signum() <= 0) {
             return;
         }
-        record Part(LocalDate on, Long paymentId, BigDecimal amount, boolean credit) {
+        record Part(LocalDate on, Long paymentId, BigDecimal amount, boolean credit, boolean fee) {
+            Part(LocalDate on, Long paymentId, BigDecimal amount, boolean credit) {
+                this(on, paymentId, amount, credit, false);
+            }
         }
         List<Part> inOrder = new ArrayList<>();
         payments.stream().filter(p -> !p.isReversed())
@@ -1703,8 +1764,19 @@ public class Invoice {
                 }
             }
         }
+        // A reminder fee charged after the grace period ends a period too; it earns no interest itself.
+        BigDecimal unpaidFees = BigDecimal.ZERO;
+        for (ReminderFee fee : reminderFees()) {
+            if (!fee.on().isAfter(today)) {
+                if (fee.on().isAfter(graceEnd(dueDate))) {
+                    inOrder.add(new Part(fee.on(), Long.MIN_VALUE + 1, fee.amount(), false, true));
+                } else {
+                    unpaidFees = unpaidFees.add(fee.amount());
+                }
+            }
+        }
         inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
-        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(graceEnd(dueDate)))
+        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.fee() && !p.on().isAfter(graceEnd(dueDate)))
                 .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (owed.subtract(paidInGrace).signum() <= 0) {
             return;
@@ -1740,8 +1812,14 @@ public class Invoice {
                 owed = owed.subtract(part.amount());
                 continue;
             }
+            if (part.fee()) {
+                unpaidFees = unpaidFees.add(part.amount());
+                continue;
+            }
             BigDecimal toOwed = part.amount().min(owed).max(BigDecimal.ZERO);
-            BigDecimal rest = part.amount().subtract(toOwed);
+            BigDecimal toFees = part.amount().subtract(toOwed).min(unpaidFees).max(BigDecimal.ZERO);
+            unpaidFees = unpaidFees.subtract(toFees);
+            BigDecimal rest = part.amount().subtract(toOwed).subtract(toFees);
             BigDecimal toInterest = rest.min(unpaidInterest).max(BigDecimal.ZERO);
             unpaidInterest = unpaidInterest.subtract(toInterest);
             owed = owed.subtract(toOwed).subtract(rest.subtract(toInterest));

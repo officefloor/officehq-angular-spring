@@ -15,6 +15,7 @@ import net.officefloor.hq.app.clients.ClientTier;
 import net.officefloor.hq.app.clients.Currency;
 import net.officefloor.hq.app.clients.RateDiscount;
 import net.officefloor.hq.app.clients.RateTiers;
+import net.officefloor.hq.app.invoices.DunningLevel;
 import net.officefloor.hq.app.invoices.Invoice;
 import net.officefloor.hq.app.invoices.InvoiceRepository;
 import net.officefloor.hq.app.invoices.PaymentMethod;
@@ -41,7 +42,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays", "holidays");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays", "holidays", "reminderFees");
     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
@@ -87,10 +88,14 @@ public class TestSupportController {
 
     private final RegionTerms regionTerms;
 
+    private final ReminderFees reminderFees;
+
     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
             PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
             CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList, Today today, LateInterestRate lateInterestRate, Holidays holidays,
-            VolumeDiscounts volumeDiscounts, RegionGrace regionGrace, RegionTerms regionTerms) {
+            VolumeDiscounts volumeDiscounts, RegionGrace regionGrace, RegionTerms regionTerms,
+            ReminderFees reminderFees) {
+        this.reminderFees = reminderFees;
         this.regionTerms = regionTerms;
         this.regionGrace = regionGrace;
         this.volumeDiscounts = volumeDiscounts;
@@ -289,6 +294,23 @@ public class TestSupportController {
                     }
                     lateInterestRate.setRegionMaximum(region,
                             percent(e.getValue(), "settings.regionMaxInterest." + region));
+                }
+            }
+            if (values.get("reminderFees") != null) {
+                if (!(values.get("reminderFees") instanceof Map<?, ?> fees)) {
+                    throw refuse("settings.reminderFees must be an object of US dollar amounts by dunning level");
+                }
+                for (Map.Entry<?, ?> e : fees.entrySet()) {
+                    DunningLevel level;
+                    try {
+                        level = DunningLevel.valueOf(e.getKey().toString());
+                    } catch (IllegalArgumentException ex) {
+                        throw refuse("unsupported dunning level in settings.reminderFees: " + e.getKey());
+                    }
+                    if (level == DunningLevel.NONE || e.getValue() == null) {
+                        throw refuse("settings.reminderFees needs a reminder level and a fee, not " + e.getKey() + ": " + e.getValue());
+                    }
+                    reminderFees.set(level, money(e.getValue(), "settings.reminderFees." + level));
                 }
             }
             if (values.get("regionGraceDays") != null) {
@@ -706,6 +728,10 @@ public class TestSupportController {
         Map<String, BigDecimal> regionMaxInterest = this.lateInterestRate.regionMaximums();
         if (!regionMaxInterest.isEmpty()) {
             settings.put("regionMaxInterest", regionMaxInterest);
+        }
+        Map<String, BigDecimal> reminderFees = this.reminderFees.all();
+        if (!reminderFees.isEmpty()) {
+            settings.put("reminderFees", reminderFees);
         }
         Map<String, Integer> regionGraceDays = this.regionGrace.all();
         if (!regionGraceDays.isEmpty()) {

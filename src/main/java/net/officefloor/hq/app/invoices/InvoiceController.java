@@ -145,6 +145,7 @@ public class InvoiceController {
      * {@code earlyDiscount} is the early-payment discount it was settled with (0 when none), and
      * {@code settleAmount} what would settle it today while its early-payment window is open and its client is a LOW payment risk (null otherwise).
      * {@code lateInterest} is the late interest charged on it so far, part of the amount due;
+     * {@code reminderFees} is the reminder fees charged on it (see {@link Invoice#reminderFees}), part of the amount due;
      * {@code lateWaived} is the late interest written off by waiving it (0 when none was). {@code fxDifference}
      * is, for a client billed in another currency, the exchange difference in US dollars of the payments
      * applied to it (see {@link Invoice#fxDifference(List)}); null for a dollar invoice.
@@ -180,7 +181,7 @@ public class InvoiceController {
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
             String discountCap, String discount, String discountReason, String taxRate, String tax, String total, String net, boolean pricesIncludeTax, List<PaymentView> payments, String paid, String amountDue, String writtenOff, LocalDate paidDate, boolean manualDueDate,
             String credited, Long creditOf, String listedTotal, LocalDate listedDueDate,
-            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
+            Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String reminderFees, String lateWaived,
             String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
@@ -218,6 +219,7 @@ public class InvoiceController {
                     i.currency(), i.getEarlyDiscountTaken().toPlainString(),
                     Optional.ofNullable(i.settleAmount(paid, taxRate, today)).map(BigDecimal::toPlainString).orElse(null),
                     i.getLateInterest().toPlainString(),
+                    i.getReminderFees().toPlainString(),
                     i.getLateWaived().toPlainString(),
                     i.currency() == Currency.USD ? null : i.fxDifference(payments).toPlainString(),
                     i.getWrittenOffOn(), i.isReverseCharge(), i.minimumCharge().toPlainString(),

@@ -183,6 +183,9 @@ export interface InvoiceDetail {
   settleAmount: string | null;
   // The late interest charged on it so far ("0.00" when none): part of `amountDue`.
   lateInterest: string;
+  // The reminder fees charged on it ("0.00" when none): each reminder's level fee in US dollars, converted
+  // at the rate on the day it went out and rounded down. Part of `amountDue`; earns no interest.
+  reminderFees: string;
   // The late interest written off by waiving it ("0.00" when none was).
   lateWaived: string;
   // For a client billed in another currency, the exchange difference in US dollars of the payments

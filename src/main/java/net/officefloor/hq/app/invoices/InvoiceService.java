@@ -1119,7 +1119,8 @@ public class InvoiceService {
     }
 
     /**
-     * Sends today the reminder for the dunning level an invoice has reached, and records it in the audit; empty if
+     * Sends today the reminder for the dunning level an invoice has reached, charging the level's reminder fee (see
+     * {@link Invoice#reminderFee}), and records both in the audit; empty if
      * no such invoice. Refused when the invoice is at NONE or the reminder for its level has already gone out.
      */
     @Transactional
@@ -1140,6 +1141,10 @@ public class InvoiceService {
             invoice.remind(now);
             invoices.saveAndFlush(invoice);
             audit.record("REMINDER_SENT id=" + invoice.getId() + " level=" + level);
+            BigDecimal fee = invoice.reminderFee(level, now);
+            if (fee.signum() > 0) {
+                audit.record("REMINDER_FEE id=" + invoice.getId() + " amount=" + fee.toPlainString());
+            }
         });
         return found;
     }
