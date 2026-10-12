@@ -1,0 +1,127 @@
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 98226cf..159d1bd 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -36,16 +36,17 @@ public class ClientController {
+             LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold, boolean overLimit, String riskScore, InvoiceService.RiskBand riskBand, ClientTier tier, BigDecimal upliftPct,
+             BigDecimal effectiveCreditLimit) {
+         /**
+-         * The client, on hold when held by hand or while over its credit limit (overLimit), with its payment risk
++         * The client, on hold when held by hand, while over its credit limit (overLimit) or while it has a
++         * dispute open over 30 days (longDispute), with its payment risk
+          * score (null when nothing is paid in full) and band, and the credit limit that counts for it (half of
+          * what is set for a HIGH payment risk).
+          */
+-        static ClientView of(Client c, boolean overLimit, InvoiceService.Risk risk, BigDecimal effectiveCreditLimit) {
++        static ClientView of(Client c, boolean overLimit, boolean longDispute, InvoiceService.Risk risk, BigDecimal effectiveCreditLimit) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+                     c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
+                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
+-                    c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold() || overLimit, overLimit,
++                    c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold() || overLimit || longDispute, overLimit,
+                     risk.score() == null ? null : risk.score().toPlainString(), risk.band(), c.getTier(), c.getUpliftPct(),
+                     effectiveCreditLimit);
+         }
+@@ -168,7 +169,7 @@ public class ClientController {
+     }
+ 
+     private ClientView view(Client c) {
+-        return ClientView.of(c, invoices.overLimit(c.getId()), invoices.riskOf(c.getId()), invoices.creditLimitOf(c));
++        return ClientView.of(c, invoices.overLimit(c.getId()), invoices.longDispute(c.getId()), invoices.riskOf(c.getId()), invoices.creditLimitOf(c));
+     }
+ 
+     @GetMapping
+@@ -187,7 +188,8 @@ public class ClientController {
+ 
+     /**
+      * Puts the client on hold, or lifts the hold when it is on hold; answers the client. A client over its
+-     * credit limit is on hold until its balance is back within it, so its hold cannot be lifted.
++     * credit limit is on hold until its balance is back within it, and one with a dispute open over 30 days until
++     * it is resolved, so its hold cannot be lifted.
+      */
+     @PostMapping("/{id}/hold")
+     public ClientView toggleHold(@PathVariable Long id) {
+@@ -195,6 +197,10 @@ public class ClientController {
+             throw new ClientRejectedException(
+                     "The client owes more than its credit limit, so it stays on hold until its balance is back within it.");
+         }
++        if (invoices.longDispute(id)) {
++            throw new ClientRejectedException(
++                    "The client has a dispute open for over 30 days, so it stays on hold until that dispute is resolved.");
++        }
+         return clients.toggleHold(id).map(this::view)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 69255d6..6b9be0b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -967,6 +967,22 @@ public class Invoice {
+         return isInvoiceDisputed() || hasDisputedMilestones();
+     }
+ 
++    /**
++     * The day its oldest open dispute was raised (the invoice itself, wholly or over particular lines, or a
++     * reached milestone); null when none is open.
++     */
++    public LocalDate oldestOpenDisputeOn() {
++        LocalDate oldest = isInvoiceDisputed() ? disputedOn : null;
++        if (isBilledByMilestones()) {
++            for (Milestone m : milestones) {
++                if (m.isReached() && m.isDisputed() && (oldest == null || m.getDisputedOn().isBefore(oldest))) {
++                    oldest = m.getDisputedOn();
++                }
++            }
++        }
++        return oldest;
++    }
++
+     /** Whether the invoice itself (wholly or over particular lines) is in an open dispute. */
+     private boolean isInvoiceDisputed() {
+         return disputedOn != null && disputeResolvedOn == null;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 8e4810d..83a7fb5 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -2105,7 +2105,7 @@ public class InvoiceService {
+         if (client.isEmpty()) {
+             return Optional.empty();
+         }
+-        if (client.get().isOnHold()) {
++        if (client.get().isOnHold() || longDispute(clientId)) {
+             throw new InvoiceRejectedException("The client is on hold: lift the hold before applying their credit.");
+         }
+         Map<String, Long> drafts = holdersByReference(clientId);
+@@ -2423,12 +2423,28 @@ public class InvoiceService {
+ 
+     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
+     /**
+-     * Whether the client is on hold: put on hold by hand, or its balance less what is in dispute is over its credit limit; false
+-     * if no such client.
++     * Whether the client is on hold: put on hold by hand, its balance less what is in dispute is over its credit limit,
++     * or it has a long dispute (see {@link #longDispute}); false if no such client.
+      */
+     @Transactional(readOnly = true)
+     public boolean onHold(Long clientId) {
+-        return clients.findById(clientId).map(c -> c.isOnHold() || overLimit(c)).orElse(false);
++        return clients.findById(clientId).map(c -> c.isOnHold() || overLimit(c) || longDispute(c.getId())).orElse(false);
++    }
++
++    /** How many days a dispute may stay open before its client is put on hold. */
++    private static final int LONG_DISPUTE_DAYS = 30;
++
++    /**
++     * Whether any of the client's disputes (a whole invoice, some lines or a milestone) has been open for more
++     * than 30 days today: the client is then on hold until that dispute is resolved.
++     */
++    @Transactional(readOnly = true)
++    public boolean longDispute(Long clientId) {
++        LocalDate limit = today.date().minusDays(LONG_DISPUTE_DAYS);
++        return invoices.findByClientIdOrderByIdAsc(clientId).stream()
++                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote())
++                .map(Invoice::oldestOpenDisputeOn)
++                .anyMatch(on -> on != null && on.isBefore(limit));
+     }
+ 
+     /** The client's yearly percentage rise of its typed recurring prices; zero when none or no such client. */
