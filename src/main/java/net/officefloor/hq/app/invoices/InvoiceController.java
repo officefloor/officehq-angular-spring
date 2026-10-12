@@ -124,7 +124,7 @@ public class InvoiceController {
                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
                     l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString(), l.isOvertime(),
                     l.getUnitPrice().setScale(2).toPlainString(), l.getPeriodStart(), l.getPeriodEnd(),
-                    inDispute && l.isDisputed(),
+                    inDispute && l.isInOpenDispute(),
                     l.getPercentComplete() == null ? null : l.getPercentComplete().stripTrailingZeros().toPlainString(),
                     l.getBilledPct() == null ? null : l.getBilledPct().stripTrailingZeros().toPlainString());
         }

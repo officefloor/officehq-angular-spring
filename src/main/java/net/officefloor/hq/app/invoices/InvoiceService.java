@@ -665,7 +665,9 @@ public class InvoiceService {
     /**
      * Removes a line from an invoice; empty if no such invoice or line. Refused when what is left would
      * be less than a fixed discount. A sent invoice is left as it was sent: the line is taken off by a
-     * credit note instead (see {@link #issueAdjustmentCredit}).
+     * credit note instead (see {@link #issueAdjustmentCredit}). A disputed line taken off a sent invoice leaves the
+     * dispute, settled in the client's favour; taking off the last one resolves the dispute with credit
+     * (DISPUTE_RESOLVED in the audit).
      */
     @Transactional
     public Optional<Invoice> removeLine(Long invoiceId, Long lineId) {
@@ -678,9 +680,24 @@ public class InvoiceService {
             return Optional.empty();
         }
         if (adjustsByNotes(invoice)) {
-            InvoiceLine credit = lineOf(invoice, lineId).creditCopy();
+            InvoiceLine line = lineOf(invoice, lineId);
+            InvoiceLine credit = line.creditCopy();
             refuseDuplicateAdjustment(invoice, List.of(), List.of(credit));
+            // Taking a disputed line off settles it in the client's favour: it leaves the dispute, and the last
+            // to leave resolves the dispute with credit, so the interest it held back is never charged.
+            boolean resolved = false;
+            if (invoice.isInOpenLineDispute(line)) {
+                LocalDate on = today.date();
+                if (invoice.settleDisputedLine(line, on)) {
+                    invoice.resolveDisputeWithCredit(on);
+                    resolved = true;
+                }
+                invoices.saveAndFlush(invoice);
+            }
             issueAdjustmentCredit(invoice, credit);
+            if (resolved) {
+                audit.record("DISPUTE_RESOLVED id=" + invoice.getId());
+            }
             return found;
         }
         invoice.removeLine(lineId);

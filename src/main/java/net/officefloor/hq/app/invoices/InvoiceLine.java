@@ -103,6 +103,13 @@ public class InvoiceLine {
     private boolean disputed;
 
     /**
+     * The day the disputed line was taken off its sent invoice by a credit note, settling it in the client's favour:
+     * it held interest back until then and is out of the dispute from then on; null while it is still in dispute.
+     */
+    @Column(name = "dispute_settled_on")
+    private LocalDate disputeSettledOn;
+
+    /**
      * Whether the line's price comes from the rates for its unit type (its client's rate card, or else the price
      * list): on a draft it follows the card when that rate is changed, and sending reprices it at the rates in force
      * on the day it is sent, then fixes the price on the line and clears it.
@@ -425,6 +432,27 @@ public class InvoiceLine {
     /** Puts the line in dispute, or takes it out. */
     public void setDisputed(boolean disputed) {
         this.disputed = disputed;
+        this.disputeSettledOn = null;
+    }
+
+    /** The day the disputed line was credited off its invoice, out of the dispute; null while still in it. */
+    public LocalDate getDisputeSettledOn() {
+        return disputeSettledOn;
+    }
+
+    /** Takes the disputed line out of the dispute on the given day, credited off its invoice. */
+    public void settleDispute(LocalDate on) {
+        this.disputeSettledOn = on;
+    }
+
+    /** Whether the line is disputed and still in the dispute on the given day (not credited off by then). */
+    public boolean isDisputedOn(LocalDate on) {
+        return disputed && (disputeSettledOn == null || disputeSettledOn.isAfter(on));
+    }
+
+    /** Whether the line is disputed and not yet credited off its invoice. */
+    public boolean isInOpenDispute() {
+        return disputed && disputeSettledOn == null;
     }
 
     /** Whether the line is charged at time and a half. */

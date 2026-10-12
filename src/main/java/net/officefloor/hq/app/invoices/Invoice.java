@@ -741,7 +741,7 @@ public class Invoice {
         boolean disputed = isInvoiceDisputed();
         lines.forEach(line -> {
             InvoiceLine copy = line.copy();
-            copy.setDisputed(disputed && line.isDisputed());
+            copy.setDisputed(disputed && line.isInOpenDispute());
             next.addLine(copy);
         });
         if (disputed) {
@@ -1433,16 +1433,26 @@ public class Invoice {
     }
 
     /**
-     * What the disputed lines come to at the tax rate: each line's amount after its share of the invoice
-     * discount, with its tax.
+     * What the lines still in dispute (not credited off) come to at the tax rate: each line's amount after its
+     * share of the invoice discount, with its tax.
      */
     public BigDecimal disputedLinesAmount(BigDecimal taxRate) {
+        return disputedLinesAmount(taxRate, InvoiceLine::isInOpenDispute);
+    }
+
+    /** What the lines in dispute on the given day (not yet credited off by then) come to at the tax rate. */
+    private BigDecimal disputedLinesAmountOn(BigDecimal taxRate, LocalDate on) {
+        return disputedLinesAmount(taxRate, l -> l.isDisputedOn(on));
+    }
+
+    /** What the lines given come to at the tax rate (see {@link #disputedLinesAmount(BigDecimal)}). */
+    private BigDecimal disputedLinesAmount(BigDecimal taxRate, java.util.function.Predicate<InvoiceLine> inDispute) {
         List<BigDecimal> shares = discountShares();
         List<BigDecimal> taxes = lineTaxes(taxRate);
         List<BigDecimal> inside = lineTaxesInside(taxRate);
         BigDecimal amount = zero();
         for (int i = 0; i < lines.size(); i++) {
-            if (!lines.get(i).isDisputed()) {
+            if (!inDispute.test(lines.get(i))) {
                 continue;
             }
             BigDecimal line = lines.get(i).amount(scale()).subtract(shares.get(i));
@@ -1515,7 +1525,21 @@ public class Invoice {
      * whole invoice is in dispute.
      */
     public List<InvoiceLine> disputedLines() {
-        return isWhollyDisputed() ? List.copyOf(lines) : lines.stream().filter(InvoiceLine::isDisputed).toList();
+        return isWhollyDisputed() ? List.copyOf(lines) : lines.stream().filter(InvoiceLine::isInOpenDispute).toList();
+    }
+
+    /** Whether the line is in the invoice's open dispute over particular lines (not yet credited off). */
+    public boolean isInOpenLineDispute(InvoiceLine line) {
+        return isInvoiceDisputed() && line.isInOpenDispute();
+    }
+
+    /**
+     * Takes the disputed line out of the open dispute on the given day, credited off the invoice in the client's
+     * favour: it holds interest back until then. Answers whether no disputed line is left in the dispute.
+     */
+    public boolean settleDisputedLine(InvoiceLine line, LocalDate on) {
+        line.settleDispute(on);
+        return lines.stream().noneMatch(InvoiceLine::isInOpenDispute);
     }
 
     /**
@@ -1920,7 +1944,7 @@ public class Invoice {
             return;
         }
         LocalDate overdueOn = graceEnd(dueDate).plusDays(1);
-        BigDecimal disputedLines = hasDisputedLines() ? disputedLinesAmount(taxRate) : null;
+        boolean disputedLines = hasDisputedLines();
         BigDecimal charged = BigDecimal.ZERO;
         BigDecimal unpaidInterest = BigDecimal.ZERO;
         LocalDate from = graceEnd(dueDate);
@@ -1930,7 +1954,7 @@ public class Invoice {
         for (Part part : inOrder) {
             if (waiveOn != null && part.on().isAfter(waiveOn)) {
                 if (owed.signum() > 0) {
-                    BigDecimal earned = earnedOn(owed, disputedLines, rates.daily(from), from, waiveOn);
+                    BigDecimal earned = earnedOn(owed, disputedLines, taxRate, rates.daily(from), from, waiveOn);
                     charged = charged.add(earned);
                     unpaidInterest = unpaidInterest.add(earned);
                 }
@@ -1940,7 +1964,7 @@ public class Invoice {
                 waiveOn = null;
             }
             if (part.on().isAfter(from) && owed.signum() > 0) {
-                BigDecimal earned = earnedOn(owed, disputedLines, rates.daily(from), from, part.on());
+                BigDecimal earned = earnedOn(owed, disputedLines, taxRate, rates.daily(from), from, part.on());
                 charged = charged.add(earned);
                 unpaidInterest = unpaidInterest.add(earned);
                 from = part.on();
@@ -1963,7 +1987,7 @@ public class Invoice {
         }
         if (waiveOn != null) {
             if (owed.signum() > 0) {
-                BigDecimal earned = earnedOn(owed, disputedLines, rates.daily(from), from, waiveOn);
+                BigDecimal earned = earnedOn(owed, disputedLines, taxRate, rates.daily(from), from, waiveOn);
                 charged = charged.add(earned);
                 unpaidInterest = unpaidInterest.add(earned);
             }
@@ -1971,7 +1995,7 @@ public class Invoice {
             interestWaived = unpaidInterest;
         }
         if (owed.signum() > 0) {
-            charged = charged.add(earnedOn(owed, disputedLines, rates.daily(from), from, today));
+            charged = charged.add(earnedOn(owed, disputedLines, taxRate, rates.daily(from), from, today));
         }
         this.lateInterest = charged.subtract(interestWaived);
         this.lateWaived = interestWaived;
@@ -2099,15 +2123,16 @@ public class Invoice {
 
     /**
      * The interest what the invoice owes earns from one day to another at the daily growth factor. While
-     * disputed lines are in an open dispute (from the day they were disputed) only what is owed besides them
-     * (disputedLines) earns interest, the days before earning on all that is owed; each part is rounded half up
+     * disputed lines are in an open dispute (from the day they were disputed, until each is credited off) only what is
+     * owed besides them earns interest, the days before earning on all that is owed; each part is rounded half up
      * to the cent. Once the dispute is resolved it holds nothing back: all that is owed earns interest as if it
      * had never been disputed, the days in dispute included — unless it was resolved with a credit note, when
-     * the days it was open still hold the disputed lines back. With no disputed lines (null), the days the whole
+     * the days it was open still hold the disputed lines back. With no disputed lines, the days the whole
      * invoice spends in an open dispute earn nothing (see {@link #interestDays}).
      */
-    private BigDecimal earnedOn(BigDecimal owed, BigDecimal disputedLines, BigDecimal daily, LocalDate from, LocalDate to) {
-        if (disputedLines == null || !holdsBackInterest()) {
+    private BigDecimal earnedOn(BigDecimal owed, boolean disputedLines, BigDecimal taxRate, BigDecimal daily,
+            LocalDate from, LocalDate to) {
+        if (!disputedLines || !holdsBackInterest()) {
             return interestOn(owed, daily, interestDays(from, to));
         }
         LocalDate start = from.isAfter(disputedOn) ? from : disputedOn;
@@ -2116,7 +2141,8 @@ public class Invoice {
             return interestOn(owed, daily, ChronoUnit.DAYS.between(from, to));
         }
         return interestOn(owed, daily, ChronoUnit.DAYS.between(from, start))
-                .add(interestOn(owed.subtract(disputedLines).max(BigDecimal.ZERO), daily, ChronoUnit.DAYS.between(start, end)))
+                .add(interestOn(owed.subtract(disputedLinesAmountOn(taxRate, start)).max(BigDecimal.ZERO), daily,
+                        ChronoUnit.DAYS.between(start, end)))
                 .add(interestOn(owed, daily, ChronoUnit.DAYS.between(end, to)));
     }
 
