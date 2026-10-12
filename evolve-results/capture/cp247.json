@@ -1,0 +1,3198 @@
+{
+  "checkpoint": 247,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "60a0e172a480a4ec3b53df5bc1692c14ea7afe7b"
+  },
+  "checkpoint_id": "cp247_promise_notes",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "When a client promises to pay an invoice, the promise should cover its adjustment notes too.\nWhile the promise stands, show its overdue debit notes as Promised as well, and count payments\non those notes since the promise towards the promised amount.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for this implementation's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a client promises to pay an invoice, the promise should cover its adjustment notes too.\nWhile the promise stands, show its overdue debit notes as Promised as well, and count payments\non those notes since the promise towards the promised amount.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "07e4daad304117b4419dcd71ccc3911d6911092d",
+  "reset_sha": "",
+  "preagent_sha": "6837f2dade7e638f6bbe96c642ebf00e94dd4b40",
+  "prev_sha": "6837f2dade7e638f6bbe96c642ebf00e94dd4b40",
+  "base_sha": "60a0e172a480a4ec3b53df5bc1692c14ea7afe7b",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6497464000000002,
+    "input_tokens": 30,
+    "output_tokens": 7337,
+    "cache_read_tokens": 608072,
+    "cache_creation_tokens": 47659,
+    "num_turns": 15,
+    "duration_ms": 145198,
+    "duration_api_ms": 79736,
+    "model": "claude-opus-5-5",
+    "session_id": "01700497-5a8e-4484-8b31-b548fa04eb00",
+    "stop_reason": "success",
+    "result_text": "A promise to pay on an invoice now covers its adjustment notes too, and `bin/e2e` passes, including the replay of earlier checkpoints' test data. No database or seed changes were needed, because the promise already lives on the invoice.\n\n**What changed:**\n- **`Invoice.java`**: each invoice now knows which adjustment notes were issued against it.\n  - Payments on those notes since the promise count towards the promised amount. That covers both whether the promise is still holding the invoice off and the day it was kept, which sets how much late interest is waived.\n  - A debit note shows as Promised while its invoice's promise holds. As before, this only applies once the note is overdue.\n- **`InvoiceService.java`**:\n  - When invoices are loaded, the service links each invoice to its notes, then marks a debit note as held off whenever its invoice's promise is.\n  - When a payment is recorded on a debit note and that keeps the invoice's promise, the waived interest is written to the audit against the invoice. In the test that is `INTEREST_WAIVED id=1 amount=2.88`.\n- I also updated the status descriptions in `InvoiceStatus.java` and `invoice.service.ts` to match.\n\n**Not covered:** the \"waived interest\" audit record is only written for payments entered directly on an invoice or note. A payment entered for the whole client, or one that goes through the client-on-hold path, can keep a promise without writing that record. This is not new: those paths didn't write it before this change either.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6497464000000002,
+        "num_turns": 15,
+        "duration_ms": 145198,
+        "duration_api_ms": 79736,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp247.agent.jsonl",
+  "agent_diff_file": "cp247.agent.diff",
+  "build_log_file": "cp247.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 390,
+    "results": {
+      "cp01_workspace_clients.spec.ts::lists clients by name ignoring capitals": true,
+      "cp01_workspace_clients.spec.ts::adds a client in its place in the list": true,
+      "cp02_client_validation.spec.ts::refuses a client without a name or with a bad email": true,
+      "cp02_client_validation.spec.ts::refuses an email another client already has": true,
+      "cp02_client_validation.spec.ts::accepts a proper new client": true,
+      "cp03_client_invoices.spec.ts::lists only the selected client's invoices": true,
+      "cp03_client_invoices.spec.ts::totals an invoice from its fractional-quantity lines": true,
+      "cp04_line_rounding.spec.ts::rounds each line before adding them up": true,
+      "cp05_invoice_panel.spec.ts::opens an invoice with its lines and totals": true,
+      "cp05_invoice_panel.spec.ts::creates a draft for the selected client": true,
+      "cp06_line_form.spec.ts::adds a line and updates the totals": true,
+      "cp06_line_form.spec.ts::refuses a line that breaks a rule": true,
+      "cp07_invoice_number.spec.ts::numbers invoices with a Luhn check digit": true,
+      "cp07_invoice_number.spec.ts::a new invoice is numbered from its id": true,
+      "cp07_invoice_number.spec.ts::opens an invoice by its number and selects its client": true,
+      "cp07_invoice_number.spec.ts::refuses a number with the wrong check digit": true,
+      "cp08_due_end_of_month.spec.ts::a new invoice is due at the end of next month": true,
+      "cp08_due_end_of_month.spec.ts::an invoice issued in December is due at the end of January": true,
+      "cp09_invoice_discount.spec.ts::takes a seeded percentage off the subtotal": true,
+      "cp09_invoice_discount.spec.ts::applies a discount I enter": true,
+      "cp09_invoice_discount.spec.ts::refuses a percentage outside 0 to 100": true,
+      "cp10_tax.spec.ts::adds tax at the workspace rate": true,
+      "cp10_tax.spec.ts::charges tax alongside a discount": true,
+      "cp10_tax.spec.ts::no tax rate means no tax": true,
+      "cp100_late_fee_percentage.spec.ts::charges no late fee, however much is owed": true,
+      "cp101_region_tax.spec.ts::taxes each client's invoices at their region's rate": true,
+      "cp101_region_tax.spec.ts::adds a client with a region": true,
+      "cp102_reverse_charge.spec.ts::refuses a tax number that fails its check": true,
+      "cp102_reverse_charge.spec.ts::charges no tax to a registered client outside the home region": true,
+      "cp102_reverse_charge.spec.ts::a number from another region does not count": true,
+      "cp103_rate_card.spec.ts::prices a line from the client's rate card": true,
+      "cp103_rate_card.spec.ts::adds a line by unit type": true,
+      "cp104_early_discount_before_tax.spec.ts::the early discount is worked out before tax": true,
+      "cp105_tiered_rates.spec.ts::prices a unit type in progressive tiers": true,
+      "cp105_tiered_rates.spec.ts::reprices a tiered line when its quantity changes": true,
+      "cp106_prices_include_tax.spec.ts::takes the tax out of prices that include it": true,
+      "cp106_prices_include_tax.spec.ts::discounts and exempt lines on prices that include tax": true,
+      "cp106_prices_include_tax.spec.ts::adds a client whose prices include tax": true,
+      "cp107_minimum_charge.spec.ts::tops a small invoice up to the minimum charge": true,
+      "cp107_minimum_charge.spec.ts::drops the minimum charge once the lines reach it": true,
+      "cp108_exempt_client_line_rates.spec.ts::a tax-exempt client still pays a line's own rate": true,
+      "cp109_cash_payments.spec.ts::settles an invoice in cash to the nearest five cents": true,
+      "cp109_cash_payments.spec.ts::cash must be counted out in five cents against the open invoice": true,
+      "cp11_send_invoice.spec.ts::sends a draft and records it": true,
+      "cp11_send_invoice.spec.ts::refuses to send an invoice with no lines": true,
+      "cp11_send_invoice.spec.ts::refuses a discount change on a sent invoice": true,
+      "cp110_surcharge.spec.ts::adds a percentage surcharge after the discount": true,
+      "cp110_surcharge.spec.ts::refuses a surcharge out of range or on a sent invoice": true,
+      "cp111_card_surcharge.spec.ts::takes the card surcharge out of a card payment": true,
+      "cp111_card_surcharge.spec.ts::the minimum part payment counts what reaches the invoice": true,
+      "cp112_tiers_across_lines.spec.ts::counts a unit type's tiers over all its lines": true,
+      "cp113_price_list.spec.ts::falls back to the workspace price list, converted": true,
+      "cp114_billing_increments.spec.ts::bills a unit type in whole increments": true,
+      "cp115_dated_tax_rates.spec.ts::taxes at the rate in force on the issue date": true,
+      "cp116_tax_per_rate.spec.ts::works the tax out once for each rate": true,
+      "cp117_withholding.spec.ts::withholds part of the client's payment for their tax office": true,
+      "cp117_withholding.spec.ts::sets a withholding rate when adding a client": true,
+      "cp117_withholding.spec.ts::a reverse-charged invoice has no withholding": true,
+      "cp117_withholding.spec.ts::the client owes the grand total less the withholding, in one go": true,
+      "cp118_minimum_units.spec.ts::bills at least the minimum units of a unit type": true,
+      "cp119_net_prices_reverse_charge.spec.ts::a reverse-charged client pays the prices without their tax": true,
+      "cp12_discount_before_tax.spec.ts::charges tax on what is left after the discount": true,
+      "cp120_cash_rounds_down.spec.ts::cash always rounds down in the client's favour": true,
+      "cp121_overtime.spec.ts::charges overtime at time and a half": true,
+      "cp122_interest_cap.spec.ts::caps late interest at the region's legal maximum": true,
+      "cp123_volume_discount.spec.ts::gives a volume discount on large invoices": true,
+      "cp124_reverse_charge_region_number.spec.ts::reverse charges only a number from the client's own region, with no withholding": true,
+      "cp125_client_minimum_charge.spec.ts::a client's own minimum charge replaces the workspace's": true,
+      "cp125_client_minimum_charge.spec.ts::sets a minimum charge when adding a client": true,
+      "cp126_rate_form.spec.ts::changing a rate reprices drafts but not sent invoices": true,
+      "cp126_rate_form.spec.ts::refuses a rate without a unit type or a price above zero": true,
+      "cp127_unit_type_tax_rate.spec.ts::taxes a unit type at its own rate": true,
+      "cp128_no_late_fees.spec.ts::an overdue invoice is charged interest but no late fee": true,
+      "cp129_interest_threshold.spec.ts::charges no late interest until it reaches the threshold": true,
+      "cp13_discount_split.spec.ts::shares a discount evenly with the leftover cent to the lowest line": true,
+      "cp13_discount_split.spec.ts::gives the leftover cents to the largest remainders": true,
+      "cp130_conversion_fee.spec.ts::takes a conversion fee off a payment in another currency": true,
+      "cp131_dated_rates.spec.ts::prices a line at the rate in force on the issue date": true,
+      "cp132_rates_not_discounted.spec.ts::takes the invoice discount off lines not priced from a rate card": true,
+      "cp133_monthly_volume.spec.ts::counts the units already billed to the client this month": true,
+      "cp134_rate_discount.spec.ts::takes the client's discount off their rates": true,
+      "cp134_rate_discount.spec.ts::sets a rate discount when adding a client": true,
+      "cp135_exemption_expiry.spec.ts::a tax exemption ends on its expiry date": false,
+      "cp135_exemption_expiry.spec.ts::records when an exemption ends": true,
+      "cp136_minimum_part_of_due.spec.ts::a part payment must be a tenth of what is still due": true,
+      "cp137_place_of_supply.spec.ts::taxes an invoice where the work was done": true,
+      "cp138_credit_note_surcharge.spec.ts::a credit note gives back the surcharge on what it credits": true,
+      "cp139_region_grace.spec.ts::gives a region's statutory grace period": true,
+      "cp14_tax_exempt_lines.spec.ts::charges tax only on taxable lines after their discount share": true,
+      "cp14_tax_exempt_lines.spec.ts::adds an exempt line through the form": true,
+      "cp140_write_off_under_five_cents.spec.ts::writes off only what is worth less than five cents": true,
+      "cp141_withholding_threshold.spec.ts::withholds only from the threshold up": true,
+      "cp142_region_terms.spec.ts::sets the due date from the client's region's terms": true,
+      "cp142_region_terms.spec.ts::sending re-dates the due date by the region's terms": true,
+      "cp143_plan_fee.spec.ts::there is no plan fee": true,
+      "cp144_drafts_at_todays_rates.spec.ts::a draft is priced and taxed at today's rates": true,
+      "cp145_credit_tiered_lines.spec.ts::credits tiered units from the top band down": true,
+      "cp146_region_round_down.spec.ts::rounds tax down in regions that require it": true,
+      "cp147_card_surcharge_cap.spec.ts::caps the card surcharge": true,
+      "cp148_plan_rate_cap.spec.ts::an overdue invoice in a capped region earns the capped rate": true,
+      "cp149_plan_interest_threshold.spec.ts::an invoice's late interest waits for the threshold": true,
+      "cp15_record_payment.spec.ts::shows the payments made and what is still due": true,
+      "cp15_record_payment.spec.ts::recording payments moves the invoice to Part paid then Paid": true,
+      "cp150_tax_report.spec.ts::reports the tax charged at each rate when an invoice is sent": true,
+      "cp151_approval_limit.spec.ts::an invoice over the approval limit must be approved before it is sent": true,
+      "cp151_approval_limit.spec.ts::converts the limit to the client's currency": true,
+      "cp152_discount_approval.spec.ts::a discount of more than a fifth needs approval instead of a reason": true,
+      "cp152_discount_approval.spec.ts::the discount and the limit each call for approval": true,
+      "cp153_credit_limit.spec.ts::refuses to send an invoice that would take the client over its credit limit": true,
+      "cp153_credit_limit.spec.ts::counts late interest but not withholding against the limit": true,
+      "cp153_credit_limit.spec.ts::sending all drafts stops short of the limit": true,
+      "cp154_client_hold.spec.ts::a client on hold gets no invoices and its payments wait as credit": true,
+      "cp154_client_hold.spec.ts::sending all drafts waits until the hold is lifted": true,
+      "cp155_calendar_proration.spec.ts::prorates a service period by calendar days": true,
+      "cp155_calendar_proration.spec.ts::prorates in whole yen": true,
+      "cp156_approval_changes.spec.ts::an approval is for the exact total and lapses after 30 days": true,
+      "cp157_recurring_invoices.spec.ts::generates the next period of a recurring invoice": true,
+      "cp157_recurring_invoices.spec.ts::marks an invoice as recurring": true,
+      "cp158_disputes.spec.ts::puts an overdue invoice in dispute": false,
+      "cp158_disputes.spec.ts::an invoice in dispute earns no interest and payments pass it by": true,
+      "cp159_remittance_matching.spec.ts::pays the invoice whose purchase order the remittance matches best": true,
+      "cp159_remittance_matching.spec.ts::two equally good matches go to the earlier due date": true,
+      "cp16_reopen_sent_invoice.spec.ts::a line added to a sent invoice is billed on an adjustment note": true,
+      "cp16_reopen_sent_invoice.spec.ts::a part-paid invoice takes adjustment notes too": true,
+      "cp160_over_limit_hold.spec.ts::a client over its credit limit is on hold until it is back within it": true,
+      "cp161_payment_risk_score.spec.ts::scores how quickly a client pays": true,
+      "cp161_payment_risk_score.spec.ts::only invoices paid in full count": true,
+      "cp162_risk_deposit.spec.ts::a high-risk client must pay a deposit before an invoice is sent": true,
+      "cp162_risk_deposit.spec.ts::the deposit counts what it is worth after conversion": true,
+      "cp163_disputed_lines.spec.ts::disputes only the lines the client queries": true,
+      "cp163_disputed_lines.spec.ts::interest stops only on the disputed lines": true,
+      "cp164_dispute_interest.spec.ts::resolving a dispute charges the interest it held back": true,
+      "cp165_recurring_until.spec.ts::stops a recurring invoice on its end date": true,
+      "cp166_tier_limits.spec.ts::uses the approval limit of the client's tier": true,
+      "cp166_tier_limits.spec.ts::sets the tier when adding a client": true,
+      "cp167_percent_complete.spec.ts::bills a line by its percent complete": true,
+      "cp168_no_retention.spec.ts::invoices no longer hold anything back": true,
+      "cp169_milestones.spec.ts::bills an invoice by milestones as they are reached": true,
+      "cp169_milestones.spec.ts::reaching a milestone uses the client's credit": true,
+      "cp17_payment_validation.spec.ts::refuses a payment on a draft": true,
+      "cp17_payment_validation.spec.ts::refuses a payment that breaks a rule": true,
+      "cp17_payment_validation.spec.ts::accepts a payment of exactly the amount due": true,
+      "cp170_milestone_due.spec.ts::each reached milestone falls due on its own": true,
+      "cp171_dispute_credit.spec.ts::resolves a dispute by crediting the disputed lines": true,
+      "cp171_dispute_credit.spec.ts::a credit for a whole disputed invoice leaves what was paid as credit": true,
+      "cp172_dispute_payment.spec.ts::paying a disputed invoice settles the dispute": true,
+      "cp172_dispute_payment.spec.ts::automatic payments reach disputed invoices last": true,
+      "cp173_progress_claims.spec.ts::claims the progress made since the last invoice": true,
+      "cp174_risk_terms.spec.ts::gives risky clients less time to pay": true,
+      "cp175_recurring_autosend.spec.ts::sends a generated invoice straight away when nothing stops it": true,
+      "cp176_proration_by_day.spec.ts::charges a service period by the day": true,
+      "cp177_period_credit.spec.ts::credits part of a service period by the day": true,
+      "cp178_milestone_dispute.spec.ts::disputes a reached milestone": true,
+      "cp178_milestone_dispute.spec.ts::a disputed milestone earns no interest until it is resolved": true,
+      "cp179_risk_interest.spec.ts::high-risk clients pay three points more late interest": true,
+      "cp18_payment_reference.spec.ts::shows each invoice's RF reference": true,
+      "cp18_payment_reference.spec.ts::records a payment quoting the invoice's reference": true,
+      "cp18_payment_reference.spec.ts::refuses a mistyped reference or another invoice's reference": true,
+      "cp180_approved_over_limit.spec.ts::an approved invoice may take the client over its limit": true,
+      "cp181_remittance_split.spec.ts::pays each purchase order a remittance names, in order": true,
+      "cp181_remittance_split.spec.ts::the same purchase order twice matches two invoices": true,
+      "cp182_two_approvals.spec.ts::an invoice over twice the limit needs two approvals": true,
+      "cp182_two_approvals.spec.ts::a change after two approvals needs both again": true,
+      "cp183_dispute_credit_limit.spec.ts::amounts in dispute do not count against the credit limit": true,
+      "cp184_remittance_revised.spec.ts::matches only very similar purchase orders, the larger amount first": true,
+      "cp185_milestone_deposits.spec.ts::a deposit for a milestone invoice waits for its milestones": true,
+      "cp186_recurring_uplift.spec.ts::raises recurring prices on each anniversary": true,
+      "cp186_recurring_uplift.spec.ts::sets the yearly rise when adding a client": true,
+      "cp187_early_discount_low_risk.spec.ts::only low-risk clients get the early-payment discount": true,
+      "cp188_smallest_first.spec.ts::after the overdue invoices, pays the smallest amounts first": true,
+      "cp189_plan_approval.spec.ts::approval is judged on the grand total": true,
+      "cp19_line_discount.spec.ts::a line discount comes off before the invoice discount": true,
+      "cp19_line_discount.spec.ts::adds a discounted line through the form": true,
+      "cp19_line_discount.spec.ts::refuses a line discount over 100%": true,
+      "cp190_committed_credit.spec.ts::approved drafts count against the credit limit": true,
+      "cp191_approval_expiry_tier.spec.ts::an approval lasts as long as the client's tier allows": true,
+      "cp192_risk_days_late.spec.ts::scores how late a client pays": true,
+      "cp193_risk_write_offs.spec.ts::a written-off invoice counts as paid very late": true,
+      "cp194_medium_risk_limit.spec.ts::a medium-risk client has half the approval limit": true,
+      "cp195_disputed_part_last.spec.ts::pays the undisputed part of an invoice in turn and its disputed part last": true,
+      "cp196_milestone_rounding.spec.ts::rounds each milestone's share down and gives the last one the rest": true,
+      "cp197_recurring_cancel_credit.spec.ts::ending a plan inside a billed period credits the days after it": true,
+      "cp198_high_risk_limit.spec.ts::a high-risk client's credit limit counts as half": true,
+      "cp199_dispute_hold.spec.ts::a dispute left open over 30 days puts the client on hold": true,
+      "cp20_line_tax.spec.ts::rounds tax on each line and adds the line taxes": true,
+      "cp20_line_tax.spec.ts::taxes each line after its share of the discount": true,
+      "cp200_two_approvals_sooner.spec.ts::two approvals from one and a half times the limit, and for high-risk clients": true,
+      "cp201_sent_snapshot.spec.ts::a sent invoice keeps the total it was sent with": true,
+      "cp201_sent_snapshot.spec.ts::a line added to a sent invoice leaves its sent total alone": true,
+      "cp202_duplicate_fingerprint.spec.ts::a draft with the same lines as a recent invoice is a possible duplicate": true,
+      "cp203_credit_and_rebill.spec.ts::rebilling cancels an invoice with a full credit note and starts a corrected copy": true,
+      "cp204_sent_line_adjustments.spec.ts::changing the lines of a sent invoice issues adjustment notes": true,
+      "cp204_sent_line_adjustments.spec.ts::a credit adjustment beyond what is owed becomes credit, and the next note uses it": true,
+      "cp205_adjustment_terms.spec.ts::an adjustment note carries the invoice's discount and surcharge, and counts towards withholding": true,
+      "cp205_adjustment_terms.spec.ts::a credit adjustment gives back its share of what was withheld": true,
+      "cp206_adjustment_payments.spec.ts::paying an invoice pays its adjustment notes next": true,
+      "cp206_adjustment_payments.spec.ts::a spread payment pays a note straight after its invoice": true,
+      "cp207_adjusted_duplicates.spec.ts::a line change that would duplicate another invoice is refused": true,
+      "cp208_fingerprint_merges_lines.spec.ts::lines with the same description and price count as one, and drafts are checked against drafts": true,
+      "cp209_business_days.spec.ts::terms and grace count business days": true,
+      "cp209_business_days.spec.ts::the early-payment window counts business days": true,
+      "cp21_split_payment.spec.ts::shows each invoice its part of a split payment": true,
+      "cp210_adjustment_approval.spec.ts::a debit note that needs approval waits as a draft; credit notes never do": true,
+      "cp211_rebill_carries.spec.ts::a rebill carries the dispute, the purchase order and the approval": true,
+      "cp211_rebill_carries.spec.ts::a replacement for more than was approved needs approval again": true,
+      "cp212_no_instalment_plans.spec.ts::an invoice has no instalment plan and is due in full": true,
+      "cp213_payment_promise.spec.ts::a promise to pay holds an overdue invoice off until its date": true,
+      "cp213_payment_promise.spec.ts::a promised invoice is not paid first, and once kept it is overdue again": true,
+      "cp213_payment_promise.spec.ts::a broken promise leaves the invoice overdue and takes no new one": true,
+      "cp214_rebill_interest.spec.ts::a rebill carries the late interest owed to the replacement": true,
+      "cp214_rebill_interest.spec.ts::interest under the threshold is not owed, so nothing is carried": true,
+      "cp215_invoice_update.spec.ts::updating a sent invoice takes today's figures": true,
+      "cp215_invoice_update.spec.ts::an update that would take the client over its credit limit is refused": true,
+      "cp216_no_grace_high_risk.spec.ts::a high-risk client has no grace period": true,
+      "cp217_dunning.spec.ts::reminders escalate a level at a time": true,
+      "cp218_reminder_fees.spec.ts::later reminders charge a fee, owed after the invoice and before its interest": true,
+      "cp219_dunning_hold.spec.ts::an unpaid final notice puts the client on hold, an unpaid second reminder needs approval": true,
+      "cp22_auto_allocation.spec.ts::applies a payment to the oldest invoices first": true,
+      "cp22_auto_allocation.spec.ts::holds what is paid beyond everything owed as credit": true,
+      "cp220_observed_holidays.spec.ts::a holiday on a weekend is observed on the nearest weekday": true,
+      "cp220_observed_holidays.spec.ts::grace skips an observed holiday": true,
+      "cp221_dunning_minimum.spec.ts::an invoice with less than the minimum overdue is not chased": true,
+      "cp222_dunning_rebill.spec.ts::a replacement keeps the due date and reminders of the invoice it replaces": true,
+      "cp222_dunning_rebill.spec.ts::a replacement made earlier is sent with the old due date": true,
+      "cp223_dunning_interest.spec.ts::a final notice raises the interest rate and collections stops it": true,
+      "cp224_approval_lower_total.spec.ts::an approval covers a lower total but not a higher one": true,
+      "cp225_progress_adjustment.spec.ts::changing a sent line's percent complete bills the difference": true,
+      "cp225_progress_adjustment.spec.ts::a lower percent complete is credited": true,
+      "cp226_remittance_notes.spec.ts::a payment matched to an invoice pays its notes next, and new notes carry its purchase order": true,
+      "cp227_recurring_adjusted.spec.ts::generating from an adjusted invoice copies its lines as adjusted": true,
+      "cp228_dunning_revised.spec.ts::the first reminder waits ten days and every later level two weeks after the last": true,
+      "cp229_banded_adjustments.spec.ts::banded units added to a sent invoice continue its bands": true,
+      "cp23_overdue.spec.ts::marks invoices still owing after their due date Overdue": true,
+      "cp23_overdue.spec.ts::a part payment leaves an overdue invoice Overdue": true,
+      "cp230_currency_adjustments.spec.ts::a note is converted at its invoice's rate and its exchange difference measured from it": true,
+      "cp231_early_discount_adjustments.spec.ts::a credit note lowers the early-payment discount; a debit note gets none": true,
+      "cp232_cap_usual_rate.spec.ts::additions for risk and dunning go on top of the capped rate": true,
+      "cp233_notes_dunned.spec.ts::a debit note is chased with its invoice": true,
+      "cp233_notes_dunned.spec.ts::a spread payment pays chased invoices in turn": true,
+      "cp234_credit_resolves_dispute.spec.ts::taking off the last disputed line resolves the dispute and waives the interest held back": true,
+      "cp234_credit_resolves_dispute.spec.ts::a dispute resolved with credit owes no interest for its time in dispute": true,
+      "cp235_due_on_business_days.spec.ts::a due date on a weekend moves to the next business day": true,
+      "cp235_due_on_business_days.spec.ts::a due date on a holiday moves to the next business day": true,
+      "cp236_mod11_numbers.spec.ts::invoices issued from July take a MOD 11-2 check character, in their references too": true,
+      "cp237_payment_value_date.spec.ts::a payment dated on a weekend counts from the next business day": true,
+      "cp237_payment_value_date.spec.ts::a payment dated on a holiday counts from the next business day": true,
+      "cp238_dunned_deposit.spec.ts::a client with an unpaid second reminder must pay 30% up front": true,
+      "cp239_collections_write_off.spec.ts::an invoice is written off 30 days after its collections notice": true,
+      "cp24_allocate_by_due_date.spec.ts::applies a payment to the earliest due date first": true,
+      "cp240_risk_final_notice.spec.ts::an unpaid final notice counts in the risk score as if paid today": true,
+      "cp241_promise_kept.spec.ts::keeping a promise waives the interest that ran while it stood": true,
+      "cp242_credit_keeps_minimum.spec.ts::a credit note never takes an invoice below its minimum charge": true,
+      "cp242_credit_keeps_minimum.spec.ts::above the minimum the whole line is credited": true,
+      "cp243_note_due_at_once.spec.ts::a note on an overdue invoice is due at once, with no grace": true,
+      "cp244_edit_one_note.spec.ts::editing a sent line issues one note for the change in its amount": true,
+      "cp245_terms_after_final.spec.ts::a client given a final notice in the last 90 days gets at most 7 days": true,
+      "cp246_credit_pays_notes.spec.ts::a credit note's excess pays the invoice's unpaid notes first": true,
+      "cp247_promise_notes.spec.ts::a promise holds off the invoice's notes too, and payments on them count towards it": true,
+      "cp25_client_balance.spec.ts::shows what each client owes and how much is overdue": true,
+      "cp25_client_balance.spec.ts::a payment lowers the balance straight away": true,
+      "cp26_void_invoice.spec.ts::voids an unpaid sent invoice": true,
+      "cp26_void_invoice.spec.ts::refuses to void a draft or an invoice with payments": true,
+      "cp26_void_invoice.spec.ts::a void invoice takes no payments": true,
+      "cp27_fixed_discount.spec.ts::splits a fixed discount across the lines": true,
+      "cp27_fixed_discount.spec.ts::one kind of discount replaces the other": true,
+      "cp27_fixed_discount.spec.ts::refuses a fixed discount bigger than the subtotal": true,
+      "cp28_send_dates.spec.ts::sending moves the issue date to today": true,
+      "cp28_send_dates.spec.ts::an invoice sent in December is due at the end of January": true,
+      "cp29_discount_cap.spec.ts::caps a percentage discount at the maximum": true,
+      "cp29_discount_cap.spec.ts::caps alongside line discounts": true,
+      "cp29_discount_cap.spec.ts::caps alongside a fixed discount": true,
+      "cp29_discount_cap.spec.ts::sets a cap through the form": true,
+      "cp30_payment_reversal.spec.ts::reversing a split payment undoes it on every invoice": true,
+      "cp30_payment_reversal.spec.ts::a reversed payment does not count": true,
+      "cp31_remove_line.spec.ts::removing a line recalculates the discount and tax": true,
+      "cp31_remove_line.spec.ts::refuses to remove a line below a fixed discount": true,
+      "cp31_remove_line.spec.ts::removing a line from a sent invoice takes it off on a credit adjustment note": true,
+      "cp32_cap_all_discounts.spec.ts::the cap includes line discounts": true,
+      "cp33_line_tax_rate.spec.ts::taxes each line at its own rate": true,
+      "cp33_line_tax_rate.spec.ts::adds a line with its own rate": true,
+      "cp34_duplicate_invoice.spec.ts::duplicates an invoice as a new draft": true,
+      "cp35_client_terms.spec.ts::uses a client's own terms for new invoices": true,
+      "cp35_client_terms.spec.ts::sending uses the client's terms": true,
+      "cp35_client_terms.spec.ts::sets terms when adding a client": true,
+      "cp36_discount_split_ties.spec.ts::a tied leftover cent goes to the larger line": true,
+      "cp37_pay_by_reference.spec.ts::applies a payment to the invoice its reference names": true,
+      "cp37_pay_by_reference.spec.ts::refuses a mistyped or foreign reference": true,
+      "cp37_pay_by_reference.spec.ts::keeps what a reference payment overpays as credit": true,
+      "cp38_send_all_drafts.spec.ts::sends every one of the client's drafts that has lines": true,
+      "cp39_paid_date.spec.ts::shows the date the clearing payment was made": true,
+      "cp39_paid_date.spec.ts::reversing the clearing payment takes the paid date away": true,
+      "cp40_write_off_small_balance.spec.ts::more than 1% of the total stays due": true,
+      "cp40_write_off_small_balance.spec.ts::writes off less than five cents left due": true,
+      "cp41_discount_reason.spec.ts::a capped discount within a fifth needs no reason": true,
+      "cp41_discount_reason.spec.ts::a discount over a fifth of the subtotal needs approval": true,
+      "cp41_discount_reason.spec.ts::refuses to send an invoice whose discount needs approval until it is approved": true,
+      "cp42_edit_line.spec.ts::editing a line works the whole invoice out again": true,
+      "cp42_edit_line.spec.ts::refuses an edit that breaks a rule": true,
+      "cp42_edit_line.spec.ts::editing a line of a sent invoice issues one note for the change": true,
+      "cp43_minimum_part_payment.spec.ts::a part payment must be at least a tenth of the total": true,
+      "cp43_minimum_part_payment.spec.ts::a smaller payment that settles the invoice is accepted": true,
+      "cp43_minimum_part_payment.spec.ts::a part payment must be a tenth of what is still due": true,
+      "cp44_overdue_grace.spec.ts::an invoice is overdue only after a week past its due date": true,
+      "cp45_number_as_reference.spec.ts::accepts the invoice number as the reference": true,
+      "cp45_number_as_reference.spec.ts::refuses an invoice number with a wrong check digit": true,
+      "cp45_number_as_reference.spec.ts::pays the invoice a number names when none is open": true,
+      "cp46_due_date_edit.spec.ts::sets a draft's due date and keeps it when sending": true,
+      "cp46_due_date_edit.spec.ts::refuses a due date outside the allowed range": true,
+      "cp46_due_date_edit.spec.ts::a hand-set due date already past stops the send": true,
+      "cp47_client_standard_discount.spec.ts::a new invoice starts with the client's discount": true,
+      "cp47_client_standard_discount.spec.ts::duplicating keeps the invoice's own discount": true,
+      "cp47_client_standard_discount.spec.ts::sets a standard discount when adding a client": true,
+      "cp48_discounts_round_down.spec.ts::percentage discounts round down to the cent": true,
+      "cp49_tax_exempt_client.spec.ts::charges no tax on a tax-exempt client's invoices": true,
+      "cp49_tax_exempt_client.spec.ts::marks a new client tax exempt": true,
+      "cp50_several_references.spec.ts::applies one payment to the invoices its references name": true,
+      "cp50_several_references.spec.ts::refuses a wrong reference and keeps an overpayment as credit": true,
+      "cp51_deposits.spec.ts::holds a deposit as credit and uses it when an invoice is sent": true,
+      "cp51_deposits.spec.ts::uses the oldest credit first and counts it as paid on the day it is applied": true,
+      "cp52_overpayment_credit.spec.ts::keeps what an open-invoice payment overpays as credit": true,
+      "cp52_overpayment_credit.spec.ts::a reference or automatic payment beyond what is owed is held as credit": true,
+      "cp53_refunds.spec.ts::refunds the oldest credit first": true,
+      "cp53_refunds.spec.ts::refuses a refund that breaks a rule, and reversing a refunded payment": true,
+      "cp54_credit_notes.spec.ts::issues a credit note against a part-paid invoice": true,
+      "cp54_credit_notes.spec.ts::a credit note for more than is owed leaves the rest as credit": true,
+      "cp54_credit_notes.spec.ts::a fully credited invoice is Credited and can no longer change": true,
+      "cp55_retention.spec.ts::an invoice holds nothing back": true,
+      "cp56_credit_note_excess.spec.ts::a credit note for more than is owed leaves the rest as credit": true,
+      "cp56_credit_note_excess.spec.ts::credit from an earlier credit note is used like any credit": true,
+      "cp57_instalment_plan.spec.ts::an invoice is billed in full, with no instalment plan": true,
+      "cp58_instalment_payments.spec.ts::a part payment is judged on the whole amount due": true,
+      "cp59_client_currency.spec.ts::bills a yen client in whole yen": true,
+      "cp59_client_currency.spec.ts::shows each client's money in their currency": true,
+      "cp60_retention_before_tax.spec.ts::the whole invoice is due, tax included": true,
+      "cp61_foreign_payments.spec.ts::converts a payment in another currency through dollars": true,
+      "cp61_foreign_payments.spec.ts::checks and holds credit on the converted amount": true,
+      "cp62_early_payment_discount.spec.ts::settles early for the discounted amount": true,
+      "cp62_early_payment_discount.spec.ts::paying the full amount early leaves the discount as credit": true,
+      "cp62_early_payment_discount.spec.ts::sets early-payment terms when adding a client": true,
+      "cp63_late_interest.spec.ts::charges daily compound interest on an overdue invoice": true,
+      "cp63_late_interest.spec.ts::charges nothing when paid within the grace week": true,
+      "cp64_allocation_priority.spec.ts::pays overdue invoices first, then the smallest": true,
+      "cp64_allocation_priority.spec.ts::pays named invoices the same way": true,
+      "cp65_late_fee.spec.ts::charges no fee within the grace week": true,
+      "cp65_late_fee.spec.ts::charges interest but no late fee once an invoice is overdue": true,
+      "cp66_instalment_interest.spec.ts::an overdue invoice earns late interest on its whole amount": true,
+      "cp67_held_deposits.spec.ts::holds a deposit for one invoice": true,
+      "cp67_held_deposits.spec.ts::refunds and other invoices can't touch a held deposit": true,
+      "cp68_interest_after_grace.spec.ts::counts interest from the end of the grace week": true,
+      "cp69_void_returns_credit.spec.ts::voiding an invoice paid by credit puts the credit back": true,
+      "cp70_waive_interest.spec.ts::interest starts again from the day it was waived": true,
+      "cp70_waive_interest.spec.ts::waives the late interest charged so far": true,
+      "cp71_plan_payoff.spec.ts::there is no plan to pay off: paying the amount due settles the invoice": true,
+      "cp72_tax_rounded_once.spec.ts::rounds the invoice tax once and shares it over the lines": true,
+      "cp72_tax_rounded_once.spec.ts::rounds each rate on its own": true,
+      "cp73_credit_note_on_plan.spec.ts::a credit note comes straight off the invoice": true,
+      "cp74_dated_rates.spec.ts::converts at the rate in force on the payment date": true,
+      "cp75_client_retention.spec.ts::new invoices hold nothing back": true,
+      "cp75_client_retention.spec.ts::duplicating copies the lines and nothing else": true,
+      "cp76_no_allocation_boxes.spec.ts::invoices no longer have allocation boxes": true,
+      "cp77_reference_amounts.spec.ts::a reference can carry the amount it gets": true,
+      "cp77_reference_amounts.spec.ts::refuses amounts that do not fit": true,
+      "cp78_client_grace.spec.ts::uses each client's own grace period": true,
+      "cp78_client_grace.spec.ts::sets a grace period when adding a client": true,
+      "cp79_foreign_refunds.spec.ts::refunds credit in another currency": true,
+      "cp80_interest_360.spec.ts::counts interest on a 360-day year": true,
+      "cp81_apply_credit.spec.ts::applies unused credit to what the client owes": true,
+      "cp81_apply_credit.spec.ts::refuses when there is no credit or nothing owed": true,
+      "cp82_exchange_difference.spec.ts::shows the exchange difference on a foreign invoice": true,
+      "cp83_retention_cap.spec.ts::there is no retention to cap": true,
+      "cp84_whole_dollar_instalments.spec.ts::an invoice is not split into instalments": true,
+      "cp85_plan_down_payment.spec.ts::there is no down payment: the whole invoice is due": true,
+      "cp86_write_off.spec.ts::writes off what is left of an invoice": true,
+      "cp86_write_off.spec.ts::a written-off invoice stops earning interest": true,
+      "cp87_client_interest_rate.spec.ts::charges each client's own interest rate": true,
+      "cp87_client_interest_rate.spec.ts::sets an interest rate when adding a client": true,
+      "cp88_conversions_round_down.spec.ts::rounds a conversion down to the step": true,
+      "cp89_credit_a_line.spec.ts::credits one of an invoice's lines": true,
+      "cp89_credit_a_line.spec.ts::cannot credit more of a line than was invoiced": true,
+      "cp90_early_discount_on_credit.spec.ts::credit used on sending settles early with the discount": true,
+      "cp91_late_fee_cap.spec.ts::charges no late fee on an overdue invoice": true,
+      "cp92_write_off_threshold.spec.ts::keeps a small balance that is more than 1% of the total": true,
+      "cp92_write_off_threshold.spec.ts::writes off less than five cents that is no more than 1% of the total": true,
+      "cp93_partial_retention_release.spec.ts::there is no retention to release": true,
+      "cp94_minimum_instalment.spec.ts::a small invoice is due in full": true,
+      "cp95_instalment_late_fee.spec.ts::an overdue invoice earns interest and no fee": true,
+      "cp96_invoice_before_charges.spec.ts::a payment pays the invoice before its late charges": true,
+      "cp97_credit_note_interest.spec.ts::a credit note cuts the interest only from its issue date": true,
+      "cp98_retention_interest.spec.ts::what is left unpaid earns interest from the end of grace": true,
+      "cp99_instalment_holiday.spec.ts::there are no instalments to skip": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_workspace_clients.spec.ts::lists clients by name ignoring capitals",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 7219,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_workspace_clients.spec.ts::adds a client in its place in the list",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 627,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_validation.spec.ts::refuses a client without a name or with a bad email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 476,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_validation.spec.ts::refuses an email another client already has",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 222,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_validation.spec.ts::accepts a proper new client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 314,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_client_invoices.spec.ts::lists only the selected client's invoices",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 616,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_client_invoices.spec.ts::totals an invoice from its fractional-quantity lines",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 345,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_line_rounding.spec.ts::rounds each line before adding them up",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 385,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_panel.spec.ts::opens an invoice with its lines and totals",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 418,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_panel.spec.ts::creates a draft for the selected client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 422,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_line_form.spec.ts::adds a line and updates the totals",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 602,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_line_form.spec.ts::refuses a line that breaks a rule",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 743,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_invoice_number.spec.ts::numbers invoices with a Luhn check digit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 496,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_invoice_number.spec.ts::a new invoice is numbered from its id",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 363,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_invoice_number.spec.ts::opens an invoice by its number and selects its client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 328,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_invoice_number.spec.ts::refuses a number with the wrong check digit",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 380,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_due_end_of_month.spec.ts::a new invoice is due at the end of next month",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 361,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_due_end_of_month.spec.ts::an invoice issued in December is due at the end of January",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 381,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_invoice_discount.spec.ts::takes a seeded percentage off the subtotal",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 425,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_invoice_discount.spec.ts::applies a discount I enter",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 581,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_invoice_discount.spec.ts::refuses a percentage outside 0 to 100",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 508,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_tax.spec.ts::adds tax at the workspace rate",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 404,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_tax.spec.ts::charges tax alongside a discount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 389,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_tax.spec.ts::no tax rate means no tax",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 369,
+        "failure": ""
+      },
+      {
+        "test_id": "cp100_late_fee_percentage.spec.ts::charges no late fee, however much is owed",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 772,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_region_tax.spec.ts::taxes each client's invoices at their region's rate",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 923,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_region_tax.spec.ts::adds a client with a region",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 865,
+        "failure": ""
+      },
+      {
+        "test_id": "cp102_reverse_charge.spec.ts::refuses a tax number that fails its check",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 511,
+        "failure": ""
+      },
+      {
+        "test_id": "cp102_reverse_charge.spec.ts::charges no tax to a registered client outside the home region",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1058,
+        "failure": ""
+      },
+      {
+        "test_id": "cp102_reverse_charge.spec.ts::a number from another region does not count",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 410,
+        "failure": ""
+      },
+      {
+        "test_id": "cp103_rate_card.spec.ts::prices a line from the client's rate card",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 435,
+        "failure": ""
+      },
+      {
+        "test_id": "cp103_rate_card.spec.ts::adds a line by unit type",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1356,
+        "failure": ""
+      },
+      {
+        "test_id": "cp104_early_discount_before_tax.spec.ts::the early discount is worked out before tax",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 547,
+        "failure": ""
+      },
+      {
+        "test_id": "cp105_tiered_rates.spec.ts::prices a unit type in progressive tiers",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 391,
+        "failure": ""
+      },
+      {
+        "test_id": "cp105_tiered_rates.spec.ts::reprices a tiered line when its quantity changes",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 906,
+        "failure": ""
+      },
+      {
+        "test_id": "cp106_prices_include_tax.spec.ts::takes the tax out of prices that include it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 663,
+        "failure": ""
+      },
+      {
+        "test_id": "cp106_prices_include_tax.spec.ts::discounts and exempt lines on prices that include tax",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 420,
+        "failure": ""
+      },
+      {
+        "test_id": "cp106_prices_include_tax.spec.ts::adds a client whose prices include tax",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 603,
+        "failure": ""
+      },
+      {
+        "test_id": "cp107_minimum_charge.spec.ts::tops a small invoice up to the minimum charge",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1121,
+        "failure": ""
+      },
+      {
+        "test_id": "cp107_minimum_charge.spec.ts::drops the minimum charge once the lines reach it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 503,
+        "failure": ""
+      },
+      {
+        "test_id": "cp108_exempt_client_line_rates.spec.ts::a tax-exempt client still pays a line's own rate",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 610,
+        "failure": ""
+      },
+      {
+        "test_id": "cp109_cash_payments.spec.ts::settles an invoice in cash to the nearest five cents",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1365,
+        "failure": ""
+      },
+      {
+        "test_id": "cp109_cash_payments.spec.ts::cash must be counted out in five cents against the open invoice",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 957,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_send_invoice.spec.ts::sends a draft and records it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 475,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_send_invoice.spec.ts::refuses to send an invoice with no lines",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 439,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_send_invoice.spec.ts::refuses a discount change on a sent invoice",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 496,
+        "failure": ""
+      },
+      {
+        "test_id": "cp110_surcharge.spec.ts::adds a percentage surcharge after the discount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 666,
+        "failure": ""
+      },
+      {
+        "test_id": "cp110_surcharge.spec.ts::refuses a surcharge out of range or on a sent invoice",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 803,
+        "failure": ""
+      },
+      {
+        "test_id": "cp111_card_surcharge.spec.ts::takes the card surcharge out of a card payment",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 773,
+        "failure": ""
+      },
+      {
+        "test_id": "cp111_card_surcharge.spec.ts::the minimum part payment counts what reaches the invoice",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 670,
+        "failure": ""
+      },
+      {
+        "test_id": "cp112_tiers_across_lines.spec.ts::counts a unit type's tiers over all its lines",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 549,
+        "failure": ""
+      },
+      {
+        "test_id": "cp113_price_list.spec.ts::falls back to the workspace price list, converted",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 895,
+        "failure": ""
+      },
+      {
+        "test_id": "cp114_billing_increments.spec.ts::bills a unit type in whole increments",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 592,
+        "failure": ""
+      },
+      {
+        "test_id": "cp115_dated_tax_rates.spec.ts::taxes at the rate in force on the issue date",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1215,
+        "failure": ""
+      },
+      {
+        "test_id": "cp116_tax_per_rate.spec.ts::works the tax out once for each rate",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 628,
+        "failure": ""
+      },
+      {
+        "test_id": "cp117_withholding.spec.ts::withholds part of the client's payment for their tax office",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 728,
+        "failure": ""
+      },
+      {
+        "test_id": "cp117_withholding.spec.ts::sets a withholding rate when adding a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 555,
+        "failure": ""
+      },
+      {
+        "test_id": "cp117_withholding.spec.ts::a reverse-charged invoice has no withholding",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 379,
+        "failure": ""
+      },
+      {
+        "test_id": "cp117_withholding.spec.ts::the client owes the grand total less the withholding, in one go",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 377,
+        "failure": ""
+      },
+      {
+        "test_id": "cp118_minimum_units.spec.ts::bills at least the minimum units of a unit type",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 673,
+        "failure": ""
+      },
+      {
+        "test_id": "cp119_net_prices_reverse_charge.spec.ts::a reverse-charged client pays the prices without their tax",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 607,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_discount_before_tax.spec.ts::charges tax on what is left after the discount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 550,
+        "failure": ""
+      },
+      {
+        "test_id": "cp120_cash_rounds_down.spec.ts::cash always rounds down in the client's favour",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 726,
+        "failure": ""
+      },
+      {
+        "test_id": "cp121_overtime.spec.ts::charges overtime at time and a half",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 658,
+        "failure": ""
+      },
+      {
+        "test_id": "cp122_interest_cap.spec.ts::caps late interest at the region's legal maximum",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 825,
+        "failure": ""
+      },
+      {
+        "test_id": "cp123_volume_discount.spec.ts::gives a volume discount on large invoices",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1064,
+        "failure": ""
+      },
+      {
+        "test_id": "cp124_reverse_charge_region_number.spec.ts::reverse charges only a number from the client's own region, with no withholding",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 580,
+        "failure": ""
+      },
+      {
+        "test_id": "cp125_client_minimum_charge.spec.ts::a client's own minimum charge replaces the workspace's",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 801,
+        "failure": ""
+      },
+      {
+        "test_id": "cp125_client_minimum_charge.spec.ts::sets a minimum charge when adding a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 591,
+        "failure": ""
+      },
+      {
+        "test_id": "cp126_rate_form.spec.ts::changing a rate reprices drafts but not sent invoices",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1086,
+        "failure": ""
+      },
+      {
+        "test_id": "cp126_rate_form.spec.ts::refuses a rate without a unit type or a price above zero",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 521,
+        "failure": ""
+      },
+      {
+        "test_id": "cp127_unit_type_tax_rate.spec.ts::taxes a unit type at its own rate",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 577,
+        "failure": ""
+      },
+      {
+        "test_id": "cp128_no_late_fees.spec.ts::an overdue invoice is charged interest but no late fee",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 674,
+        "failure": ""
+      },
+      {
+        "test_id": "cp129_interest_threshold.spec.ts::charges no late interest until it reaches the threshold",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 958,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_discount_split.spec.ts::shares a discount evenly with the leftover cent to the lowest line",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 404,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_discount_split.spec.ts::gives the leftover cents to the largest remainders",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 380,
+        "failure": ""
+      },
+      {
+        "test_id": "cp130_conversion_fee.spec.ts::takes a conversion fee off a payment in another currency",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1269,
+        "failure": ""
+      },
+      {
+        "test_id": "cp131_dated_rates.spec.ts::prices a line at the rate in force on the issue date",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 702,
+        "failure": ""
+      },
+      {
+        "test_id": "cp132_rates_not_discounted.spec.ts::takes the invoice discount off lines not priced from a rate card",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 410,
+        "failure": ""
+      },
+      {
+        "test_id": "cp133_monthly_volume.spec.ts::counts the units already billed to the client this month",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 808,
+        "failure": ""
+      },
+      {
+        "test_id": "cp134_rate_discount.spec.ts::takes the client's discount off their rates",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 624,
+        "failure": ""
+      },
+      {
+        "test_id": "cp134_rate_discount.spec.ts::sets a rate discount when adding a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 561,
+        "failure": ""
+      },
+      {
+        "test_id": "cp135_exemption_expiry.spec.ts::a tax exemption ends on its expiry date",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 5477,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('invoice-panel-number')\nExpected string: \u001b[32m\"INV-00000\u001b[7m26\u001b[27m\"\u001b[39m\nReceived string: \u001b[31m\"INV-00000\u001b[7m18\u001b[27m\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('invoice-panel-number')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"invoice-panel-number\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"invoice-panel-number\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"invoice-panel-number\">INV-0000018</span>\u001b[22m\n\u001b[2m  -   unexpected value \"INV-0000018\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"invoice-panel-number\">INV-0000018</span>\u001b[22m\n\u001b[2m  -   unexpected value \"INV-0000018\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"invoice-panel-number\">INV-0000018</span>\u001b[22m\n\u001b[2m  -   unexpected value \"INV-0000018\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"invoice-panel-number\">INV-0000018</span>\u001b[22m\n\u001b[2m  -   unexpected value \"INV-0000018\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"invoice-panel-number\">INV-0000018</span>\u001b[22m\n\u001b[2m  -   unexpected value \"INV-0000018\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"invoice-panel-number\">INV-0000018</span>\u001b[22m\n\u001b[2m  -   unexpected value \"INV-0000018\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"invoice-panel-number\">INV-0000018</span>\u001b[22m\n\u001b[2m  -   unexpected value \"INV-0000018\"\u001b[22m\n\n\n  41 |     // invoice 2 was issued inside it; its April credit note is treated like it\n  42 |     await page.getByTestId('invoice-row-2').click();\n> 43 |     await expect(page.getByTestId('invoice-panel-number')).toHaveText(await page.getByTestId('invoice-row-2').getByTestId('invoice-number').innerText());\n     |                                                    "
+      },
+      {
+        "test_id": "cp135_exemption_expiry.spec.ts::records when an exemption ends",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 446,
+        "failure": ""
+      },
+      {
+        "test_id": "cp136_minimum_part_of_due.spec.ts::a part payment must be a tenth of what is still due",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 994,
+        "failure": ""
+      },
+      {
+        "test_id": "cp137_place_of_supply.spec.ts::taxes an invoice where the work was done",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1152,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_credit_note_surcharge.spec.ts::a credit note gives back the surcharge on what it credits",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 710,
+        "failure": ""
+      },
+      {
+        "test_id": "cp139_region_grace.spec.ts::gives a region's statutory grace period",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 827,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_tax_exempt_lines.spec.ts::charges tax only on taxable lines after their discount share",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 383,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_tax_exempt_lines.spec.ts::adds an exempt line through the form",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 681,
+        "failure": ""
+      },
+      {
+        "test_id": "cp140_write_off_under_five_cents.spec.ts::writes off only what is worth less than five cents",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1455,
+        "failure": ""
+      },
+      {
+        "test_id": "cp141_withholding_threshold.spec.ts::withholds only from the threshold up",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1042,
+        "failure": ""
+      },
+      {
+        "test_id": "cp142_region_terms.spec.ts::sets the due date from the client's region's terms",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp142_region_terms.spec.ts::sending re-dates the due date by the region's terms",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 448,
+        "failure": ""
+      },
+      {
+        "test_id": "cp143_plan_fee.spec.ts::there is no plan fee",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 325,
+        "failure": ""
+      },
+      {
+        "test_id": "cp144_drafts_at_todays_rates.spec.ts::a draft is priced and taxed at today's rates",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 724,
+        "failure": ""
+      },
+      {
+        "test_id": "cp145_credit_tiered_lines.spec.ts::credits tiered units from the top band down",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 690,
+        "failure": ""
+      },
+      {
+        "test_id": "cp146_region_round_down.spec.ts::rounds tax down in regions that require it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 781,
+        "failure": ""
+      },
+      {
+        "test_id": "cp147_card_surcharge_cap.spec.ts::caps the card surcharge",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1287,
+        "failure": ""
+      },
+      {
+        "test_id": "cp148_plan_rate_cap.spec.ts::an overdue invoice in a capped region earns the capped rate",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 292,
+        "failure": ""
+      },
+      {
+        "test_id": "cp149_plan_interest_threshold.spec.ts::an invoice's late interest waits for the threshold",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 542,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_record_payment.spec.ts::shows the payments made and what is still due",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 558,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_record_payment.spec.ts::recording payments moves the invoice to Part paid then Paid",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 740,
+        "failure": ""
+      },
+      {
+        "test_id": "cp150_tax_report.spec.ts::reports the tax charged at each rate when an invoice is sent",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1129,
+        "failure": ""
+      },
+      {
+        "test_id": "cp151_approval_limit.spec.ts::an invoice over the approval limit must be approved before it is sent",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1900,
+        "failure": ""
+      },
+      {
+        "test_id": "cp151_approval_limit.spec.ts::converts the limit to the client's currency",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 687,
+        "failure": ""
+      },
+      {
+        "test_id": "cp152_discount_approval.spec.ts::a discount of more than a fifth needs approval instead of a reason",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1347,
+        "failure": ""
+      },
+      {
+        "test_id": "cp152_discount_approval.spec.ts::the discount and the limit each call for approval",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 697,
+        "failure": ""
+      },
+      {
+        "test_id": "cp153_credit_limit.spec.ts::refuses to send an invoice that would take the client over its credit limit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1080,
+        "failure": ""
+      },
+      {
+        "test_id": "cp153_credit_limit.spec.ts::counts late interest but not withholding against the limit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 521,
+        "failure": ""
+      },
+      {
+        "test_id": "cp153_credit_limit.spec.ts::sending all drafts stops short of the limit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 830,
+        "failure": ""
+      },
+      {
+        "test_id": "cp154_client_hold.spec.ts::a client on hold gets no invoices and its payments wait as credit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1603,
+        "failure": ""
+      },
+      {
+        "test_id": "cp154_client_hold.spec.ts::sending all drafts waits until the hold is lifted",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 681,
+        "failure": ""
+      },
+      {
+        "test_id": "cp155_calendar_proration.spec.ts::prorates a service period by calendar days",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 914,
+        "failure": ""
+      },
+      {
+        "test_id": "cp155_calendar_proration.spec.ts::prorates in whole yen",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 349,
+        "failure": ""
+      },
+      {
+        "test_id": "cp156_approval_changes.spec.ts::an approval is for the exact total and lapses after 30 days",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1182,
+        "failure": ""
+      },
+      {
+        "test_id": "cp157_recurring_invoices.spec.ts::generates the next period of a recurring invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1045,
+        "failure": ""
+      },
+      {
+        "test_id": "cp157_recurring_invoices.spec.ts::marks an invoice as recurring",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 987,
+        "failure": ""
+      },
+      {
+        "test_id": "cp158_disputes.spec.ts::puts an overdue invoice in dispute",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 5448,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m\"DISPUTE_RESOLVED id=1\"\u001b[39m\nReceived array: \u001b[31m[\"INVOICE_DISPUTED id=1 amount=1017.82\"]\u001b[39m\n\nCall Log:\n- Timeout 5000ms exceeded while waiting on the predicate\n\n  45 |     await page.getByTestId('payment-form-date').fill('2026-04-30');\n  46 |     await page.getByTestId('payment-form-submit').click();\n> 47 |     await expect.poll(() => auditLines()).toContain('DISPUTE_RESOLVED id=1');\n     |     ^\n  48 |     await expect(page.getByTestId('invoice-paid')).toHaveText('$100.00');\n  49 |     await expect(page.getByTestId('invoice-panel-status')).toHaveText('Overdue');\n  50 |     // a draft can't be disputed\n\n    at /home/daniel/ui-work/202610112340/just-solve-chain1/e2e/specs/cp158_disputes.spec.ts:47:5 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m\"DISPUTE_RESOLVED id=1\"\u001b[39m\nReceived array: \u001b[31m[\"INVOICE_DISPUTED id=1 amount=1017.82\"]\u001b[39m\n\nCall Log:\n- Timeout 5000ms exceeded while waiting on the predicate"
+      },
+      {
+        "test_id": "cp158_disputes.spec.ts::an invoice in dispute earns no interest and payments pass it by",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1044,
+        "failure": ""
+      },
+      {
+        "test_id": "cp159_remittance_matching.spec.ts::pays the invoice whose purchase order the remittance matches best",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1177,
+        "failure": ""
+      },
+      {
+        "test_id": "cp159_remittance_matching.spec.ts::two equally good matches go to the earlier due date",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 451,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_reopen_sent_invoice.spec.ts::a line added to a sent invoice is billed on an adjustment note",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 843,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_reopen_sent_invoice.spec.ts::a part-paid invoice takes adjustment notes too",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 636,
+        "failure": ""
+      },
+      {
+        "test_id": "cp160_over_limit_hold.spec.ts::a client over its credit limit is on hold until it is back within it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 759,
+        "failure": ""
+      },
+      {
+        "test_id": "cp161_payment_risk_score.spec.ts::scores how quickly a client pays",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1024,
+        "failure": ""
+      },
+      {
+        "test_id": "cp161_payment_risk_score.spec.ts::only invoices paid in full count",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 155,
+        "failure": ""
+      },
+      {
+        "test_id": "cp162_risk_deposit.spec.ts::a high-risk client must pay a deposit before an invoice is sent",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1191,
+        "failure": ""
+      },
+      {
+        "test_id": "cp162_risk_deposit.spec.ts::the deposit counts what it is worth after conversion",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 428,
+        "failure": ""
+      },
+      {
+        "test_id": "cp163_disputed_lines.spec.ts::disputes only the lines the client queries",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 630,
+        "failure": ""
+      },
+      {
+        "test_id": "cp163_disputed_lines.spec.ts::interest stops only on the disputed lines",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 531,
+        "failure": ""
+      },
+      {
+        "test_id": "cp164_dispute_interest.spec.ts::resolving a dispute charges the interest it held back",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 551,
+        "failure": ""
+      },
+      {
+        "test_id": "cp165_recurring_until.spec.ts::stops a recurring invoice on its end date",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1039,
+        "failure": ""
+      },
+      {
+        "test_id": "cp166_tier_limits.spec.ts::uses the approval limit of the client's tier",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 936,
+        "failure": ""
+      },
+      {
+        "test_id": "cp166_tier_limits.spec.ts::sets the tier when adding a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 724,
+        "failure": ""
+      },
+      {
+        "test_id": "cp167_percent_complete.spec.ts::bills a line by its percent complete",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 987,
+        "failure": ""
+      },
+      {
+        "test_id": "cp168_no_retention.spec.ts::invoices no longer hold anything back",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 750,
+        "failure": ""
+      },
+      {
+        "test_id": "cp169_milestones.spec.ts::bills an invoice by milestones as they are reached",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1284,
+        "failure": ""
+      },
+      {
+        "test_id": "cp169_milestones.spec.ts::reaching a milestone uses the client's credit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 752,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_payment_validation.spec.ts::refuses a payment on a draft",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 480,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_payment_validation.spec.ts::refuses a payment that breaks a rule",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 886,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_payment_validation.spec.ts::accepts a payment of exactly the amount due",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 474,
+        "failure": ""
+      },
+      {
+        "test_id": "cp170_milestone_due.spec.ts::each reached milestone falls due on its own",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 803,
+        "failure": ""
+      },
+      {
+        "test_id": "cp171_dispute_credit.spec.ts::resolves a dispute by crediting the disputed lines",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 548,
+        "failure": ""
+      },
+      {
+        "test_id": "cp171_dispute_credit.spec.ts::a credit for a whole disputed invoice leaves what was paid as credit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 424,
+        "failure": ""
+      },
+      {
+        "test_id": "cp172_dispute_payment.spec.ts::paying a disputed invoice settles the dispute",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 582,
+        "failure": ""
+      },
+      {
+        "test_id": "cp172_dispute_payment.spec.ts::automatic payments reach disputed invoices last",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 544,
+        "failure": ""
+      },
+      {
+        "test_id": "cp173_progress_claims.spec.ts::claims the progress made since the last invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1441,
+        "failure": ""
+      },
+      {
+        "test_id": "cp174_risk_terms.spec.ts::gives risky clients less time to pay",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1343,
+        "failure": ""
+      },
+      {
+        "test_id": "cp175_recurring_autosend.spec.ts::sends a generated invoice straight away when nothing stops it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 799,
+        "failure": ""
+      },
+      {
+        "test_id": "cp176_proration_by_day.spec.ts::charges a service period by the day",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 360,
+        "failure": ""
+      },
+      {
+        "test_id": "cp177_period_credit.spec.ts::credits part of a service period by the day",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1133,
+        "failure": ""
+      },
+      {
+        "test_id": "cp178_milestone_dispute.spec.ts::disputes a reached milestone",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 709,
+        "failure": ""
+      },
+      {
+        "test_id": "cp178_milestone_dispute.spec.ts::a disputed milestone earns no interest until it is resolved",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 523,
+        "failure": ""
+      },
+      {
+        "test_id": "cp179_risk_interest.spec.ts::high-risk clients pay three points more late interest",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 815,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_payment_reference.spec.ts::shows each invoice's RF reference",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 683,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_payment_reference.spec.ts::records a payment quoting the invoice's reference",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 563,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_payment_reference.spec.ts::refuses a mistyped reference or another invoice's reference",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 558,
+        "failure": ""
+      },
+      {
+        "test_id": "cp180_approved_over_limit.spec.ts::an approved invoice may take the client over its limit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 775,
+        "failure": ""
+      },
+      {
+        "test_id": "cp181_remittance_split.spec.ts::pays each purchase order a remittance names, in order",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 557,
+        "failure": ""
+      },
+      {
+        "test_id": "cp181_remittance_split.spec.ts::the same purchase order twice matches two invoices",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 462,
+        "failure": ""
+      },
+      {
+        "test_id": "cp182_two_approvals.spec.ts::an invoice over twice the limit needs two approvals",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1127,
+        "failure": ""
+      },
+      {
+        "test_id": "cp182_two_approvals.spec.ts::a change after two approvals needs both again",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 590,
+        "failure": ""
+      },
+      {
+        "test_id": "cp183_dispute_credit_limit.spec.ts::amounts in dispute do not count against the credit limit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 544,
+        "failure": ""
+      },
+      {
+        "test_id": "cp184_remittance_revised.spec.ts::matches only very similar purchase orders, the larger amount first",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 826,
+        "failure": ""
+      },
+      {
+        "test_id": "cp185_milestone_deposits.spec.ts::a deposit for a milestone invoice waits for its milestones",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 574,
+        "failure": ""
+      },
+      {
+        "test_id": "cp186_recurring_uplift.spec.ts::raises recurring prices on each anniversary",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 493,
+        "failure": ""
+      },
+      {
+        "test_id": "cp186_recurring_uplift.spec.ts::sets the yearly rise when adding a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 319,
+        "failure": ""
+      },
+      {
+        "test_id": "cp187_early_discount_low_risk.spec.ts::only low-risk clients get the early-payment discount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 765,
+        "failure": ""
+      },
+      {
+        "test_id": "cp188_smallest_first.spec.ts::after the overdue invoices, pays the smallest amounts first",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 768,
+        "failure": ""
+      },
+      {
+        "test_id": "cp189_plan_approval.spec.ts::approval is judged on the grand total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 438,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_line_discount.spec.ts::a line discount comes off before the invoice discount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 418,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_line_discount.spec.ts::adds a discounted line through the form",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 509,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_line_discount.spec.ts::refuses a line discount over 100%",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 368,
+        "failure": ""
+      },
+      {
+        "test_id": "cp190_committed_credit.spec.ts::approved drafts count against the credit limit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 853,
+        "failure": ""
+      },
+      {
+        "test_id": "cp191_approval_expiry_tier.spec.ts::an approval lasts as long as the client's tier allows",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1120,
+        "failure": ""
+      },
+      {
+        "test_id": "cp192_risk_days_late.spec.ts::scores how late a client pays",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 162,
+        "failure": ""
+      },
+      {
+        "test_id": "cp193_risk_write_offs.spec.ts::a written-off invoice counts as paid very late",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 349,
+        "failure": ""
+      },
+      {
+        "test_id": "cp194_medium_risk_limit.spec.ts::a medium-risk client has half the approval limit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 756,
+        "failure": ""
+      },
+      {
+        "test_id": "cp195_disputed_part_last.spec.ts::pays the undisputed part of an invoice in turn and its disputed part last",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 529,
+        "failure": ""
+      },
+      {
+        "test_id": "cp196_milestone_rounding.spec.ts::rounds each milestone's share down and gives the last one the rest",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 524,
+        "failure": ""
+      },
+      {
+        "test_id": "cp197_recurring_cancel_credit.spec.ts::ending a plan inside a billed period credits the days after it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 900,
+        "failure": ""
+      },
+      {
+        "test_id": "cp198_high_risk_limit.spec.ts::a high-risk client's credit limit counts as half",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 646,
+        "failure": ""
+      },
+      {
+        "test_id": "cp199_dispute_hold.spec.ts::a dispute left open over 30 days puts the client on hold",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1028,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_line_tax.spec.ts::rounds tax on each line and adds the line taxes",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 377,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_line_tax.spec.ts::taxes each line after its share of the discount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 407,
+        "failure": ""
+      },
+      {
+        "test_id": "cp200_two_approvals_sooner.spec.ts::two approvals from one and a half times the limit, and for high-risk clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 869,
+        "failure": ""
+      },
+      {
+        "test_id": "cp201_sent_snapshot.spec.ts::a sent invoice keeps the total it was sent with",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 908,
+        "failure": ""
+      },
+      {
+        "test_id": "cp201_sent_snapshot.spec.ts::a line added to a sent invoice leaves its sent total alone",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 576,
+        "failure": ""
+      },
+      {
+        "test_id": "cp202_duplicate_fingerprint.spec.ts::a draft with the same lines as a recent invoice is a possible duplicate",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 2238,
+        "failure": ""
+      },
+      {
+        "test_id": "cp203_credit_and_rebill.spec.ts::rebilling cancels an invoice with a full credit note and starts a corrected copy",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1204,
+        "failure": ""
+      },
+      {
+        "test_id": "cp204_sent_line_adjustments.spec.ts::changing the lines of a sent invoice issues adjustment notes",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1144,
+        "failure": ""
+      },
+      {
+        "test_id": "cp204_sent_line_adjustments.spec.ts::a credit adjustment beyond what is owed becomes credit, and the next note uses it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 620,
+        "failure": ""
+      },
+      {
+        "test_id": "cp205_adjustment_terms.spec.ts::an adjustment note carries the invoice's discount and surcharge, and counts towards withholding",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 987,
+        "failure": ""
+      },
+      {
+        "test_id": "cp205_adjustment_terms.spec.ts::a credit adjustment gives back its share of what was withheld",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 523,
+        "failure": ""
+      },
+      {
+        "test_id": "cp206_adjustment_payments.spec.ts::paying an invoice pays its adjustment notes next",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 678,
+        "failure": ""
+      },
+      {
+        "test_id": "cp206_adjustment_payments.spec.ts::a spread payment pays a note straight after its invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 567,
+        "failure": ""
+      },
+      {
+        "test_id": "cp207_adjusted_duplicates.spec.ts::a line change that would duplicate another invoice is refused",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1314,
+        "failure": ""
+      },
+      {
+        "test_id": "cp208_fingerprint_merges_lines.spec.ts::lines with the same description and price count as one, and drafts are checked against drafts",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1407,
+        "failure": ""
+      },
+      {
+        "test_id": "cp209_business_days.spec.ts::terms and grace count business days",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1092,
+        "failure": ""
+      },
+      {
+        "test_id": "cp209_business_days.spec.ts::the early-payment window counts business days",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 537,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_split_payment.spec.ts::shows each invoice its part of a split payment",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 595,
+        "failure": ""
+      },
+      {
+        "test_id": "cp210_adjustment_approval.spec.ts::a debit note that needs approval waits as a draft; credit notes never do",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 2295,
+        "failure": ""
+      },
+      {
+        "test_id": "cp211_rebill_carries.spec.ts::a rebill carries the dispute, the purchase order and the approval",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 967,
+        "failure": ""
+      },
+      {
+        "test_id": "cp211_rebill_carries.spec.ts::a replacement for more than was approved needs approval again",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 702,
+        "failure": ""
+      },
+      {
+        "test_id": "cp212_no_instalment_plans.spec.ts::an invoice has no instalment plan and is due in full",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 619,
+        "failure": ""
+      },
+      {
+        "test_id": "cp213_payment_promise.spec.ts::a promise to pay holds an overdue invoice off until its date",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 909,
+        "failure": ""
+      },
+      {
+        "test_id": "cp213_payment_promise.spec.ts::a promised invoice is not paid first, and once kept it is overdue again",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 709,
+        "failure": ""
+      },
+      {
+        "test_id": "cp213_payment_promise.spec.ts::a broken promise leaves the invoice overdue and takes no new one",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 572,
+        "failure": ""
+      },
+      {
+        "test_id": "cp214_rebill_interest.spec.ts::a rebill carries the late interest owed to the replacement",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 875,
+        "failure": ""
+      },
+      {
+        "test_id": "cp214_rebill_interest.spec.ts::interest under the threshold is not owed, so nothing is carried",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 563,
+        "failure": ""
+      },
+      {
+        "test_id": "cp215_invoice_update.spec.ts::updating a sent invoice takes today's figures",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 675,
+        "failure": ""
+      },
+      {
+        "test_id": "cp215_invoice_update.spec.ts::an update that would take the client over its credit limit is refused",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 844,
+        "failure": ""
+      },
+      {
+        "test_id": "cp216_no_grace_high_risk.spec.ts::a high-risk client has no grace period",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 710,
+        "failure": ""
+      },
+      {
+        "test_id": "cp217_dunning.spec.ts::reminders escalate a level at a time",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1688,
+        "failure": ""
+      },
+      {
+        "test_id": "cp218_reminder_fees.spec.ts::later reminders charge a fee, owed after the invoice and before its interest",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1075,
+        "failure": ""
+      },
+      {
+        "test_id": "cp219_dunning_hold.spec.ts::an unpaid final notice puts the client on hold, an unpaid second reminder needs approval",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 896,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_auto_allocation.spec.ts::applies a payment to the oldest invoices first",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 550,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_auto_allocation.spec.ts::holds what is paid beyond everything owed as credit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 442,
+        "failure": ""
+      },
+      {
+        "test_id": "cp220_observed_holidays.spec.ts::a holiday on a weekend is observed on the nearest weekday",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 782,
+        "failure": ""
+      },
+      {
+        "test_id": "cp220_observed_holidays.spec.ts::grace skips an observed holiday",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 391,
+        "failure": ""
+      },
+      {
+        "test_id": "cp221_dunning_minimum.spec.ts::an invoice with less than the minimum overdue is not chased",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1602,
+        "failure": ""
+      },
+      {
+        "test_id": "cp222_dunning_rebill.spec.ts::a replacement keeps the due date and reminders of the invoice it replaces",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1299,
+        "failure": ""
+      },
+      {
+        "test_id": "cp222_dunning_rebill.spec.ts::a replacement made earlier is sent with the old due date",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 706,
+        "failure": ""
+      },
+      {
+        "test_id": "cp223_dunning_interest.spec.ts::a final notice raises the interest rate and collections stops it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 768,
+        "failure": ""
+      },
+      {
+        "test_id": "cp224_approval_lower_total.spec.ts::an approval covers a lower total but not a higher one",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1164,
+        "failure": ""
+      },
+      {
+        "test_id": "cp225_progress_adjustment.spec.ts::changing a sent line's percent complete bills the difference",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 578,
+        "failure": ""
+      },
+      {
+        "test_id": "cp225_progress_adjustment.spec.ts::a lower percent complete is credited",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 481,
+        "failure": ""
+      },
+      {
+        "test_id": "cp226_remittance_notes.spec.ts::a payment matched to an invoice pays its notes next, and new notes carry its purchase order",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 912,
+        "failure": ""
+      },
+      {
+        "test_id": "cp227_recurring_adjusted.spec.ts::generating from an adjusted invoice copies its lines as adjusted",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1127,
+        "failure": ""
+      },
+      {
+        "test_id": "cp228_dunning_revised.spec.ts::the first reminder waits ten days and every later level two weeks after the last",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1752,
+        "failure": ""
+      },
+      {
+        "test_id": "cp229_banded_adjustments.spec.ts::banded units added to a sent invoice continue its bands",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 728,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_overdue.spec.ts::marks invoices still owing after their due date Overdue",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 373,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_overdue.spec.ts::a part payment leaves an overdue invoice Overdue",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 568,
+        "failure": ""
+      },
+      {
+        "test_id": "cp230_currency_adjustments.spec.ts::a note is converted at its invoice's rate and its exchange difference measured from it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 701,
+        "failure": ""
+      },
+      {
+        "test_id": "cp231_early_discount_adjustments.spec.ts::a credit note lowers the early-payment discount; a debit note gets none",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 941,
+        "failure": ""
+      },
+      {
+        "test_id": "cp232_cap_usual_rate.spec.ts::additions for risk and dunning go on top of the capped rate",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 521,
+        "failure": ""
+      },
+      {
+        "test_id": "cp233_notes_dunned.spec.ts::a debit note is chased with its invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1590,
+        "failure": ""
+      },
+      {
+        "test_id": "cp233_notes_dunned.spec.ts::a spread payment pays chased invoices in turn",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 670,
+        "failure": ""
+      },
+      {
+        "test_id": "cp234_credit_resolves_dispute.spec.ts::taking off the last disputed line resolves the dispute and waives the interest held back",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 818,
+        "failure": ""
+      },
+      {
+        "test_id": "cp234_credit_resolves_dispute.spec.ts::a dispute resolved with credit owes no interest for its time in dispute",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 532,
+        "failure": ""
+      },
+      {
+        "test_id": "cp235_due_on_business_days.spec.ts::a due date on a weekend moves to the next business day",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 777,
+        "failure": ""
+      },
+      {
+        "test_id": "cp235_due_on_business_days.spec.ts::a due date on a holiday moves to the next business day",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 419,
+        "failure": ""
+      },
+      {
+        "test_id": "cp236_mod11_numbers.spec.ts::invoices issued from July take a MOD 11-2 check character, in their references too",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1546,
+        "failure": ""
+      },
+      {
+        "test_id": "cp237_payment_value_date.spec.ts::a payment dated on a weekend counts from the next business day",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 464,
+        "failure": ""
+      },
+      {
+        "test_id": "cp237_payment_value_date.spec.ts::a payment dated on a holiday counts from the next business day",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 451,
+        "failure": ""
+      },
+      {
+        "test_id": "cp238_dunned_deposit.spec.ts::a client with an unpaid second reminder must pay 30% up front",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 936,
+        "failure": ""
+      },
+      {
+        "test_id": "cp239_collections_write_off.spec.ts::an invoice is written off 30 days after its collections notice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 939,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_allocate_by_due_date.spec.ts::applies a payment to the earliest due date first",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 697,
+        "failure": ""
+      },
+      {
+        "test_id": "cp240_risk_final_notice.spec.ts::an unpaid final notice counts in the risk score as if paid today",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 685,
+        "failure": ""
+      },
+      {
+        "test_id": "cp241_promise_kept.spec.ts::keeping a promise waives the interest that ran while it stood",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 742,
+        "failure": ""
+      },
+      {
+        "test_id": "cp242_credit_keeps_minimum.spec.ts::a credit note never takes an invoice below its minimum charge",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 922,
+        "failure": ""
+      },
+      {
+        "test_id": "cp242_credit_keeps_minimum.spec.ts::above the minimum the whole line is credited",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 452,
+        "failure": ""
+      },
+      {
+        "test_id": "cp243_note_due_at_once.spec.ts::a note on an overdue invoice is due at once, with no grace",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1081,
+        "failure": ""
+      },
+      {
+        "test_id": "cp244_edit_one_note.spec.ts::editing a sent line issues one note for the change in its amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1046,
+        "failure": ""
+      },
+      {
+        "test_id": "cp245_terms_after_final.spec.ts::a client given a final notice in the last 90 days gets at most 7 days",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 821,
+        "failure": ""
+      },
+      {
+        "test_id": "cp246_credit_pays_notes.spec.ts::a credit note's excess pays the invoice's unpaid notes first",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 710,
+        "failure": ""
+      },
+      {
+        "test_id": "cp247_promise_notes.spec.ts::a promise holds off the invoice's notes too, and payments on them count towards it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 743,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_client_balance.spec.ts::shows what each client owes and how much is overdue",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 235,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_client_balance.spec.ts::a payment lowers the balance straight away",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 442,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_void_invoice.spec.ts::voids an unpaid sent invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 444,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_void_invoice.spec.ts::refuses to void a draft or an invoice with payments",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 655,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_void_invoice.spec.ts::a void invoice takes no payments",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 598,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_fixed_discount.spec.ts::splits a fixed discount across the lines",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 398,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_fixed_discount.spec.ts::one kind of discount replaces the other",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 763,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_fixed_discount.spec.ts::refuses a fixed discount bigger than the subtotal",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 473,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_send_dates.spec.ts::sending moves the issue date to today",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 426,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_send_dates.spec.ts::an invoice sent in December is due at the end of January",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 445,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_discount_cap.spec.ts::caps a percentage discount at the maximum",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 528,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_discount_cap.spec.ts::caps alongside line discounts",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 364,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_discount_cap.spec.ts::caps alongside a fixed discount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 356,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_discount_cap.spec.ts::sets a cap through the form",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 441,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_payment_reversal.spec.ts::reversing a split payment undoes it on every invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 537,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_payment_reversal.spec.ts::a reversed payment does not count",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 346,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_remove_line.spec.ts::removing a line recalculates the discount and tax",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 563,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_remove_line.spec.ts::refuses to remove a line below a fixed discount",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 444,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_remove_line.spec.ts::removing a line from a sent invoice takes it off on a credit adjustment note",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 416,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_cap_all_discounts.spec.ts::the cap includes line discounts",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 529,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_line_tax_rate.spec.ts::taxes each line at its own rate",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 377,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_line_tax_rate.spec.ts::adds a line with its own rate",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 466,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_duplicate_invoice.spec.ts::duplicates an invoice as a new draft",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 500,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_client_terms.spec.ts::uses a client's own terms for new invoices",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 426,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_client_terms.spec.ts::sending uses the client's terms",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 408,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_client_terms.spec.ts::sets terms when adding a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 334,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_discount_split_ties.spec.ts::a tied leftover cent goes to the larger line",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 371,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_pay_by_reference.spec.ts::applies a payment to the invoice its reference names",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 569,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_pay_by_reference.spec.ts::refuses a mistyped or foreign reference",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 487,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_pay_by_reference.spec.ts::keeps what a reference payment overpays as credit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 413,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_send_all_drafts.spec.ts::sends every one of the client's drafts that has lines",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 388,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_paid_date.spec.ts::shows the date the clearing payment was made",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 716,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_paid_date.spec.ts::reversing the clearing payment takes the paid date away",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 508,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_write_off_small_balance.spec.ts::more than 1% of the total stays due",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 461,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_write_off_small_balance.spec.ts::writes off less than five cents left due",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 605,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_discount_reason.spec.ts::a capped discount within a fifth needs no reason",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 497,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_discount_reason.spec.ts::a discount over a fifth of the subtotal needs approval",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 777,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_discount_reason.spec.ts::refuses to send an invoice whose discount needs approval until it is approved",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 1134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_edit_line.spec.ts::editing a line works the whole invoice out again",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 617,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_edit_line.spec.ts::refuses an edit that breaks a rule",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 604,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_edit_line.spec.ts::editing a line of a sent invoice issues one note for the change",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 848,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_minimum_part_payment.spec.ts::a part payment must be at least a tenth of the total",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 731,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_minimum_part_payment.spec.ts::a smaller payment that settles the invoice is accepted",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 889,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_minimum_part_payment.spec.ts::a part payment must be a tenth of what is still due",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 610,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_overdue_grace.spec.ts::an invoice is overdue only after a week past its due date",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 197,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_number_as_reference.spec.ts::accepts the invoice number as the reference",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 464,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_number_as_reference.spec.ts::refuses an invoice number with a wrong check digit",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 355,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_number_as_reference.spec.ts::pays the invoice a number names when none is open",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 403,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_due_date_edit.spec.ts::sets a draft's due date and keeps it when sending",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 609,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_due_date_edit.spec.ts::refuses a due date outside the allowed range",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 640,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_due_date_edit.spec.ts::a hand-set due date already past stops the send",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 726,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_client_standard_discount.spec.ts::a new invoice starts with the client's discount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 457,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_client_standard_discount.spec.ts::duplicating keeps the invoice's own discount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 454,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_client_standard_discount.spec.ts::sets a standard discount when adding a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 593,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_discounts_round_down.spec.ts::percentage discounts round down to the cent",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 572,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_tax_exempt_client.spec.ts::charges no tax on a tax-exempt client's invoices",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 585,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_tax_exempt_client.spec.ts::marks a new client tax exempt",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 576,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_several_references.spec.ts::applies one payment to the invoices its references name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 552,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_several_references.spec.ts::refuses a wrong reference and keeps an overpayment as credit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 673,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_deposits.spec.ts::holds a deposit as credit and uses it when an invoice is sent",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 985,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_deposits.spec.ts::uses the oldest credit first and counts it as paid on the day it is applied",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 703,
+        "failure": ""
+      },
+      {
+        "test_id": "cp52_overpayment_credit.spec.ts::keeps what an open-invoice payment overpays as credit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 752,
+        "failure": ""
+      },
+      {
+        "test_id": "cp52_overpayment_credit.spec.ts::a reference or automatic payment beyond what is owed is held as credit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 600,
+        "failure": ""
+      },
+      {
+        "test_id": "cp53_refunds.spec.ts::refunds the oldest credit first",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 609,
+        "failure": ""
+      },
+      {
+        "test_id": "cp53_refunds.spec.ts::refuses a refund that breaks a rule, and reversing a refunded payment",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 836,
+        "failure": ""
+      },
+      {
+        "test_id": "cp54_credit_notes.spec.ts::issues a credit note against a part-paid invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 977,
+        "failure": ""
+      },
+      {
+        "test_id": "cp54_credit_notes.spec.ts::a credit note for more than is owed leaves the rest as credit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 613,
+        "failure": ""
+      },
+      {
+        "test_id": "cp54_credit_notes.spec.ts::a fully credited invoice is Credited and can no longer change",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 968,
+        "failure": ""
+      },
+      {
+        "test_id": "cp55_retention.spec.ts::an invoice holds nothing back",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 706,
+        "failure": ""
+      },
+      {
+        "test_id": "cp56_credit_note_excess.spec.ts::a credit note for more than is owed leaves the rest as credit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 970,
+        "failure": ""
+      },
+      {
+        "test_id": "cp56_credit_note_excess.spec.ts::credit from an earlier credit note is used like any credit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 432,
+        "failure": ""
+      },
+      {
+        "test_id": "cp57_instalment_plan.spec.ts::an invoice is billed in full, with no instalment plan",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 316,
+        "failure": ""
+      },
+      {
+        "test_id": "cp58_instalment_payments.spec.ts::a part payment is judged on the whole amount due",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 664,
+        "failure": ""
+      },
+      {
+        "test_id": "cp59_client_currency.spec.ts::bills a yen client in whole yen",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1142,
+        "failure": ""
+      },
+      {
+        "test_id": "cp59_client_currency.spec.ts::shows each client's money in their currency",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 692,
+        "failure": ""
+      },
+      {
+        "test_id": "cp60_retention_before_tax.spec.ts::the whole invoice is due, tax included",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 565,
+        "failure": ""
+      },
+      {
+        "test_id": "cp61_foreign_payments.spec.ts::converts a payment in another currency through dollars",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 893,
+        "failure": ""
+      },
+      {
+        "test_id": "cp61_foreign_payments.spec.ts::checks and holds credit on the converted amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 880,
+        "failure": ""
+      },
+      {
+        "test_id": "cp62_early_payment_discount.spec.ts::settles early for the discounted amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 922,
+        "failure": ""
+      },
+      {
+        "test_id": "cp62_early_payment_discount.spec.ts::paying the full amount early leaves the discount as credit",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 651,
+        "failure": ""
+      },
+      {
+        "test_id": "cp62_early_payment_discount.spec.ts::sets early-payment terms when adding a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 664,
+        "failure": ""
+      },
+      {
+        "test_id": "cp63_late_interest.spec.ts::charges daily compound interest on an overdue invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 854,
+        "failure": ""
+      },
+      {
+        "test_id": "cp63_late_interest.spec.ts::charges nothing when paid within the grace week",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 569,
+        "failure": ""
+      },
+      {
+        "test_id": "cp64_allocation_priority.spec.ts::pays overdue invoices first, then the smallest",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 371,
+        "failure": ""
+      },
+      {
+        "test_id": "cp64_allocation_priority.spec.ts::pays named invoices the same way",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 546,
+        "failure": ""
+      },
+      {
+        "test_id": "cp65_late_fee.spec.ts::charges no fee within the grace week",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 409,
+        "failure": ""
+      },
+      {
+        "test_id": "cp65_late_fee.spec.ts::charges interest but no late fee once an invoice is overdue",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 793,
+        "failure": ""
+      },
+      {
+        "test_id": "cp66_instalment_interest.spec.ts::an overdue invoice earns late interest on its whole amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 265,
+        "failure": ""
+      },
+      {
+        "test_id": "cp67_held_deposits.spec.ts::holds a deposit for one invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1012,
+        "failure": ""
+      },
+      {
+        "test_id": "cp67_held_deposits.spec.ts::refunds and other invoices can't touch a held deposit",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 654,
+        "failure": ""
+      },
+      {
+        "test_id": "cp68_interest_after_grace.spec.ts::counts interest from the end of the grace week",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 528,
+        "failure": ""
+      },
+      {
+        "test_id": "cp69_void_returns_credit.spec.ts::voiding an invoice paid by credit puts the credit back",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 748,
+        "failure": ""
+      },
+      {
+        "test_id": "cp70_waive_interest.spec.ts::interest starts again from the day it was waived",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 373,
+        "failure": ""
+      },
+      {
+        "test_id": "cp70_waive_interest.spec.ts::waives the late interest charged so far",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 819,
+        "failure": ""
+      },
+      {
+        "test_id": "cp71_plan_payoff.spec.ts::there is no plan to pay off: paying the amount due settles the invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 470,
+        "failure": ""
+      },
+      {
+        "test_id": "cp72_tax_rounded_once.spec.ts::rounds the invoice tax once and shares it over the lines",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 562,
+        "failure": ""
+      },
+      {
+        "test_id": "cp72_tax_rounded_once.spec.ts::rounds each rate on its own",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 366,
+        "failure": ""
+      },
+      {
+        "test_id": "cp73_credit_note_on_plan.spec.ts::a credit note comes straight off the invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 315,
+        "failure": ""
+      },
+      {
+        "test_id": "cp74_dated_rates.spec.ts::converts at the rate in force on the payment date",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 564,
+        "failure": ""
+      },
+      {
+        "test_id": "cp75_client_retention.spec.ts::new invoices hold nothing back",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 546,
+        "failure": ""
+      },
+      {
+        "test_id": "cp75_client_retention.spec.ts::duplicating copies the lines and nothing else",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 448,
+        "failure": ""
+      },
+      {
+        "test_id": "cp76_no_allocation_boxes.spec.ts::invoices no longer have allocation boxes",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 607,
+        "failure": ""
+      },
+      {
+        "test_id": "cp77_reference_amounts.spec.ts::a reference can carry the amount it gets",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 534,
+        "failure": ""
+      },
+      {
+        "test_id": "cp77_reference_amounts.spec.ts::refuses amounts that do not fit",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 918,
+        "failure": ""
+      },
+      {
+        "test_id": "cp78_client_grace.spec.ts::uses each client's own grace period",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 717,
+        "failure": ""
+      },
+      {
+        "test_id": "cp78_client_grace.spec.ts::sets a grace period when adding a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 397,
+        "failure": ""
+      },
+      {
+        "test_id": "cp79_foreign_refunds.spec.ts::refunds credit in another currency",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 756,
+        "failure": ""
+      },
+      {
+        "test_id": "cp80_interest_360.spec.ts::counts interest on a 360-day year",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 528,
+        "failure": ""
+      },
+      {
+        "test_id": "cp81_apply_credit.spec.ts::applies unused credit to what the client owes",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 493,
+        "failure": ""
+      },
+      {
+        "test_id": "cp81_apply_credit.spec.ts::refuses when there is no credit or nothing owed",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 348,
+        "failure": ""
+      },
+      {
+        "test_id": "cp82_exchange_difference.spec.ts::shows the exchange difference on a foreign invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 737,
+        "failure": ""
+      },
+      {
+        "test_id": "cp83_retention_cap.spec.ts::there is no retention to cap",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 386,
+        "failure": ""
+      },
+      {
+        "test_id": "cp84_whole_dollar_instalments.spec.ts::an invoice is not split into instalments",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 449,
+        "failure": ""
+      },
+      {
+        "test_id": "cp85_plan_down_payment.spec.ts::there is no down payment: the whole invoice is due",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 303,
+        "failure": ""
+      },
+      {
+        "test_id": "cp86_write_off.spec.ts::writes off what is left of an invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 697,
+        "failure": ""
+      },
+      {
+        "test_id": "cp86_write_off.spec.ts::a written-off invoice stops earning interest",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 668,
+        "failure": ""
+      },
+      {
+        "test_id": "cp87_client_interest_rate.spec.ts::charges each client's own interest rate",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 770,
+        "failure": ""
+      },
+      {
+        "test_id": "cp87_client_interest_rate.spec.ts::sets an interest rate when adding a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 398,
+        "failure": ""
+      },
+      {
+        "test_id": "cp88_conversions_round_down.spec.ts::rounds a conversion down to the step",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 886,
+        "failure": ""
+      },
+      {
+        "test_id": "cp89_credit_a_line.spec.ts::credits one of an invoice's lines",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 441,
+        "failure": ""
+      },
+      {
+        "test_id": "cp89_credit_a_line.spec.ts::cannot credit more of a line than was invoiced",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 595,
+        "failure": ""
+      },
+      {
+        "test_id": "cp90_early_discount_on_credit.spec.ts::credit used on sending settles early with the discount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 443,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_late_fee_cap.spec.ts::charges no late fee on an overdue invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 774,
+        "failure": ""
+      },
+      {
+        "test_id": "cp92_write_off_threshold.spec.ts::keeps a small balance that is more than 1% of the total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 498,
+        "failure": ""
+      },
+      {
+        "test_id": "cp92_write_off_threshold.spec.ts::writes off less than five cents that is no more than 1% of the total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 774,
+        "failure": ""
+      },
+      {
+        "test_id": "cp93_partial_retention_release.spec.ts::there is no retention to release",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 357,
+        "failure": ""
+      },
+      {
+        "test_id": "cp94_minimum_instalment.spec.ts::a small invoice is due in full",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 340,
+        "failure": ""
+      },
+      {
+        "test_id": "cp95_instalment_late_fee.spec.ts::an overdue invoice earns interest and no fee",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 280,
+        "failure": ""
+      },
+      {
+        "test_id": "cp96_invoice_before_charges.spec.ts::a payment pays the invoice before its late charges",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 378,
+        "failure": ""
+      },
+      {
+        "test_id": "cp97_credit_note_interest.spec.ts::a credit note cuts the interest only from its issue date",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 359,
+        "failure": ""
+      },
+      {
+        "test_id": "cp98_retention_interest.spec.ts::what is left unpaid earns interest from the end of grace",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 362,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_instalment_holiday.spec.ts::there are no instalments to skip",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 282,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 389,
+      "failures": []
+    }
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

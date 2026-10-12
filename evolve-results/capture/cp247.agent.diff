@@ -1,0 +1,169 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 7e387ba..9f0624b 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -15,7 +15,8 @@ import { Currency } from './invoice-format';
+ // A sent invoice in dispute is DISPUTED until the dispute is resolved: it earns no interest, is not
+ // overdue and takes no payments. A sent invoice billed by milestones with nothing owed now but
+ // milestones still to be reached is AWAITING_MILESTONE. An overdue invoice with a promise to pay is
+-// PROMISED until the promise's date, unless payments since reach the amount promised.
++// PROMISED until the promise's date, unless payments since (to it or its adjustment notes) reach the amount
++// promised; its overdue debit notes are PROMISED while the promise holds.
+ export type InvoiceStatus =
+   | 'DRAFT'
+   | 'SENT'
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 470197a..28e1a5e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -351,11 +351,21 @@ public class Invoice {
+     @Column(name = "promised_on")
+     private LocalDate promisedOn;
+ 
+-    /** What has been paid to this invoice from the day the last promise was made up to the day it was due by (payments not reversed). */
+-    /** What has been paid to this invoice from the day the last promise was made up to its date; worked out by {@link #notePromisePayments}. */
++    /**
++     * What has been paid to this invoice and its adjustment notes from the day the last promise was made up to its
++     * date; worked out by {@link #notePromisePayments}.
++     */
+     @Transient
+     private BigDecimal paidUnderPromise = BigDecimal.ZERO;
+ 
++    /** The ids of the adjustment notes issued against this invoice, which its promise to pay covers too. Not stored. */
++    @Transient
++    private Set<Long> promiseNotes = Set.of();
++
++    /** Whether this adjustment note is held off by the promise to pay on the invoice it adjusts. Not stored. */
++    @Transient
++    private boolean heldByInvoicePromise;
++
+     @Formula("(SELECT MAX(COALESCE(a.applied_date, p.payment_date)) FROM payment_allocation a, payment p WHERE a.invoice_id = id AND p.id = a.payment_id AND p.reversed = FALSE)")
+     private LocalDate lastPaidOn;
+ 
+@@ -1344,9 +1354,24 @@ public class Invoice {
+         this.paidUnderPromise = BigDecimal.ZERO;
+     }
+ 
++    /** Tells the invoice the ids of the adjustment notes issued against it, which its promise to pay covers too. */
++    public void coverNotesByPromise(Set<Long> noteIds) {
++        this.promiseNotes = noteIds == null ? Set.of() : Set.copyOf(noteIds);
++    }
++
++    /** Tells this adjustment note whether the promise to pay on the invoice it adjusts holds it off too. */
++    public void holdByInvoicePromise(boolean held) {
++        this.heldByInvoicePromise = held;
++    }
++
++    /** Whether a payment allocated to the invoice with the id counts towards this invoice's promise to pay. */
++    private boolean countsForPromise(Long invoiceId) {
++        return invoiceId.equals(id) || promiseNotes.contains(invoiceId);
++    }
++
+     /**
+-     * Works out from the payments (any invoice's) what was paid to this invoice from the day the last promise
+-     * was made up to its date, taking each part on the day it was applied; reversed payments do not count.
++     * Works out from the payments (any invoice's) what was paid to this invoice and its adjustment notes from the day
++     * the last promise was made up to its date, taking each part on the day it was applied; reversed payments do not count.
+      */
+     public void notePromisePayments(List<Payment> payments) {
+         paidUnderPromise = BigDecimal.ZERO;
+@@ -1354,7 +1379,7 @@ public class Invoice {
+             return;
+         }
+         paidUnderPromise = payments.stream().filter(p -> !p.isReversed())
+-                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
++                .flatMap(p -> p.getAllocations().stream().filter(a -> countsForPromise(a.getInvoiceId()))
+                         .filter(a -> {
+                             LocalDate on = a.getDate() == null ? p.getDate() : a.getDate();
+                             return !on.isBefore(promisedOn) && !on.isAfter(promiseDate);
+@@ -1367,9 +1392,12 @@ public class Invoice {
+         return paidUnderPromise != null && paidUnderPromise.compareTo(promiseAmount) >= 0;
+     }
+ 
+-    /** Whether a promise to pay holds the invoice off on the given day: made, not yet due and not yet paid. */
++    /**
++     * Whether a promise to pay holds the invoice off on the given day: made, not yet due and not yet paid; an
++     * adjustment note is held off too while the promise on the invoice it adjusts is.
++     */
+     public boolean isPromiseHeld(LocalDate today) {
+-        return promiseAmount != null && promiseDate != null && !today.isAfter(promiseDate) && !promisePaid();
++        return heldByInvoicePromise || promiseAmount != null && promiseDate != null && !today.isAfter(promiseDate) && !promisePaid();
+     }
+ 
+     /** Whether the last promise to pay was broken by the given day: its date passed without the amount being paid. */
+@@ -1684,7 +1712,8 @@ public class Invoice {
+ 
+     /**
+      * The day the last promise to pay was kept by the given day: the day payments (those not reversed) to this invoice
+-     * from the day it was made reached the amount promised, no later than its date; null when it has not been kept.
++     * and its adjustment notes from the day it was made reached the amount promised, no later than its date; null when
++     * it has not been kept.
+      */
+     private LocalDate promiseKeptOn(List<Payment> payments, LocalDate today) {
+         if (promiseAmount == null || promiseDate == null || promisedOn == null) {
+@@ -1692,7 +1721,7 @@ public class Invoice {
+         }
+         LocalDate until = promiseDate.isBefore(today) ? promiseDate : today;
+         List<Map.Entry<LocalDate, BigDecimal>> paid = payments.stream().filter(p -> !p.isReversed())
+-                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
++                .flatMap(p -> p.getAllocations().stream().filter(a -> countsForPromise(a.getInvoiceId()))
+                         .map(a -> Map.entry(a.getDate() == null ? p.getDate() : a.getDate(), a.getAmount())))
+                 .filter(e -> !e.getKey().isBefore(promisedOn) && !e.getKey().isAfter(until))
+                 .sorted(Map.Entry.comparingByKey()).toList();
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index d68b891..304fe0b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -126,6 +126,9 @@ public class InvoiceService {
+         BigDecimal rate = taxRate.percent();
+         BigDecimal annual = lateInterestRate.percent();
+         LocalDate now = today.date();
++        // An invoice's promise to pay covers its adjustment notes too.
++        all.forEach(i -> i.coverNotesByPromise(all.stream().filter(o -> i.getId().equals(o.getAdjustmentOf()))
++                .map(Invoice::getId).collect(java.util.stream.Collectors.toSet())));
+         all.forEach(i -> {
+             // Loaded with its lines only: read its milestones and reminders now, while the session is open.
+             Hibernate.initialize(i.getMilestones());
+@@ -141,6 +144,10 @@ public class InvoiceService {
+             i.accrueLateInterest(found, rate, annual, now);
+             i.notePromisePayments(found);
+         });
++        // A debit note is held off while the promise to pay on the invoice it adjusts holds.
++        all.forEach(i -> i.holdByInvoicePromise(isDebitNote(i) && all.stream()
++                .filter(o -> o.getId().equals(i.getAdjustmentOf())).findFirst()
++                .map(o -> o.isPromiseHeld(now)).orElse(false)));
+         judgeWithholdingTogether(all, rate);
+         Map<Long, LocalDate> paidOn = new HashMap<>();
+         all.forEach(i -> {
+@@ -2258,6 +2265,9 @@ public class InvoiceService {
+                 return;
+             }
+             BigDecimal promiseWaivedBefore = invoice.getPromiseWaived();
++            // A payment on a debit note counts towards the promise to pay on the invoice it adjusts.
++            Optional<Invoice> promisor = isDebitNote(invoice) ? load(invoice.getAdjustmentOf()) : Optional.empty();
++            BigDecimal promisorWaivedBefore = promisor.map(Invoice::getPromiseWaived).orElse(BigDecimal.ZERO);
+             BigDecimal received = converted(paidAmount, paidIn, invoice.currency(), date);
+             // Only what is left once the conversion fee and card surcharge are taken out pays the invoice.
+             BigDecimal surcharge = surchargeOf(received, invoice.currency(), method, date);
+@@ -2361,6 +2371,7 @@ public class InvoiceService {
+             });
+             recordCreditHeld(payment);
+             recordPromiseKept(invoice, promiseWaivedBefore);
++            promisor.ifPresent(o -> recordPromiseKept(o, promisorWaivedBefore));
+         });
+         return found;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index edcc39e..2606bb6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -18,7 +18,8 @@ package net.officefloor.hq.app.invoices;
+  * A sent invoice billed by milestones with nothing owed now but milestones still to be reached is
+  * awaiting a milestone; that follows from its milestones and payments and is never stored.
+  * An overdue invoice with a promise to pay is promised until the promise's date, unless payments since
+- * the promise reach the amount promised; it still earns late interest. That follows from the promise and its payments.
++ * the promise (to it or its adjustment notes) reach the amount promised; it still earns late interest. Its overdue
++ * debit notes are promised while the promise holds. That follows from the promise and its payments.
+  */
+ public enum InvoiceStatus {
+     DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, WRITTEN_OFF, DISPUTED, AWAITING_MILESTONE, PROMISED
