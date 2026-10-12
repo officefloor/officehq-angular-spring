@@ -953,7 +953,10 @@ public class Invoice {
         return isWhollyDisputed() ? due : disputedLinesAmount(taxRate).min(due);
     }
 
-    /** Resolves the dispute on the given day; interest runs again from then. */
+    /**
+     * Resolves the dispute on the given day: from then on the dispute holds no interest back, so the invoice
+     * owes the interest it would have earned had it never been disputed, the days in dispute included.
+     */
     public void resolveDispute(LocalDate on) {
         this.disputeResolvedOn = on;
     }
@@ -1490,38 +1493,36 @@ public class Invoice {
 
     /**
      * The interest what the invoice owes earns from one day to another at the daily growth factor. While
-     * disputed lines are in dispute (from the day they were disputed up to the day it was resolved, or for
-     * good while it is still open) only what is owed besides them (disputedLines) earns interest, the days
-     * before and after earning on all that is owed; each part is rounded half up to the cent. With no disputed
-     * lines (null), the days the whole invoice spent in dispute earn nothing (see {@link #interestDays}).
+     * disputed lines are in an open dispute (from the day they were disputed) only what is owed besides them
+     * (disputedLines) earns interest, the days before earning on all that is owed; each part is rounded half up
+     * to the cent. Once the dispute is resolved it holds nothing back: all that is owed earns interest as if it
+     * had never been disputed, the days in dispute included. With no disputed lines (null), the days the whole
+     * invoice spends in an open dispute earn nothing (see {@link #interestDays}).
      */
     private BigDecimal earnedOn(BigDecimal owed, BigDecimal disputedLines, BigDecimal daily, LocalDate from, LocalDate to) {
-        if (disputedLines == null || disputedOn == null) {
+        if (disputedLines == null || !isDisputed()) {
             return interestOn(owed, daily, interestDays(from, to));
         }
         LocalDate start = from.isAfter(disputedOn) ? from : disputedOn;
-        LocalDate end = disputeResolvedOn == null || to.isBefore(disputeResolvedOn) ? to : disputeResolvedOn;
-        if (!start.isBefore(end)) {
+        if (!start.isBefore(to)) {
             return interestOn(owed, daily, ChronoUnit.DAYS.between(from, to));
         }
         return interestOn(owed, daily, ChronoUnit.DAYS.between(from, start))
-                .add(interestOn(owed.subtract(disputedLines).max(BigDecimal.ZERO), daily, ChronoUnit.DAYS.between(start, end)))
-                .add(interestOn(owed, daily, ChronoUnit.DAYS.between(end, to)));
+                .add(interestOn(owed.subtract(disputedLines).max(BigDecimal.ZERO), daily, ChronoUnit.DAYS.between(start, to)));
     }
 
     /**
-     * The days from one day to another that earn interest: those the whole invoice spent in dispute (from the
-     * day it was disputed up to the day it was resolved, or for good while it is still open) earn none. A
-     * dispute over particular lines takes no days off (see {@link #earnedOn}).
+     * The days from one day to another that earn interest: those the whole invoice spends in an open dispute
+     * (from the day it was disputed) earn none. A resolved dispute takes no days off — the interest it held
+     * back is owed — and nor does a dispute over particular lines (see {@link #earnedOn}).
      */
     private long interestDays(LocalDate from, LocalDate to) {
         long days = ChronoUnit.DAYS.between(from, to);
-        if (disputedOn == null || days <= 0 || hasDisputedLines()) {
+        if (!isDisputed() || days <= 0 || hasDisputedLines()) {
             return days;
         }
         LocalDate start = from.isAfter(disputedOn) ? from : disputedOn;
-        LocalDate end = disputeResolvedOn == null || to.isBefore(disputeResolvedOn) ? to : disputeResolvedOn;
-        return days - Math.max(0, ChronoUnit.DAYS.between(start, end));
+        return days - Math.max(0, ChronoUnit.DAYS.between(start, to));
     }
 
     /** The interest the balance earns over the days at the daily growth factor, rounded half up to the cent. */

@@ -761,7 +761,8 @@ public class InvoiceService {
 
     /**
      * Resolves the dispute on an invoice today, and records it in the audit; empty if no such invoice.
-     * Interest runs again from today on what is still owed. Refused when it is not in dispute.
+     * The dispute then holds no interest back: the invoice owes the interest it would have earned had it never
+     * been disputed, the days in dispute included. Refused when it is not in dispute.
      */
     @Transactional
     public Optional<Invoice> resolveDispute(Long invoiceId) {
