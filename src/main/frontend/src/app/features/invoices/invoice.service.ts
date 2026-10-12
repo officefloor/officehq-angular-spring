@@ -229,11 +229,11 @@ export interface InvoiceDetail {
   // Whether a draft must be approved before it is sent: its grand total (before any withholding), or its
   // plan total (with interest and plan fee) when it has an instalment plan, is over the workspace's approval limit, its discount takes off more than a fifth of the subtotal, or its
   // client is a HIGH payment risk, or sending it would take the client over its credit limit,
-  // and it has not been approved at exactly its total within the last 30 days. Credit notes never need approval.
+  // and it has not been approved at exactly its total within as many days as its client's tier allows (90 KEY, 7 NEW, else 30). Credit notes never need approval.
   approval: 'NOT_NEEDED' | 'NEEDS_APPROVAL' | 'APPROVED';
   // The grand total (or plan total, for a draft with a plan) it was approved at; null when it was not approved.
   approvedTotal: string | null;
-  // The day it was approved (yyyy-mm-dd); null when it was not. The approval lapses after 30 days.
+  // The day it was approved (yyyy-mm-dd); null when it was not. The approval lapses after its client's tier's days (90 KEY, 7 NEW, else 30).
   approvedOn: string | null;
   // How many approvals it still needs before it is sent (0 when none): a draft whose grand total is
   // more than twice the approval limit needs two approvals of that same total.

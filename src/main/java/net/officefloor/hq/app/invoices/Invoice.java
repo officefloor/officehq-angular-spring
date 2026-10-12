@@ -30,6 +30,7 @@ import java.util.Objects;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import net.officefloor.hq.app.clients.ClientTier;
 import net.officefloor.hq.app.clients.Currency;
 import net.officefloor.hq.app.clients.TaxNumber;
 
@@ -392,6 +393,10 @@ public class Invoice {
     @Formula("(SELECT COALESCE((SELECT t.setting_value FROM app_setting t, client c WHERE c.id = client_id AND t.name = 'approval_limit_' || c.tier),"
             + " (SELECT s.setting_value FROM app_setting s WHERE s.name = 'approval_limit')))")
     private String approvalLimitUsd;
+
+    /** The tier of the invoice's client, as stored; read from the client. */
+    @Formula("(SELECT c.tier FROM client c WHERE c.id = client_id)")
+    private String clientTier;
 
     /** The client's own annual late-interest rate, a percentage; null for the workspace's. Read from the client. */
     @Formula("(SELECT c.interest_rate FROM client c WHERE c.id = client_id)")
@@ -1273,14 +1278,17 @@ public class Invoice {
         return hasPlan() ? planTotal(taxRate) : total(taxRate);
     }
 
-    /** The number of days an approval stays good after the day it was given. */
-    public static final int APPROVAL_DAYS = 30;
+    /** The number of days an approval stays good after the day it was given: as many as the client's tier allows. */
+    public int approvalDays() {
+        ClientTier tier = ClientTier.orStandard(clientTier);
+        return (tier == null ? ClientTier.STANDARD : tier).approvalDays();
+    }
 
     /**
      * The invoice's approval at the tax rate as of today, judged on its {@link #approvalTotal}: a credit note, or an invoice whose grand total
      * (before any withholding) is not over the approval limit and whose discount takes off no more than a
      * fifth of the subtotal, needs none; otherwise it is approved while its grand total is exactly the total
-     * it was approved at and no more than {@link #APPROVAL_DAYS} days have passed since it was approved.
+     * it was approved at and no more than {@link #approvalDays} days have passed since it was approved.
      * Once sent, an invoice is as it was approved. Every draft of a client with a HIGH payment risk (highRisk)
      * needs approval, whatever its size, as does every draft that would take its client over its credit limit
      * (overCreditLimit). A draft whose grand total is more than twice the approval limit needs
@@ -1309,13 +1317,13 @@ public class Invoice {
 
     /**
      * The approvals that still stand for the grand total as of today: those given at exactly that total,
-     * unless more than {@link #APPROVAL_DAYS} days have passed since the last of them; else none.
+     * unless more than {@link #approvalDays} days have passed since the last of them; else none.
      */
     private int approvalsAt(BigDecimal total, LocalDate today) {
         if (approvedTotal == null || total.compareTo(approvedTotal) != 0) {
             return 0;
         }
-        boolean lapsed = approvedOn != null && today.isAfter(approvedOn.plusDays(APPROVAL_DAYS));
+        boolean lapsed = approvedOn != null && today.isAfter(approvedOn.plusDays(approvalDays()));
         return lapsed ? 0 : approvals;
     }
 
