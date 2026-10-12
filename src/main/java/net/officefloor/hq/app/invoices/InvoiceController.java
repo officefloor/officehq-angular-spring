@@ -374,15 +374,18 @@ public class InvoiceController {
     /**
      * One milestone of an invoice: its id, description, percentage (without trailing zeros), the day it was
      * reached and the day it falls due (null while pending), its amount, what has been paid off it, the late interest
-     * it has been charged and what of that is unpaid, decimal strings to the cent; and its status.
+     * it has been charged and what of that is unpaid, decimal strings to the cent; its status, and the day it was
+     * disputed (null when it is not in dispute).
      */
     public record MilestoneView(Long id, String description, String pct, LocalDate reachedOn, LocalDate dueDate,
-            String amount, String paid, String lateInterest, String interestUnpaid, Milestone.Status status) {
+            String amount, String paid, String lateInterest, String interestUnpaid, Milestone.Status status,
+            LocalDate disputedOn) {
         static MilestoneView of(Milestone.Progress p) {
             Milestone m = p.milestone();
             return new MilestoneView(m.getId(), m.getDescription(), m.getPct().stripTrailingZeros().toPlainString(),
                     m.getReachedOn(), p.dueDate(), p.amount().toPlainString(), p.paid().toPlainString(),
-                    p.lateInterest().toPlainString(), p.interestUnpaid().toPlainString(), p.status());
+                    p.lateInterest().toPlainString(), p.interestUnpaid().toPlainString(), p.status(),
+                    m.getDisputedOn());
         }
     }
 
@@ -623,6 +626,14 @@ public class InvoiceController {
     @PostMapping("/api/invoices/{id}/milestones/{milestoneId}/reach")
     public InvoiceDetail reachMilestone(@PathVariable Long id, @PathVariable Long milestoneId) {
         return invoices.reachMilestone(id, milestoneId)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** Puts a reached milestone of a sent invoice in dispute. */
+    @PostMapping("/api/invoices/{id}/milestones/{milestoneId}/dispute")
+    public InvoiceDetail disputeMilestone(@PathVariable Long id, @PathVariable Long milestoneId) {
+        return invoices.disputeMilestone(id, milestoneId)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

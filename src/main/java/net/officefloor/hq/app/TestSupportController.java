@@ -57,7 +57,7 @@ public class TestSupportController {
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "lineItems", "milestones");
-    private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn");
+    private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method", "remittance");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
@@ -516,10 +516,11 @@ public class TestSupportController {
                 }
                 pctSum = pctSum.add(pct);
                 insert("invoice_milestone", milestone.get("id"),
-                        new String[] {"invoice_id", "description", "pct", "reached_on"},
+                        new String[] {"invoice_id", "description", "pct", "reached_on", "disputed_on"},
                         invoiceId,
                         text(milestone, "description"), pct,
-                        milestone.get("reachedOn") == null ? null : date(milestone.get("reachedOn"), "invoices[].milestones[].reachedOn"));
+                        milestone.get("reachedOn") == null ? null : date(milestone.get("reachedOn"), "invoices[].milestones[].reachedOn"),
+                        milestone.get("disputedOn") == null ? null : date(milestone.get("disputedOn"), "invoices[].milestones[].disputedOn"));
             }
             if (pctSum.compareTo(BigDecimal.valueOf(100)) > 0) {
                 throw refuse("invoices[].milestones[].pct must add up to at most 100, not " + pctSum.toPlainString());
@@ -865,7 +866,7 @@ public class TestSupportController {
                         row.put("supplyRegion", r.get("SUPPLY_REGION"));
                     }
                     row.put("milestones", jdbc.queryForList(
-                            "SELECT id, description, pct, reached_on FROM invoice_milestone WHERE invoice_id = ? ORDER BY id",
+                            "SELECT id, description, pct, reached_on, disputed_on FROM invoice_milestone WHERE invoice_id = ? ORDER BY id",
                             r.get("ID")).stream().map(m -> {
                                 Map<String, Object> milestone = new LinkedHashMap<>();
                                 milestone.put("id", m.get("ID"));
@@ -873,6 +874,9 @@ public class TestSupportController {
                                 milestone.put("pct", m.get("PCT"));
                                 if (m.get("REACHED_ON") != null) {
                                     milestone.put("reachedOn", m.get("REACHED_ON").toString());
+                                }
+                                if (m.get("DISPUTED_ON") != null) {
+                                    milestone.put("disputedOn", m.get("DISPUTED_ON").toString());
                                 }
                                 return milestone;
                             }).toList());

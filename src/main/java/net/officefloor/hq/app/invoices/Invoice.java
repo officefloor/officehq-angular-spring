@@ -24,6 +24,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Objects;
 import java.util.List;
@@ -888,7 +889,25 @@ public class Invoice {
      * and is not overdue until the dispute is resolved.
      */
     public boolean isDisputed() {
+        return isInvoiceDisputed() || hasDisputedMilestones();
+    }
+
+    /** Whether the invoice itself (wholly or over particular lines) is in an open dispute. */
+    private boolean isInvoiceDisputed() {
         return disputedOn != null && disputeResolvedOn == null;
+    }
+
+    /** Whether any reached milestone of the sent invoice is in dispute. */
+    public boolean hasDisputedMilestones() {
+        return isBilledByMilestones() && milestones.stream().anyMatch(m -> m.isReached() && m.isDisputed());
+    }
+
+    /**
+     * Puts the reached milestone in dispute from the given day: from then it earns no interest, is not overdue
+     * and takes no payments (they go to the other reached milestones) until the dispute is resolved.
+     */
+    public void disputeMilestone(Milestone milestone, LocalDate on) {
+        milestone.dispute(on);
     }
 
     /** Whether the dispute is over particular lines rather than the whole invoice. */
@@ -901,7 +920,7 @@ public class Invoice {
      * payments until the dispute is resolved.
      */
     public boolean isWhollyDisputed() {
-        return isDisputed() && !hasDisputedLines();
+        return isInvoiceDisputed() && !hasDisputedLines();
     }
 
     /** Puts the whole invoice in dispute from the given day. */
@@ -967,6 +986,12 @@ public class Invoice {
         if (!isDisputed() || isCreditNote() || isWrittenOff()) {
             return zero();
         }
+        if (!isInvoiceDisputed()) {
+            // Only milestones are in dispute: what is still owed on them, their late interest included.
+            return milestoneProgress(paid, taxRate, LocalDate.MIN).stream()
+                    .filter(p -> p.status() == Milestone.Status.DISPUTED).map(Milestone.Progress::owed)
+                    .reduce(zero(), BigDecimal::add);
+        }
         BigDecimal due = amountDue(paid, taxRate).max(zero());
         return isWhollyDisputed() ? due : disputedLinesAmount(taxRate).min(due);
     }
@@ -976,6 +1001,10 @@ public class Invoice {
      * owes the interest it would have earned had it never been disputed, the days in dispute included.
      */
     public void resolveDispute(LocalDate on) {
+        milestones.forEach(Milestone::resolveDispute);
+        if (disputedOn == null) {
+            return;
+        }
         this.disputeResolvedOn = on;
         this.disputeCredit = false;
     }
@@ -1352,7 +1381,8 @@ public class Invoice {
         }
         List<Instalment> schedule = schedule(taxRate);
         List<BigDecimal> charges = chargesInOrder(schedule.stream().map(Instalment::dueDate).toList(),
-                schedule.stream().map(Instalment::payment).toList(), inOrder.stream().map(Part::on).toList(),
+                schedule.stream().map(Instalment::payment).toList(), Collections.nCopies(schedule.size(), null),
+                inOrder.stream().map(Part::on).toList(),
                 inOrder.stream().map(Part::amount).toList(), annualRate, today);
         BigDecimal total = charges.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         charges = charges.stream().map(c -> c.setScale(scale(), RoundingMode.HALF_UP)).toList();
@@ -1389,8 +1419,8 @@ public class Invoice {
         List<BigDecimal> amounts = milestoneAmounts(taxRate);
         List<Integer> order = reachedInDueOrder();
         List<BigDecimal> charges = chargesInOrder(order.stream().map(k -> milestoneDueDate(milestones.get(k))).toList(),
-                order.stream().map(amounts::get).toList(), inOrder.stream().map(Part::on).toList(),
-                inOrder.stream().map(Part::amount).toList(), annualRate, today);
+                order.stream().map(amounts::get).toList(), order.stream().map(k -> milestones.get(k).getDisputedOn()).toList(),
+                inOrder.stream().map(Part::on).toList(), inOrder.stream().map(Part::amount).toList(), annualRate, today);
         Map<Long, BigDecimal> byMilestone = new TreeMap<>();
         BigDecimal total = BigDecimal.ZERO;
         for (int n = 0; n < order.size(); n++) {
@@ -1407,9 +1437,11 @@ public class Invoice {
      * days, in that order) pay each amount itself and then its interest earned so far, earliest first. An
      * amount still not paid off more than {@link #graceDays()} days after its due date earns interest from
      * the end of its grace period, compounded daily at rate / 360 (Actual/360), on what is still unpaid of it,
-     * with each payment after its grace period ending a period.
+     * with each payment after its grace period ending a period. An amount held back from a given day (null when
+     * none is) earns nothing from that day on.
      */
-    private List<BigDecimal> chargesInOrder(List<LocalDate> dues, List<BigDecimal> amounts, List<LocalDate> paidOn,
+    private List<BigDecimal> chargesInOrder(List<LocalDate> dues, List<BigDecimal> amounts, List<LocalDate> heldFrom,
+            List<LocalDate> paidOn,
             List<BigDecimal> paidAmounts, BigDecimal annualRate, LocalDate today) {
         BigDecimal[] left = paidAmounts.toArray(BigDecimal[]::new);
         BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
@@ -1433,7 +1465,7 @@ public class Invoice {
             for (int j = 0; j < left.length; j++) {
                 LocalDate on = paidOn.get(j);
                 if (late && on.isAfter(from) && owed.signum() > 0) {
-                    BigDecimal earned = interestOn(owed, daily, interestDays(from, on));
+                    BigDecimal earned = interestOn(owed, daily, heldDays(interestDays(from, on), from, on, heldFrom.get(k)));
                     charged = charged.add(earned);
                     unpaidInterest = unpaidInterest.add(earned);
                     from = on;
@@ -1446,11 +1478,20 @@ public class Invoice {
                 left[j] = left[j].subtract(toInterest);
             }
             if (late && owed.signum() > 0) {
-                charged = charged.add(interestOn(owed, daily, interestDays(from, today)));
+                charged = charged.add(interestOn(owed, daily, heldDays(interestDays(from, today), from, today, heldFrom.get(k))));
             }
             charges.add(charged);
         }
         return charges;
+    }
+
+    /** The days from one day to another that earn interest, less those on or after the day it is held back from (null when none). */
+    private static long heldDays(long days, LocalDate from, LocalDate to, LocalDate heldFrom) {
+        if (heldFrom == null || days <= 0) {
+            return days;
+        }
+        LocalDate start = from.isAfter(heldFrom) ? from : heldFrom;
+        return Math.max(0, days - Math.max(0, ChronoUnit.DAYS.between(start, to)));
     }
 
     /**
@@ -1988,7 +2029,10 @@ public class Invoice {
         return milestone.getReachedOn().plusDays(clientTermsDays == null ? MILESTONE_TERMS_DAYS : clientTermsDays);
     }
 
-    /** The indexes of the reached milestones, in the order they are paid: by due date, then id. */
+    /**
+     * The indexes of the reached milestones, in the order they are paid: by due date, then id, those in dispute
+     * last (payments go to the others first).
+     */
     private List<Integer> reachedInDueOrder() {
         List<Integer> order = new ArrayList<>();
         for (int k = 0; k < milestones.size(); k++) {
@@ -1996,7 +2040,8 @@ public class Invoice {
                 order.add(k);
             }
         }
-        order.sort(Comparator.comparing((Integer k) -> milestoneDueDate(milestones.get(k)))
+        order.sort(Comparator.comparing((Integer k) -> milestones.get(k).isDisputed())
+                .thenComparing(k -> milestoneDueDate(milestones.get(k)))
                 .thenComparing(k -> milestones.get(k).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
         return order;
     }
@@ -2034,6 +2079,8 @@ public class Invoice {
                 Milestone.Status st;
                 if (part.compareTo(amount) >= 0 && interestUnpaid.signum() <= 0) {
                     st = Milestone.Status.PAID;
+                } else if (m.isDisputed()) {
+                    st = Milestone.Status.DISPUTED;
                 } else if (today.isAfter(due.plusDays(graceDays()))) {
                     st = Milestone.Status.OVERDUE;
                 } else if (part.signum() > 0) {

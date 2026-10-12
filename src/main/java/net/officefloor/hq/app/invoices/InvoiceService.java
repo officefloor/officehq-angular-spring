@@ -658,6 +658,51 @@ public class InvoiceService {
         return found;
     }
 
+    /**
+     * Puts a reached milestone of a sent invoice in dispute today, and records it in the audit with what the
+     * milestone owes, its late interest included; empty if no such invoice. From then on it earns no interest,
+     * is not overdue and takes no payments, which go to the other reached milestones instead, until the dispute
+     * is resolved. A milestone not reached, paid off or already in dispute is refused, as is one of an invoice
+     * that is not sent, written off, or itself in dispute.
+     */
+    @Transactional
+    public Optional<Invoice> disputeMilestone(Long invoiceId, Long milestoneId) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            Milestone milestone = invoice.milestone(milestoneId);
+            if (milestone == null) {
+                throw new InvoiceRejectedException("The invoice has no such milestone.");
+            }
+            if (invoice.getStatus() != InvoiceStatus.SENT || invoice.isCreditNote() || invoice.isWrittenOff()) {
+                throw new InvoiceRejectedException("Only a milestone of a sent invoice can be disputed.");
+            }
+            if (!milestone.isReached()) {
+                throw new InvoiceRejectedException("Only a reached milestone can be disputed.");
+            }
+            if (milestone.isDisputed()) {
+                throw new InvoiceRejectedException("This milestone is already in dispute.");
+            }
+            if (invoice.isDisputed() && !invoice.hasDisputedMilestones()) {
+                throw new InvoiceRejectedException("This invoice is already in dispute.");
+            }
+            BigDecimal rate = taxRate.percent();
+            if (owedOn(invoice, milestone, rate).signum() <= 0) {
+                throw new InvoiceRejectedException("This milestone has been paid off.");
+            }
+            invoice.disputeMilestone(milestone, today.date());
+            invoices.saveAndFlush(invoice);
+            withInterest(List.of(invoice));
+            audit.record("INVOICE_DISPUTED id=" + invoice.getId() + " amount=" + owedOn(invoice, milestone, rate).toPlainString());
+        });
+        return found;
+    }
+
+    /** What is still owed on the milestone of the invoice, its late interest included. */
+    private BigDecimal owedOn(Invoice invoice, Milestone milestone, BigDecimal rate) {
+        return invoice.milestoneProgress(paid(List.of(invoice)).get(invoice.getId()), rate, today.date()).stream()
+                .filter(p -> p.milestone() == milestone).map(Milestone.Progress::owed).findFirst().orElseThrow();
+    }
+
     /** Why the draft's milestones keep it from being sent, or null when they do not: they must add up to exactly 100%. */
     private static String milestoneRefusal(Invoice invoice) {
         if (invoice.getMilestones().isEmpty() || invoice.milestonesPct().compareTo(BigDecimal.valueOf(100)) == 0) {
@@ -834,6 +879,9 @@ public class InvoiceService {
             if (invoice.isWhollyDisputed()) {
                 throw new InvoiceRejectedException("The whole invoice is already in dispute.");
             }
+            if (invoice.hasDisputedMilestones()) {
+                throw new InvoiceRejectedException("A milestone of this invoice is already in dispute.");
+            }
             InvoiceLine line = invoice.getLines().stream().filter(l -> lineId.equals(l.getId())).findFirst()
                     .orElseThrow(() -> new InvoiceRejectedException("There is no such line on this invoice."));
             if (invoice.isDisputed() && line.isDisputed()) {
@@ -886,6 +934,9 @@ public class InvoiceService {
         found.ifPresent(invoice -> {
             if (!invoice.isDisputed()) {
                 throw new InvoiceRejectedException("This invoice is not in dispute.");
+            }
+            if (invoice.hasDisputedMilestones()) {
+                throw new InvoiceRejectedException("A disputed milestone cannot be resolved with a credit note.");
             }
             requireCreditable(invoice);
             LocalDate on = today.date();
@@ -1619,7 +1670,8 @@ public class InvoiceService {
                     && amount.compareTo(invoice.amountDue(paidSoFar, taxRate.percent())
                             .subtract(invoice.disputedAmount(paidSoFar, taxRate.percent()))) > 0;
             if (resolved) {
-                invoice.resolveDispute(date.isBefore(invoice.getDisputedOn()) ? invoice.getDisputedOn() : date);
+                invoice.resolveDispute(invoice.getDisputedOn() != null && date.isBefore(invoice.getDisputedOn())
+                        ? invoice.getDisputedOn() : date);
                 invoices.saveAndFlush(invoice);
                 withInterest(List.of(invoice));
             }

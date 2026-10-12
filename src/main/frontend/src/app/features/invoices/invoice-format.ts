@@ -20,6 +20,7 @@ const MILESTONE_STATUS_LABEL: Record<MilestoneStatus, string> = {
   PART_PAID: 'Part paid',
   OVERDUE: 'Overdue',
   DUE: 'Due',
+  DISPUTED: 'Disputed',
 };
 const INSTALMENT_STATUS_LABEL: Record<InstalmentStatus, string> = {
   PAID: 'Paid',

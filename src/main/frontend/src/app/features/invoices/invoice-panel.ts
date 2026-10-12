@@ -6,6 +6,7 @@ import {
   InvoiceLineView,
   InvoiceService,
   InvoiceSummary,
+  MilestoneView,
   NewDiscount,
   NewLine,
 } from './invoice.service';
@@ -425,6 +426,17 @@ function problemWith(line: NewLine): string {
                         Reach
                       </button>
                     }
+                    @if (canDisputeMilestone(inv, m)) {
+                      <button
+                        type="button"
+                        data-testid="milestone-dispute"
+                        [disabled]="disputing()"
+                        [attr.aria-label]="'Dispute milestone ' + m.description"
+                        (click)="disputeMilestone(inv.id, m.id)"
+                      >
+                        Dispute
+                      </button>
+                    }
                   </td>
                 </tr>
               }
@@ -750,7 +762,11 @@ function problemWith(line: NewLine): string {
           <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
         }
 
-        @if (inv.disputedOn && !inv.disputeResolvedOn) {
+        @if (hasDisputedMilestones(inv)) {
+          <button type="button" data-testid="invoice-resolve" [disabled]="disputing()" (click)="resolveDispute(inv.id)">
+            Resolve dispute
+          </button>
+        } @else if (inv.disputedOn && !inv.disputeResolvedOn) {
           <button type="button" data-testid="invoice-resolve" [disabled]="disputing()" (click)="resolveDispute(inv.id)">
             Resolve dispute
           </button>
@@ -1601,6 +1617,42 @@ export class InvoicePanel {
       error: (e: HttpErrorResponse) => {
         const detail: unknown = e.error?.detail;
         this.disputeError.set(typeof detail === 'string' && detail ? detail : 'The line could not be disputed.');
+        this.disputing.set(false);
+      },
+    });
+  }
+
+  // A reached milestone still owing can be disputed, unless the invoice itself is already in dispute.
+  protected canDisputeMilestone(inv: InvoiceDetail, m: MilestoneView): boolean {
+    const invoiceDisputed = !!inv.disputedOn && !inv.disputeResolvedOn;
+    return (
+      inv.creditOf === null &&
+      !invoiceDisputed &&
+      m.reachedOn !== null &&
+      m.disputedOn === null &&
+      m.status !== 'PAID' &&
+      m.status !== 'PENDING' &&
+      inv.status !== 'WRITTEN_OFF' &&
+      inv.status !== 'VOID'
+    );
+  }
+
+  protected hasDisputedMilestones(inv: InvoiceDetail): boolean {
+    return inv.milestones.some((m) => m.status === 'DISPUTED');
+  }
+
+  protected disputeMilestone(invoiceId: number, milestoneId: number): void {
+    this.disputing.set(true);
+    this.disputeError.set('');
+    this.service.disputeMilestone(invoiceId, milestoneId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.disputing.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.disputeError.set(typeof detail === 'string' && detail ? detail : 'The milestone could not be disputed.');
         this.disputing.set(false);
       },
     });

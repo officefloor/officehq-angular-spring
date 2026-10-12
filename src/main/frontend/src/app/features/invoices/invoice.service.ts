@@ -259,8 +259,9 @@ export interface InvoiceDetail {
 // One milestone: its percentage of what the client pays (without trailing zeros), the day it was
 // reached and the day it falls due (the client's terms after it, else 14 days; yyyy-mm-dd, null while
 // pending), its amount, what has been paid off it, its late interest and what of that is unpaid, decimal
-// strings to the cent (reached milestones are paid in due-date order, amount then interest), and its status.
-export type MilestoneStatus = 'PENDING' | 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE';
+// strings to the cent (reached milestones are paid in due-date order, amount then interest, those in dispute
+// last), its status, and the day it was disputed (null when it is not in dispute).
+export type MilestoneStatus = 'PENDING' | 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE' | 'DISPUTED';
 
 export interface MilestoneView {
   id: number;
@@ -273,6 +274,7 @@ export interface MilestoneView {
   lateInterest: string;
   interestUnpaid: string;
   status: MilestoneStatus;
+  disputedOn: string | null;
 }
 
 // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
@@ -437,6 +439,12 @@ export class InvoiceService {
   // Marks a milestone of a sent invoice reached: it is owed from today, and the client's credit is used on it.
   reachMilestone(invoiceId: number, milestoneId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/milestones/${milestoneId}/reach`, null);
+  }
+
+  // Puts a reached milestone of a sent invoice in dispute: it earns no interest, is not overdue and takes no
+  // payments until the invoice's dispute is resolved. Refused (409) for one not reached, paid off or in dispute.
+  disputeMilestone(invoiceId: number, milestoneId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/milestones/${milestoneId}/dispute`, null);
   }
 
   // Approves a draft whose grand total is over the workspace's approval limit, or whose discount is

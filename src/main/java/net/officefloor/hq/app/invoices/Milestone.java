@@ -18,9 +18,9 @@ import java.time.LocalDate;
 @Table(name = "invoice_milestone")
 public class Milestone {
 
-    /** Where a milestone is: not reached yet, or reached and paid off, part paid, overdue or due. */
+    /** Where a milestone is: not reached yet, or reached and paid off, part paid, overdue, due or in dispute. */
     public enum Status {
-        PENDING, PAID, PART_PAID, OVERDUE, DUE
+        PENDING, PAID, PART_PAID, OVERDUE, DUE, DISPUTED
     }
 
     /**
@@ -48,6 +48,10 @@ public class Milestone {
     @Column(name = "reached_on")
     private LocalDate reachedOn;
 
+    /** The day the client disputed the reached milestone; null when it is not in dispute. */
+    @Column(name = "disputed_on")
+    private LocalDate disputedOn;
+
     protected Milestone() {
     }
 
@@ -74,6 +78,28 @@ public class Milestone {
 
     public boolean isReached() {
         return reachedOn != null;
+    }
+
+    public LocalDate getDisputedOn() {
+        return disputedOn;
+    }
+
+    /**
+     * Whether the milestone is in dispute: it then earns no interest from the day it was disputed, is not
+     * overdue and takes no payments until the dispute is resolved.
+     */
+    public boolean isDisputed() {
+        return disputedOn != null;
+    }
+
+    /** Puts the milestone in dispute from the day. */
+    public void dispute(LocalDate on) {
+        this.disputedOn = on;
+    }
+
+    /** Ends the milestone's dispute: the interest it held back is owed, as if it had never been disputed. */
+    public void resolveDispute() {
+        this.disputedOn = null;
     }
 
     /** Marks the milestone reached on the day. */
