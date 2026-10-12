@@ -1,0 +1,43 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index be04429..10dc229 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -311,6 +311,30 @@ public class InvoiceService {
+                 }));
+     }
+ 
++    /**
++     * Refuses a period for a credit note's line crediting a line with a service period that is not
++     * inside the period the credited line billed: it credits only days that line charged for.
++     */
++    private void requireWithinCreditedPeriod(Invoice invoice, Long lineId, LocalDate periodStart, LocalDate periodEnd) {
++        if (!invoice.isCreditNote() || invoice.getCreditOf() == null) {
++            return;
++        }
++        Long creditOfLine = invoice.getLines().stream().filter(l -> lineId.equals(l.getId()))
++                .map(InvoiceLine::getCreditOfLine).findFirst().orElse(null);
++        if (creditOfLine == null) {
++            return;
++        }
++        load(invoice.getCreditOf()).flatMap(original -> original.getLines().stream()
++                .filter(l -> creditOfLine.equals(l.getId()) && l.hasPeriod()).findFirst())
++                .ifPresent(credited -> {
++                    if (periodStart == null || periodEnd == null
++                            || periodStart.isBefore(credited.getPeriodStart()) || periodEnd.isAfter(credited.getPeriodEnd())) {
++                        throw new InvoiceRejectedException("The credit period must be inside the period the line billed, "
++                                + credited.getPeriodStart() + " to " + credited.getPeriodEnd() + ".");
++                    }
++                });
++    }
++
+     /** Refuses to credit a credit note, a draft, a void invoice or a written-off one. */
+     private void requireCreditable(Invoice original) {
+         if (original.isCreditNote()) {
+@@ -425,6 +449,7 @@ public class InvoiceService {
+         if (!invoice.hasLine(lineId)) {
+             return Optional.empty();
+         }
++        requireWithinCreditedPeriod(invoice, lineId, periodStart, periodEnd);
+         LinePrice price = linePrice(invoice, unitType, unitPrice);
+         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
+         invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
