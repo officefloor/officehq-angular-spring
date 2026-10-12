@@ -1348,12 +1348,14 @@ public class InvoiceService {
         repriceFromRates(invoice, null, today.date());
         BigDecimal after = creditBalance(client.getId()).add(committed(client.getId(), invoice.getId()))
                 .add(invoice.owedTotal(taxRate.percent()));
-        if (after.compareTo(client.getCreditLimit()) <= 0) {
+        BigDecimal limit = creditLimitOf(client);
+        if (after.compareTo(limit) <= 0) {
             return null;
         }
         Currency currency = client.getCurrency();
         return "Sending this invoice would take " + client.getName() + "'s balance (less what is in dispute, plus its approved drafts) to " + currency.format(after)
-                + ", over its " + currency.format(client.getCreditLimit()) + " credit limit.";
+                + ", over its " + currency.format(limit) + " credit limit"
+                + (limit.compareTo(client.getCreditLimit()) == 0 ? "." : " (half of its " + currency.format(client.getCreditLimit()) + " limit, as a HIGH payment risk).");
     }
 
     /**
@@ -2516,7 +2518,21 @@ public class InvoiceService {
         }
         BigDecimal after = creditBalance(client.getId()).add(committed(client.getId(), invoice.getId()))
                 .add(invoice.owedTotal(taxRate.percent()));
-        return after.compareTo(client.getCreditLimit()) > 0;
+        return after.compareTo(creditLimitOf(client)) > 0;
+    }
+
+    /**
+     * The credit limit that counts for the client: a HIGH payment risk client's is half of what is set, rounded
+     * down to the cent; null when it has no limit.
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal creditLimitOf(Client client) {
+        if (client.getCreditLimit() == null) {
+            return null;
+        }
+        return riskOf(client.getId()).band() == RiskBand.HIGH
+                ? client.getCreditLimit().divide(BigDecimal.valueOf(2), 2, RoundingMode.DOWN)
+                : client.getCreditLimit();
     }
 
     /**
@@ -2529,7 +2545,7 @@ public class InvoiceService {
     }
 
     private boolean overLimit(Client client) {
-        return client.getCreditLimit() != null && creditBalance(client.getId()).compareTo(client.getCreditLimit()) > 0;
+        return client.getCreditLimit() != null && creditBalance(client.getId()).compareTo(creditLimitOf(client)) > 0;
     }
 
     /**

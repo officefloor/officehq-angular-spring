@@ -101,7 +101,10 @@ function validTaxNumber(taxNumber: string): boolean {
               @if (c.creditLimit !== null) {
                 <span>
                   Available <span data-testid="client-available">{{ money(availableOf(c), c.currency) }}</span>
-                  of {{ money(String(c.creditLimit), c.currency) }}
+                  of {{ money(String(c.effectiveCreditLimit ?? c.creditLimit), c.currency) }}
+                  @if (Number(c.effectiveCreditLimit) !== Number(c.creditLimit)) {
+                    (half of {{ money(String(c.creditLimit), c.currency) }} for a HIGH payment risk)
+                  }
                 </span>
               }
             </button>
@@ -332,6 +335,7 @@ export class Clients {
   protected readonly balances = signal<Map<number, ClientBalance>>(new Map());
   protected readonly money = money;
   protected readonly String = String;
+  protected readonly Number = Number;
   protected readonly currencies = CURRENCIES;
   protected readonly tiers: readonly ClientTier[] = ['STANDARD', 'KEY', 'NEW'];
   protected readonly saving = signal(false);
@@ -392,10 +396,11 @@ export class Clients {
   }
 
   // What the client can still be invoiced under its credit limit: the limit less its balance, leaving out
-  // what is in dispute, and less what its approved drafts will add to it.
+  // what is in dispute, and less what its approved drafts will add to it. A HIGH payment risk client's limit
+  // counts as half of what is set.
   protected availableOf(client: Client): string {
     const b = this.balanceOf(client.id);
-    const cents = Math.round(Number(client.creditLimit) * 100) - Math.round(Number(b.balance) * 100)
+    const cents = Math.round(Number(client.effectiveCreditLimit ?? client.creditLimit) * 100) - Math.round(Number(b.balance) * 100)
       + Math.round(Number(b.disputed) * 100) - Math.round(Number(b.committed) * 100);
     return String(cents / 100);
   }

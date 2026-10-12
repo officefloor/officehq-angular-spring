@@ -33,18 +33,21 @@ public class ClientController {
             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             Integer graceDays, BigDecimal interestRate, String region, String taxNumber,
             List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
-            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold, boolean overLimit, String riskScore, InvoiceService.RiskBand riskBand, ClientTier tier, BigDecimal upliftPct) {
+            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold, boolean overLimit, String riskScore, InvoiceService.RiskBand riskBand, ClientTier tier, BigDecimal upliftPct,
+            BigDecimal effectiveCreditLimit) {
         /**
          * The client, on hold when held by hand or while over its credit limit (overLimit), with its payment risk
-         * score (null when nothing is paid in full) and band.
+         * score (null when nothing is paid in full) and band, and the credit limit that counts for it (half of
+         * what is set for a HIGH payment risk).
          */
-        static ClientView of(Client c, boolean overLimit, InvoiceService.Risk risk) {
+        static ClientView of(Client c, boolean overLimit, InvoiceService.Risk risk, BigDecimal effectiveCreditLimit) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
                     c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
                     c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold() || overLimit, overLimit,
-                    risk.score() == null ? null : risk.score().toPlainString(), risk.band(), c.getTier(), c.getUpliftPct());
+                    risk.score() == null ? null : risk.score().toPlainString(), risk.band(), c.getTier(), c.getUpliftPct(),
+                    effectiveCreditLimit);
         }
     }
 
@@ -165,7 +168,7 @@ public class ClientController {
     }
 
     private ClientView view(Client c) {
-        return ClientView.of(c, invoices.overLimit(c.getId()), invoices.riskOf(c.getId()));
+        return ClientView.of(c, invoices.overLimit(c.getId()), invoices.riskOf(c.getId()), invoices.creditLimitOf(c));
     }
 
     @GetMapping

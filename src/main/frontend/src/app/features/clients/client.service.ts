@@ -66,11 +66,14 @@ export interface Client {
   // The percentage (0 to 100) the typed unit prices of the client's recurring invoices go up by on each
   // anniversary of the plan; 0 is none. Prices from the rate card or price list are not raised.
   upliftPct: number;
+  // The credit limit that counts for the client: half of what is set (rounded down to the cent) for a
+  // HIGH payment risk; null when it has no limit.
+  effectiveCreditLimit: string | number | null;
 }
 
 export type ClientTier = 'STANDARD' | 'KEY' | 'NEW';
 
-export type NewClient = Omit<Client, 'id' | 'onHold' | 'overLimit' | 'riskScore' | 'riskBand'>;
+export type NewClient = Omit<Client, 'id' | 'onHold' | 'overLimit' | 'riskScore' | 'riskBand' | 'effectiveCreditLimit'>;
 
 // The clients REST API.
 @Injectable({ providedIn: 'root' })
