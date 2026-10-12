@@ -1564,7 +1564,9 @@ public class Invoice {
      * interest was waived (after the day's payments), the interest still unpaid is written off
      * (kept as what was waived) and that day ends a period: interest starts again from it on what is
      * still owed. A written-off invoice is charged only up to the day it was
-     * written off.
+     * written off. From the day its final notice went out the rate is {@link #FINAL_NOTICE_PREMIUM} points
+     * higher (still within the region's legal maximum), and from the day its collections notice went out it
+     * earns no more interest: each of those days ends a period.
      */
     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate, LocalDate asOf) {
         accrueLateInterest(payments, taxRate, annualRate, BigDecimal.ZERO, asOf);
@@ -1576,24 +1578,65 @@ public class Invoice {
      */
     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate, BigDecimal premium,
             LocalDate asOf) {
-        annualRate = lateInterestRate(annualRate, premium);
+        BigDecimal base = premium == null ? BigDecimal.ZERO : premium;
+        InterestRates rates = new InterestRates(lateInterestRate(annualRate, base),
+                lateInterestRate(annualRate, base.add(FINAL_NOTICE_PREMIUM)), reminderOn(DunningLevel.FINAL),
+                reminderOn(DunningLevel.COLLECTIONS));
         LocalDate today = writtenOffOn != null && writtenOffOn.isBefore(asOf) ? writtenOffOn : asOf;
         this.lateInterest = BigDecimal.ZERO;
         this.lateWaived = BigDecimal.ZERO;
         this.milestoneInterest = Map.of();
         if (status == InvoiceStatus.SENT && !isCreditNote() && isBilledByMilestones()) {
-            accrueMilestoneInterest(payments, taxRate, annualRate, today);
+            accrueMilestoneInterest(payments, taxRate, rates, today);
             if (getLateInterest().compareTo(interestThreshold()) < 0) {
                 this.lateInterest = BigDecimal.ZERO;
                 this.milestoneInterest = Map.of();
             }
             return;
         }
-        accrueInvoiceInterest(payments, taxRate, annualRate, today);
+        accrueInvoiceInterest(payments, taxRate, rates, today);
         if (getLateInterest().add(getLateWaived()).compareTo(interestThreshold()) < 0) {
             this.lateInterest = BigDecimal.ZERO;
             this.lateWaived = BigDecimal.ZERO;
         }
+    }
+
+    /** The percentage points an invoice's late-interest rate rises by from the day its final notice goes out. */
+    public static final BigDecimal FINAL_NOTICE_PREMIUM = BigDecimal.valueOf(2);
+
+    /**
+     * The late-interest rates an invoice is charged (annual percentages, already capped by the region's legal
+     * maximum): the rate until its final notice goes out (finalOn, null when it has not), the raised rate from
+     * then, and none from the day its collections notice goes out (stopOn, null when it has not).
+     */
+    private record InterestRates(BigDecimal rate, BigDecimal finalRate, LocalDate finalOn, LocalDate stopOn) {
+
+        /** The daily growth factor of a period starting on the given day (1 once interest has stopped). */
+        BigDecimal daily(LocalDate from) {
+            if (stopOn != null && !from.isBefore(stopOn)) {
+                return BigDecimal.ONE;
+            }
+            BigDecimal annual = finalOn != null && !from.isBefore(finalOn) ? finalRate : rate;
+            return BigDecimal.ONE.add(annual.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
+        }
+
+        /** The days the rate changes on (the final notice, then collections), earliest first. */
+        List<LocalDate> changes() {
+            List<LocalDate> days = new ArrayList<>();
+            if (finalOn != null) {
+                days.add(finalOn);
+            }
+            if (stopOn != null) {
+                days.add(stopOn);
+            }
+            return days;
+        }
+    }
+
+    /** The day the reminder of the given dunning level went out; null when it has not. */
+    private LocalDate reminderOn(DunningLevel level) {
+        int n = level.reminders() - 1;
+        return n >= 0 && n < reminders.size() ? reminders.get(n) : null;
     }
 
     /**
@@ -1756,8 +1799,9 @@ public class Invoice {
     }
 
     /** The late interest charged on an invoice (see {@link #accrueLateInterest}). */
-    private void accrueInvoiceInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+    private void accrueInvoiceInterest(List<Payment> payments, BigDecimal taxRate, InterestRates rates,
             LocalDate today) {
+        BigDecimal annualRate = rates.rate();
         if (status != InvoiceStatus.SENT || isCreditNote() || dueDate == null
                 || !today.isAfter(graceEnd(dueDate))) {
             return;
@@ -1802,6 +1846,12 @@ public class Invoice {
                 }
             }
         }
+        // The final notice and the collections notice change the rate, so each ends a period; they pay nothing.
+        for (LocalDate change : rates.changes()) {
+            if (change.isAfter(graceEnd(dueDate)) && !change.isAfter(today)) {
+                inOrder.add(new Part(change, Long.MIN_VALUE + 2, BigDecimal.ZERO, false));
+            }
+        }
         inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
         BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.fee() && !p.on().isAfter(graceEnd(dueDate)))
                 .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -1810,7 +1860,6 @@ public class Invoice {
         }
         LocalDate overdueOn = graceEnd(dueDate).plusDays(1);
         BigDecimal disputedLines = hasDisputedLines() ? disputedLinesAmount(taxRate) : null;
-        BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
         BigDecimal charged = BigDecimal.ZERO;
         BigDecimal unpaidInterest = BigDecimal.ZERO;
         LocalDate from = graceEnd(dueDate);
@@ -1820,7 +1869,7 @@ public class Invoice {
         for (Part part : inOrder) {
             if (waiveOn != null && part.on().isAfter(waiveOn)) {
                 if (owed.signum() > 0) {
-                    BigDecimal earned = earnedOn(owed, disputedLines, daily, from, waiveOn);
+                    BigDecimal earned = earnedOn(owed, disputedLines, rates.daily(from), from, waiveOn);
                     charged = charged.add(earned);
                     unpaidInterest = unpaidInterest.add(earned);
                 }
@@ -1830,7 +1879,7 @@ public class Invoice {
                 waiveOn = null;
             }
             if (part.on().isAfter(from) && owed.signum() > 0) {
-                BigDecimal earned = earnedOn(owed, disputedLines, daily, from, part.on());
+                BigDecimal earned = earnedOn(owed, disputedLines, rates.daily(from), from, part.on());
                 charged = charged.add(earned);
                 unpaidInterest = unpaidInterest.add(earned);
                 from = part.on();
@@ -1853,7 +1902,7 @@ public class Invoice {
         }
         if (waiveOn != null) {
             if (owed.signum() > 0) {
-                BigDecimal earned = earnedOn(owed, disputedLines, daily, from, waiveOn);
+                BigDecimal earned = earnedOn(owed, disputedLines, rates.daily(from), from, waiveOn);
                 charged = charged.add(earned);
                 unpaidInterest = unpaidInterest.add(earned);
             }
@@ -1861,7 +1910,7 @@ public class Invoice {
             interestWaived = unpaidInterest;
         }
         if (owed.signum() > 0) {
-            charged = charged.add(earnedOn(owed, disputedLines, daily, from, today));
+            charged = charged.add(earnedOn(owed, disputedLines, rates.daily(from), from, today));
         }
         this.lateInterest = charged.subtract(interestWaived);
         this.lateWaived = interestWaived;
@@ -1876,8 +1925,9 @@ public class Invoice {
      * still not paid off more than {@link #graceDays()} days after its due date earns interest from the end
      * of its own grace period on what is still unpaid of it.
      */
-    private void accrueMilestoneInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+    private void accrueMilestoneInterest(List<Payment> payments, BigDecimal taxRate, InterestRates rates,
             LocalDate today) {
+        BigDecimal annualRate = rates.rate();
         if (annualRate == null || annualRate.signum() <= 0) {
             return;
         }
@@ -1897,7 +1947,7 @@ public class Invoice {
         List<Integer> order = reachedInDueOrder();
         List<BigDecimal> charges = chargesInOrder(order.stream().map(k -> milestoneDueDate(milestones.get(k))).toList(),
                 order.stream().map(amounts::get).toList(), order.stream().map(k -> milestones.get(k).getDisputedOn()).toList(),
-                inOrder.stream().map(Part::on).toList(), inOrder.stream().map(Part::amount).toList(), annualRate, today);
+                inOrder.stream().map(Part::on).toList(), inOrder.stream().map(Part::amount).toList(), rates, today);
         Map<Long, BigDecimal> byMilestone = new TreeMap<>();
         BigDecimal total = BigDecimal.ZERO;
         for (int n = 0; n < order.size(); n++) {
@@ -1919,9 +1969,8 @@ public class Invoice {
      */
     private List<BigDecimal> chargesInOrder(List<LocalDate> dues, List<BigDecimal> amounts, List<LocalDate> heldFrom,
             List<LocalDate> paidOn,
-            List<BigDecimal> paidAmounts, BigDecimal annualRate, LocalDate today) {
+            List<BigDecimal> paidAmounts, InterestRates rates, LocalDate today) {
         BigDecimal[] left = paidAmounts.toArray(BigDecimal[]::new);
-        BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
         List<BigDecimal> charges = new ArrayList<>();
         for (int k = 0; k < dues.size(); k++) {
             LocalDate due = dues.get(k);
@@ -1942,7 +1991,7 @@ public class Invoice {
             for (int j = 0; j < left.length; j++) {
                 LocalDate on = paidOn.get(j);
                 if (late && on.isAfter(from) && owed.signum() > 0) {
-                    BigDecimal earned = interestOn(owed, daily, heldDays(interestDays(from, on), from, on, heldFrom.get(k)));
+                    BigDecimal earned = spanInterest(owed, rates, from, on, heldFrom.get(k));
                     charged = charged.add(earned);
                     unpaidInterest = unpaidInterest.add(earned);
                     from = on;
@@ -1955,11 +2004,27 @@ public class Invoice {
                 left[j] = left[j].subtract(toInterest);
             }
             if (late && owed.signum() > 0) {
-                charged = charged.add(interestOn(owed, daily, heldDays(interestDays(from, today), from, today, heldFrom.get(k))));
+                charged = charged.add(spanInterest(owed, rates, from, today, heldFrom.get(k)));
             }
             charges.add(charged);
         }
         return charges;
+    }
+
+    /**
+     * The interest an amount earns from one day to another, held back from the given day (null when none is):
+     * the span is split where the rate changes (see {@link InterestRates}), each part rounded half up to the cent.
+     */
+    private BigDecimal spanInterest(BigDecimal owed, InterestRates rates, LocalDate from, LocalDate to, LocalDate heldFrom) {
+        BigDecimal earned = BigDecimal.ZERO;
+        LocalDate start = from;
+        for (LocalDate change : rates.changes()) {
+            if (change.isAfter(start) && change.isBefore(to)) {
+                earned = earned.add(interestOn(owed, rates.daily(start), heldDays(interestDays(start, change), start, change, heldFrom)));
+                start = change;
+            }
+        }
+        return earned.add(interestOn(owed, rates.daily(start), heldDays(interestDays(start, to), start, to, heldFrom)));
     }
 
     /** The days from one day to another that earn interest, less those on or after the day it is held back from (null when none). */
