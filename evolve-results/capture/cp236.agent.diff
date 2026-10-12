@@ -1,0 +1,486 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 3de1fa7..7e387ba 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -35,7 +35,8 @@ export type InvoiceStatus =
+ // server: the grand total — the lines' subtotal less any discount plus tax.
+ export interface InvoiceSummary {
+   id: number;
+-  // INV-, the id padded to six digits, then a Luhn check digit, e.g. INV-0000075; CN- for a credit note.
++  // INV-, the id padded to six digits, then a check character (a Luhn digit before 2026-07-01,
++  // an ISO 7064 MOD 11-2 character, 0-9 or X, from then on), e.g. INV-0000075 or INV-000028X; CN- for a credit note.
+   number: string;
+   status: InvoiceStatus;
+   // Negative for a credit note.
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index 08e23cd..67af39b 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -27,10 +27,12 @@ function referenceChecks(reference: string): boolean {
+   return rest === 1;
+ }
+ 
+-// Whether an invoice number quoted instead of a reference (INV-, six digits, then a Luhn check
+-// digit over them) passes its check. Spaces and capitals are ignored by the caller.
++// Whether an invoice number quoted instead of a reference (INV-, six digits, then a check character
++// over them) passes its check. Numbers given before 2026-07-01 carry a Luhn check digit, later ones an
++// ISO 7064 MOD 11-2 check character (0-9 or X); the server says whether it is the number of an invoice.
++// Spaces and capitals are ignored by the caller.
+ function invoiceNumberChecks(typed: string): boolean {
+-  const m = /^INV-(\d{6})(\d)$/.exec(typed);
++  const m = /^INV-(\d{6})([0-9X])$/.exec(typed);
+   if (!m) {
+     return false;
+   }
+@@ -45,7 +47,12 @@ function invoiceNumberChecks(typed: string): boolean {
+     }
+     sum += d;
+   });
+-  return (10 - (sum % 10)) % 10 === Number(m[2]);
++  let p = 0;
++  for (const c of m[1]) {
++    p = ((p + Number(c)) * 2) % 11;
++  }
++  const mod112 = (12 - p) % 11;
++  return m[2] === String((10 - (sum % 10)) % 10) || m[2] === (mod112 === 10 ? 'X' : String(mod112));
+ }
+ 
+ // Whether a typed reference (an RF reference or an invoice number) passes its check.
+@@ -119,7 +126,7 @@ function problemWithCash(payment: NewPayment, invoiceOpen: boolean, clientCurren
+ // invoices in that order. What is paid beyond
+ // what is due is held on the client's account as credit. The server refuses a payment on a draft, or dated after today
+ // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
+-// invoice number may be quoted instead: it must pass its Luhn check and stands for that invoice's reference.
++// invoice number may be quoted instead: it must pass its check and stands for that invoice's reference.
+ // Ticking Deposit instead holds the whole amount on the client's account as credit, applied to no
+ // invoice even when one is open; the client's credit is used when one of its invoices is sent. A
+ // deposit quoting one of the client's drafts is held for that draft until it is sent.
+diff --git a/src/main/java/net/officefloor/hq/app/Today.java b/src/main/java/net/officefloor/hq/app/Today.java
+index 0cd19c7..6a0ec00 100644
+--- a/src/main/java/net/officefloor/hq/app/Today.java
++++ b/src/main/java/net/officefloor/hq/app/Today.java
+@@ -14,10 +14,22 @@ public class Today {
+ 
+     static final String AS_OF = "as_of";
+ 
++    private static volatile Today current;
++
+     private final JdbcTemplate jdbc;
+ 
+     public Today(JdbcTemplate jdbc) {
+         this.jdbc = jdbc;
++        current = this;
++    }
++
++    /**
++     * Today, for code that is not a Spring bean (such as the number an entity shows); the real date
++     * before the application has started.
++     */
++    public static LocalDate current() {
++        Today today = current;
++        return today == null ? LocalDate.now() : today.date();
+     }
+ 
+     public LocalDate date() {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 979ad0f..22df417 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -36,6 +36,7 @@ import java.util.TreeMap;
+ import java.util.Arrays;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Holidays;
++import net.officefloor.hq.app.Today;
+ import net.officefloor.hq.app.clients.ClientTier;
+ import net.officefloor.hq.app.clients.Currency;
+ import net.officefloor.hq.app.clients.TaxNumber;
+@@ -1055,8 +1056,18 @@ public class Invoice {
+ 
+     /** The number shown: CN-... for a credit note, otherwise INV-... (see {@link InvoiceNumber}). */
+     public String number() {
+-        return isAdjustment() ? InvoiceNumber.adjustmentOf(id)
+-                : isCreditNote() ? InvoiceNumber.creditNoteOf(id) : InvoiceNumber.of(id);
++        return isAdjustment() ? InvoiceNumber.adjustmentOf(id, numberedOn())
++                : isCreditNote() ? InvoiceNumber.creditNoteOf(id, numberedOn()) : InvoiceNumber.of(id, numberedOn());
++    }
++
++    /** The six digits and check character of its number (see {@link InvoiceNumber#body}). */
++    public String numberBody() {
++        return InvoiceNumber.body(id, numberedOn());
++    }
++
++    /** The date its number's check character is chosen by: a draft is numbered as of today, else its issue date. */
++    private LocalDate numberedOn() {
++        return isDraft() || issueDate == null ? Today.current() : issueDate;
+     }
+ 
+     /** What the credit notes issued against this invoice add up to, to the cent. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index eb90973..3f9f530 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -15,6 +15,7 @@ import java.util.Arrays;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
++import java.util.function.Function;
+ import java.util.TreeMap;
+ import java.util.stream.Collectors;
+ import java.util.stream.IntStream;
+@@ -77,14 +78,14 @@ public class InvoiceController {
+     public record PaymentView(Long id, String amount, Currency currency, String allocated, LocalDate date,
+             String reference, PaymentMethod method, String surcharge, String fxFee, String remittance, String matchedInvoice,
+             String matchScore) {
+-        static PaymentView of(Payment p, Long invoiceId, Currency clientCurrency) {
++        static PaymentView of(Payment p, Long invoiceId, Currency clientCurrency, Function<Long, String> numberOf) {
+             return new PaymentView(p.getId(), p.paidAmount().setScale(2).toPlainString(),
+                     p.paidCurrency(clientCurrency), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
+                     p.getReference() == null ? null : PaymentReference.grouped(p.getReference()), p.getMethod(),
+                     p.getSurcharge().setScale(2).toPlainString(), p.getFxFee().setScale(2).toPlainString(),
+                     p.getRemittance(),
+                     p.getMatches().isEmpty() ? null : p.getMatches().stream()
+-                            .map(m -> InvoiceNumber.of(m.getInvoiceId())).collect(Collectors.joining(", ")),
++                            .map(m -> numberOf.apply(m.getInvoiceId())).collect(Collectors.joining(", ")),
+                     p.getMatches().isEmpty() ? null : p.getMatches().stream()
+                             .map(m -> m.getScore().setScale(3).toPlainString()).collect(Collectors.joining(", ")));
+         }
+@@ -191,7 +192,7 @@ public class InvoiceController {
+             String fingerprint, String duplicateOf, LocalDate rebilledOn, String replaces, String replacedBy,
+             Long adjustmentOf, String adjusted, DunningLevel dunning, List<LocalDate> reminders) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval,
+-                List<Invoice> duplicates, DunningLevel dunning) {
++                List<Invoice> duplicates, DunningLevel dunning, Function<Long, String> numberOf) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+             LocalDate paidOn = i.paidOn(payments, taxRate);
+@@ -203,7 +204,7 @@ public class InvoiceController {
+                             inside.get(n), i.isDisputed())).toList();
+             InvoiceStatus status = i.statusWhenPaid(paid, paidOn, taxRate, today);
+             return new InvoiceDetail(i.getId(), i.number(),
+-                    PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
++                    PaymentReference.grouped(PaymentReference.of(i)), i.getClientId(),
+                     status, i.getIssueDate(), i.getDueDate(),
+                     lines, i.subtotal().toPlainString(),
+                     i.getDiscountPct().stripTrailingZeros().toPlainString(),
+@@ -212,7 +213,7 @@ public class InvoiceController {
+                     i.discount().toPlainString(), i.getDiscountReason(),
+                     i.clientTaxRate(taxRate).stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
+                     i.total(taxRate).toPlainString(), i.beforeTax(taxRate).toPlainString(), i.isPricesIncludeTax(),
+-                    payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency())).toList(), paid.toPlainString(),
++                    payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency(), numberOf)).toList(), paid.toPlainString(),
+                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
+                     i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
+                     i.listedDueDate(paid, taxRate),
+@@ -239,8 +240,8 @@ public class InvoiceController {
+                     Optional.ofNullable(i.fingerprint()).map(f -> f.substring(0, 8)).orElse(null),
+                     duplicates.isEmpty() ? null
+                             : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")),
+-                    i.getRebilledOn(), i.getReplaces() == null ? null : InvoiceNumber.of(i.getReplaces()),
+-                    i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()),
++                    i.getRebilledOn(), i.getReplaces() == null ? null : numberOf.apply(i.getReplaces()),
++                    i.getReplacedBy() == null ? null : numberOf.apply(i.getReplacedBy()),
+                     i.getAdjustmentOf(), i.getAdjusted().toPlainString(), dunning, i.getReminders());
+         }
+     }
+@@ -473,7 +474,12 @@ public class InvoiceController {
+     private InvoiceDetail detail(Invoice i) {
+         invoices.adjustFingerprint(i);
+         return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()), today.date(), invoices.approval(i),
+-                invoices.possibleDuplicateOf(i), invoices.dunningLevel(i));
++                invoices.possibleDuplicateOf(i), invoices.dunningLevel(i), this::numberOf);
++    }
++
++    /** The number of the invoice with this id, or null when there is none. */
++    private String numberOf(Long id) {
++        return invoices.find(id).map(Invoice::number).orElse(null);
+     }
+ 
+     @GetMapping("/api/clients/{clientId}/invoices")
+@@ -863,7 +869,7 @@ public class InvoiceController {
+             return null;
+         }
+         Optional<String> parsed = typed.trim().toUpperCase().startsWith("INV")
+-                ? InvoiceNumber.idOf(typed).map(PaymentReference::of)
++                ? InvoiceNumber.bodyOf(typed).map(PaymentReference::ofBody)
+                 : PaymentReference.parse(typed);
+         return parsed.orElseThrow(() -> new ResponseStatusException(
+                 HttpStatus.BAD_REQUEST, typed.trim() + " is mistyped: check the payment reference."));
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index c176ff8..814dbba 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -207,8 +207,9 @@ public class InvoiceLine {
+      * A line carrying the late interest of the rebilled invoice onto its replacement: "Late interest <its number>",
+      * quantity 1, for the amount, with no tax.
+      */
+-    public static InvoiceLine lateInterest(Long invoiceId, BigDecimal amount) {
+-        InvoiceLine line = new InvoiceLine("Late interest " + InvoiceNumber.of(invoiceId), BigDecimal.ONE, amount, true,
++    public static InvoiceLine lateInterest(Invoice invoice, BigDecimal amount) {
++        Long invoiceId = invoice.getId();
++        InvoiceLine line = new InvoiceLine("Late interest " + invoice.number(), BigDecimal.ONE, amount, true,
+                 BigDecimal.ZERO, null);
+         line.interestOf = invoiceId;
+         return line;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceNumber.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceNumber.java
+index ff7208b..572b854 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceNumber.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceNumber.java
+@@ -1,46 +1,69 @@
+ package net.officefloor.hq.app.invoices;
+ 
++import java.time.LocalDate;
+ import java.util.Optional;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ 
+ /**
+- * An invoice's number, made from its id: INV-, the id padded to six digits, then a Luhn check
+- * digit over those six digits — so invoice 7 is INV-0000075.
++ * An invoice's number, made from its id: INV-, the id padded to six digits, then a check character
++ * over those six digits. Numbered before 2026-07-01 that is a Luhn check digit — so invoice 7 is
++ * INV-0000075; from then on it is an ISO 7064 MOD 11-2 check character (0-9 or X) — so invoice 28 is
++ * INV-000028X. The six digits and the check character are the number's "body".
+  */
+ public final class InvoiceNumber {
+ 
+-    private static final Pattern FORM = Pattern.compile("(?:INV|CN|ADJ)-(\\d{6})(\\d)");
++    /** From this date numbers take a MOD 11-2 check character instead of the Luhn digit. */
++    public static final LocalDate MOD_11_2_FROM = LocalDate.of(2026, 7, 1);
++
++    private static final Pattern FORM = Pattern.compile("(?:INV|CN|ADJ)-(\\d{6})([0-9X])");
+ 
+     private InvoiceNumber() {
+     }
+ 
+-    /** The number of the invoice with this id. */
+-    public static String of(long id) {
++    /** The six digits and check character of the invoice with this id, numbered on the date. */
++    public static String body(long id, LocalDate numberedOn) {
+         String digits = String.format("%06d", id);
+-        return "INV-" + digits + checkDigit(digits);
++        boolean mod112 = numberedOn != null && !numberedOn.isBefore(MOD_11_2_FROM);
++        return digits + (mod112 ? mod112Check(digits) : (char) ('0' + checkDigit(digits)));
++    }
++
++    /** The number of the invoice with this id, numbered on the date. */
++    public static String of(long id, LocalDate numberedOn) {
++        return "INV-" + body(id, numberedOn);
+     }
+ 
+-    /** The number of the credit note with this id: CN-, then the same digits as an invoice number. */
+-    public static String creditNoteOf(long id) {
+-        return "CN-" + of(id).substring("INV-".length());
++    /** The number of the credit note with this id: CN-, then the same body as an invoice number. */
++    public static String creditNoteOf(long id, LocalDate numberedOn) {
++        return "CN-" + body(id, numberedOn);
+     }
+ 
+-    /** The number of the adjustment note with this id: ADJ-, then the same digits as an invoice number. */
+-    public static String adjustmentOf(long id) {
+-        return "ADJ-" + of(id).substring("INV-".length());
++    /** The number of the adjustment note with this id: ADJ-, then the same body as an invoice number. */
++    public static String adjustmentOf(long id, LocalDate numberedOn) {
++        return "ADJ-" + body(id, numberedOn);
+     }
+ 
+     /**
+-     * The invoice id a typed number stands for. Empty when it is not of the form INV-nnnnnnn (or CN-nnnnnnn) or its
+-     * check digit does not match — the number was mistyped.
++     * The body (six digits and check character) of a typed number. Empty when it is not of the form
++     * INV-nnnnnnc (or CN-, ADJ-) or its check character matches neither the Luhn nor the MOD 11-2
++     * check — the number was mistyped. Whether it is the number of an invoice is for the caller to say.
+      */
+-    public static Optional<Long> idOf(String typed) {
++    public static Optional<String> bodyOf(String typed) {
+         Matcher m = FORM.matcher(typed.trim().toUpperCase());
+-        if (!m.matches() || checkDigit(m.group(1)) != m.group(2).charAt(0) - '0') {
++        if (!m.matches()) {
+             return Optional.empty();
+         }
+-        return Optional.of(Long.parseLong(m.group(1)));
++        String digits = m.group(1);
++        char check = m.group(2).charAt(0);
++        if (check != '0' + checkDigit(digits) && check != mod112Check(digits)) {
++            return Optional.empty();
++        }
++        return Optional.of(digits + check);
++    }
++
++    /** The invoice id a typed number stands for; empty when it is mistyped (see {@link #bodyOf}). */
++    public static Optional<Long> idOf(String typed) {
++        return bodyOf(typed).map(body -> Long.parseLong(body.substring(0, 6)));
+     }
+ 
+     /**
+@@ -62,4 +85,17 @@ public final class InvoiceNumber {
+         }
+         return (10 - sum % 10) % 10;
+     }
++
++    /**
++     * ISO 7064 MOD 11-2: p starts at 0 and for each digit becomes (p + digit) x 2 mod 11; the check
++     * is (12 - p) mod 11, written X when it is 10.
++     */
++    static char mod112Check(String digits) {
++        int p = 0;
++        for (char c : digits.toCharArray()) {
++            p = (p + (c - '0')) * 2 % 11;
++        }
++        int check = (12 - p) % 11;
++        return check == 10 ? 'X' : (char) ('0' + check);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 71afeef..91bdc6e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -241,8 +241,8 @@ public class InvoiceService {
+             }
+             LocalDate issued = today.date();
+             Invoice copy = invoices.saveAndFlush(original.duplicate(issued, dueDateFor(original.getClientId(), issued)));
+-            audit.record("INVOICE_DUPLICATED from=" + InvoiceNumber.of(original.getId())
+-                    + " to=" + InvoiceNumber.of(copy.getId()));
++            audit.record("INVOICE_DUPLICATED from=" + original.number()
++                    + " to=" + copy.number());
+             return copy;
+         });
+     }
+@@ -304,7 +304,7 @@ public class InvoiceService {
+             BigDecimal sentFor = invoice.total(rate);
+             Invoice replacement = invoice.rebill(on, dueDateFor(invoice.getClientId(), on));
+             if (interest.signum() > 0) {
+-                replacement.addLine(InvoiceLine.lateInterest(invoice.getId(), interest));
++                replacement.addLine(InvoiceLine.lateInterest(invoice, interest));
+                 invoice.waiveInterest(on);
+             }
+             Invoice next = invoices.saveAndFlush(replacement);
+@@ -1881,7 +1881,7 @@ public class InvoiceService {
+         LocalDate now = today.date();
+         boolean used = false;
+         Map<String, Long> drafts = holdersByReference(invoice.getClientId());
+-        drafts.put(PaymentReference.of(invoice.getId()), invoice.getId());
++        drafts.put(PaymentReference.of(invoice), invoice.getId());
+         List<Payment> usable = new ArrayList<>();
+         List<Payment> others = new ArrayList<>();
+         for (Payment payment : payments.findForClient(invoice.getClientId())) {
+@@ -2209,10 +2209,10 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException(
+                         "The payment date cannot be before the invoice's issue date (" + invoice.getIssueDate() + ").");
+             }
+-            if (reference != null && !reference.equals(PaymentReference.of(invoice.getId()))) {
++            if (reference != null && !reference.equals(PaymentReference.of(invoice))) {
+                 throw new InvoiceRejectedException(PaymentReference.grouped(reference)
+                         + " is the reference of a different invoice; this invoice's is "
+-                        + PaymentReference.grouped(PaymentReference.of(invoice.getId())) + ".");
++                        + PaymentReference.grouped(PaymentReference.of(invoice)) + ".");
+             }
+             if (rounding.signum() != 0) {
+                 invoice.roundForCash(rounding);
+@@ -2313,11 +2313,11 @@ public class InvoiceService {
+             for (QuotedReference quoted : references) {
+                 String reference = quoted.reference();
+                 Invoice invoice = ofClient.stream()
+-                        .filter(i -> reference.equals(PaymentReference.of(i.getId())))
++                        .filter(i -> reference.equals(PaymentReference.of(i)))
+                         .findFirst()
+                         .orElseThrow(() -> new InvoiceRejectedException(PaymentReference.grouped(reference)
+                                 + " is not the reference of any of this client's invoices."));
+-                String number = InvoiceNumber.of(invoice.getId());
++                String number = invoice.number();
+                 if (invoice.isDraft()) {
+                     throw new InvoiceRejectedException("Send " + number + " before recording a payment against it.");
+                 }
+@@ -2430,7 +2430,8 @@ public class InvoiceService {
+             throw new InvoiceRejectedException(references.isEmpty() ? "The client has no unpaid invoices to pay."
+                     : "Those invoices have already been paid.");
+         }
+-        String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
++        String reference = references.isEmpty() ? null
++                : load(parts.get(0).getInvoiceId()).map(PaymentReference::of).orElse(null);
+         Payment payment = recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, method, surcharge, fee,
+                         stated)
+                 .remitted(remittance);
+@@ -2665,7 +2666,7 @@ public class InvoiceService {
+             Invoice invoice = load(part.getInvoiceId())
+                     .filter(i -> i.getClientId().equals(clientId))
+                     .orElseThrow(() -> new InvoiceRejectedException("A part of the payment goes to an invoice of another client."));
+-            String number = InvoiceNumber.of(invoice.getId());
++            String number = invoice.number();
+             if (invoice.isDraft()) {
+                 throw new InvoiceRejectedException("Send " + number + " before recording a payment against it.");
+             }
+@@ -2694,7 +2695,7 @@ public class InvoiceService {
+             }
+             spreadOver.add(invoice);
+         }
+-        if (reference != null && spreadOver.stream().noneMatch(i -> reference.equals(PaymentReference.of(i.getId())))) {
++        if (reference != null && spreadOver.stream().noneMatch(i -> reference.equals(PaymentReference.of(i)))) {
+             throw new InvoiceRejectedException(PaymentReference.grouped(reference)
+                     + " is not the reference of any of the invoices being paid.");
+         }
+@@ -2820,7 +2821,7 @@ public class InvoiceService {
+         Map<String, Long> drafts = new HashMap<>();
+         for (Invoice invoice : invoices.findByClientIdOrderByIdAsc(clientId)) {
+             if (invoice.isDraft() && !invoice.isCreditNote()) {
+-                drafts.put(PaymentReference.of(invoice.getId()), invoice.getId());
++                drafts.put(PaymentReference.of(invoice), invoice.getId());
+             }
+         }
+         return drafts;
+@@ -2835,7 +2836,7 @@ public class InvoiceService {
+         Map<String, Long> holders = draftsByReference(clientId);
+         for (Invoice invoice : invoices.findByClientIdOrderByIdAsc(clientId)) {
+             if (invoice.hasPendingMilestones() && !invoice.isWrittenOff()) {
+-                holders.put(PaymentReference.of(invoice.getId()), invoice.getId());
++                holders.put(PaymentReference.of(invoice), invoice.getId());
+             }
+         }
+         return holders;
+@@ -2857,7 +2858,7 @@ public class InvoiceService {
+         }
+         String compact = reference.replaceAll("\\s", "").toUpperCase();
+         if (compact.startsWith("INV")) {
+-            compact = InvoiceNumber.idOf(compact).map(PaymentReference::of).orElse(compact);
++            compact = InvoiceNumber.bodyOf(compact).map(PaymentReference::ofBody).orElse(compact);
+         }
+         return drafts.get(compact);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/PaymentReference.java b/src/main/java/net/officefloor/hq/app/invoices/PaymentReference.java
+index a609ca4..1e30443 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/PaymentReference.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/PaymentReference.java
+@@ -4,9 +4,10 @@ import java.math.BigInteger;
+ import java.util.Optional;
+ 
+ /**
+- * An invoice's ISO 11649 "RF" creditor reference, made from the seven digits of its number (leading
+- * zeros kept): RF, two check digits, then the digits, so invoice 7 (INV-0000075) is RF160000075,
+- * shown in groups of four as RF16 0000 075.
++ * An invoice's ISO 11649 "RF" creditor reference, made from the body of its number (its six digits,
++ * leading zeros kept, and its check character): RF, two check digits, then the body, so invoice 7
++ * (INV-0000075) is RF160000075, shown in groups of four as RF16 0000 075, and invoice 28 numbered with
++ * a MOD 11-2 check character (INV-000028X) is RF46 0000 28X.
+  */
+ public final class PaymentReference {
+ 
+@@ -15,11 +16,15 @@ public final class PaymentReference {
+     private PaymentReference() {
+     }
+ 
+-    /** The reference of the invoice with this id, without spaces. */
+-    public static String of(long id) {
+-        String digits = InvoiceNumber.of(id).substring("INV-".length());
+-        int check = 98 - mod97(digits + "RF00");
+-        return String.format("RF%02d", check) + digits;
++    /** The reference of the invoice, without spaces. */
++    public static String of(Invoice invoice) {
++        return ofBody(invoice.numberBody());
++    }
++
++    /** The reference made from the body of a number (see {@link InvoiceNumber#bodyOf}), without spaces. */
++    public static String ofBody(String body) {
++        int check = 98 - mod97(body + "RF00");
++        return String.format("RF%02d", check) + body;
+     }
+ 
+     /** The reference in groups of four, e.g. RF16 0000 075. */
