@@ -1,0 +1,102 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 940fc66..164afec 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -236,7 +236,7 @@ export interface InvoiceDetail {
+   // The day it was approved (yyyy-mm-dd); null when it was not. The approval lapses after its client's tier's days (90 KEY, 7 NEW, else 30).
+   approvedOn: string | null;
+   // How many approvals it still needs before it is sent (0 when none): a draft whose grand total is
+-  // more than twice the approval limit needs two approvals of that same total.
++  // more than one and a half times the approval limit, or of a HIGH payment risk client, needs two approvals of that same total.
+   approvalsNeeded: number;
+   // How many approvals it has at its grand total.
+   approvals: number;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 6b9be0b..0d76167 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -511,6 +511,13 @@ public class Invoice {
+     @Transient
+     private boolean approvalLimitHalved;
+ 
++    /**
++     * Whether the client is a HIGH payment risk, so the draft needs two approvals whatever its size (see
++     * {@link #markHighRisk}); not stored, worked out again each time the invoice is read.
++     */
++    @Transient
++    private boolean highRiskClient;
++
+     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+     @JoinColumn(name = "invoice_id", nullable = false)
+     @OrderBy("id")
+@@ -1325,6 +1332,11 @@ public class Invoice {
+         this.approvalLimitHalved = halved;
+     }
+ 
++    /** Marks the client as a HIGH payment risk (or not): every draft of such a client needs two approvals. */
++    public void markHighRisk(boolean highRisk) {
++        this.highRiskClient = highRisk;
++    }
++
+     /**
+      * The total a draft is judged and approved on at the tax rate: the plan total (with its interest and plan fee)
+      * when it has an instalment plan, else the grand total.
+@@ -1346,8 +1358,8 @@ public class Invoice {
+      * it was approved at and no more than {@link #approvalDays} days have passed since it was approved.
+      * Once sent, an invoice is as it was approved. Every draft of a client with a HIGH payment risk (highRisk)
+      * needs approval, whatever its size, as does every draft that would take its client over its credit limit
+-     * (overCreditLimit). A draft whose grand total is more than twice the approval limit needs
+-     * {@link #approvalsRequired two approvals} of that same total.
++     * (overCreditLimit). A draft whose grand total is more than one and a half times the approval limit, or
++     * of a HIGH payment risk client, needs {@link #approvalsRequired two approvals} of that same total.
+      */
+     public Approval approval(BigDecimal taxRate, LocalDate today, boolean highRisk, boolean overCreditLimit) {
+         if (isCreditNote()) {
+@@ -1364,10 +1376,16 @@ public class Invoice {
+         return approvalsAt(total, today) < approvalsRequired(taxRate) ? Approval.NEEDS_APPROVAL : Approval.APPROVED;
+     }
+ 
+-    /** The approvals a draft needs: two when its grand total is more than twice the approval limit, else one. */
++    /**
++     * The approvals a draft needs: two when its client is a HIGH payment risk or its grand total is more than
++     * one and a half times the approval limit, else one.
++     */
+     public int approvalsRequired(BigDecimal taxRate) {
++        if (highRiskClient) {
++            return 2;
++        }
+         BigDecimal limit = approvalLimit();
+-        return limit != null && approvalTotal(taxRate).compareTo(limit.multiply(BigDecimal.valueOf(2))) > 0 ? 2 : 1;
++        return limit != null && approvalTotal(taxRate).compareTo(limit.multiply(new BigDecimal("1.5"))) > 0 ? 2 : 1;
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 83a7fb5..4535483 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -141,6 +141,7 @@ public class InvoiceService {
+             RiskBand band = riskOf(others, paidOn).band();
+             i.withholdEarlyPay(band != RiskBand.LOW);
+             i.halveApprovalLimit(band == RiskBand.MEDIUM);
++            i.markHighRisk(band == RiskBand.HIGH);
+             if (band == RiskBand.HIGH) {
+                 i.accrueLateInterest(found, rate, annual, HIGH_RISK_INTEREST_PREMIUM, now);
+             }
+@@ -1178,7 +1179,7 @@ public class InvoiceService {
+     /**
+      * Approves a draft whose grand total is over the workspace's approval limit, whose discount takes
+      * off more than a fifth of the subtotal, or that would take its client over its credit limit, keeping that total and the day,
+-     * and records it in the audit; empty if no such invoice. A draft more than twice over the limit needs a
++     * and records it in the audit; empty if no such invoice. A draft more than one and a half times the limit, or of a HIGH payment risk client, needs a
+      * second approval of the same total. An invoice that needs no approval, or is already approved at its total, is refused.
+      */
+     @Transactional
+@@ -2519,6 +2520,7 @@ public class InvoiceService {
+         RiskBand band = riskOf(invoice.getClientId()).band();
+         invoice.halveApprovalLimit(band == RiskBand.MEDIUM);
+         boolean highRisk = invoice.isDraft() && !invoice.isCreditNote() && band == RiskBand.HIGH;
++        invoice.markHighRisk(highRisk);
+         boolean overCreditLimit = invoice.isDraft() && !invoice.isCreditNote() && wouldGoOverLimit(invoice);
+         return invoice.approval(taxRate.percent(), today.date(), highRisk, overCreditLimit);
+     }
