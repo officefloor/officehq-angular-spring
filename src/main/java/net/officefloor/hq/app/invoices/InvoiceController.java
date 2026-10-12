@@ -145,7 +145,8 @@ public class InvoiceController {
      * the subtotal less the discount, rounded down to the cent; it counts towards the {@code minimumCharge}.
      * {@code withholding} is what the client withholds for its tax office (0 when none): never owed, so
      * left out of the amount due; nothing when reverse charged. {@code withholdingPct} (without trailing zeros)
-     * is the client's withholding percentage.
+     * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
+     * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at (null when it was not).
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
@@ -156,7 +157,7 @@ public class InvoiceController {
             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
-            String withholdingPct, String supplyRegion) {
+            String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -199,7 +200,8 @@ public class InvoiceController {
                     i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
                     i.chargedSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
-                    i.getSupplyRegion());
+                    i.getSupplyRegion(), i.approval(taxRate),
+                    i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString());
         }
     }
 
@@ -648,6 +650,14 @@ public class InvoiceController {
         return invoices.creditLine(id, lineId)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
+    }
+
+    /** Approves a draft whose grand total is over the workspace's approval limit. */
+    @PostMapping("/api/invoices/{id}/approve")
+    public InvoiceDetail approve(@PathVariable Long id) {
+        return invoices.approve(id)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 
     @PostMapping("/api/invoices/{id}/send")

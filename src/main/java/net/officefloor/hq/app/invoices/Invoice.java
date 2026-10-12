@@ -167,6 +167,13 @@ public class Invoice {
     private BigDecimal planFee = BigDecimal.ZERO;
 
     /**
+     * The grand total the invoice was approved at, when it was over the workspace's approval limit;
+     * null while it has not been approved.
+     */
+    @Column(name = "approved_total")
+    private BigDecimal approvedTotal;
+
+    /**
      * The number of the instalment the client skipped: it pays only its interest and the instalments
      * after it are worked out again (see {@link #schedule}); null when none was.
      */
@@ -340,6 +347,13 @@ public class Invoice {
      */
     @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'withholding_threshold')")
     private String withholdingThresholdUsd;
+
+    /**
+     * The workspace's approval limit in US dollars, as stored (the {@code approval_limit} setting); null
+     * when none is set.
+     */
+    @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'approval_limit')")
+    private String approvalLimitUsd;
 
     /** The client's own annual late-interest rate, a percentage; null for the workspace's. Read from the client. */
     @Formula("(SELECT c.interest_rate FROM client c WHERE c.id = client_id)")
@@ -984,6 +998,51 @@ public class Invoice {
             return zero();
         }
         return currency().divideDownToStep(new BigDecimal(withholdingThresholdUsd.trim()), usdPerOn(issueDate));
+    }
+
+    /** Whether an invoice needs approval before it is sent, has been approved, or needs none. */
+    public enum Approval {
+        NOT_NEEDED, NEEDS_APPROVAL, APPROVED
+    }
+
+    /**
+     * The grand total above which a draft needs approval: the workspace's approval limit in US dollars
+     * converted at the issue date's rate, rounded down to the step; null when none is set.
+     */
+    private BigDecimal approvalLimit() {
+        if (approvalLimitUsd == null) {
+            return null;
+        }
+        return currency().divideDownToStep(new BigDecimal(approvalLimitUsd.trim()), usdPerOn(issueDate));
+    }
+
+    /**
+     * The invoice's approval at the tax rate: a credit note, or an invoice whose grand total (before any
+     * withholding) is not over the approval limit, needs none; otherwise it is approved while its grand
+     * total is not above the total it was approved at. Once sent, an invoice is as it was approved.
+     */
+    public Approval approval(BigDecimal taxRate) {
+        if (isCreditNote()) {
+            return Approval.NOT_NEEDED;
+        }
+        if (!isDraft()) {
+            return approvedTotal == null ? Approval.NOT_NEEDED : Approval.APPROVED;
+        }
+        BigDecimal limit = approvalLimit();
+        BigDecimal total = total(taxRate);
+        if (limit == null || total.compareTo(limit) <= 0) {
+            return Approval.NOT_NEEDED;
+        }
+        return approvedTotal != null && total.compareTo(approvedTotal) <= 0 ? Approval.APPROVED : Approval.NEEDS_APPROVAL;
+    }
+
+    public BigDecimal getApprovedTotal() {
+        return approvedTotal;
+    }
+
+    /** Approves the invoice at the grand total. */
+    public void approve(BigDecimal total) {
+        this.approvedTotal = total;
     }
 
     /** The late interest charged on the invoice itself, released retention left out (see {@link #accrueLateInterest}). */

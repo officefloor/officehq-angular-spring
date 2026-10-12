@@ -208,6 +208,12 @@ export interface InvoiceDetail {
   withholding: string;
   // The client's withholding percentage (without trailing zeros); "0" when it withholds nothing.
   withholdingPct: string;
+  // Whether a draft must be approved before it is sent: its grand total (before any withholding) is
+  // over the workspace's approval limit and above the total it was approved at, if any. Credit notes
+  // never need approval.
+  approval: 'NOT_NEEDED' | 'NEEDS_APPROVAL' | 'APPROVED';
+  // The grand total it was approved at; null when it was not approved.
+  approvedTotal: string | null;
   // The amount due rounded down to the cash coin below (0.05, or whole yen), and the difference
   // that makes (signed); once settled in cash, the cash rounding it was settled with.
   cashDue: string;
@@ -365,6 +371,12 @@ export class InvoiceService {
   // decimals, or (409) more than is held, while anything else is due or when there is nothing to release.
   releaseRetention(invoiceId: number, amount?: string): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, { amount });
+  }
+
+  // Approves a draft whose grand total is over the workspace's approval limit. Refused (409) when it
+  // needs no approval.
+  approve(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/approve`, null);
   }
 
   // Writes off everything still owed on a sent invoice as a bad debt. Refused (409) on a draft, a void

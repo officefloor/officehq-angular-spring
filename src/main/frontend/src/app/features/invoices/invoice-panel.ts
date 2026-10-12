@@ -709,6 +709,21 @@ function problemWith(line: NewLine): string {
           <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
         }
 
+        @if (inv.creditOf === null) {
+          <p>
+            Approval:
+            <span data-testid="invoice-approval">{{ approvalLabel(inv.approval) }}</span>
+          </p>
+        }
+        @if (inv.status === 'DRAFT' && inv.creditOf === null) {
+          <button type="button" data-testid="invoice-approve" [disabled]="approving()" (click)="approve(inv.id)">
+            Approve
+          </button>
+          @if (approveError()) {
+            <p role="alert" data-testid="invoice-approve-error">{{ approveError() }}</p>
+          }
+        }
+
         @if (inv.status === 'DRAFT') {
           <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv)">
             {{ inv.creditOf === null ? 'Send invoice' : 'Issue credit note' }}
@@ -901,6 +916,8 @@ export class InvoicePanel {
   protected readonly waiveError = signal('');
   protected readonly writingOff = signal(false);
   protected readonly writeOffError = signal('');
+  protected readonly approving = signal(false);
+  protected readonly approveError = signal('');
   protected readonly sending = signal(false);
   protected readonly sendError = signal('');
   protected readonly duplicating = signal(false);
@@ -997,6 +1014,7 @@ export class InvoicePanel {
       this.skipError.set('');
       this.writeOffError.set('');
       this.sendError.set('');
+      this.approveError.set('');
       this.voidError.set('');
       this.duplicateError.set('');
       this.creditError.set('');
@@ -1368,6 +1386,37 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The invoice could not be written off.',
         );
         this.writingOff.set(false);
+      },
+    });
+  }
+
+  protected approvalLabel(approval: InvoiceDetail['approval']): string {
+    switch (approval) {
+      case 'NEEDS_APPROVAL':
+        return 'Needs approval';
+      case 'APPROVED':
+        return 'Approved';
+      default:
+        return 'Not needed';
+    }
+  }
+
+  protected approve(invoiceId: number): void {
+    this.approving.set(true);
+    this.approveError.set('');
+    this.service.approve(invoiceId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.sendError.set('');
+        this.approving.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.approveError.set(
+          typeof detail === 'string' && detail ? detail : 'The invoice could not be approved.',
+        );
+        this.approving.set(false);
       },
     });
   }

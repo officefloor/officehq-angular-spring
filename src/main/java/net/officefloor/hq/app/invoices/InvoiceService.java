@@ -749,21 +749,52 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("The due date (" + invoice.getDueDate()
                         + ") is already past; set a later due date before sending the invoice.");
             }
+            if (invoice.approval(taxRate.percent()) == Invoice.Approval.NEEDS_APPROVAL) {
+                throw new InvoiceRejectedException(
+                        "The grand total is over the approval limit; approve the invoice before sending it.");
+            }
             markSent(invoice);
         });
         return found;
     }
 
     /**
+     * Approves a draft whose grand total is over the workspace's approval limit, keeping that total,
+     * and records it in the audit; empty if no such invoice. An invoice that needs no approval, or is
+     * already approved at its total, is refused.
+     */
+    @Transactional
+    public Optional<Invoice> approve(Long invoiceId) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (!invoice.isDraft()) {
+                throw new InvoiceRejectedException("Only a draft invoice can be approved.");
+            }
+            BigDecimal rate = taxRate.percent();
+            if (invoice.approval(rate) != Invoice.Approval.NEEDS_APPROVAL) {
+                throw new InvoiceRejectedException(invoice.approval(rate) == Invoice.Approval.APPROVED
+                        ? "This invoice is already approved."
+                        : "This invoice is within the approval limit, so it needs no approval.");
+            }
+            BigDecimal total = invoice.total(rate);
+            invoice.approve(total);
+            invoices.saveAndFlush(invoice);
+            audit.record("INVOICE_APPROVED id=" + invoice.getId() + " total=" + total.toPlainString());
+        });
+        return found;
+    }
+
+    /**
      * Sends each of the client's drafts that has at least one line, lowest id first, as {@link #send}
-     * would; drafts with no lines, whose discount needs a reason but has none, or whose due date set by
-     * hand is already past, stay drafts.
+     * would; drafts with no lines, whose discount needs a reason but has none, whose due date set by
+     * hand is already past, or that need approval, stay drafts.
      */
     @Transactional
     public void sendAllDrafts(Long clientId) {
         loadForClient(clientId).stream()
                 .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty() && !invoice.discountLacksReason()
-                        && !invoice.dueDatePassedBy(today.date()))
+                        && !invoice.dueDatePassedBy(today.date())
+                        && invoice.approval(taxRate.percent()) != Invoice.Approval.NEEDS_APPROVAL)
                 .forEach(invoice -> {
                     if (!invoice.isCreditNote()) {
                         // Read again the client's sent invoices: one sent just before counts towards its month's volume.
