@@ -1,0 +1,366 @@
+diff --git a/src/main/java/net/officefloor/hq/app/Holidays.java b/src/main/java/net/officefloor/hq/app/Holidays.java
+new file mode 100644
+index 0000000..8e9c1c2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/Holidays.java
+@@ -0,0 +1,68 @@
++package net.officefloor.hq.app;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.util.List;
++import java.util.Optional;
++import java.util.Set;
++import java.util.TreeSet;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++
++/**
++ * The workspace's holiday calendar: the {@code holidays} setting marks that it keeps one (possibly
++ * empty), the dates being the rows of the {@code holiday} table. With a calendar, days in payment
++ * terms are business days, Monday to Friday and not a holiday; without one they are calendar days
++ * (invoices read the calendar themselves, see Invoice).
++ */
++@Service
++public class Holidays {
++
++    /** The setting marking that the workspace keeps a holiday calendar. */
++    public static final String HOLIDAYS = "holidays";
++
++    private final JdbcTemplate jdbc;
++
++    public Holidays(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    /** The holidays, earliest first; empty when the workspace keeps no calendar. */
++    public Optional<Set<LocalDate>> calendar() {
++        if (jdbc.queryForList("SELECT name FROM app_setting WHERE name = ?", String.class, HOLIDAYS).isEmpty()) {
++            return Optional.empty();
++        }
++        return Optional.of(new TreeSet<>(jdbc.queryForList("SELECT holiday_on FROM holiday ORDER BY holiday_on", LocalDate.class)));
++    }
++
++    /** Keeps a holiday calendar of the given dates. */
++    public void set(List<LocalDate> days) {
++        jdbc.update("DELETE FROM holiday");
++        jdbc.update("DELETE FROM app_setting WHERE name = ?", HOLIDAYS);
++        jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)", HOLIDAYS, "true");
++        new TreeSet<>(days).forEach(day -> jdbc.update("INSERT INTO holiday (holiday_on) VALUES (?)", day));
++    }
++
++    /** The day the given days after from: business days with the given calendar, calendar days with none (null). */
++    public LocalDate after(LocalDate from, int days) {
++        return after(from, days, calendar().orElse(null));
++    }
++
++    /**
++     * The day the given days after from, counting from the day after: business days, Monday to Friday and
++     * not a holiday, when given a calendar; calendar days when it is null.
++     */
++    public static LocalDate after(LocalDate from, int days, Set<LocalDate> holidays) {
++        if (holidays == null) {
++            return from.plusDays(days);
++        }
++        LocalDate day = from;
++        for (int left = days; left > 0;) {
++            day = day.plusDays(1);
++            if (day.getDayOfWeek() != DayOfWeek.SATURDAY && day.getDayOfWeek() != DayOfWeek.SUNDAY && !holidays.contains(day)) {
++                left--;
++            }
++        }
++        return day;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index a3dbe63..beb076f 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -41,7 +41,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays", "holidays");
+     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
+     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+@@ -80,6 +80,7 @@ public class TestSupportController {
+     private final Today today;
+ 
+     private final LateInterestRate lateInterestRate;
++    private final Holidays holidays;
+ 
+     private final VolumeDiscounts volumeDiscounts;
+ 
+@@ -89,12 +90,13 @@ public class TestSupportController {
+ 
+     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
+             PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
+-            CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList, Today today, LateInterestRate lateInterestRate,
++            CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList, Today today, LateInterestRate lateInterestRate, Holidays holidays,
+             VolumeDiscounts volumeDiscounts, RegionGrace regionGrace, RegionTerms regionTerms) {
+         this.regionTerms = regionTerms;
+         this.regionGrace = regionGrace;
+         this.volumeDiscounts = volumeDiscounts;
+         this.lateInterestRate = lateInterestRate;
++        this.holidays = holidays;
+         this.today = today;
+         this.priceList = priceList;
+         this.cardSurcharge = cardSurcharge;
+@@ -121,6 +123,7 @@ public class TestSupportController {
+         jdbc.execute("DELETE FROM payment_match");
+         jdbc.execute("DELETE FROM client_rate");
+         jdbc.execute("DELETE FROM price_list_rate");
++        jdbc.execute("DELETE FROM holiday");
+         for (String table : List.of("payment", "invoice_milestone", "invoice_line", "invoice", "client")) {
+             jdbc.execute("DELETE FROM " + table);
+             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH 1");
+@@ -263,6 +266,12 @@ public class TestSupportController {
+                             TaxRate.REGION_TAX_RATE + region, rate.toPlainString());
+                 }
+             }
++            if (values.get("holidays") != null) {
++                if (!(values.get("holidays") instanceof List<?> days)) {
++                    throw refuse("settings.holidays must be a list of dates");
++                }
++                holidays.set(days.stream().map(d -> date(d, "settings.holidays[]")).toList());
++            }
+             if (values.get("regionRoundDown") != null) {
+                 if (!(values.get("regionRoundDown") instanceof List<?> regions)) {
+                     throw refuse("settings.regionRoundDown must be a list of regions");
+@@ -711,6 +720,7 @@ public class TestSupportController {
+         if (!regionTaxRates.isEmpty()) {
+             settings.put("regionTaxRates", regionTaxRates);
+         }
++        holidays.calendar().ifPresent(days -> settings.put("holidays", days.stream().map(LocalDate::toString).toList()));
+         List<String> regionRoundDown = this.taxRate.roundDownRegions();
+         if (!regionRoundDown.isEmpty()) {
+             settings.put("regionRoundDown", regionRoundDown);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 22ba153..24b0b48 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -29,7 +29,11 @@ import java.util.Comparator;
+ import java.util.Objects;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Set;
+ import java.util.TreeMap;
++import java.util.Arrays;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.Holidays;
+ import net.officefloor.hq.app.clients.ClientTier;
+ import net.officefloor.hq.app.clients.Currency;
+ import net.officefloor.hq.app.clients.TaxNumber;
+@@ -424,6 +428,13 @@ public class Invoice {
+     @Formula("(SELECT COALESCE(c.terms_days, (SELECT CAST(s.setting_value AS INT) FROM app_setting s WHERE s.name = 'region_terms_days_' || c.region)) FROM client c WHERE c.id = client_id)")
+     private Integer clientTermsDays;
+ 
++    /**
++     * The workspace's holidays, comma separated, when it keeps a holiday calendar (an empty string when it
++     * has none listed); null when it keeps none, so terms are in calendar days (see {@link #afterDays}).
++     */
++    @Formula("(SELECT COALESCE((SELECT LISTAGG(CAST(h.holiday_on AS VARCHAR), ',') WITHIN GROUP (ORDER BY h.holiday_on) FROM holiday h), '') FROM app_setting s WHERE s.name = 'holidays')")
++    private String holidays;
++
+     /**
+      * The workspace's late-interest threshold in US dollars, as stored (the {@code interest_threshold}
+      * setting); null when none is set.
+@@ -1553,7 +1564,7 @@ public class Invoice {
+         if (approvedTotal == null || total.compareTo(approvedTotal) != 0) {
+             return 0;
+         }
+-        boolean lapsed = approvedOn != null && today.isAfter(approvedOn.plusDays(approvalDays()));
++        boolean lapsed = approvedOn != null && today.isAfter(afterDays(approvedOn, approvalDays()));
+         return lapsed ? 0 : approvals;
+     }
+ 
+@@ -1596,7 +1607,7 @@ public class Invoice {
+     private void accrueInvoiceInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+             LocalDate today) {
+         if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || dueDate == null
+-                || !today.isAfter(dueDate.plusDays(graceDays()))) {
++                || !today.isAfter(graceEnd(dueDate))) {
+             return;
+         }
+         if (annualRate == null || annualRate.signum() <= 0) {
+@@ -1619,24 +1630,24 @@ public class Invoice {
+                 String[] parts = credit.split("=");
+                 LocalDate on = LocalDate.parse(parts[0].trim());
+                 BigDecimal amount = new BigDecimal(parts[1].trim());
+-                if (amount.signum() > 0 && on.isAfter(dueDate.plusDays(graceDays())) && !on.isAfter(today)) {
++                if (amount.signum() > 0 && on.isAfter(graceEnd(dueDate)) && !on.isAfter(today)) {
+                     owed = owed.add(amount);
+                     inOrder.add(new Part(on, Long.MIN_VALUE, amount, true));
+                 }
+             }
+         }
+         inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
+-        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(dueDate.plusDays(graceDays())))
++        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(graceEnd(dueDate)))
+                 .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+         if (owed.subtract(paidInGrace).signum() <= 0) {
+             return;
+         }
+-        LocalDate overdueOn = dueDate.plusDays(graceDays() + 1);
++        LocalDate overdueOn = graceEnd(dueDate).plusDays(1);
+         BigDecimal disputedLines = hasDisputedLines() ? disputedLinesAmount(taxRate) : null;
+         BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
+         BigDecimal charged = BigDecimal.ZERO;
+         BigDecimal unpaidInterest = BigDecimal.ZERO;
+-        LocalDate from = dueDate.plusDays(graceDays());
++        LocalDate from = graceEnd(dueDate);
+         LocalDate waiveOn = interestWaivedOn != null && !interestWaivedOn.isBefore(overdueOn)
+                 && !interestWaivedOn.isAfter(today) ? interestWaivedOn : null;
+         BigDecimal interestWaived = BigDecimal.ZERO;
+@@ -1783,10 +1794,10 @@ public class Invoice {
+             LocalDate due = dues.get(k);
+             BigDecimal owed = amounts.get(k);
+             boolean late = false;
+-            if (due != null && today.isAfter(due.plusDays(graceDays()))) {
++            if (due != null && today.isAfter(graceEnd(due))) {
+                 BigDecimal paidInGrace = BigDecimal.ZERO;
+                 for (int j = 0; j < left.length; j++) {
+-                    if (!paidOn.get(j).isAfter(due.plusDays(graceDays()))) {
++                    if (!paidOn.get(j).isAfter(graceEnd(due))) {
+                         paidInGrace = paidInGrace.add(left[j]);
+                     }
+                 }
+@@ -1794,7 +1805,7 @@ public class Invoice {
+             }
+             BigDecimal charged = BigDecimal.ZERO;
+             BigDecimal unpaidInterest = BigDecimal.ZERO;
+-            LocalDate from = due == null ? null : due.plusDays(graceDays());
++            LocalDate from = due == null ? null : graceEnd(due);
+             for (int j = 0; j < left.length; j++) {
+                 LocalDate on = paidOn.get(j);
+                 if (late && on.isAfter(from) && owed.signum() > 0) {
+@@ -1893,7 +1904,7 @@ public class Invoice {
+      */
+     public boolean isEarlyWindowOpen(LocalDate on, BigDecimal taxRate) {
+         return status == InvoiceStatus.SENT && issueDate != null && getEarlyDiscountTaken().signum() == 0
+-                && earlyDiscount(taxRate).signum() > 0 && !on.isAfter(issueDate.plusDays(earlyPayDays));
++                && earlyDiscount(taxRate).signum() > 0 && !on.isAfter(afterDays(issueDate, earlyPayDays));
+     }
+ 
+     /**
+@@ -2205,7 +2216,7 @@ public class Invoice {
+             Instalment.Status status;
+             if (unpaid.signum() <= 0 && interestUnpaid.signum() <= 0) {
+                 status = Instalment.Status.PAID;
+-            } else if (instalment.dueDate() != null && today.isAfter(instalment.dueDate().plusDays(graceDays()))) {
++            } else if (instalment.dueDate() != null && today.isAfter(graceEnd(instalment.dueDate()))) {
+                 status = Instalment.Status.OVERDUE;
+             } else if (part.signum() > 0) {
+                 status = Instalment.Status.PART_PAID;
+@@ -2353,7 +2364,7 @@ public class Invoice {
+         if (!milestone.isReached()) {
+             return null;
+         }
+-        return milestone.getReachedOn().plusDays(clientTermsDays == null ? MILESTONE_TERMS_DAYS : clientTermsDays);
++        return afterDays(milestone.getReachedOn(), clientTermsDays == null ? MILESTONE_TERMS_DAYS : clientTermsDays);
+     }
+ 
+     /**
+@@ -2408,7 +2419,7 @@ public class Invoice {
+                     st = Milestone.Status.PAID;
+                 } else if (m.isDisputed()) {
+                     st = Milestone.Status.DISPUTED;
+-                } else if (today.isAfter(due.plusDays(graceDays()))) {
++                } else if (today.isAfter(graceEnd(due))) {
+                     st = Milestone.Status.OVERDUE;
+                 } else if (part.signum() > 0) {
+                     st = Milestone.Status.PART_PAID;
+@@ -2602,6 +2613,21 @@ public class Invoice {
+         return clientGraceDays == null ? GRACE_DAYS : clientGraceDays;
+     }
+ 
++    /** The last day of the grace period after the given due date: {@link #graceDays()} days after it (see {@link #afterDays}). */
++    private LocalDate graceEnd(LocalDate due) {
++        return afterDays(due, graceDays());
++    }
++
++    /**
++     * The day the given days of payment terms after from: business days when the workspace keeps a holiday
++     * calendar, else calendar days.
++     */
++    private LocalDate afterDays(LocalDate from, int days) {
++        Set<LocalDate> calendar = holidays == null ? null : holidays.isBlank() ? Set.of()
++                : Arrays.stream(holidays.split(",")).map(d -> LocalDate.parse(d.trim())).collect(Collectors.toSet());
++        return Holidays.after(from, days, calendar);
++    }
++
+     /**
+      * The status on the given day once the given amount has been paid against the grand total at the
+      * tax rate: a sent invoice with something still due more than {@link #graceDays()} days after its
+@@ -2641,7 +2667,7 @@ public class Invoice {
+                     .anyMatch(p -> p.status() == Milestone.Status.OVERDUE)) {
+                 return InvoiceStatus.OVERDUE;
+             }
+-        } else if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(graceDays()))) {
++        } else if (restDue && dueDate != null && today.isAfter(graceEnd(dueDate))) {
+             return InvoiceStatus.OVERDUE;
+         }
+         if (!due && hasPendingMilestones()) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 89a4e21..2dc0365 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -23,6 +23,7 @@ import net.officefloor.hq.app.ExchangeRates;
+ import net.officefloor.hq.app.FxFee;
+ import net.officefloor.hq.app.LateInterestRate;
+ import net.officefloor.hq.app.PriceList;
++import net.officefloor.hq.app.Holidays;
+ import net.officefloor.hq.app.RegionTerms;
+ import net.officefloor.hq.app.TaxRate;
+ import net.officefloor.hq.app.Today;
+@@ -57,14 +58,16 @@ public class InvoiceService {
+     private final FxFee fxFee;
+ 
+     private final RegionTerms regionTerms;
++    private final Holidays holidays;
+ 
+     private final DuplicateWindow duplicateWindow;
+ 
+     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
+             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
+             LateInterestRate lateInterestRate, CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList,
+-            RegionTerms regionTerms, DuplicateWindow duplicateWindow) {
++            RegionTerms regionTerms, DuplicateWindow duplicateWindow, Holidays holidays) {
+         this.regionTerms = regionTerms;
++        this.holidays = holidays;
+         this.duplicateWindow = duplicateWindow;
+         this.priceList = priceList;
+         this.cardSurcharge = cardSurcharge;
+@@ -507,7 +510,7 @@ public class InvoiceService {
+     private LocalDate dueDateFor(Long clientId, LocalDate issued) {
+         return clients.findById(clientId)
+                 .flatMap(c -> Optional.ofNullable(c.getTermsDays()).or(() -> regionTerms.forRegion(c.getRegion())))
+-                .map(days -> issued.plusDays(days))
++                .map(days -> holidays.after(issued, days))
+                 .orElseGet(() -> dueDateFor(issued));
+     }
+ 
+@@ -517,8 +520,8 @@ public class InvoiceService {
+      */
+     private LocalDate cappedForRisk(Long clientId, LocalDate issued, LocalDate due) {
+         LocalDate cap = switch (riskOf(clientId).band()) {
+-            case HIGH -> issued.plusDays(7);
+-            case MEDIUM -> issued.plusDays(21);
++            case HIGH -> holidays.after(issued, 7);
++            case MEDIUM -> holidays.after(issued, 21);
+             default -> null;
+         };
+         return cap != null && due.isAfter(cap) ? cap : due;
+diff --git a/src/main/resources/db/migration/V88__holidays.sql b/src/main/resources/db/migration/V88__holidays.sql
+new file mode 100644
+index 0000000..39f0ae6
+--- /dev/null
++++ b/src/main/resources/db/migration/V88__holidays.sql
+@@ -0,0 +1,5 @@
++-- The workspace's holiday calendar: once the 'holidays' setting is present (even with no rows here),
++-- days in payment terms are business days, Monday to Friday and not one of these dates.
++CREATE TABLE holiday (
++    holiday_on DATE PRIMARY KEY
++);
