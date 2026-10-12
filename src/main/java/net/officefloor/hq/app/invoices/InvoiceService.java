@@ -1875,8 +1875,9 @@ public class InvoiceService {
 
     /**
      * Issues the draft credit note today and records it in the audit: its grand total comes off what
-     * its original still owes; any rest is held on the client's
-     * account as a credit payment dated today, also recorded in the audit.
+     * its original still owes; any rest pays the original's unpaid debit adjustment notes, oldest first,
+     * and what is left after them is held on the client's account as a credit payment dated today, each
+     * recorded in the audit.
      */
     private void issue(Invoice note) {
         BigDecimal rate = taxRate.percent();
@@ -1897,7 +1898,26 @@ public class InvoiceService {
         }
         BigDecimal rest = total.subtract(taken);
         if (rest.signum() > 0) {
-            recordCreditHeld(payments.saveAndFlush(Payment.fromCreditNote(note, rest)));
+            // The rest pays the original's debit adjustment notes, oldest first, before any is held as credit.
+            Payment credit = Payment.fromCreditNote(note, rest);
+            Map<Invoice, BigDecimal> notesPaid = new LinkedHashMap<>();
+            BigDecimal left = rest;
+            for (Map.Entry<Invoice, BigDecimal> owing : debitNotesOwing(original).entrySet()) {
+                if (left.signum() <= 0) {
+                    break;
+                }
+                BigDecimal part = left.min(owing.getValue());
+                credit.alsoPays(owing.getKey().getId(), part);
+                notesPaid.put(owing.getKey(), part);
+                left = left.subtract(part);
+            }
+            Payment payment = payments.saveAndFlush(credit);
+            notesPaid.forEach((paidNote, part) -> {
+                audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + paidNote.getId() + " amount="
+                        + part.setScale(paidNote.scale(), RoundingMode.UNNECESSARY).toPlainString());
+                recordWriteOff(paidNote);
+            });
+            recordCreditHeld(payment);
         }
     }
 
