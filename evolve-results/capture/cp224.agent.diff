@@ -1,0 +1,33 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index a4154ed..c336448 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1714,12 +1714,12 @@ public class Invoice {
+     /**
+      * The invoice's approval at the tax rate as of today, judged on its {@link #approvalTotal}: a credit note, or an invoice whose grand total
+      * (before any withholding) is not over the approval limit and whose discount takes off no more than a
+-     * fifth of the subtotal, needs none; otherwise it is approved while its grand total is exactly the total
++     * fifth of the subtotal, needs none; otherwise it is approved while its grand total is no more than the total
+      * it was approved at and no more than {@link #approvalDays} days have passed since it was approved.
+      * Once sent, an invoice is as it was approved. Every draft of a client with a HIGH payment risk (highRisk)
+      * needs approval, whatever its size, as does every draft that would take its client over its credit limit
+      * (overCreditLimit). A draft whose grand total is more than one and a half times the approval limit, or
+-     * of a HIGH payment risk client, needs {@link #approvalsRequired two approvals} of that same total. So does
++     * of a HIGH payment risk client, needs {@link #approvalsRequired two approvals} covering that total. So does
+      * a draft that is a possible duplicate of an invoice recently sent to its client (possibleDuplicate). Every
+      * draft of a client with an invoice still overdue after its second reminder (remindersIgnored) needs approval.
+      */
+@@ -1752,11 +1752,11 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The approvals that still stand for the grand total as of today: those given at exactly that total,
++     * The approvals that still stand for the grand total as of today: those given at that total or a higher one,
+      * unless more than {@link #approvalDays} days have passed since the last of them; else none.
+      */
+     private int approvalsAt(BigDecimal total, LocalDate today) {
+-        if (approvedTotal == null || total.compareTo(approvedTotal) != 0) {
++        if (approvedTotal == null || total.compareTo(approvedTotal) > 0) {
+             return 0;
+         }
+         boolean lapsed = approvedOn != null && today.isAfter(afterDays(approvedOn, approvalDays()));
