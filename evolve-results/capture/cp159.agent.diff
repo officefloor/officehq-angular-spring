@@ -1,0 +1,773 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 8b35719..37d5a36 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -474,6 +474,9 @@ function problemWith(line: NewLine): string {
+               <th scope="col">Card surcharge</th>
+               <th scope="col">To this invoice</th>
+               <th scope="col">Reference</th>
++              <th scope="col">Remittance</th>
++              <th scope="col">Matched invoice</th>
++              <th scope="col">Match</th>
+               <th scope="col">Actions</th>
+             </tr>
+           </thead>
+@@ -486,6 +489,9 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="payment-surcharge">{{ amount(p.surcharge) }}</td>
+                 <td data-testid="payment-allocated">{{ amount(p.allocated) }}</td>
+                 <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
++                <td data-testid="payment-remittance">{{ p.remittance ?? '' }}</td>
++                <td data-testid="payment-match">{{ p.matchedInvoice ?? '' }}</td>
++                <td data-testid="payment-match-score">{{ p.matchScore ?? '' }}</td>
+                 <td>
+                   <button
+                     type="button"
+@@ -611,6 +617,18 @@ function problemWith(line: NewLine): string {
+           </form>
+         }
+ 
++        @if (inv.creditOf === null) {
++          <p>Purchase order: <span data-testid="invoice-po">{{ inv.poNumber ?? '' }}</span></p>
++          <form [formGroup]="poForm" (ngSubmit)="setPoNumber(inv.id)" aria-label="Purchase order" novalidate>
++            <label for="invoice-po-input">Client's purchase order number (leave blank for none)</label>
++            <input id="invoice-po-input" data-testid="invoice-po-input" formControlName="poNumber" />
++            <button type="submit" data-testid="invoice-po-submit" [disabled]="savingPo()">Set purchase order</button>
++            @if (poError()) {
++              <p role="alert" data-testid="invoice-po-error">{{ poError() }}</p>
++            }
++          </form>
++        }
++
+         @if (inv.status === 'DRAFT' && inv.creditOf === null) {
+           <form [formGroup]="supplyForm" (ngSubmit)="setSupplyRegion(inv.id)" aria-label="Place of supply" novalidate>
+             <label for="invoice-supply-region">
+@@ -1055,6 +1073,12 @@ export class InvoicePanel {
+   protected readonly savingSupply = signal(false);
+   protected readonly supplyError = signal('');
+ 
++  protected readonly poForm = new FormGroup({
++    poNumber: new FormControl('', { nonNullable: true }),
++  });
++  protected readonly savingPo = signal(false);
++  protected readonly poError = signal('');
++
+   constructor() {
+     effect((onCleanup) => {
+       const id = this.invoiceId();
+@@ -1069,6 +1093,8 @@ export class InvoicePanel {
+       this.dueError.set('');
+       this.supplyForm.reset();
+       this.supplyError.set('');
++      this.poForm.reset();
++      this.poError.set('');
+       this.retentionForm.reset();
+       this.retentionError.set('');
+       this.surchargeForm.reset();
+@@ -1252,6 +1278,26 @@ export class InvoicePanel {
+     this.service.open(invoiceId).subscribe((detail) => this.invoice.set(detail));
+   }
+ 
++  protected setPoNumber(invoiceId: number): void {
++    this.savingPo.set(true);
++    this.poError.set('');
++    this.service.setPoNumber(invoiceId, this.poForm.getRawValue().poNumber.trim()).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.poForm.reset();
++        this.savingPo.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.poError.set(
++          typeof detail === 'string' && detail ? detail : 'The purchase order number could not be set.',
++        );
++        this.savingPo.set(false);
++      },
++    });
++  }
++
+   protected setSupplyRegion(invoiceId: number): void {
+     this.savingSupply.set(true);
+     this.supplyError.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 0bc4336..a859688 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -1,6 +1,6 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+-import { Observable } from 'rxjs';
++import { Observable, ReplaySubject, of, switchMap, tap } from 'rxjs';
+ import { Currency } from './invoice-format';
+ 
+ // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
+@@ -93,7 +93,9 @@ export interface InvoiceLineView {
+ // A payment to an opened invoice: `amount` is in the `currency` it was paid in, `allocated` (the
+ // part applied to this invoice) in the client's currency. `surcharge` is the part of the amount that
+ // was the card surcharge, in the client's currency ("0.00" unless paid by card), and `fxFee` the part
+-// that was the conversion fee ("0.00" unless paid in another currency).
++// that was the conversion fee ("0.00" unless paid in another currency). `remittance` is the client's
++// remittance text (null when none); `matchedInvoice` is the number of the invoice whose purchase order
++// it matched and `matchScore` the similarity to three decimals (both null when none).
+ export interface InvoicePaymentView {
+   id: number;
+   amount: string;
+@@ -104,6 +106,9 @@ export interface InvoicePaymentView {
+   method: PaymentMethod;
+   surcharge: string;
+   fxFee: string;
++  remittance: string | null;
++  matchedInvoice: string | null;
++  matchScore: string | null;
+ }
+ 
+ // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
+@@ -238,6 +243,8 @@ export interface InvoiceDetail {
+   recurring: boolean;
+   // The id of the recurring invoice this draft was generated from as its next period; null when it was not.
+   recurringFrom: number | null;
++  // The client's purchase order number for the invoice; null when none was given.
++  poNumber: string | null;
+ }
+ 
+ // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
+@@ -270,6 +277,9 @@ export interface NewPayment {
+   date: string;
+   reference: string;
+   method: PaymentMethod;
++  // The client's remittance text ('' when none): with no invoice open and no reference, it first pays
++  // the open invoice whose purchase order number is most like it.
++  remittance: string;
+ }
+ 
+ // A line to add to a draft: quantity, unit type, unit price, the line's own discount percentage and
+@@ -306,9 +316,14 @@ export interface ClientBalance {
+ @Injectable({ providedIn: 'root' })
+ export class InvoiceService {
+   private readonly http = inject(HttpClient);
++  // Completes once the latest payment spread over a client's invoices has been answered, so an
++  // invoice opened meanwhile is read with it.
++  private paymentSettled: Observable<unknown> = of(null);
+ 
+   forClient(clientId: number): Observable<InvoiceSummary[]> {
+-    return this.http.get<InvoiceSummary[]>(`/api/clients/${clientId}/invoices`);
++    return this.paymentSettled.pipe(
++      switchMap(() => this.http.get<InvoiceSummary[]>(`/api/clients/${clientId}/invoices`)),
++    );
+   }
+ 
+   // The balance of each client with a sent invoice; a client not listed owes nothing.
+@@ -322,7 +337,7 @@ export class InvoiceService {
+   }
+ 
+   open(id: number): Observable<InvoiceDetail> {
+-    return this.http.get<InvoiceDetail>(`/api/invoices/${id}`);
++    return this.paymentSettled.pipe(switchMap(() => this.http.get<InvoiceDetail>(`/api/invoices/${id}`)));
+   }
+ 
+   // Opens the invoice with a typed number; refused (400) when its check digit does not match.
+@@ -358,6 +373,11 @@ export class InvoiceService {
+ 
+   // Sets a draft's due date (yyyy-mm-dd) by hand; refused (409) when it is before the issue date or
+   // more than 120 days after it. Answers the invoice with its new due date.
++  // Sets the client's purchase order number on an invoice ('' for none).
++  setPoNumber(invoiceId: number, poNumber: string): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/po-number`, { poNumber });
++  }
++
+   setSupplyRegion(invoiceId: number, supplyRegion: string): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/supply-region`, { supplyRegion });
+   }
+@@ -494,7 +514,15 @@ export class InvoiceService {
+   // first; refused when a reference is mistyped (400) or not the client's; what they do not owe is held as credit.
+   // Answers the client's invoices with their new statuses.
+   recordSplitPayment(clientId: number, payment: NewPayment): Observable<InvoiceSummary[]> {
+-    return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment);
++    const settled = new ReplaySubject<null>(1);
++    this.paymentSettled = settled;
++    const done = () => {
++      settled.next(null);
++      settled.complete();
++    };
++    return this.http
++      .post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment)
++      .pipe(tap({ next: done, error: done, unsubscribe: done }));
+   }
+ 
+   // Records a deposit: the whole amount held on the client's account as credit, applied to no invoice
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index 3b87aca..c77df38 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -170,6 +170,8 @@ function problemWithCash(payment: NewPayment, invoiceOpen: boolean, clientCurren
+         autocapitalize="characters"
+         placeholder="RF16 0000 075"
+       />
++      <label for="payment-remittance">Remittance text (optional)</label>
++      <input id="payment-remittance" data-testid="payment-form-remittance" formControlName="remittance" />
+       <input
+         id="payment-deposit"
+         type="checkbox"
+@@ -214,6 +216,7 @@ export class PaymentForm {
+     amount: new FormControl('', { nonNullable: true }),
+     date: new FormControl('', { nonNullable: true }),
+     reference: new FormControl('', { nonNullable: true }),
++    remittance: new FormControl('', { nonNullable: true }),
+     deposit: new FormControl(false, { nonNullable: true }),
+     currency: new FormControl<Currency>('USD', { nonNullable: true }),
+     method: new FormControl<PaymentMethod>('BANK', { nonNullable: true }),
+@@ -240,6 +243,7 @@ export class PaymentForm {
+       date: raw.date.trim(),
+       reference: raw.reference.replace(/\s/g, '').toUpperCase(),
+       method: raw.method,
++      remittance: raw.remittance.trim(),
+     };
+     if (raw.deposit) {
+       this.recordDeposit(payment);
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 565a723..389113c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -55,9 +55,9 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "disputedOn", "disputeResolvedOn", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "disputedOn", "disputeResolvedOn", "poNumber", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd");
+-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
++    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method", "remittance");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
+ 
+@@ -425,7 +425,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "recurring", "recurring_from", "disputed_on", "dispute_resolved_on"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "recurring", "recurring_from", "disputed_on", "dispute_resolved_on", "po_number"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -459,7 +459,8 @@ public class TestSupportController {
+                     row.get("recurringFrom") == null ? null : id(row.get("recurringFrom")),
+                     row.get("disputedOn") == null ? null : date(row.get("disputedOn"), "invoices[].disputedOn"),
+                     row.get("disputeResolvedOn") == null ? null
+-                            : date(row.get("disputeResolvedOn"), "invoices[].disputeResolvedOn"));
++                            : date(row.get("disputeResolvedOn"), "invoices[].disputeResolvedOn"),
++                    row.get("poNumber") == null ? null : row.get("poNumber").toString());
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -519,14 +520,15 @@ public class TestSupportController {
+                             : date(row.get("date"), "payments[].date")) : BigDecimal.ZERO;
+             // Part of a payment in another currency is the workspace's conversion fee, as when one is recorded.
+             BigDecimal fee = foreign ? fxFee.of(amount, clientCurrency.scale()) : BigDecimal.ZERO;
+-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method", "surcharge", "fx_fee"},
++            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method", "surcharge", "fx_fee", "remittance"},
+                     id(row.get("clientId")), amount,
+                     date(row.get("date"), "payments[].date"),
+                     row.get("reference") == null ? null : row.get("reference").toString(),
+                     flag(row.get("reversed"), "payments[].reversed"),
+                     money(row.get("refunded"), "payments[].refunded"),
+                     row.get("creditNote") == null ? null : id(row.get("creditNote")),
+-                    foreign ? paidIn.name() : null, foreign ? paidAmount : null, method, surcharge, fee);
++                    foreign ? paidIn.name() : null, foreign ? paidAmount : null, method, surcharge, fee,
++                    row.get("remittance") == null ? null : row.get("remittance").toString());
+             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
+                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
+                 if (allocation.get("invoiceId") == null) {
+@@ -755,7 +757,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, recurring, recurring_from, disputed_on, dispute_resolved_on FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, recurring, recurring_from, disputed_on, dispute_resolved_on, po_number FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -818,6 +820,9 @@ public class TestSupportController {
+                     if (r.get("DISCOUNT_REASON") != null) {
+                         row.put("discountReason", r.get("DISCOUNT_REASON"));
+                     }
++                    if (r.get("PO_NUMBER") != null) {
++                        row.put("poNumber", r.get("PO_NUMBER"));
++                    }
+                     if (r.get("SUPPLY_REGION") != null) {
+                         row.put("supplyRegion", r.get("SUPPLY_REGION"));
+                     }
+@@ -849,7 +854,7 @@ public class TestSupportController {
+                             }).toList());
+                     return row;
+                 }).toList());
+-        out.put("payments", jdbc.queryForList("SELECT p.id, p.client_id, p.amount, p.payment_date, p.reference, p.reversed, p.refunded, p.credit_note, p.method, "
++        out.put("payments", jdbc.queryForList("SELECT p.id, p.client_id, p.amount, p.payment_date, p.reference, p.reversed, p.refunded, p.credit_note, p.method, p.remittance, "
+                 + "p.paid_currency, p.paid_amount, c.currency FROM payment p LEFT JOIN client c ON c.id = p.client_id ORDER BY p.id")
+                 .stream().map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+@@ -862,6 +867,9 @@ public class TestSupportController {
+                     row.put("reversed", r.get("REVERSED"));
+                     row.put("refunded", r.get("REFUNDED"));
+                     row.put("method", r.get("METHOD"));
++                    if (r.get("REMITTANCE") != null) {
++                        row.put("remittance", r.get("REMITTANCE"));
++                    }
+                     if (r.get("CREDIT_NOTE") != null) {
+                         row.put("creditNote", r.get("CREDIT_NOTE"));
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 441ec42..f24da86 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -97,6 +97,10 @@ public class Invoice {
+     @Column(name = "supply_region")
+     private String supplyRegion;
+ 
++    /** The client's purchase order number for the invoice; null when none was given. */
++    @Column(name = "po_number")
++    private String poNumber;
++
+     @Column(name = "discount_pct")
+     private BigDecimal discountPct = BigDecimal.ZERO;
+ 
+@@ -1835,6 +1839,16 @@ public class Invoice {
+         return supplyRegion;
+     }
+ 
++    /** The client's purchase order number for the invoice; null when none was given. */
++    public String getPoNumber() {
++        return poNumber;
++    }
++
++    /** Sets the client's purchase order number; blank for none. */
++    public void setPoNumber(String poNumber) {
++        this.poNumber = poNumber == null || poNumber.isBlank() ? null : poNumber.trim();
++    }
++
+     /** Sets the place of supply; blank for none, so the client's region applies. */
+     public void setSupplyRegion(String supplyRegion) {
+         this.supplyRegion = supplyRegion == null || supplyRegion.isBlank() ? null : supplyRegion.trim().toUpperCase();
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index aa09679..eb3a06e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -64,15 +64,20 @@ public class InvoiceController {
+      * how much of it went to this invoice (to the cent) in the client's currency, its date and the
+      * reference it quoted in groups of four (null when none). {@code surcharge} is the part of it that
+      * was the card surcharge, in the client's currency ("0.00" unless paid by card), and {@code fxFee} the
+-     * part that was the conversion fee ("0.00" unless paid in another currency).
++     * part that was the conversion fee ("0.00" unless paid in another currency). {@code remittance} is the
++     * remittance text (null when none), {@code matchedInvoice} the number of the invoice whose purchase order
++     * number it matched and {@code matchScore} the similarity to three decimals (both null when none).
+      */
+     public record PaymentView(Long id, String amount, Currency currency, String allocated, LocalDate date,
+-            String reference, PaymentMethod method, String surcharge, String fxFee) {
++            String reference, PaymentMethod method, String surcharge, String fxFee, String remittance, String matchedInvoice,
++            String matchScore) {
+         static PaymentView of(Payment p, Long invoiceId, Currency clientCurrency) {
+             return new PaymentView(p.getId(), p.paidAmount().setScale(2).toPlainString(),
+                     p.paidCurrency(clientCurrency), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
+                     p.getReference() == null ? null : PaymentReference.grouped(p.getReference()), p.getMethod(),
+-                    p.getSurcharge().setScale(2).toPlainString(), p.getFxFee().setScale(2).toPlainString());
++                    p.getSurcharge().setScale(2).toPlainString(), p.getFxFee().setScale(2).toPlainString(),
++                    p.getRemittance(), p.getMatchedInvoice() == null ? null : InvoiceNumber.of(p.getMatchedInvoice()),
++                    p.getMatchScore() == null ? null : p.getMatchScore().setScale(3).toPlainString());
+         }
+     }
+ 
+@@ -152,6 +157,7 @@ public class InvoiceController {
+      * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not).
+      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not).
+      * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open).
++     * {@code poNumber} is the client's purchase order number (null when none).
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -163,7 +169,7 @@ public class InvoiceController {
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
+-            boolean recurring, Long recurringFrom, LocalDate disputedOn, LocalDate disputeResolvedOn) {
++            boolean recurring, Long recurringFrom, LocalDate disputedOn, LocalDate disputeResolvedOn, String poNumber) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -208,7 +214,7 @@ public class InvoiceController {
+                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
+                     i.getSupplyRegion(), i.approval(taxRate, today),
+                     i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
+-                    i.isRecurring(), i.getRecurringFrom(), i.getDisputedOn(), i.getDisputeResolvedOn());
++                    i.isRecurring(), i.getRecurringFrom(), i.getDisputedOn(), i.getDisputeResolvedOn(), i.getPoNumber());
+         }
+     }
+ 
+@@ -299,7 +305,9 @@ public class InvoiceController {
+             @Size(max = 64, message = "The reference must be at most 64 characters.")
+             String reference,
+             // How it was paid; a bank transfer when left out.
+-            PaymentMethod method) {
++            PaymentMethod method,
++            @Size(max = 255, message = "The remittance text must be at most 255 characters.")
++            String remittance) {
+     }
+ 
+     /**
+@@ -319,7 +327,10 @@ public class InvoiceController {
+             @Size(max = 64, message = "The reference must be at most 64 characters.")
+             String reference,
+             // How it was paid; a bank transfer when left out. Cash is taken only against an open invoice.
+-            PaymentMethod method) {
++            PaymentMethod method,
++            // The client's remittance text: with no reference, it first pays the invoice whose purchase order is most like it.
++            @Size(max = 255, message = "The remittance text must be at most 255 characters.")
++            String remittance) {
+     }
+ 
+     /**
+@@ -438,7 +449,10 @@ public class InvoiceController {
+             @Size(max = 255, message = "The references must be at most 255 characters.")
+             String reference,
+             // How it was paid; a bank transfer when left out. Cash is taken only against an open invoice.
+-            PaymentMethod method) {
++            PaymentMethod method,
++            // The client's remittance text: with no reference, it first pays the invoice whose purchase order is most like it.
++            @Size(max = 255, message = "The remittance text must be at most 255 characters.")
++            String remittance) {
+     }
+ 
+     private final InvoiceService invoices;
+@@ -650,6 +664,18 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /** The client's purchase order number for an invoice; blank for none. */
++    public record NewPoNumber(
++            @Size(max = 100, message = "The purchase order number can be at most 100 characters.") String poNumber) {
++    }
++
++    @PutMapping("/api/invoices/{id}/po-number")
++    public InvoiceDetail setPoNumber(@PathVariable Long id, @Valid @RequestBody NewPoNumber body) {
++        return invoices.setPoNumber(id, body.poNumber())
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /** The region where a draft's work is done; blank for none, so the client's region applies. */
+     public record NewSupplyRegion(
+             @Size(max = 50, message = "The region can be at most 50 characters.") String supplyRegion) {
+@@ -742,7 +768,7 @@ public class InvoiceController {
+     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
+         refuseCashWithoutInvoice(body.method());
+         invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()),
+-                body.method());
++                body.method(), body.remittance());
+         return forClient(clientId);
+     }
+ 
+@@ -851,7 +877,7 @@ public class InvoiceController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
+         return invoices.recordPayment(id, body.amount(), body.currency(), body.date(), reference(body.reference()),
+-                body.method())
++                body.method(), body.remittance())
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 1dc0795..f2fcbc0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -435,6 +435,17 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /** Sets the client's purchase order number on an invoice (blank for none); empty if no such invoice. */
++    @Transactional
++    public Optional<Invoice> setPoNumber(Long invoiceId, String poNumber) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            invoice.setPoNumber(poNumber);
++            invoices.saveAndFlush(invoice);
++        });
++        return found;
++    }
++
+     /**
+      * Sets the rush surcharge of a draft, a percentage of its amount after its discounts; empty if no
+      * such invoice. The percentage has already been checked; any invoice that is not a draft, or a
+@@ -1338,7 +1349,7 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+-            String reference, PaymentMethod method) {
++            String reference, PaymentMethod method, String remittance) {
+         Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             if (invoice.isDraft()) {
+@@ -1426,7 +1437,8 @@ public class InvoiceService {
+                 invoices.saveAndFlush(invoice);
+             }
+             Payment payment = payments.saveAndFlush(Payment.against(invoice, received, applied, date, reference)
+-                    .paidIn(paidIn, paidAmount, invoice.currency()).by(method).surcharged(surcharge).feeCharged(fee));
++                    .paidIn(paidIn, paidAmount, invoice.currency()).by(method).surcharged(surcharge).feeCharged(fee)
++                    .remitted(remittance));
+             recordFee(payment, invoice.currency());
+             recordSurcharge(payment, invoice.currency());
+             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
+@@ -1469,12 +1481,16 @@ public class InvoiceService {
+      * each be more than zero and together no more than the payment; each must be no more than its
+      * invoice has due and at least its minimum part payment (both checked with the other parts).
+      * The payment keeps the reference of the first invoice it reaches.
++     * With no reference, remittance text (null or blank when none) first pays the open invoice whose
++     * purchase order number is most like it: a Jaro-Winkler similarity (see {@link RemittanceMatch}) of at least
++     * 0.85, the earlier due date then the lower id on a tie, among invoices that take payments and have something
++     * due. The rest goes in the same order.
+      */
+     @Transactional
+     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+-            List<QuotedReference> references, PaymentMethod method) {
++            List<QuotedReference> references, PaymentMethod method, String remittance) {
+         if (onHold(clientId)) {
+-            return holdAsCredit(clientId, paidAmount, paidIn, date, method);
++            return holdAsCredit(clientId, paidAmount, paidIn, date, method).remitted(remittance);
+         }
+         Currency currency = currencyOf(clientId);
+         BigDecimal received = converted(paidAmount, paidIn, currency, date);
+@@ -1486,9 +1502,10 @@ public class InvoiceService {
+         List<Invoice> candidates = ofClient;
+         List<PaymentAllocation> parts = new ArrayList<>();
+         BigDecimal left = amount;
++        // The invoices whose amounts were stated; the rest of the payment is applied automatically.
++        Set<Long> stated = new HashSet<>();
+         if (!references.isEmpty()) {
+             Set<Long> named = new HashSet<>();
+-            Set<Long> stated = new HashSet<>();
+             for (QuotedReference quoted : references) {
+                 String reference = quoted.reference();
+                 Invoice invoice = ofClient.stream()
+@@ -1532,6 +1549,30 @@ public class InvoiceService {
+         }
+         Map<Long, BigDecimal> dues = new HashMap<>();
+         List<Invoice> sent = inPaymentOrder(candidates, dues);
++        Invoice matched = null;
++        double score = 0;
++        if (references.isEmpty() && remittance != null && !remittance.isBlank()) {
++            for (Invoice invoice : sent) {
++                if (dues.get(invoice.getId()).signum() <= 0 || invoice.getPoNumber() == null) {
++                    continue;
++                }
++                double similarity = RemittanceMatch.similarity(remittance.trim(), invoice.getPoNumber());
++                if (similarity < RemittanceMatch.THRESHOLD) {
++                    continue;
++                }
++                if (matched == null || similarity > score || (similarity == score && earlierMatch(invoice, matched))) {
++                    matched = invoice;
++                    score = similarity;
++                }
++            }
++            if (matched != null) {
++                List<Invoice> reordered = new ArrayList<>();
++                reordered.add(matched);
++                Long matchedId = matched.getId();
++                sent.stream().filter(i -> !i.getId().equals(matchedId)).forEach(reordered::add);
++                sent = reordered;
++            }
++        }
+         for (Invoice invoice : sent) {
+             BigDecimal due = dues.get(invoice.getId());
+             if (due.signum() <= 0) {
+@@ -1548,7 +1589,20 @@ public class InvoiceService {
+                     : "Those invoices have already been paid.");
+         }
+         String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
+-        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, method, surcharge, fee);
++        Payment payment = recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, method, surcharge, fee,
++                        stated)
++                .remitted(remittance);
++        if (matched != null) {
++            payment.matched(matched.getId(), score);
++        }
++        return payments.saveAndFlush(payment);
++    }
++
++    /** Of two equally good remittance matches, whether this one is taken first: the earlier due date, then the lower id. */
++    private static boolean earlierMatch(Invoice invoice, Invoice than) {
++        Comparator<Invoice> order = Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
++                .thenComparing(Invoice::getId);
++        return order.compare(invoice, than) < 0;
+     }
+ 
+     /**
+@@ -1645,12 +1699,13 @@ public class InvoiceService {
+      * must add up to no more than the payment: the rest is
+      * held on the client's account as credit and recorded in the audit. Each must go to a different
+      * sent invoice of the client and be no more than what it still has due. The date must be no later
+-     * than today nor before any of the invoices' issue dates. The reference (null when none) has
++     * than today nor before any of the invoices' issue dates. Only the parts going to the stated invoices
++     * must be at least their minimum part payment. The reference (null when none) has
+      * already been checked; it must be the reference of one of the invoices.
+      */
+     private Payment recordSpread(Long clientId, BigDecimal amount, BigDecimal paidAmount, Currency paidIn,
+             LocalDate date, String reference, List<PaymentAllocation> parts, PaymentMethod method,
+-            BigDecimal surcharge, BigDecimal fee) {
++            BigDecimal surcharge, BigDecimal fee, Set<Long> stated) {
+         if (parts.isEmpty()) {
+             throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
+         }
+@@ -1696,12 +1751,14 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
+                         + number + " is more than the " + currency.format(due) + " it has due.");
+             }
+-            if (invoice.hasPlan() && invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
++            // Only a stated amount must be at least the minimum part: what is applied automatically is whatever is left.
++            boolean checked = stated.contains(invoice.getId());
++            if (checked && invoice.hasPlan() && invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
+                 throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
+                         + number + " is less than the " + currency.format(invoice.earliestUnpaid(paidSoFar, taxRate.percent()))
+                         + " still unpaid on its earliest unpaid instalment, unless it settles the plan.");
+             }
+-            if (invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
++            if (checked && invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
+                 throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
+                         + number + " is less than " + currency.format(invoice.minimumPart(paidSoFar, taxRate.percent()))
+                         + " (10% of what it still has due), unless it settles the invoice.");
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index d447bb3..dca156a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -37,6 +37,17 @@ public class Payment {
+     /** The payment reference the client quoted, or null when none was. */
+     private String reference;
+ 
++    /** The remittance text the client wrote on the payment, or null when none was. */
++    private String remittance;
++
++    /** The invoice whose purchase order number the remittance matched; null when none did. */
++    @Column(name = "matched_invoice")
++    private Long matchedInvoice;
++
++    /** How closely the remittance matched that invoice's purchase order number (Jaro-Winkler); null when none did. */
++    @Column(name = "match_score")
++    private BigDecimal matchScore;
++
+     /** Whether the payment has been reversed (a bounced cheque): it then no longer counts. */
+     private boolean reversed;
+ 
+@@ -144,6 +155,31 @@ public class Payment {
+         return this;
+     }
+ 
++    /** Notes the remittance text (blank for none). */
++    public Payment remitted(String remittance) {
++        this.remittance = remittance == null || remittance.isBlank() ? null : remittance.trim();
++        return this;
++    }
++
++    /** Notes the invoice the remittance matched and the similarity, rounded half up to three decimals. */
++    public Payment matched(Long invoiceId, double score) {
++        this.matchedInvoice = invoiceId;
++        this.matchScore = BigDecimal.valueOf(score).setScale(3, java.math.RoundingMode.HALF_UP);
++        return this;
++    }
++
++    public String getRemittance() {
++        return remittance;
++    }
++
++    public Long getMatchedInvoice() {
++        return matchedInvoice;
++    }
++
++    public BigDecimal getMatchScore() {
++        return matchScore;
++    }
++
+     /** Notes how the payment was made (null for a bank transfer). */
+     public Payment by(PaymentMethod method) {
+         this.method = method == null ? PaymentMethod.BANK : method;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/RemittanceMatch.java b/src/main/java/net/officefloor/hq/app/invoices/RemittanceMatch.java
+new file mode 100644
+index 0000000..94e3e06
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/RemittanceMatch.java
+@@ -0,0 +1,66 @@
++package net.officefloor.hq.app.invoices;
++
++import java.util.Locale;
++
++/** How alike a payment's remittance text is to an invoice's purchase order number. */
++final class RemittanceMatch {
++
++    /** The least similarity that counts as a match. */
++    static final double THRESHOLD = 0.85;
++
++    private RemittanceMatch() {
++    }
++
++    /**
++     * The Jaro-Winkler similarity of the two strings, lower-cased: characters match within a window of
++     * half the longer length less one, transpositions are halved, and a common prefix of up to four
++     * characters is boosted by 0.1.
++     */
++    static double similarity(String first, String second) {
++        String a = first.toLowerCase(Locale.ROOT);
++        String b = second.toLowerCase(Locale.ROOT);
++        if (a.isEmpty() || b.isEmpty()) {
++            return a.equals(b) ? 1 : 0;
++        }
++        int window = Math.max(0, Math.max(a.length(), b.length()) / 2 - 1);
++        boolean[] aMatched = new boolean[a.length()];
++        boolean[] bMatched = new boolean[b.length()];
++        int matches = 0;
++        for (int i = 0; i < a.length(); i++) {
++            int from = Math.max(0, i - window);
++            int to = Math.min(b.length() - 1, i + window);
++            for (int j = from; j <= to; j++) {
++                if (!bMatched[j] && a.charAt(i) == b.charAt(j)) {
++                    aMatched[i] = true;
++                    bMatched[j] = true;
++                    matches++;
++                    break;
++                }
++            }
++        }
++        if (matches == 0) {
++            return 0;
++        }
++        int outOfOrder = 0;
++        int k = 0;
++        for (int i = 0; i < a.length(); i++) {
++            if (aMatched[i]) {
++                while (!bMatched[k]) {
++                    k++;
++                }
++                if (a.charAt(i) != b.charAt(k)) {
++                    outOfOrder++;
++                }
++                k++;
++            }
++        }
++        double m = matches;
++        double t = outOfOrder / 2.0;
++        double jaro = (m / a.length() + m / b.length() + (m - t) / m) / 3;
++        int prefix = 0;
++        while (prefix < 4 && prefix < a.length() && prefix < b.length() && a.charAt(prefix) == b.charAt(prefix)) {
++            prefix++;
++        }
++        return jaro + prefix * 0.1 * (1 - jaro);
++    }
++}
+diff --git a/src/main/resources/db/migration/V72__remittance_matching.sql b/src/main/resources/db/migration/V72__remittance_matching.sql
+new file mode 100644
+index 0000000..18fccd1
+--- /dev/null
++++ b/src/main/resources/db/migration/V72__remittance_matching.sql
+@@ -0,0 +1,7 @@
++-- The client's purchase order number on the invoice (null when none was given).
++ALTER TABLE invoice ADD COLUMN po_number VARCHAR(100);
++-- The remittance text the client wrote on the payment (null when none was given).
++ALTER TABLE payment ADD COLUMN remittance VARCHAR(255);
++-- The invoice whose purchase order number the remittance matched (null when none) and how closely (Jaro-Winkler).
++ALTER TABLE payment ADD COLUMN matched_invoice BIGINT;
++ALTER TABLE payment ADD COLUMN match_score DECIMAL(4, 3);
