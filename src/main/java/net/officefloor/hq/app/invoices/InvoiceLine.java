@@ -143,6 +143,13 @@ public class InvoiceLine {
     @Column(name = "billed_pct")
     private BigDecimal billedPct;
 
+    /**
+     * The rebilled invoice whose late interest the line carries onto its replacement (see {@link #lateInterest}); null for an
+     * ordinary line. It takes no tax, no share of the invoice discount and no surcharge.
+     */
+    @Column(name = "interest_of")
+    private Long interestOf;
+
     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
@@ -185,7 +192,29 @@ public class InvoiceLine {
         copy.periodEnd = periodEnd;
         copy.percentComplete = percentComplete;
         copy.billedPct = billedPct;
+        copy.interestOf = interestOf;
         return copy;
+    }
+
+    /**
+     * A line carrying the late interest of the rebilled invoice onto its replacement: "Late interest <its number>",
+     * quantity 1, for the amount, with no tax.
+     */
+    public static InvoiceLine lateInterest(Long invoiceId, BigDecimal amount) {
+        InvoiceLine line = new InvoiceLine("Late interest " + InvoiceNumber.of(invoiceId), BigDecimal.ONE, amount, true,
+                BigDecimal.ZERO, null);
+        line.interestOf = invoiceId;
+        return line;
+    }
+
+    /** The rebilled invoice whose late interest the line carries; null for an ordinary line. */
+    public Long getInterestOf() {
+        return interestOf;
+    }
+
+    /** Whether the line carries a rebilled invoice's late interest, and so takes no invoice discount or surcharge. */
+    public boolean isInterest() {
+        return interestOf != null;
     }
 
     /** A copy of this line for the next progress claim: its percent complete so far is what it has already billed. */
@@ -216,7 +245,7 @@ public class InvoiceLine {
                 && overtime == other.overtime && taxExempt == other.taxExempt
                 && same(discountPct, other.discountPct) && same(taxRate, other.taxRate)
                 && Objects.equals(periodStart, other.periodStart) && Objects.equals(periodEnd, other.periodEnd)
-                && same(percentComplete, other.percentComplete);
+                && same(percentComplete, other.percentComplete) && Objects.equals(interestOf, other.interestOf);
     }
 
     /** Whether two amounts are the same: both none, or equal in value. */

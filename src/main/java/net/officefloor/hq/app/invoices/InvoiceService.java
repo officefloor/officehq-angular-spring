@@ -241,8 +241,10 @@ public class InvoiceService {
      * made to the invoice has come off it; then a draft replacing it (see {@link Invoice#rebill}), issued today and due
      * as any new invoice is, gets those payments held for it as credit, used on it first when it is sent. The draft takes
      * over the invoice's open dispute, milestones and recurring plan (the invoice's dispute closes and it stops recurring),
-     * and is approved already when its grand total is no more than the invoice was sent for. Records
-     * INVOICE_REBILLED in the audit. A draft, a credit note, a void or written-off invoice, or one already credited is
+     * and is approved already when its grand total is no more than the invoice was sent for plus the late interest it
+     * carries. The late interest the invoice owes (once past any threshold) is carried: it is waived on the invoice today, so
+     * stops there, and the draft bills it as a line of its own (see {@link InvoiceLine#lateInterest}), recorded as
+     * INTEREST_CARRIED in the audit. Records INVOICE_REBILLED in the audit. A draft, a credit note, a void or written-off invoice, or one already credited is
      * refused.
      */
     @Transactional
@@ -266,6 +268,8 @@ public class InvoiceService {
             }
             LocalDate on = today.date();
             BigDecimal rate = taxRate.percent();
+            withInterest(List.of(invoice));
+            BigDecimal interest = invoice.getLateInterest();
             List<Payment> paidBy = payments.findForInvoice(invoice.getId()).stream()
                     .filter(p -> !p.isReversed()).toList();
             paidBy.forEach(p -> {
@@ -282,13 +286,18 @@ public class InvoiceService {
             invoice.markRebilled(on);
             invoices.saveAndFlush(invoice);
             BigDecimal sentFor = invoice.total(rate);
-            Invoice next = invoices.saveAndFlush(invoice.rebill(on, dueDateFor(invoice.getClientId(), on)));
+            Invoice replacement = invoice.rebill(on, dueDateFor(invoice.getClientId(), on));
+            if (interest.signum() > 0) {
+                replacement.addLine(InvoiceLine.lateInterest(invoice.getId(), interest));
+                invoice.waiveInterest(on);
+            }
+            Invoice next = invoices.saveAndFlush(replacement);
             invoice.handOver(on);
             invoices.saveAndFlush(invoice);
             // Read again how far through the bands a copied tiered line's units reach.
             entityManager.refresh(next);
             if (approval(next) == Invoice.Approval.NEEDS_APPROVAL) {
-                if (next.total(rate).compareTo(sentFor) <= 0) {
+                if (next.total(rate).compareTo(sentFor.add(interest)) <= 0) {
                     next.approveInFull(next.approvalTotal(rate), on, rate);
                     invoices.saveAndFlush(next);
                 }
@@ -298,6 +307,10 @@ public class InvoiceService {
                 payments.saveAndFlush(p);
             });
             audit.record("INVOICE_REBILLED from=" + invoice.number() + " to=" + next.number());
+            if (interest.signum() > 0) {
+                audit.record("INTEREST_CARRIED from=" + invoice.number() + " to=" + next.number()
+                        + " amount=" + interest.toPlainString());
+            }
             entityManager.refresh(invoice);
             withInterest(List.of(invoice));
         });

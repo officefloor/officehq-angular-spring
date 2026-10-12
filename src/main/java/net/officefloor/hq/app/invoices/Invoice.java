@@ -2577,10 +2577,11 @@ public class Invoice {
 
     /**
      * The part of the subtotal the invoice discount is worked out on and shared over: the amounts of the lines not
-     * priced from the rates (a rate card or the price list), whose prices are already negotiated.
+     * priced from the rates (a rate card or the price list), whose prices are already negotiated, nor carrying a rebilled
+     * invoice's late interest.
      */
     public BigDecimal discountableSubtotal() {
-        return lines.stream().filter(l -> !l.isRatePriced()).map(l -> l.amount(scale()))
+        return lines.stream().filter(l -> !l.isRatePriced() && !l.isInterest()).map(l -> l.amount(scale()))
                 .reduce(zero(), BigDecimal::add);
     }
 
@@ -2644,7 +2645,7 @@ public class Invoice {
         BigInteger[] leftovers = new BigInteger[n];
         BigInteger given = BigInteger.ZERO;
         for (int i = 0; i < n; i++) {
-            if (subtotalCents.signum() == 0 || lines.get(i).isRatePriced()) {
+            if (subtotalCents.signum() == 0 || lines.get(i).isRatePriced() || lines.get(i).isInterest()) {
                 shares[i] = BigInteger.ZERO;
                 leftovers[i] = BigInteger.ZERO;
             } else {
@@ -3058,12 +3059,15 @@ public class Invoice {
     }
 
     /**
-     * The rush surcharge: the surcharge percentage of the amount after the discounts, rounded down to
+     * The rush surcharge: the surcharge percentage of the amount after the discounts (less the lines carrying a rebilled
+     * invoice's late interest, which take none), rounded down to
      * the cent. It is not discounted and is taxed at the client's rate. A credit note carries its
      * original's percentage on what it credits, so gives back the surcharge on that part.
      */
     public BigDecimal surcharge() {
-        return discounted().multiply(chargedSurchargePct()).movePointLeft(2).setScale(scale(), RoundingMode.DOWN);
+        BigDecimal interest = lines.stream().filter(InvoiceLine::isInterest).map(l -> l.amount(scale()))
+                .reduce(zero(), BigDecimal::add);
+        return discounted().subtract(interest).multiply(chargedSurchargePct()).movePointLeft(2).setScale(scale(), RoundingMode.DOWN);
     }
 
     /**
