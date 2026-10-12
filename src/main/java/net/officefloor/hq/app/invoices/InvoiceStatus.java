@@ -16,7 +16,7 @@ package net.officefloor.hq.app.invoices;
  * A sent invoice written off as a bad debt is written off for good: it owes nothing, earns no more
  * interest and takes no payments; that follows from the day it was written off.
  * A sent invoice in dispute is disputed until the dispute is resolved: it earns no interest, is not
- * overdue and takes no payments; that follows from the days it was disputed and resolved.
+ * overdue (a payment reaching it resolves the dispute); that follows from the days it was disputed and resolved.
  * A sent invoice billed by milestones with nothing owed now but milestones still to be reached is
  * awaiting a milestone; that follows from its milestones and payments and is never stored.
  */
