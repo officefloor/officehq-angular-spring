@@ -55,9 +55,10 @@ public class InvoiceController {
     /**
      * What a client still owes across its sent invoices (drafts do not count), after discounts, tax
      * and payments, less the client's unused credit (so it can be below zero), how much of what is due
-     * is overdue, and the unused credit; decimal strings to the cent.
+     * is overdue, the unused credit, and how much of what is due is in dispute (it does not count against the
+     * credit limit); decimal strings to the cent.
      */
-    public record ClientBalance(Long clientId, String balance, String overdue, String credit) {
+    public record ClientBalance(Long clientId, String balance, String overdue, String credit, String disputed) {
     }
 
     /**
@@ -523,17 +524,18 @@ public class InvoiceController {
         for (Invoice i : sent) {
             BigDecimal due = i.amountDue(paid.get(i.getId()), rate);
             BigDecimal[] sums = owed.computeIfAbsent(i.getClientId(),
-                    k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) });
+                    k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) });
             sums[0] = sums[0].add(due);
             sums[1] = sums[1].add(i.overdueAmount(paid.get(i.getId()), rate, on));
+            sums[2] = sums[2].add(i.disputedAmount(paid.get(i.getId()), rate));
         }
         Map<Long, BigDecimal> credits = invoices.credits();
         credits.keySet().forEach(clientId -> owed.computeIfAbsent(clientId,
-                k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) }));
+                k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) }));
         return owed.entrySet().stream().map(e -> {
             BigDecimal credit = credits.getOrDefault(e.getKey(), BigDecimal.ZERO).setScale(2);
             return new ClientBalance(e.getKey(), e.getValue()[0].subtract(credit).toPlainString(),
-                    e.getValue()[1].toPlainString(), credit.toPlainString());
+                    e.getValue()[1].toPlainString(), credit.toPlainString(), e.getValue()[2].toPlainString());
         }).toList();
     }
 

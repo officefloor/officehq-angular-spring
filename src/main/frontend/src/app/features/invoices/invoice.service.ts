@@ -341,12 +341,14 @@ export type NewDiscount = ({ discountPct: string } | { discountAmount: string })
 
 // What a client still owes across its sent invoices (drafts do not count), after discounts, tax and
 // payments, less the client's unused credit (so it can be below zero), how much of what is due is
-// overdue, and the unused credit; decimal strings to the cent, worked out by the server.
+// overdue, the unused credit, and how much of what is due is in dispute (it does not count against the
+// credit limit); decimal strings to the cent, worked out by the server.
 export interface ClientBalance {
   clientId: number;
   balance: string;
   overdue: string;
   credit: string;
+  disputed: string;
 }
 
 // The invoices REST API.

@@ -1240,6 +1240,23 @@ public class InvoiceService {
         return owed.subtract(credits().getOrDefault(clientId, BigDecimal.ZERO)).setScale(2);
     }
 
+    /**
+     * What counts against the client's credit limit: its balance (see {@link #balance}) less what is in
+     * dispute on its sent invoices (whole invoices, lines or milestones; see {@link Invoice#disputedAmount}).
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal creditBalance(Long clientId) {
+        BigDecimal rate = taxRate.percent();
+        List<Invoice> sent = loadForClient(clientId).stream()
+                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote()).toList();
+        Map<Long, BigDecimal> paid = paid(sent);
+        BigDecimal disputed = BigDecimal.ZERO.setScale(2);
+        for (Invoice i : sent) {
+            disputed = disputed.add(i.disputedAmount(paid.get(i.getId()), rate));
+        }
+        return balance(clientId).subtract(disputed).setScale(2);
+    }
+
     /** The share of a HIGH-risk client's draft's grand total its deposits must cover before it is sent. */
     private static final BigDecimal DEPOSIT_SHARE = new BigDecimal("0.30");
 
@@ -1270,7 +1287,7 @@ public class InvoiceService {
 
     /**
      * Why sending the draft would take its client over its credit limit, or null when it would not or the
-     * client has no limit: the client's balance plus what the invoice adds to it (its grand total, priced
+     * client has no limit: the client's balance less what is in dispute (see {@link #creditBalance}) plus what the invoice adds to it (its grand total, priced
      * as it would be sent, less the withholding) must not be over the limit.
      */
     private String creditLimitRefusal(Invoice invoice) {
@@ -1279,12 +1296,12 @@ public class InvoiceService {
             return null;
         }
         repriceFromRates(invoice, null, today.date());
-        BigDecimal after = balance(client.getId()).add(invoice.owedTotal(taxRate.percent()));
+        BigDecimal after = creditBalance(client.getId()).add(invoice.owedTotal(taxRate.percent()));
         if (after.compareTo(client.getCreditLimit()) <= 0) {
             return null;
         }
         Currency currency = client.getCurrency();
-        return "Sending this invoice would take " + client.getName() + "'s balance to " + currency.format(after)
+        return "Sending this invoice would take " + client.getName() + "'s balance (less what is in dispute) to " + currency.format(after)
                 + ", over its " + currency.format(client.getCreditLimit()) + " credit limit.";
     }
 
@@ -2330,7 +2347,7 @@ public class InvoiceService {
 
     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
     /**
-     * Whether the client is on hold: put on hold by hand, or its balance is over its credit limit; false
+     * Whether the client is on hold: put on hold by hand, or its balance less what is in dispute is over its credit limit; false
      * if no such client.
      */
     @Transactional(readOnly = true)
@@ -2402,18 +2419,21 @@ public class InvoiceService {
         if (client == null || client.getCreditLimit() == null) {
             return false;
         }
-        BigDecimal after = balance(client.getId()).add(invoice.owedTotal(taxRate.percent()));
+        BigDecimal after = creditBalance(client.getId()).add(invoice.owedTotal(taxRate.percent()));
         return after.compareTo(client.getCreditLimit()) > 0;
     }
 
-    /** Whether the client's balance is over its credit limit; false if no such client or it has no limit. */
+    /**
+     * Whether the client's balance less what is in dispute (see {@link #creditBalance}) is over its credit limit;
+     * false if no such client or it has no limit.
+     */
     @Transactional(readOnly = true)
     public boolean overLimit(Long clientId) {
         return clients.findById(clientId).map(this::overLimit).orElse(false);
     }
 
     private boolean overLimit(Client client) {
-        return client.getCreditLimit() != null && balance(client.getId()).compareTo(client.getCreditLimit()) > 0;
+        return client.getCreditLimit() != null && creditBalance(client.getId()).compareTo(client.getCreditLimit()) > 0;
     }
 
     /**
