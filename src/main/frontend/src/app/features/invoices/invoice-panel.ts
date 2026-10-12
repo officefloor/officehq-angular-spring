@@ -751,6 +751,14 @@ function problemWith(line: NewLine): string {
           <button type="button" data-testid="invoice-resolve" [disabled]="disputing()" (click)="resolveDispute(inv.id)">
             Resolve dispute
           </button>
+          <button
+            type="button"
+            data-testid="invoice-resolve-credit"
+            [disabled]="disputing()"
+            (click)="resolveDisputeWithCredit(inv.id)"
+          >
+            Resolve with credit
+          </button>
         } @else if (inv.creditOf === null) {
           <button type="button" data-testid="invoice-dispute" [disabled]="disputing()" (click)="dispute(inv.id)">
             Dispute
@@ -995,6 +1003,9 @@ export class InvoicePanel {
   readonly duplicated = output<InvoiceDetail>();
   // A new draft credit note against this invoice, to be listed and opened.
   readonly credited = output<InvoiceDetail>();
+  // A credit note was issued against the invoice (this invoice's new detail), so the client's invoices
+  // and credit changed.
+  readonly creditIssued = output<InvoiceDetail>();
 
   protected readonly invoice = signal<InvoiceDetail | null>(null);
   protected readonly saving = signal(false);
@@ -1585,6 +1596,24 @@ export class InvoicePanel {
       next: (detail) => {
         this.invoice.set(detail);
         this.changed.emit(detail);
+        this.disputing.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.disputeError.set(typeof detail === 'string' && detail ? detail : 'The dispute could not be resolved.');
+        this.disputing.set(false);
+      },
+    });
+  }
+
+  // Settles the dispute with a credit note for what was in dispute, issued today.
+  protected resolveDisputeWithCredit(invoiceId: number): void {
+    this.disputing.set(true);
+    this.disputeError.set('');
+    this.service.resolveDisputeWithCredit(invoiceId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.creditIssued.emit(detail);
         this.disputing.set(false);
       },
       error: (e: HttpErrorResponse) => {

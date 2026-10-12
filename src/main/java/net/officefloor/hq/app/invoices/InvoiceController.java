@@ -656,6 +656,14 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 
+    /** Ends the dispute on an invoice with a credit note for what was in dispute. */
+    @PostMapping("/api/invoices/{id}/resolve-dispute-credit")
+    public InvoiceDetail resolveDisputeWithCredit(@PathVariable Long id) {
+        return invoices.resolveDisputeWithCredit(id)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
     /** Waives the late interest still unpaid on an overdue invoice. */
     @PostMapping("/api/invoices/{id}/waive-interest")
     public InvoiceDetail waiveInterest(@PathVariable Long id) {

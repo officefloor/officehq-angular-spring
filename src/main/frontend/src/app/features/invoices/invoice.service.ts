@@ -465,6 +465,12 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/resolve-dispute`, null);
   }
 
+  // Ends the dispute with a credit note issued today for the disputed lines (every line when the whole
+  // invoice is disputed), applied as any credit note is; the interest held back on them is not charged.
+  resolveDisputeWithCredit(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/resolve-dispute-credit`, null);
+  }
+
   // Waives the late interest still unpaid on an overdue invoice; interest starts again
   // from today on what is still owed. Refused (409) when there is nothing to waive.
   waiveInterest(invoiceId: number): Observable<InvoiceDetail> {

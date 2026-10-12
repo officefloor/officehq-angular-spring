@@ -102,6 +102,7 @@ import { Currency, money, statusLabel } from './invoice-format';
         (split)="splitRecorded($event)"
         (duplicated)="duplicated($event)"
         (credited)="duplicated($event)"
+        (creditIssued)="creditIssued()"
       />
     } @else if (invoices().length > 0) {
       <app-payment-form
@@ -223,6 +224,12 @@ export class ClientInvoices {
       list.some((i) => i.id === id) ? list.map((i) => (i.id === id ? { ...i, ...row } : i)) : [...list, row],
     );
     this.selectedId.set(id);
+  }
+
+  // A credit note was issued against the open invoice: list it with the invoices' new statuses.
+  protected creditIssued(): void {
+    this.service.forClient(this.clientId()).subscribe((list) => this.invoices.set(list));
+    this.changed.emit();
   }
 
   // A rate on the client's card changed: show the drafts' new totals, and load the open invoice again

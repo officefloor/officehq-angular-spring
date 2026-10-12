@@ -130,6 +130,13 @@ public class Invoice {
     @Column(name = "dispute_resolved_on")
     private LocalDate disputeResolvedOn;
 
+    /**
+     * Whether the dispute was resolved with a credit note for what was in dispute: the interest it held back
+     * on the disputed amount while it was open is then never charged.
+     */
+    @Column(name = "dispute_credit")
+    private boolean disputeCredit;
+
     /** How many monthly instalments the invoice is spread over; null when it has no plan. */
     @Column(name = "instalments")
     private Integer instalments;
@@ -872,6 +879,7 @@ public class Invoice {
         lines.forEach(l -> l.setDisputed(false));
         this.disputedOn = on;
         this.disputeResolvedOn = null;
+        this.disputeCredit = false;
     }
 
     /**
@@ -883,6 +891,7 @@ public class Invoice {
             lines.forEach(l -> l.setDisputed(false));
             this.disputedOn = on;
             this.disputeResolvedOn = null;
+            this.disputeCredit = false;
         }
         line.setDisputed(true);
     }
@@ -938,6 +947,42 @@ public class Invoice {
      */
     public void resolveDispute(LocalDate on) {
         this.disputeResolvedOn = on;
+        this.disputeCredit = false;
+    }
+
+    /**
+     * Resolves the dispute on the given day with a credit note for what was in dispute: the interest the
+     * dispute held back on the disputed amount while it was open is never charged.
+     */
+    public void resolveDisputeWithCredit(LocalDate on) {
+        this.disputeResolvedOn = on;
+        this.disputeCredit = true;
+    }
+
+    /** Whether the dispute was resolved with a credit note (see {@link #resolveDisputeWithCredit}). */
+    public boolean isDisputeCredit() {
+        return disputeCredit;
+    }
+
+    /**
+     * The lines a credit note settling the open dispute credits: the disputed lines, or all of them when the
+     * whole invoice is in dispute.
+     */
+    public List<InvoiceLine> disputedLines() {
+        return isWhollyDisputed() ? List.copyOf(lines) : lines.stream().filter(InvoiceLine::isDisputed).toList();
+    }
+
+    /**
+     * Whether the dispute holds interest back on the disputed amount: while it is open, and for the days it was
+     * open when it was resolved with a credit note.
+     */
+    private boolean holdsBackInterest() {
+        return disputedOn != null && (disputeResolvedOn == null || disputeCredit);
+    }
+
+    /** The day the dispute stopped holding interest back, no later than the given day. */
+    private LocalDate holdBackEnd(LocalDate to) {
+        return disputeResolvedOn == null || disputeResolvedOn.isAfter(to) ? to : disputeResolvedOn;
     }
 
     /** The day the invoice was written off as a bad debt; null when it was not. */
@@ -1383,33 +1428,37 @@ public class Invoice {
      * disputed lines are in an open dispute (from the day they were disputed) only what is owed besides them
      * (disputedLines) earns interest, the days before earning on all that is owed; each part is rounded half up
      * to the cent. Once the dispute is resolved it holds nothing back: all that is owed earns interest as if it
-     * had never been disputed, the days in dispute included. With no disputed lines (null), the days the whole
+     * had never been disputed, the days in dispute included — unless it was resolved with a credit note, when
+     * the days it was open still hold the disputed lines back. With no disputed lines (null), the days the whole
      * invoice spends in an open dispute earn nothing (see {@link #interestDays}).
      */
     private BigDecimal earnedOn(BigDecimal owed, BigDecimal disputedLines, BigDecimal daily, LocalDate from, LocalDate to) {
-        if (disputedLines == null || !isDisputed()) {
+        if (disputedLines == null || !holdsBackInterest()) {
             return interestOn(owed, daily, interestDays(from, to));
         }
         LocalDate start = from.isAfter(disputedOn) ? from : disputedOn;
-        if (!start.isBefore(to)) {
+        LocalDate end = holdBackEnd(to);
+        if (!start.isBefore(end)) {
             return interestOn(owed, daily, ChronoUnit.DAYS.between(from, to));
         }
         return interestOn(owed, daily, ChronoUnit.DAYS.between(from, start))
-                .add(interestOn(owed.subtract(disputedLines).max(BigDecimal.ZERO), daily, ChronoUnit.DAYS.between(start, to)));
+                .add(interestOn(owed.subtract(disputedLines).max(BigDecimal.ZERO), daily, ChronoUnit.DAYS.between(start, end)))
+                .add(interestOn(owed, daily, ChronoUnit.DAYS.between(end, to)));
     }
 
     /**
      * The days from one day to another that earn interest: those the whole invoice spends in an open dispute
      * (from the day it was disputed) earn none. A resolved dispute takes no days off — the interest it held
-     * back is owed — and nor does a dispute over particular lines (see {@link #earnedOn}).
+     * back is owed — unless it was resolved with a credit note, when its days still earn none; nor does a
+     * dispute over particular lines (see {@link #earnedOn}).
      */
     private long interestDays(LocalDate from, LocalDate to) {
         long days = ChronoUnit.DAYS.between(from, to);
-        if (!isDisputed() || days <= 0 || hasDisputedLines()) {
+        if (!holdsBackInterest() || days <= 0 || hasDisputedLines()) {
             return days;
         }
         LocalDate start = from.isAfter(disputedOn) ? from : disputedOn;
-        return days - Math.max(0, ChronoUnit.DAYS.between(start, to));
+        return days - Math.max(0, ChronoUnit.DAYS.between(start, holdBackEnd(to)));
     }
 
     /** The interest the balance earns over the days at the daily growth factor, rounded half up to the cent. */

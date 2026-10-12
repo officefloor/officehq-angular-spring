@@ -799,6 +799,46 @@ public class InvoiceService {
     }
 
     /**
+     * Resolves the dispute on an invoice today by crediting what was in dispute; empty if no such invoice.
+     * A credit note dated today credits each disputed line in full (every line when the whole invoice is in
+     * dispute), taxed like the original, and is issued as any credit note is (what is beyond what the invoice
+     * owes is held as credit); then the dispute is resolved and recorded in the audit. The interest the
+     * dispute held back on the disputed amount is never charged. Refused when it is not in dispute, or as
+     * crediting the invoice is.
+     */
+    @Transactional
+    public Optional<Invoice> resolveDisputeWithCredit(Long invoiceId) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (!invoice.isDisputed()) {
+                throw new InvoiceRejectedException("This invoice is not in dispute.");
+            }
+            requireCreditable(invoice);
+            LocalDate on = today.date();
+            Invoice note = invoice.creditNote(on);
+            invoice.disputedLines().forEach(line -> note.addLine(line.creditCopy()));
+            String refusal = overCreditRefusal(note, invoice);
+            if (refusal != null) {
+                throw new InvoiceRejectedException(refusal);
+            }
+            invoice.resolveDisputeWithCredit(on);
+            invoices.saveAndFlush(invoice);
+            Invoice draft = invoices.saveAndFlush(note);
+            entityManager.refresh(draft);
+            refusal = creditNoteRefusal(draft);
+            if (refusal != null) {
+                throw new InvoiceRejectedException(refusal);
+            }
+            issue(draft);
+            // Read again what it has been credited.
+            entityManager.refresh(invoice);
+            withInterest(List.of(invoice));
+            audit.record("DISPUTE_RESOLVED id=" + invoice.getId());
+        });
+        return found;
+    }
+
+    /**
      * Puts a single price for the unit type on the client's rate card: replaces the price of its entry in force
      * today (its date, increment, minimum units and tax rate are kept), or adds an entry that has always applied
      * when none is; empty if no such client. The price has already been checked. The lines of the client's drafts
