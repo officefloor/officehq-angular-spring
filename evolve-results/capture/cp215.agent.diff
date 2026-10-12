@@ -1,0 +1,173 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 98ad2ba..a75de9c 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -786,6 +786,15 @@ function problemWith(line: NewLine): string {
+           }
+         }
+ 
++        @if (inv.creditOf === null && inv.sentTotal !== null) {
++          <button type="button" data-testid="invoice-update" [disabled]="updating()" (click)="updateSentFigures(inv.id)">
++            Update to today's total
++          </button>
++          @if (updateError()) {
++            <p role="alert" data-testid="invoice-update-error">{{ updateError() }}</p>
++          }
++        }
++
+         @if (inv.creditOf === null) {
+           <button type="button" data-testid="invoice-rebill" [disabled]="rebilling()" (click)="rebill(inv.id)">
+             Rebill
+@@ -1009,6 +1018,8 @@ export class InvoicePanel {
+   protected readonly claimError = signal('');
+   protected readonly rebilling = signal(false);
+   protected readonly rebillError = signal('');
++  protected readonly updating = signal(false);
++  protected readonly updateError = signal('');
+   protected readonly recurUntilForm = new FormGroup({
+     recurUntil: new FormControl('', { nonNullable: true }),
+   });
+@@ -1119,6 +1130,7 @@ export class InvoicePanel {
+       this.generateError.set('');
+       this.claimError.set('');
+       this.rebillError.set('');
++      this.updateError.set('');
+       this.creditError.set('');
+       this.reverseError.set('');
+       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
+@@ -1812,6 +1824,25 @@ export class InvoicePanel {
+     });
+   }
+ 
++  // Brings the sent invoice up to date: today's grand total and tax become its sent figures, so what the client
++  // owes changed.
++  protected updateSentFigures(invoiceId: number): void {
++    this.updating.set(true);
++    this.updateError.set('');
++    this.service.updateSentFigures(invoiceId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.updating.set(false);
++        this.changed.emit(detail);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.updateError.set(typeof detail === 'string' && detail ? detail : 'The invoice could not be updated.');
++        this.updating.set(false);
++      },
++    });
++  }
++
+   protected creditNote(invoiceId: number): void {
+     this.crediting.set(true);
+     this.creditError.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index f9f371f..84fea6a 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -526,6 +526,12 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/rebill`, null);
+   }
+ 
++  // Brings a sent invoice up to date: today's grand total and tax become what it was sent with, so it owes what
++  // today's rules give. Answers the invoice.
++  updateSentFigures(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/update`, null);
++  }
++
+   // Marks an invoice as recurring, or not; answers the invoice.
+   setRecurring(invoiceId: number, recurring: boolean): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/recurring`, { recurring });
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 2310924..45f4f86 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -754,6 +754,14 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /** Brings a sent invoice up to date: today's grand total and tax become what it was sent with; answers the invoice. */
++    @PostMapping("/api/invoices/{id}/update")
++    public InvoiceDetail updateSentFigures(@PathVariable Long id) {
++        return invoices.updateSentFigures(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /** Generates the next period's draft of a sent recurring invoice; answers the new draft. */
+     @PostMapping("/api/invoices/{id}/generate")
+     @ResponseStatus(HttpStatus.CREATED)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 4250f19..60fe3a7 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -317,6 +317,69 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Brings the sent invoice up to date, answering it; empty if no such invoice. Today's grand total and tax become what
++     * it was sent with (see {@link Invoice#keepSentFigures}), so it owes what today's rules give, recorded as
++     * INVOICE_UPDATED in the audit. Refused for a draft, a credit note, a void, written-off or rebilled invoice, when
++     * today's grand total is no different from what it was sent for, when it would be less than what has been paid on it,
++     * and when the increase would take the client's balance (less what is in dispute, plus its approved drafts) over its
++     * credit limit.
++     */
++    @Transactional
++    public Optional<Invoice> updateSentFigures(Long invoiceId) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isCreditNote()) {
++                throw new InvoiceRejectedException("A credit note cannot be updated.");
++            }
++            if (invoice.isDraft()) {
++                throw new InvoiceRejectedException("Only a sent invoice can be updated.");
++            }
++            if (invoice.isVoid()) {
++                throw new InvoiceRejectedException("A void invoice cannot be updated.");
++            }
++            if (invoice.isWrittenOff()) {
++                throw new InvoiceRejectedException("A written-off invoice cannot be updated.");
++            }
++            if (invoice.getRebilledOn() != null) {
++                throw new InvoiceRejectedException("A rebilled invoice cannot be updated.");
++            }
++            BigDecimal rate = taxRate.percent();
++            BigDecimal from = invoice.total(rate);
++            BigDecimal to = invoice.currentTotal(rate).setScale(from.scale(), RoundingMode.HALF_UP);
++            BigDecimal increase = to.subtract(from);
++            if (increase.signum() == 0) {
++                throw new InvoiceRejectedException("The invoice's total today is what it was sent for; there is nothing to update.");
++            }
++            BigDecimal paidOn = paid(List.of(invoice)).get(invoice.getId());
++            if (to.compareTo(paidOn) < 0) {
++                throw new InvoiceRejectedException("Today's total (" + to.toPlainString() + ") is less than the "
++                        + paidOn.toPlainString() + " already paid on the invoice, so it cannot be updated.");
++            }
++            if (increase.signum() > 0) {
++                Client client = clients.findById(invoice.getClientId()).orElse(null);
++                if (client != null && client.getCreditLimit() != null) {
++                    BigDecimal after = creditBalance(client.getId()).add(committed(client.getId(), invoice.getId()))
++                            .add(increase);
++                    BigDecimal limit = creditLimitOf(client);
++                    if (after.compareTo(limit) > 0) {
++                        Currency currency = client.getCurrency();
++                        throw new InvoiceRejectedException("Updating this invoice would take " + client.getName()
++                                + "'s balance (less what is in dispute, plus its approved drafts) to " + currency.format(after)
++                                + ", over its " + currency.format(limit) + " credit limit.");
++                    }
++                }
++            }
++            invoice.keepSentFigures(rate);
++            invoices.saveAndFlush(invoice);
++            audit.record("INVOICE_UPDATED id=" + invoice.getId() + " from=" + from.toPlainString()
++                    + " to=" + to.toPlainString());
++            entityManager.refresh(invoice);
++            withInterest(List.of(invoice));
++        });
++        return found;
++    }
++
+     /**
+      * Marks the invoice as recurring, or not; empty if no such invoice. A credit note is refused. The invoice
+      * is otherwise unchanged, so a sent one stays sent.
