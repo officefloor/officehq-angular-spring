@@ -290,6 +290,11 @@ public class Payment {
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
     }
 
+    /** Pays part of this payment to another invoice as well, recorded with it (not credit applied later). */
+    public void alsoPays(Long invoiceId, BigDecimal part) {
+        allocations.add(new PaymentAllocation(invoiceId, part));
+    }
+
     /** Applies part of this payment's credit to the invoice on the day. */
     public void apply(Long invoiceId, BigDecimal part, LocalDate on) {
         allocations.add(new PaymentAllocation(invoiceId, part, on));

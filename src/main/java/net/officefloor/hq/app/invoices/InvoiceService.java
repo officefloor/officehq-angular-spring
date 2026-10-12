@@ -2006,9 +2006,27 @@ public class InvoiceService {
             if (resolved) {
                 audit.record("DISPUTE_RESOLVED id=" + invoice.getId());
             }
-            Payment payment = payments.saveAndFlush(Payment.against(invoice, received, applied, date, reference)
+            Payment against = Payment.against(invoice, received, applied, date, reference)
                     .paidIn(paidIn, paidAmount, invoice.currency()).by(method).surcharged(surcharge).feeCharged(fee)
-                    .remitted(remittance));
+                    .remitted(remittance);
+            // What is left after the invoice pays its debit adjustment notes, oldest first, before any is held as credit.
+            BigDecimal rest = amount.subtract(applied);
+            Map<Invoice, BigDecimal> notesPaid = new LinkedHashMap<>();
+            if (rest.signum() > 0) {
+                for (Map.Entry<Invoice, BigDecimal> note : debitNotesOwing(invoice).entrySet()) {
+                    if (rest.signum() <= 0) {
+                        break;
+                    }
+                    if (note.getKey().getIssueDate() != null && date.isBefore(note.getKey().getIssueDate())) {
+                        continue;
+                    }
+                    BigDecimal part = rest.min(note.getValue());
+                    against.alsoPays(note.getKey().getId(), part);
+                    notesPaid.put(note.getKey(), part);
+                    rest = rest.subtract(part);
+                }
+            }
+            Payment payment = payments.saveAndFlush(against);
             recordFee(payment, invoice.currency());
             recordSurcharge(payment, invoice.currency());
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
@@ -2030,6 +2048,11 @@ public class InvoiceService {
                 audit.record("PLAN_SETTLED id=" + invoice.getId() + " saved=" + saved.toPlainString());
             }
             recordWriteOff(invoice);
+            notesPaid.forEach((note, part) -> {
+                audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + note.getId() + " amount="
+                        + part.setScale(note.scale(), RoundingMode.UNNECESSARY).toPlainString());
+                recordWriteOff(note);
+            });
             recordCreditHeld(payment);
         });
         return found;
@@ -2115,7 +2138,12 @@ public class InvoiceService {
                         + currency.format(sum) + ", more than the " + currency.format(amount) + " paid.");
             }
             named.removeAll(stated);
-            candidates = ofClient.stream().filter(i -> named.contains(i.getId())).toList();
+            // A named invoice's debit adjustment notes are paid with it.
+            Set<Long> referenced = new HashSet<>(named);
+            referenced.addAll(stated);
+            candidates = ofClient.stream().filter(i -> named.contains(i.getId())
+                    || (isDebitNote(i) && referenced.contains(i.getAdjustmentOf()) && !stated.contains(i.getId())))
+                    .toList();
         }
         Map<Long, BigDecimal> dues = new HashMap<>();
         List<Invoice> sent = inPaymentOrder(candidates, dues);
@@ -2232,7 +2260,63 @@ public class InvoiceService {
                         Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(i -> overdue.contains(i.getId()) ? BigDecimal.ZERO : dues.get(i.getId()))
                 .thenComparing(Invoice::getId);
-        return unordered.stream().sorted(byPriority).toList();
+        return notesAfterTheirInvoices(unordered.stream().sorted(byPriority).toList());
+    }
+
+    /**
+     * The invoices in the same order, except that each debit adjustment note whose invoice is among them comes
+     * straight after that invoice, oldest first (lower id first on the same issue date), whatever its own place.
+     */
+    private static List<Invoice> notesAfterTheirInvoices(List<Invoice> ordered) {
+        Set<Long> ids = new HashSet<>();
+        ordered.forEach(i -> ids.add(i.getId()));
+        Map<Long, List<Invoice>> notes = new HashMap<>();
+        ordered.stream()
+                .filter(i -> isDebitNote(i) && ids.contains(i.getAdjustmentOf()))
+                .sorted(oldestFirst())
+                .forEach(i -> notes.computeIfAbsent(i.getAdjustmentOf(), k -> new ArrayList<>()).add(i));
+        List<Invoice> result = new ArrayList<>();
+        for (Invoice invoice : ordered) {
+            if (isDebitNote(invoice) && ids.contains(invoice.getAdjustmentOf())) {
+                continue;
+            }
+            result.add(invoice);
+            result.addAll(notes.getOrDefault(invoice.getId(), List.of()));
+        }
+        return result;
+    }
+
+    /** Whether the invoice is a debit adjustment note: one adjusting a sent invoice that is not a credit note. */
+    private static boolean isDebitNote(Invoice invoice) {
+        return invoice.isAdjustment() && !invoice.isCreditNote();
+    }
+
+    private static Comparator<Invoice> oldestFirst() {
+        return Comparator.comparing(Invoice::getIssueDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(Invoice::getId);
+    }
+
+    /**
+     * The invoice's debit adjustment notes that still have something due (in dispute left out), oldest first, with
+     * what each has due.
+     */
+    private Map<Invoice, BigDecimal> debitNotesOwing(Invoice invoice) {
+        List<Invoice> notes = loadForClient(invoice.getClientId()).stream()
+                .filter(i -> isDebitNote(i) && invoice.getId().equals(i.getAdjustmentOf()) && !i.isDraft()
+                        && !i.isVoid() && !i.isWrittenOff())
+                .sorted(oldestFirst())
+                .toList();
+        Map<Long, BigDecimal> paid = paid(notes);
+        Map<Invoice, BigDecimal> owing = new LinkedHashMap<>();
+        for (Invoice note : notes) {
+            BigDecimal notePaid = paid.get(note.getId());
+            BigDecimal due = note.amountDue(notePaid, taxRate.percent())
+                    .subtract(note.disputedAmount(notePaid, taxRate.percent()));
+            if (due.signum() > 0) {
+                owing.put(note, due);
+            }
+        }
+        return owing;
     }
 
     /**
