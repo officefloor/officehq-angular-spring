@@ -1,0 +1,236 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 3843145..d4b992a 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -214,10 +214,12 @@ export interface InvoiceDetail {
+   withholdingPct: string;
+   // Whether a draft must be approved before it is sent: its grand total (before any withholding) is
+   // over the workspace's approval limit, or its discount takes off more than a fifth of the subtotal,
+-  // and it has not been approved at its total. Credit notes never need approval.
++  // and it has not been approved at exactly its total within the last 30 days. Credit notes never need approval.
+   approval: 'NOT_NEEDED' | 'NEEDS_APPROVAL' | 'APPROVED';
+   // The grand total it was approved at; null when it was not approved.
+   approvedTotal: string | null;
++  // The day it was approved (yyyy-mm-dd); null when it was not. The approval lapses after 30 days.
++  approvedOn: string | null;
+   // The amount due rounded down to the cash coin below (0.05, or whole yen), and the difference
+   // that makes (signed); once settled in cash, the cash rounding it was settled with.
+   cashDue: string;
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index d817814..d3c8502 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -55,7 +55,7 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -425,7 +425,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -453,7 +453,8 @@ public class TestSupportController {
+                     row.get("supplyRegion") == null || row.get("supplyRegion").toString().isBlank() ? null
+                             : row.get("supplyRegion").toString(),
+                     money(row.get("planFee"), "invoices[].planFee"),
+-                    row.get("approvedTotal") == null ? null : money(row.get("approvedTotal"), "invoices[].approvedTotal"));
++                    row.get("approvedTotal") == null ? null : money(row.get("approvedTotal"), "invoices[].approvedTotal"),
++                    row.get("approvedOn") == null ? null : date(row.get("approvedOn"), "invoices[].approvedOn"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -749,7 +750,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -789,6 +790,9 @@ public class TestSupportController {
+                     if (r.get("APPROVED_TOTAL") != null) {
+                         row.put("approvedTotal", r.get("APPROVED_TOTAL"));
+                     }
++                    if (r.get("APPROVED_ON") != null) {
++                        row.put("approvedOn", r.get("APPROVED_ON").toString());
++                    }
+                     row.put("surchargePct", r.get("SURCHARGE_PCT"));
+                     if (r.get("SKIPPED_INSTALMENT") != null) {
+                         row.put("skippedInstalment", r.get("SKIPPED_INSTALMENT"));
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 8f32dc0..5a3b8e1 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -173,6 +173,10 @@ public class Invoice {
+     @Column(name = "approved_total")
+     private BigDecimal approvedTotal;
+ 
++    /** The day the invoice was approved; null while it has not been, or for an approval given before the day was kept. */
++    @Column(name = "approved_on")
++    private LocalDate approvedOn;
++
+     /**
+      * The number of the instalment the client skipped: it pays only its interest and the instalments
+      * after it are worked out again (see {@link #schedule}); null when none was.
+@@ -1011,14 +1015,17 @@ public class Invoice {
+         return currency().divideDownToStep(new BigDecimal(approvalLimitUsd.trim()), usdPerOn(issueDate));
+     }
+ 
++    /** The number of days an approval stays good after the day it was given. */
++    public static final int APPROVAL_DAYS = 30;
++
+     /**
+-     * The invoice's approval at the tax rate: a credit note, or an invoice whose grand total (before any
+-     * withholding) is not over the approval limit and whose discount takes off no more than a fifth of the
+-     * subtotal, needs none; otherwise it is approved while its grand total is not above the total it was
+-     * approved at (and, for a large discount, not below it either, so a bigger discount needs approval
+-     * again). Once sent, an invoice is as it was approved.
++     * The invoice's approval at the tax rate as of today: a credit note, or an invoice whose grand total
++     * (before any withholding) is not over the approval limit and whose discount takes off no more than a
++     * fifth of the subtotal, needs none; otherwise it is approved while its grand total is exactly the total
++     * it was approved at and no more than {@link #APPROVAL_DAYS} days have passed since it was approved.
++     * Once sent, an invoice is as it was approved.
+      */
+-    public Approval approval(BigDecimal taxRate) {
++    public Approval approval(BigDecimal taxRate, LocalDate today) {
+         if (isCreditNote()) {
+             return Approval.NOT_NEEDED;
+         }
+@@ -1027,24 +1034,28 @@ public class Invoice {
+         }
+         BigDecimal limit = approvalLimit();
+         BigDecimal total = total(taxRate);
+-        boolean largeDiscount = discountIsLarge();
+-        if (!largeDiscount && (limit == null || total.compareTo(limit) <= 0)) {
++        if (!discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
+             return Approval.NOT_NEEDED;
+         }
+-        if (approvedTotal == null) {
++        if (approvedTotal == null || total.compareTo(approvedTotal) != 0) {
+             return Approval.NEEDS_APPROVAL;
+         }
+-        int againstApproved = total.compareTo(approvedTotal);
+-        return againstApproved <= 0 && (!largeDiscount || againstApproved == 0) ? Approval.APPROVED : Approval.NEEDS_APPROVAL;
++        boolean lapsed = approvedOn != null && today.isAfter(approvedOn.plusDays(APPROVAL_DAYS));
++        return lapsed ? Approval.NEEDS_APPROVAL : Approval.APPROVED;
+     }
+ 
+     public BigDecimal getApprovedTotal() {
+         return approvedTotal;
+     }
+ 
+-    /** Approves the invoice at the grand total. */
+-    public void approve(BigDecimal total) {
++    public LocalDate getApprovedOn() {
++        return approvedOn;
++    }
++
++    /** Approves the invoice at the grand total on the day. */
++    public void approve(BigDecimal total, LocalDate on) {
+         this.approvedTotal = total;
++        this.approvedOn = on;
+     }
+ 
+     /** The late interest charged on the invoice itself, released retention left out (see {@link #accrueLateInterest}). */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 70dceb3..6e673ab 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -149,7 +149,7 @@ public class InvoiceController {
+      * {@code withholding} is what the client withholds for its tax office (0 when none): never owed, so
+      * left out of the amount due; nothing when reverse charged. {@code withholdingPct} (without trailing zeros)
+      * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
+-     * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at (null when it was not).
++     * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not).
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -160,7 +160,7 @@ public class InvoiceController {
+             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+-            String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal) {
++            String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -203,8 +203,8 @@ public class InvoiceController {
+                     i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
+                     i.chargedSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
+                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
+-                    i.getSupplyRegion(), i.approval(taxRate),
+-                    i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString());
++                    i.getSupplyRegion(), i.approval(taxRate, today),
++                    i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 0b669ef..3181a57 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -745,7 +745,7 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException("The due date (" + invoice.getDueDate()
+                         + ") is already past; set a later due date before sending the invoice.");
+             }
+-            if (invoice.approval(taxRate.percent()) == Invoice.Approval.NEEDS_APPROVAL) {
++            if (invoice.approval(taxRate.percent(), today.date()) == Invoice.Approval.NEEDS_APPROVAL) {
+                 throw new InvoiceRejectedException(
+                         invoice.discountIsLarge()
+                                 ? "The discount is more than 20% of the subtotal; approve the invoice before sending it."
+@@ -762,7 +762,7 @@ public class InvoiceService {
+ 
+     /**
+      * Approves a draft whose grand total is over the workspace's approval limit, or whose discount takes
+-     * off more than a fifth of the subtotal, keeping that total,
++     * off more than a fifth of the subtotal, keeping that total and the day,
+      * and records it in the audit; empty if no such invoice. An invoice that needs no approval, or is
+      * already approved at its total, is refused.
+      */
+@@ -774,13 +774,15 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException("Only a draft invoice can be approved.");
+             }
+             BigDecimal rate = taxRate.percent();
+-            if (invoice.approval(rate) != Invoice.Approval.NEEDS_APPROVAL) {
+-                throw new InvoiceRejectedException(invoice.approval(rate) == Invoice.Approval.APPROVED
++            LocalDate on = today.date();
++            Invoice.Approval approval = invoice.approval(rate, on);
++            if (approval != Invoice.Approval.NEEDS_APPROVAL) {
++                throw new InvoiceRejectedException(approval == Invoice.Approval.APPROVED
+                         ? "This invoice is already approved."
+                         : "This invoice is within the approval limit and its discount is not over 20%, so it needs no approval.");
+             }
+             BigDecimal total = invoice.total(rate);
+-            invoice.approve(total);
++            invoice.approve(total, on);
+             invoices.saveAndFlush(invoice);
+             audit.record("INVOICE_APPROVED id=" + invoice.getId() + " total=" + total.toPlainString());
+         });
+@@ -801,7 +803,7 @@ public class InvoiceService {
+         loadForClient(clientId).stream()
+                 .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty()
+                         && !invoice.dueDatePassedBy(today.date())
+-                        && invoice.approval(taxRate.percent()) != Invoice.Approval.NEEDS_APPROVAL)
++                        && invoice.approval(taxRate.percent(), today.date()) != Invoice.Approval.NEEDS_APPROVAL)
+                 .forEach(invoice -> {
+                     if (!invoice.isCreditNote()) {
+                         // Read again the client's sent invoices: one sent just before counts towards its month's volume.
+diff --git a/src/main/resources/db/migration/V69__invoice_approved_on.sql b/src/main/resources/db/migration/V69__invoice_approved_on.sql
+new file mode 100644
+index 0000000..4e60297
+--- /dev/null
++++ b/src/main/resources/db/migration/V69__invoice_approved_on.sql
+@@ -0,0 +1,3 @@
++-- The day an invoice was approved; the approval lapses once more than 30 days have passed since then.
++-- Null while it has not been approved (or for an approval given before the day was kept).
++ALTER TABLE invoice ADD COLUMN approved_on DATE;
