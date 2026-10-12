@@ -2573,7 +2573,8 @@ public class InvoiceService {
 
     /**
      * The sent invoices among these (not drafts, void invoices, credit notes or invoices in dispute) in the payment order:
-     * the overdue ones first, earliest due date first, then the rest from the smallest amount due to the
+     * the overdue ones first, highest dunning level first (COLLECTIONS, FINAL, REMINDER_2, REMINDER_1, NONE; see
+     * {@link #dunningLevel}) and earliest due date first within a level, then the rest from the smallest amount due to the
      * largest; lower id first on a tie. Fills in what each has due.
      */
     private List<Invoice> inPaymentOrder(List<Invoice> candidates, Map<Long, BigDecimal> dues) {
@@ -2586,16 +2587,21 @@ public class InvoiceService {
         Map<Long, BigDecimal> paid = allPaid;
         LocalDate now = today.date();
         Set<Long> overdue = new HashSet<>();
+        Map<Long, DunningLevel> levels = new HashMap<>();
         for (Invoice invoice : unordered) {
             BigDecimal invoicePaid = paid.get(invoice.getId());
             dues.put(invoice.getId(), invoice.amountDue(invoicePaid, taxRate.percent())
                     .subtract(invoice.disputedAmount(invoicePaid, taxRate.percent())));
             if (invoice.statusWhenPaid(invoicePaid, taxRate.percent(), now) == InvoiceStatus.OVERDUE) {
                 overdue.add(invoice.getId());
+                // How far it is chased: the most chased overdue invoices are paid first.
+                levels.put(invoice.getId(), dunningLevel(invoice));
             }
         }
-        // Overdue first, oldest due date first; then the rest, smallest amount due first; lower id on a tie.
+        // Overdue first, highest dunning level first, then oldest due date first; then the rest, smallest amount due
+        // first; lower id on a tie.
         Comparator<Invoice> byPriority = Comparator.<Invoice, Boolean>comparing(i -> !overdue.contains(i.getId()))
+                .thenComparing(i -> levels.getOrDefault(i.getId(), DunningLevel.NONE), Comparator.reverseOrder())
                 .thenComparing(i -> overdue.contains(i.getId()) ? i.getDueDate() : null,
                         Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(i -> overdue.contains(i.getId()) ? BigDecimal.ZERO : dues.get(i.getId()))
