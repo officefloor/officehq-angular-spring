@@ -1,0 +1,235 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index e124835..767621e 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -51,12 +51,14 @@ export interface Client {
+   // first eight. With a valid one whose two letters are its region (outside the workspace's home region) its invoices are
+   // reverse charged; null for no number.
+   taxNumber: string | null;
+-  // Whether the client is on hold: their invoices are not sent, their credit is not applied, and their
+-  // payments pay no invoice but are all held as credit.
++  // Whether the client is on hold, by hand or while over its credit limit: their invoices are not sent,
++  // their credit is not applied, and their payments pay only their overdue invoices, the rest held as credit.
+   onHold: boolean;
++  // Whether the client's balance is over its credit limit: it stays on hold until it is back within it.
++  overLimit: boolean;
+ }
+ 
+-export type NewClient = Omit<Client, 'id' | 'onHold'>;
++export type NewClient = Omit<Client, 'id' | 'onHold' | 'overLimit'>;
+ 
+ // The clients REST API.
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index 4a26dc8..9081fac 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -105,7 +105,8 @@ function validTaxNumber(taxNumber: string): boolean {
+               type="button"
+               data-testid="client-hold"
+               [attr.aria-label]="(c.onHold ? 'Lift the hold on ' : 'Put on hold ') + c.name"
+-              [disabled]="holding()"
++              [disabled]="holding() || c.overLimit"
++              [attr.title]="c.overLimit ? 'On hold until the balance is back within the credit limit' : null"
+               (click)="$event.stopPropagation(); toggleHold(c.id)"
+             >
+               {{ c.onHold ? 'Lift hold' : 'Hold' }}
+@@ -307,7 +308,7 @@ function validTaxNumber(taxNumber: string): boolean {
+         [currency]="client.currency"
+         [openInvoice]="openInvoice()"
+         [picked]="picked()"
+-        (changed)="loadBalances()"
++        (changed)="loadBalances(); loadClients()"
+       />
+     }
+   `,
+@@ -365,10 +366,15 @@ export class Clients {
+   });
+ 
+   constructor() {
+-    this.service.list().subscribe((list) => this.clients.set(list));
++    this.loadClients();
+     this.loadBalances();
+   }
+ 
++  // Fetches the clients again: a change to an invoice can put a client on hold or take it off.
++  protected loadClients(): void {
++    this.service.list().subscribe((list) => this.clients.set(list));
++  }
++
+   protected balanceOf(clientId: number): ClientBalance {
+     return this.balances().get(clientId) ?? { clientId, balance: '0', overdue: '0', credit: '0' };
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 91b89a7..ae6f905 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -14,6 +14,7 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.invoices.InvoiceService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -32,13 +33,14 @@ public class ClientController {
+             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+             BigDecimal retentionPct, Integer graceDays, BigDecimal interestRate, String region, String taxNumber,
+             List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
+-            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold) {
+-        static ClientView of(Client c) {
++            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold, boolean overLimit) {
++        /** The client, on hold when held by hand or while over its credit limit (overLimit). */
++        static ClientView of(Client c, boolean overLimit) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
+                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
+-                    c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold());
++                    c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold() || overLimit, overLimit);
+         }
+     }
+ 
+@@ -147,28 +149,42 @@ public class ClientController {
+ 
+     private final ClientService clients;
+ 
+-    public ClientController(ClientService clients) {
++    private final InvoiceService invoices;
++
++    public ClientController(ClientService clients, InvoiceService invoices) {
+         this.clients = clients;
++        this.invoices = invoices;
++    }
++
++    private ClientView view(Client c) {
++        return ClientView.of(c, invoices.overLimit(c.getId()));
+     }
+ 
+     @GetMapping
+     public List<ClientView> list() {
+-        return clients.list().stream().map(ClientView::of).toList();
++        return clients.list().stream().map(this::view).toList();
+     }
+ 
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClientView add(@Valid @RequestBody NewClient body) {
+-        return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
++        return view(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
+                 body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge(),
+                 body.rateDiscountPct(), body.taxExemptUntil(), body.creditLimit()));
+     }
+ 
+-    /** Puts the client on hold, or lifts the hold when it is on hold; answers the client. */
++    /**
++     * Puts the client on hold, or lifts the hold when it is on hold; answers the client. A client over its
++     * credit limit is on hold until its balance is back within it, so its hold cannot be lifted.
++     */
+     @PostMapping("/{id}/hold")
+     public ClientView toggleHold(@PathVariable Long id) {
+-        return clients.toggleHold(id).map(ClientView::of)
++        if (invoices.overLimit(id)) {
++            throw new ClientRejectedException(
++                    "The client owes more than its credit limit, so it stays on hold until its balance is back within it.");
++        }
++        return clients.toggleHold(id).map(this::view)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index f2fcbc0..ead6a49 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1377,7 +1377,7 @@ public class InvoiceService {
+                         + invoice.currency().format(invoice.currency().cashStep()) + " coins.");
+             }
+             if (onHold(invoice.getClientId())) {
+-                holdAsCredit(invoice.getClientId(), paidAmount, paidIn, date, method);
++                payOverdueThenHold(invoice.getClientId(), paidAmount, paidIn, date, method).remitted(remittance);
+                 return;
+             }
+             BigDecimal received = converted(paidAmount, paidIn, invoice.currency(), date);
+@@ -1490,7 +1490,7 @@ public class InvoiceService {
+     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+             List<QuotedReference> references, PaymentMethod method, String remittance) {
+         if (onHold(clientId)) {
+-            return holdAsCredit(clientId, paidAmount, paidIn, date, method).remitted(remittance);
++            return payments.saveAndFlush(payOverdueThenHold(clientId, paidAmount, paidIn, date, method).remitted(remittance));
+         }
+         Currency currency = currencyOf(clientId);
+         BigDecimal received = converted(paidAmount, paidIn, currency, date);
+@@ -1945,13 +1945,68 @@ public class InvoiceService {
+     }
+ 
+     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
+-    /** Whether the client is on hold; false if no such client. */
+-    private boolean onHold(Long clientId) {
+-        return clients.findById(clientId).map(Client::isOnHold).orElse(false);
++    /**
++     * Whether the client is on hold: put on hold by hand, or its balance is over its credit limit; false
++     * if no such client.
++     */
++    @Transactional(readOnly = true)
++    public boolean onHold(Long clientId) {
++        return clients.findById(clientId).map(c -> c.isOnHold() || overLimit(c)).orElse(false);
++    }
++
++    /** Whether the client's balance is over its credit limit; false if no such client or it has no limit. */
++    @Transactional(readOnly = true)
++    public boolean overLimit(Long clientId) {
++        return clients.findById(clientId).map(this::overLimit).orElse(false);
++    }
++
++    private boolean overLimit(Client client) {
++        return client.getCreditLimit() != null && balance(client.getId()).compareTo(client.getCreditLimit()) > 0;
++    }
++
++    /**
++     * Records a payment from a client on hold, whatever invoice is open or referenced: it pays the client's
++     * overdue invoices (not in dispute), oldest due date first (lower id first on the same date), each paid
++     * off before the next, and only what is left is held on the client's account as credit. A date after
++     * today is refused.
++     */
++    private Payment payOverdueThenHold(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
++            PaymentMethod method) {
++        Map<Long, BigDecimal> dues = new HashMap<>();
++        LocalDate now = today.date();
++        List<Invoice> overdue = inPaymentOrder(loadForClient(clientId), dues).stream()
++                .filter(i -> dues.get(i.getId()).signum() > 0
++                        && i.statusWhenPaid(paid(List.of(i)).get(i.getId()), taxRate.percent(), now) == InvoiceStatus.OVERDUE
++                        && (i.getIssueDate() == null || !date.isBefore(i.getIssueDate())))
++                .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
++                        .thenComparing(Invoice::getId))
++                .toList();
++        if (overdue.isEmpty()) {
++            return holdAsCredit(clientId, paidAmount, paidIn, date, method);
++        }
++        Currency currency = currencyOf(clientId);
++        BigDecimal received = converted(paidAmount, paidIn, currency, date);
++        BigDecimal surcharge = surchargeOf(received, currency, method, date);
++        BigDecimal fee = feeOf(received, paidIn, currency);
++        BigDecimal left = received.subtract(surcharge).subtract(fee);
++        List<PaymentAllocation> parts = new ArrayList<>();
++        for (Invoice invoice : overdue) {
++            if (left.signum() <= 0) {
++                break;
++            }
++            BigDecimal part = left.min(dues.get(invoice.getId()));
++            parts.add(new PaymentAllocation(invoice.getId(), part));
++            left = left.subtract(part);
++        }
++        if (parts.isEmpty()) {
++            return holdAsCredit(clientId, paidAmount, paidIn, date, method);
++        }
++        return recordSpread(clientId, received.subtract(surcharge).subtract(fee), paidAmount, paidIn, date, null, parts,
++                method, surcharge, fee, Set.of());
+     }
+ 
+     /**
+-     * Records a payment from a client on hold: it pays no invoice, whatever invoice is open or referenced,
++     * Records a payment from a client on hold that has no overdue invoice to pay: it pays no invoice,
+      * and the whole of it is held on the client's account as credit, recorded in the audit. A date after
+      * today is refused.
+      */
