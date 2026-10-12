@@ -209,8 +209,8 @@ export interface InvoiceDetail {
   // The client's withholding percentage (without trailing zeros); "0" when it withholds nothing.
   withholdingPct: string;
   // Whether a draft must be approved before it is sent: its grand total (before any withholding) is
-  // over the workspace's approval limit and above the total it was approved at, if any. Credit notes
-  // never need approval.
+  // over the workspace's approval limit, or its discount takes off more than a fifth of the subtotal,
+  // and it has not been approved at its total. Credit notes never need approval.
   approval: 'NOT_NEEDED' | 'NEEDS_APPROVAL' | 'APPROVED';
   // The grand total it was approved at; null when it was not approved.
   approvedTotal: string | null;
@@ -270,7 +270,7 @@ export interface NewLine {
 }
 
 // A discount to give: either a percentage or a fixed amount, as entered, with an optional cap on
-// what a percentage takes off and an optional reason, needed when it takes off more than a fifth of the subtotal.
+// what a percentage takes off and an optional reason.
 export type NewDiscount = ({ discountPct: string } | { discountAmount: string }) & { discountCap?: string; discountReason?: string };
 
 // What a client still owes across its sent invoices (drafts do not count), after discounts, tax and
@@ -373,7 +373,8 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, { amount });
   }
 
-  // Approves a draft whose grand total is over the workspace's approval limit. Refused (409) when it
+  // Approves a draft whose grand total is over the workspace's approval limit, or whose discount is
+  // more than a fifth of the subtotal. Refused (409) when it
   // needs no approval.
   approve(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/approve`, null);

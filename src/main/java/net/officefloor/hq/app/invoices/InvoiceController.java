@@ -209,7 +209,7 @@ public class InvoiceController {
      * A discount to give: a percentage from 0 to 100 with at most two decimals, or a fixed amount
      * of money, not negative and to the cent. Exactly one of them. Optionally a cap, money not
      * negative and to the cent, that everything taken off, line discounts included, never comes to more than.
-     * Optionally a reason, needed when the discount takes off more than a fifth of the subtotal.
+     * Optionally a reason.
      */
     public record NewDiscount(
             @DecimalMin(value = "0", message = "The discount must be from 0 to 100 percent.")
@@ -652,7 +652,7 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
     }
 
-    /** Approves a draft whose grand total is over the workspace's approval limit. */
+    /** Approves a draft whose grand total is over the workspace's approval limit, or whose discount is more than a fifth. */
     @PostMapping("/api/invoices/{id}/approve")
     public InvoiceDetail approve(@PathVariable Long id) {
         return invoices.approve(id)

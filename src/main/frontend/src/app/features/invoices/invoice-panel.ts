@@ -859,7 +859,7 @@ function problemWith(line: NewLine): string {
               inputmode="decimal"
               formControlName="cap"
             />
-            <label for="discount-reason">reason (needed over 20% of the subtotal)</label>
+            <label for="discount-reason">reason (optional)</label>
             <input
               id="discount-reason"
               data-testid="discount-form-reason"

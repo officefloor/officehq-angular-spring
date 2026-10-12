@@ -699,14 +699,9 @@ public class Invoice {
         this.discountReason = discountReason == null || discountReason.isBlank() ? null : discountReason.strip();
     }
 
-    /** Whether the discount takes off more than a fifth of the subtotal, after any cap, and so needs a reason. */
-    public boolean discountNeedsReason() {
+    /** Whether the discount takes off more than a fifth of the subtotal, after any cap, and so needs approval. */
+    public boolean discountIsLarge() {
         return discount().multiply(BigDecimal.valueOf(5)).compareTo(subtotal()) > 0;
-    }
-
-    /** Whether the discount needs a reason but has none. */
-    public boolean discountLacksReason() {
-        return discountNeedsReason() && discountReason == null;
     }
 
     /** Sets the percentage taken off the subtotal, clearing any fixed amount; it has already been checked. */
@@ -1018,8 +1013,10 @@ public class Invoice {
 
     /**
      * The invoice's approval at the tax rate: a credit note, or an invoice whose grand total (before any
-     * withholding) is not over the approval limit, needs none; otherwise it is approved while its grand
-     * total is not above the total it was approved at. Once sent, an invoice is as it was approved.
+     * withholding) is not over the approval limit and whose discount takes off no more than a fifth of the
+     * subtotal, needs none; otherwise it is approved while its grand total is not above the total it was
+     * approved at (and, for a large discount, not below it either, so a bigger discount needs approval
+     * again). Once sent, an invoice is as it was approved.
      */
     public Approval approval(BigDecimal taxRate) {
         if (isCreditNote()) {
@@ -1030,10 +1027,15 @@ public class Invoice {
         }
         BigDecimal limit = approvalLimit();
         BigDecimal total = total(taxRate);
-        if (limit == null || total.compareTo(limit) <= 0) {
+        boolean largeDiscount = discountIsLarge();
+        if (!largeDiscount && (limit == null || total.compareTo(limit) <= 0)) {
             return Approval.NOT_NEEDED;
         }
-        return approvedTotal != null && total.compareTo(approvedTotal) <= 0 ? Approval.APPROVED : Approval.NEEDS_APPROVAL;
+        if (approvedTotal == null) {
+            return Approval.NEEDS_APPROVAL;
+        }
+        int againstApproved = total.compareTo(approvedTotal);
+        return againstApproved <= 0 && (!largeDiscount || againstApproved == 0) ? Approval.APPROVED : Approval.NEEDS_APPROVAL;
     }
 
     public BigDecimal getApprovedTotal() {
