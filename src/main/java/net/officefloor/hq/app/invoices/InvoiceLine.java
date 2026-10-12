@@ -412,9 +412,19 @@ public class InvoiceLine {
      * and the unit price it is charged at (0 when priced in tiers).
      */
     public String fingerprint() {
+        return fingerprintWith(qty);
+    }
+
+    /** The line's {@link #fingerprint} as if it billed the quantity given. */
+    String fingerprintWith(BigDecimal quantity) {
         String text = description == null ? "" : description.toLowerCase(java.util.Locale.ROOT).replaceAll(" +", " ").trim();
         BigDecimal cents = isTiered() || unitPrice == null ? BigDecimal.ZERO : chargedUnitPrice().movePointRight(2);
-        return text + "," + plain(qty) + "," + plain(cents);
+        return text + "," + plain(quantity) + "," + plain(cents);
+    }
+
+    /** The line's {@link #fingerprint} without its quantity: lines with the same one bill the same thing at the same price. */
+    String fingerprintKey() {
+        return fingerprintWith(BigDecimal.ZERO);
     }
 
     private static String plain(BigDecimal value) {

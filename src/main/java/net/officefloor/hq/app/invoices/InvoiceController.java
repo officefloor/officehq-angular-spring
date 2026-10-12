@@ -518,6 +518,7 @@ public class InvoiceController {
     }
 
     private InvoiceDetail detail(Invoice i) {
+        invoices.adjustFingerprint(i);
         return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()), today.date(), invoices.approval(i),
                 invoices.possibleDuplicateOf(i));
     }

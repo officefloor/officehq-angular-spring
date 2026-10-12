@@ -325,6 +325,10 @@ public class Invoice {
             + " WHERE a.adjustment_of = id AND a.status <> 'DRAFT' AND a.status <> 'VOID')")
     private BigDecimal adjusted = BigDecimal.ZERO;
 
+    /** The adjustment notes issued against this invoice its fingerprint is taken over; null when not worked out. Not stored. */
+    @Transient
+    private List<Invoice> adjustmentNotes;
+
     /** The code of the currency the invoice's client is billed in; read from the client. */
     @Formula("(SELECT c.currency FROM client c WHERE c.id = client_id)")
     private String clientCurrency;
@@ -2424,13 +2428,50 @@ public class Invoice {
     /**
      * The invoice's fingerprint, to spot the same work billed twice: the SHA-256 hash (hex, in capitals) of
      * the client's id, a '|', then its lines (see {@link InvoiceLine#fingerprint}) sorted and joined with ';'.
-     * Null when it has no lines.
+     * A sent invoice's is taken over its lines as adjusted (see {@link #adjustedFingerprint}). Null when it has no lines.
      */
     public String fingerprint() {
-        if (lines.isEmpty()) {
+        return adjustedFingerprint(List.of(), List.of());
+    }
+
+    /**
+     * The fingerprint of the invoice as adjusted by its adjustment notes (see {@link #adjustWith}) and then by the
+     * further lines given: lines its debit notes (and {@code added}) bill count, and lines its credit notes (and
+     * {@code taken}) take off don't — a line taken off comes off the quantity of the lines billing the same thing at
+     * the same price. Null when no line is left.
+     */
+    public String adjustedFingerprint(List<InvoiceLine> added, List<InvoiceLine> taken) {
+        List<InvoiceLine> billed = new ArrayList<>(lines);
+        List<InvoiceLine> creditedLines = new ArrayList<>();
+        if (adjustmentNotes != null) {
+            for (Invoice note : adjustmentNotes) {
+                (note.isCreditNote() ? creditedLines : billed).addAll(note.getLines());
+            }
+        }
+        billed.addAll(added);
+        creditedLines.addAll(taken);
+        List<BigDecimal> left = new ArrayList<>(billed.stream().map(l -> l.getQty() == null ? BigDecimal.ZERO : l.getQty()).toList());
+        for (InvoiceLine credit : creditedLines) {
+            BigDecimal owed = credit.getQty() == null ? BigDecimal.ZERO : credit.getQty();
+            String key = credit.fingerprintKey();
+            for (int i = 0; i < billed.size() && owed.signum() > 0; i++) {
+                if (left.get(i).signum() > 0 && key.equals(billed.get(i).fingerprintKey())) {
+                    BigDecimal off = owed.min(left.get(i));
+                    left.set(i, left.get(i).subtract(off));
+                    owed = owed.subtract(off);
+                }
+            }
+        }
+        List<String> parts = new ArrayList<>();
+        for (int i = 0; i < billed.size(); i++) {
+            if (left.get(i).signum() > 0) {
+                parts.add(billed.get(i).fingerprintWith(left.get(i)));
+            }
+        }
+        if (parts.isEmpty()) {
             return null;
         }
-        String text = clientId + "|" + String.join(";", lines.stream().map(InvoiceLine::fingerprint).sorted().toList());
+        String text = clientId + "|" + String.join(";", parts.stream().sorted().toList());
         try {
             byte[] hash = java.security.MessageDigest.getInstance("SHA-256")
                     .digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -2438,6 +2479,11 @@ public class Invoice {
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /** Sets the adjustment notes issued against this invoice, its {@link #fingerprint} is taken over. */
+    public void adjustWith(List<Invoice> notes) {
+        this.adjustmentNotes = notes;
     }
 
     /** Whether lines can still be added: only a draft is still being written. */

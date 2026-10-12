@@ -544,6 +544,7 @@ public class InvoiceService {
             InvoiceLine line = newLine(invoice, description, qty, unitType, unitPrice, overtime, taxExempt, discountPct,
                     taxRate, periodStart, periodEnd, percentComplete);
             if (adjusting) {
+                refuseDuplicateAdjustment(invoice, List.of(line), List.of());
                 issueDebitNote(invoice, line);
                 return;
             }
@@ -569,7 +570,9 @@ public class InvoiceService {
             return Optional.empty();
         }
         if (adjustsByNotes(invoice)) {
-            issueAdjustmentCredit(invoice, lineOf(invoice, lineId).creditCopy());
+            InvoiceLine credit = lineOf(invoice, lineId).creditCopy();
+            refuseDuplicateAdjustment(invoice, List.of(), List.of(credit));
+            issueAdjustmentCredit(invoice, credit);
             return found;
         }
         invoice.removeLine(lineId);
@@ -602,11 +605,14 @@ public class InvoiceService {
             InvoiceLine changed = newLine(invoice, description, qty, unitType, unitPrice, overtime, taxExempt, discountPct,
                     taxRate, periodStart, periodEnd, percentComplete);
             if (!old.sameButQty(changed)) {
+                refuseDuplicateAdjustment(invoice, List.of(changed), List.of(old.creditCopy()));
                 issueAdjustmentCredit(invoice, old.creditCopy());
                 issueDebitNote(invoice, changed);
             } else if (qty.compareTo(old.getQty()) > 0) {
+                refuseDuplicateAdjustment(invoice, List.of(old.copy().withQty(qty.subtract(old.getQty()))), List.of());
                 issueDebitNote(invoice, old.copy().withQty(qty.subtract(old.getQty())));
             } else if (qty.compareTo(old.getQty()) < 0) {
+                refuseDuplicateAdjustment(invoice, List.of(), List.of(old.creditCopy().withQty(old.getQty().subtract(qty))));
                 issueAdjustmentCredit(invoice, old.creditCopy().withQty(old.getQty().subtract(qty)));
             }
             return found;
@@ -630,6 +636,48 @@ public class InvoiceService {
         line.setPeriod(periodStart, periodEnd);
         line.setPercentComplete(percentComplete);
         return line;
+    }
+
+    /**
+     * Refuses a line change on the sent invoice, made by adjustment notes adding and taking off the lines given, that
+     * would give it the same fingerprint (as adjusted) as another of its client's invoices sent within the duplicate
+     * window (see {@link #duplicateCandidates}).
+     */
+    private void refuseDuplicateAdjustment(Invoice invoice, List<InvoiceLine> added, List<InvoiceLine> taken) {
+        Integer days = duplicateWindow.days();
+        if (days == null) {
+            return;
+        }
+        List<Invoice> all = adjusted(invoices.findByClientIdOrderByIdAsc(invoice.getClientId()));
+        invoice.adjustWith(notesOf(invoice, all));
+        String fingerprint = invoice.adjustedFingerprint(added, taken);
+        if (fingerprint == null) {
+            return;
+        }
+        List<Invoice> same = duplicateCandidates(invoice, all, days).stream()
+                .filter(i -> fingerprint.equals(i.fingerprint())).toList();
+        if (!same.isEmpty()) {
+            throw new InvoiceRejectedException("This change would make the invoice a duplicate of "
+                    + same.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")) + ".");
+        }
+    }
+
+    /** The invoices, each with the adjustment notes issued against it set to take its fingerprint over (see {@link Invoice#adjustWith}). */
+    private static List<Invoice> adjusted(List<Invoice> all) {
+        all.forEach(i -> i.adjustWith(notesOf(i, all)));
+        return all;
+    }
+
+    /** The adjustment notes issued (not draft, not void) against the invoice, among those given. */
+    private static List<Invoice> notesOf(Invoice invoice, List<Invoice> all) {
+        return all.stream().filter(n -> invoice.getId() != null && invoice.getId().equals(n.getAdjustmentOf())
+                && !n.isDraft() && !n.isVoid()).toList();
+    }
+
+    /** Sets on the invoice the adjustment notes issued against it, which its fingerprint is taken over. */
+    @Transactional(readOnly = true)
+    public void adjustFingerprint(Invoice invoice) {
+        invoice.adjustWith(notesOf(invoice, invoices.findByClientIdOrderByIdAsc(invoice.getClientId())));
     }
 
     private static InvoiceLine lineOf(Invoice invoice, Long lineId) {
@@ -2790,14 +2838,22 @@ public class InvoiceService {
         if (days == null || fingerprint == null || !invoice.isDraft() || invoice.isCreditNote()) {
             return List.of();
         }
+        return duplicateCandidates(invoice, adjusted(invoices.findByClientIdOrderByIdAsc(invoice.getClientId())), days)
+                .stream().filter(i -> fingerprint.equals(i.fingerprint())).toList();
+    }
+
+    /**
+     * Of the client's invoices given, those another of its invoices can be a duplicate of: sent (not void, not credit
+     * or adjustment notes, not rebilled or fully credited) and issued within the duplicate window of days before today.
+     */
+    private List<Invoice> duplicateCandidates(Invoice invoice, List<Invoice> all, int days) {
         LocalDate on = today.date();
         LocalDate from = on.minusDays(days);
-        return invoices.findByClientIdOrderByIdAsc(invoice.getClientId()).stream()
-                .filter(i -> !i.getId().equals(invoice.getId()) && !i.isDraft() && !i.isVoid() && !i.isCreditNote())
+        return all.stream()
+                .filter(i -> !i.getId().equals(invoice.getId()) && !i.isDraft() && !i.isVoid() && !i.isCreditNote() && !i.isAdjustment())
                 // A rebilled or fully credited invoice is cancelled: nothing duplicates it.
                 .filter(i -> i.getRebilledOn() == null && i.getCredited().compareTo(i.total(taxRate.percent())) < 0)
                 .filter(i -> i.getIssueDate() != null && !i.getIssueDate().isBefore(from) && !i.getIssueDate().isAfter(on))
-                .filter(i -> fingerprint.equals(i.fingerprint()))
                 .toList();
     }
 
