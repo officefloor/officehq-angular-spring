@@ -1,0 +1,122 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 4260969..aec86a6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -191,7 +191,7 @@ public class InvoiceController {
+             String fingerprint, String duplicateOf, LocalDate rebilledOn, String replaces, String replacedBy,
+             Long adjustmentOf, String adjusted, DunningLevel dunning, List<LocalDate> reminders) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval,
+-                List<Invoice> duplicates) {
++                List<Invoice> duplicates, DunningLevel dunning) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+             LocalDate paidOn = i.paidOn(payments, taxRate);
+@@ -241,7 +241,7 @@ public class InvoiceController {
+                             : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")),
+                     i.getRebilledOn(), i.getReplaces() == null ? null : InvoiceNumber.of(i.getReplaces()),
+                     i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()),
+-                    i.getAdjustmentOf(), i.getAdjusted().toPlainString(), i.dunningLevel(status, i.overdueAmount(paid, taxRate, today), today), i.getReminders());
++                    i.getAdjustmentOf(), i.getAdjusted().toPlainString(), dunning, i.getReminders());
+         }
+     }
+ 
+@@ -473,7 +473,7 @@ public class InvoiceController {
+     private InvoiceDetail detail(Invoice i) {
+         invoices.adjustFingerprint(i);
+         return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()), today.date(), invoices.approval(i),
+-                invoices.possibleDuplicateOf(i));
++                invoices.possibleDuplicateOf(i), invoices.dunningLevel(i));
+     }
+ 
+     @GetMapping("/api/clients/{clientId}/invoices")
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index b3cbdb4..424f0bb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1151,19 +1151,21 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Sends today the reminder for the dunning level an invoice has reached, charging the level's reminder fee (see
+-     * {@link Invoice#reminderFee}), and records both in the audit; empty if
+-     * no such invoice. Refused when the invoice is at NONE (too little overdue included) or the reminder for its level has already gone out.
++     * Sends today the reminder for the dunning level an invoice has reached (see {@link #dunningLevel}), charging the
++     * level's reminder fee (see {@link Invoice#reminderFee}), and records both in the audit; the same reminder goes out
++     * for each of its overdue debit adjustment notes (REMINDER_SENT for each), which are charged no fee. Empty if no
++     * such invoice. Refused for a debit adjustment note, which is chased with its invoice, when the invoice is at NONE
++     * (too little overdue included) or the reminder for its level has already gone out.
+      */
+     @Transactional
+     public Optional<Invoice> remind(Long invoiceId) {
+         Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
++            if (isDebitNote(invoice)) {
++                throw new InvoiceRejectedException("An adjustment note is chased with its invoice; remind the invoice instead.");
++            }
+             LocalDate now = today.date();
+-            List<Invoice> one = List.of(invoice);
+-            BigDecimal paid = paid(one).get(invoice.getId());
+-            InvoiceStatus status = invoice.statusWhenPaid(paid, paidOn(one).get(invoice.getId()), taxRate.percent(), now);
+-            DunningLevel level = invoice.dunningLevel(status, invoice.overdueAmount(paid, taxRate.percent(), now), now);
++            DunningLevel level = dunningLevel(invoice);
+             if (level == DunningLevel.NONE) {
+                 throw new InvoiceRejectedException("This invoice is not far enough overdue to be chased.");
+             }
+@@ -1173,6 +1175,8 @@ public class InvoiceService {
+             invoice.remind(now);
+             invoices.saveAndFlush(invoice);
+             audit.record("REMINDER_SENT id=" + invoice.getId() + " level=" + level);
++            overdueDebitNotes(invoice).keySet()
++                    .forEach(note -> audit.record("REMINDER_SENT id=" + note.getId() + " level=" + level));
+             BigDecimal fee = invoice.reminderFee(level, now);
+             if (fee.signum() > 0) {
+                 audit.record("REMINDER_FEE id=" + invoice.getId() + " amount=" + fee.toPlainString());
+@@ -1181,6 +1185,48 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * The dunning level the invoice has reached today (see {@link Invoice#dunningLevel}), judged on what is overdue on
++     * it and its overdue debit adjustment notes together. A debit adjustment note is chased with its invoice: while
++     * overdue it is at its invoice's level, otherwise at NONE.
++     */
++    @Transactional(readOnly = true)
++    public DunningLevel dunningLevel(Invoice invoice) {
++        LocalDate now = today.date();
++        List<Invoice> one = List.of(invoice);
++        BigDecimal paid = paid(one).get(invoice.getId());
++        InvoiceStatus status = invoice.statusWhenPaid(paid, paidOn(one).get(invoice.getId()), taxRate.percent(), now);
++        if (isDebitNote(invoice)) {
++            return status == InvoiceStatus.OVERDUE
++                    ? load(invoice.getAdjustmentOf()).map(this::dunningLevel).orElse(DunningLevel.NONE)
++                    : DunningLevel.NONE;
++        }
++        BigDecimal overdue = overdueDebitNotes(invoice).values().stream()
++                .reduce(invoice.overdueAmount(paid, taxRate.percent(), now), BigDecimal::add);
++        return invoice.dunningLevel(status, overdue, now);
++    }
++
++    /** The invoice's issued debit adjustment notes that are overdue today, oldest first, with what is overdue on each. */
++    private Map<Invoice, BigDecimal> overdueDebitNotes(Invoice invoice) {
++        Map<Invoice, BigDecimal> overdue = new LinkedHashMap<>();
++        if (invoice.getId() == null || invoice.isAdjustment() || invoice.isCreditNote()) {
++            return overdue;
++        }
++        List<Invoice> notes = loadForClient(invoice.getClientId()).stream()
++                .filter(i -> isDebitNote(i) && invoice.getId().equals(i.getAdjustmentOf()) && !i.isDraft() && !i.isVoid())
++                .sorted(oldestFirst())
++                .toList();
++        Map<Long, BigDecimal> paid = paid(notes);
++        LocalDate now = today.date();
++        for (Invoice note : notes) {
++            BigDecimal amount = note.overdueAmount(paid.get(note.getId()), taxRate.percent(), now);
++            if (amount.signum() > 0) {
++                overdue.put(note, amount);
++            }
++        }
++        return overdue;
++    }
++
+     /** The most days ahead a promise to pay can be kept by. */
+     static final int PROMISE_DAYS = 30;
+ 
