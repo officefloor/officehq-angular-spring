@@ -1,0 +1,73 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 4340100..99bcf8d 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -84,7 +84,7 @@ export interface InvoiceLineView {
+   overtime: boolean;
+   basePrice: string;
+   // The service period the line is billed for (yyyy-mm-dd, both ends included), null for none: its
+-  // quantity x unit price is then a month's price, charged for the period's days month by month.
++  // quantity x unit price is then a month's price, charged by the day at 12 / 365 of it a day.
+   periodStart: string | null;
+   periodEnd: string | null;
+   // The percentage of the line's work done, without trailing zeros, for a line billed by progress
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 0071ceb..8f203ce 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -96,7 +96,7 @@ public class InvoiceController {
+      * {@code billedQty} (without trailing zeros) is the quantity the line is priced on: its quantity rounded up to the next
+      * whole increment of its unit type's rate card entry (as entered without one), and then at least its minimum units.
+      * {@code periodStart} and {@code periodEnd} are the line's service period (null for none): its quantity times unit price is
+-     * then a month's price, and its amounts are for the days of the period, month by month.
++     * then a month's price, and its amounts are for the days of the period at 12 / 365 of it a day.
+      * {@code percentComplete} (without trailing zeros) is the percentage of a line billed by progress, null for the whole line;
+      * {@code billedPct} (without trailing zeros) is the percentage of it already billed by earlier claims, null when none was.
+      */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 4e13092..59951cc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -14,6 +14,7 @@ import java.math.BigDecimal;
+ import java.math.MathContext;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
+ import net.officefloor.hq.app.clients.RateTiers;
+ 
+ /**
+@@ -117,7 +118,7 @@ public class InvoiceLine {
+ 
+     /**
+      * The first day of the service period the line is billed for; null for none. With a period the line's quantity times unit price is
+-     * the price of a whole month, charged by calendar month for the days of the period (both ends included).
++     * the price of a whole month, charged by the day (12 / 365 of it a day) for the days of the period (both ends included).
+      */
+     @Column(name = "period_start")
+     private LocalDate periodStart;
+@@ -257,21 +258,15 @@ public class InvoiceLine {
+     }
+ 
+     /**
+-     * The share of a whole month the line's service period comes to: for each calendar month it touches, the days of the period in
+-     * that month over the days in that month, added up exactly; null when the line has no period.
++     * The share of a whole month the line's service period comes to, charged by the day the same every month: the days of the
++     * period (both ends included) times a day rate of 12 / 365 of a month, kept exact; null when the line has no period.
+      */
+     private BigDecimal periodMonths() {
+         if (periodStart == null || periodEnd == null) {
+             return null;
+         }
+-        BigDecimal months = BigDecimal.ZERO;
+-        for (LocalDate from = periodStart; !from.isAfter(periodEnd); from = from.withDayOfMonth(1).plusMonths(1)) {
+-            LocalDate monthEnd = from.withDayOfMonth(from.lengthOfMonth());
+-            LocalDate to = periodEnd.isBefore(monthEnd) ? periodEnd : monthEnd;
+-            months = months.add(BigDecimal.valueOf(to.getDayOfMonth() - from.getDayOfMonth() + 1)
+-                    .divide(BigDecimal.valueOf(from.lengthOfMonth()), MathContext.DECIMAL128));
+-        }
+-        return months;
++        long days = ChronoUnit.DAYS.between(periodStart, periodEnd) + 1;
++        return BigDecimal.valueOf(days * 12).divide(BigDecimal.valueOf(365), MathContext.DECIMAL128);
+     }
+ 
+     /** Whether the line's price comes from its client's rate card. */
