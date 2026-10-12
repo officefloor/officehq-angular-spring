@@ -16,11 +16,13 @@ import java.time.LocalDate;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/clients")
@@ -30,13 +32,13 @@ public class ClientController {
             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             BigDecimal retentionPct, Integer graceDays, BigDecimal interestRate, String region, String taxNumber,
             List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
-            LocalDate taxExemptUntil, BigDecimal creditLimit) {
+            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
-                    c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit());
+                    c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold());
         }
     }
 
@@ -161,5 +163,12 @@ public class ClientController {
                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
                 body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge(),
                 body.rateDiscountPct(), body.taxExemptUntil(), body.creditLimit()));
+    }
+
+    /** Puts the client on hold, or lifts the hold when it is on hold; answers the client. */
+    @PostMapping("/{id}/hold")
+    public ClientView toggleHold(@PathVariable Long id) {
+        return clients.toggleHold(id).map(ClientView::of)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
     }
 }

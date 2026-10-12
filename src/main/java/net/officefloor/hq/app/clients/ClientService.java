@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
+import net.officefloor.hq.app.Audit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,8 +23,11 @@ public class ClientService {
 
     private final ClientRepository clients;
 
-    public ClientService(ClientRepository clients) {
+    private final Audit audit;
+
+    public ClientService(ClientRepository clients, Audit audit) {
         this.clients = clients;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -41,5 +46,20 @@ public class ClientService {
         }
         return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, pricesIncludeTax, currency, earlyPayPct, earlyPayDays, retentionPct, graceDays, interestRate,
                 region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber), withholdingPct, minimumCharge, rateDiscountPct, taxExemptUntil, creditLimit));
+    }
+
+    /**
+     * Puts the client on hold, or lifts the hold when it is on hold, and records it in the audit; empty if
+     * no such client. Lifting the hold applies nothing by itself.
+     */
+    @Transactional
+    public Optional<Client> toggleHold(Long id) {
+        Optional<Client> found = clients.findById(id);
+        found.ifPresent(client -> {
+            client.setOnHold(!client.isOnHold());
+            clients.saveAndFlush(client);
+            audit.record((client.isOnHold() ? "CLIENT_HELD id=" : "CLIENT_RELEASED id=") + client.getId());
+        });
+        return found;
     }
 }

@@ -727,6 +727,9 @@ public class InvoiceService {
             if (invoice.getLines().isEmpty()) {
                 throw new InvoiceRejectedException("Add at least one line before sending the invoice.");
             }
+            if (onHold(invoice.getClientId())) {
+                throw new InvoiceRejectedException("The client is on hold: lift the hold before sending their invoices.");
+            }
             if (invoice.isCreditNote()) {
                 String refusal = creditNoteRefusal(invoice);
                 if (refusal != null) {
@@ -789,6 +792,9 @@ public class InvoiceService {
      */
     @Transactional
     public void sendAllDrafts(Long clientId) {
+        if (onHold(clientId)) {
+            return;
+        }
         loadForClient(clientId).stream()
                 .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty()
                         && !invoice.dueDatePassedBy(today.date())
@@ -1245,6 +1251,10 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("Cash must be counted out in "
                         + invoice.currency().format(invoice.currency().cashStep()) + " coins.");
             }
+            if (onHold(invoice.getClientId())) {
+                holdAsCredit(invoice.getClientId(), paidAmount, paidIn, date, method);
+                return;
+            }
             BigDecimal received = converted(paidAmount, paidIn, invoice.currency(), date);
             // Only what is left once the conversion fee and card surcharge are taken out pays the invoice.
             BigDecimal surcharge = surchargeOf(received, invoice.currency(), method, date);
@@ -1349,6 +1359,9 @@ public class InvoiceService {
     @Transactional
     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
             List<QuotedReference> references, PaymentMethod method) {
+        if (onHold(clientId)) {
+            return holdAsCredit(clientId, paidAmount, paidIn, date, method);
+        }
         Currency currency = currencyOf(clientId);
         BigDecimal received = converted(paidAmount, paidIn, currency, date);
         // Only what is left once the conversion fee and card surcharge are taken out pays invoices or is held as credit.
@@ -1462,6 +1475,9 @@ public class InvoiceService {
         Optional<Client> client = clients.findById(clientId);
         if (client.isEmpty()) {
             return Optional.empty();
+        }
+        if (client.get().isOnHold()) {
+            throw new InvoiceRejectedException("The client is on hold: lift the hold before applying their credit.");
         }
         Map<String, Long> drafts = draftsByReference(clientId);
         List<Payment> usable = payments.findForClient(clientId).stream()
@@ -1752,6 +1768,34 @@ public class InvoiceService {
     }
 
     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
+    /** Whether the client is on hold; false if no such client. */
+    private boolean onHold(Long clientId) {
+        return clients.findById(clientId).map(Client::isOnHold).orElse(false);
+    }
+
+    /**
+     * Records a payment from a client on hold: it pays no invoice, whatever invoice is open or referenced,
+     * and the whole of it is held on the client's account as credit, recorded in the audit. A date after
+     * today is refused.
+     */
+    private Payment holdAsCredit(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+            PaymentMethod method) {
+        LocalDate now = today.date();
+        if (date.isAfter(now)) {
+            throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+        }
+        Currency currency = currencyOf(clientId);
+        BigDecimal amount = converted(paidAmount, paidIn, currency, date);
+        BigDecimal surcharge = surchargeOf(amount, currency, method, date);
+        BigDecimal fee = feeOf(amount, paidIn, currency);
+        Payment payment = payments.saveAndFlush(Payment.deposit(clientId, amount, date)
+                .paidIn(paidIn, paidAmount, currency).by(method).surcharged(surcharge).feeCharged(fee));
+        recordFee(payment, currency);
+        recordSurcharge(payment, currency);
+        recordCreditHeld(payment);
+        return payment;
+    }
+
     private void recordCreditHeld(Payment payment) {
         BigDecimal credit = payment.credit();
         if (credit.signum() > 0) {

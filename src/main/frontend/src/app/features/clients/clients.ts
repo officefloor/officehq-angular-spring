@@ -33,8 +33,14 @@ function validTaxNumber(taxNumber: string): boolean {
       gap: 2rem;
       align-items: flex-start;
     }
+    .client-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
     .client {
       display: flex;
+      flex: 1;
       gap: 1rem;
       width: 100%;
       text-align: left;
@@ -73,7 +79,7 @@ function validTaxNumber(taxNumber: string): boolean {
 
       <ul data-testid="client-list">
         @for (c of clients(); track c.id) {
-          <li [attr.data-testid]="'client-row-' + c.id" (click)="selectClient(c.id)">
+          <li class="client-row" [attr.data-testid]="'client-row-' + c.id" (click)="selectClient(c.id)">
             <button
               type="button"
               class="client"
@@ -82,6 +88,7 @@ function validTaxNumber(taxNumber: string): boolean {
             >
               <span data-testid="client-name">{{ c.name }}</span>
               <span data-testid="client-email">{{ c.email }}</span>
+              <span data-testid="client-status">{{ c.onHold ? 'On hold' : 'Active' }}</span>
               <span>
                 Owes <span data-testid="client-balance">{{ money(balanceOf(c.id).balance, c.currency) }}</span>,
                 overdue <span data-testid="client-overdue">{{ money(balanceOf(c.id).overdue, c.currency) }}</span>,
@@ -93,6 +100,15 @@ function validTaxNumber(taxNumber: string): boolean {
                   of {{ money(String(c.creditLimit), c.currency) }}
                 </span>
               }
+            </button>
+            <button
+              type="button"
+              data-testid="client-hold"
+              [attr.aria-label]="(c.onHold ? 'Lift the hold on ' : 'Put on hold ') + c.name"
+              [disabled]="holding()"
+              (click)="$event.stopPropagation(); toggleHold(c.id)"
+            >
+              {{ c.onHold ? 'Lift hold' : 'Hold' }}
             </button>
           </li>
         } @empty {
@@ -307,6 +323,7 @@ export class Clients {
   protected readonly String = String;
   protected readonly currencies = CURRENCIES;
   protected readonly saving = signal(false);
+  protected readonly holding = signal(false);
   protected readonly error = signal('');
   protected readonly selectedId = signal<number | null>(null);
   protected readonly selected = computed(
@@ -360,6 +377,18 @@ export class Clients {
   protected availableOf(client: Client): string {
     const cents = Math.round(Number(client.creditLimit) * 100) - Math.round(Number(this.balanceOf(client.id).balance) * 100);
     return String(cents / 100);
+  }
+
+  // Puts the client on hold, or lifts the hold, and shows its new status.
+  protected toggleHold(clientId: number): void {
+    this.holding.set(true);
+    this.service.toggleHold(clientId).subscribe({
+      next: (updated) => {
+        this.holding.set(false);
+        this.clients.update((list) => list.map((c) => (c.id === updated.id ? updated : c)));
+      },
+      error: () => this.holding.set(false),
+    });
   }
 
   // Fetches what every client owes again, after a payment or other change to an invoice.

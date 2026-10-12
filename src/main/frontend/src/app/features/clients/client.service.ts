@@ -51,9 +51,12 @@ export interface Client {
   // first eight. With a valid one whose two letters are its region (outside the workspace's home region) its invoices are
   // reverse charged; null for no number.
   taxNumber: string | null;
+  // Whether the client is on hold: their invoices are not sent, their credit is not applied, and their
+  // payments pay no invoice but are all held as credit.
+  onHold: boolean;
 }
 
-export type NewClient = Omit<Client, 'id'>;
+export type NewClient = Omit<Client, 'id' | 'onHold'>;
 
 // The clients REST API.
 @Injectable({ providedIn: 'root' })
@@ -66,6 +69,11 @@ export class ClientService {
 
   add(client: NewClient): Observable<Client> {
     return this.http.post<Client>('/api/clients', client);
+  }
+
+  // Puts the client on hold, or lifts the hold; answers the client.
+  toggleHold(clientId: number): Observable<Client> {
+    return this.http.post<Client>(`/api/clients/${clientId}/hold`, null);
   }
 }
 

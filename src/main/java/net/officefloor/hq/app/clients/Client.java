@@ -118,6 +118,13 @@ public class Client {
     private BigDecimal creditLimit;
 
     /**
+     * Whether the client is on hold: their invoices are not sent, their credit is not applied, and their
+     * payments pay no invoice but are all held as credit.
+     */
+    @Column(name = "on_hold")
+    private boolean onHold;
+
+    /**
      * The percentage (0 to 100, 0 for none) taken off every price the client's lines take from its rate card or the
      * price list (see {@link RateDiscount}).
      */
@@ -228,6 +235,15 @@ public class Client {
 
     public BigDecimal getCreditLimit() {
         return creditLimit;
+    }
+
+    public boolean isOnHold() {
+        return onHold;
+    }
+
+    /** Puts the client on hold, or lifts the hold. */
+    public void setOnHold(boolean onHold) {
+        this.onHold = onHold;
     }
 
     public Integer getGraceDays() {
