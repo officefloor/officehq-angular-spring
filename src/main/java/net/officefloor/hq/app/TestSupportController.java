@@ -41,7 +41,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown", "approvalLimit", "tierApprovalLimits");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays");
     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
@@ -179,6 +179,11 @@ public class TestSupportController {
                 BigDecimal limit = money(values.get("approvalLimit"), "settings.approvalLimit");
                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                         APPROVAL_LIMIT, limit.toPlainString());
+            }
+            if (values.get("duplicateDays") != null) {
+                Integer days = days(values.get("duplicateDays"), "settings.duplicateDays");
+                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                        DuplicateWindow.DUPLICATE_DAYS, days.toString());
             }
             if (values.get("tierApprovalLimits") != null) {
                 if (!(values.get("tierApprovalLimits") instanceof Map<?, ?> limits)) {
@@ -656,6 +661,8 @@ public class TestSupportController {
         if (!approvalLimit.isEmpty()) {
             settings.put("approvalLimit", new BigDecimal(approvalLimit.get(0)));
         }
+        jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class,
+                DuplicateWindow.DUPLICATE_DAYS).forEach(v -> settings.put("duplicateDays", Integer.valueOf(v)));
         Map<String, BigDecimal> tierApprovalLimits = new LinkedHashMap<>();
         for (ClientTier tier : ClientTier.values()) {
             jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class,

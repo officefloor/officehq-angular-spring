@@ -261,6 +261,11 @@ export interface InvoiceDetail {
   // The grand total today's prices, rates and client details would give a sent invoice, only when that
   // differs from its sent total; otherwise null.
   currentTotal: string | null;
+  // The first 8 characters, in capitals, of the invoice's fingerprint (SHA-256 of the client's id and its lines); null when it has no lines.
+  fingerprint: string | null;
+  // The numbers of the invoices, lowest id first, that this draft is a possible duplicate of (sent to the same
+  // client within the workspace's duplicate window, with the same fingerprint), joined by ', '; null when none.
+  duplicateOf: string | null;
   // The id of the sent invoice this draft was claimed from as its next progress claim; null when it was not.
   claimFrom: number | null;
   // The client's purchase order number for the invoice; null when none was given.

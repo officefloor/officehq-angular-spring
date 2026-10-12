@@ -190,8 +190,10 @@ public class InvoiceController {
             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
             int approvalsNeeded, int approvals,
             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate recurringSince, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
-            List<MilestoneView> milestones, String milestonesPct, Long claimFrom, String sentTotal, String currentTotal) {
-        static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
+            List<MilestoneView> milestones, String milestonesPct, Long claimFrom, String sentTotal, String currentTotal,
+            String fingerprint, String duplicateOf) {
+        static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval,
+                List<Invoice> duplicates) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
             LocalDate paidOn = i.paidOn(payments, taxRate);
@@ -238,7 +240,10 @@ public class InvoiceController {
                     i.milestonesPct().stripTrailingZeros().toPlainString(), i.getClaimFrom(),
                     i.hasSentFigures() ? i.total(taxRate).toPlainString() : null,
                     i.hasSentFigures() && i.currentTotal(taxRate).compareTo(i.total(taxRate)) != 0
-                            ? i.currentTotal(taxRate).toPlainString() : null);
+                            ? i.currentTotal(taxRate).toPlainString() : null,
+                    Optional.ofNullable(i.fingerprint()).map(f -> f.substring(0, 8)).orElse(null),
+                    duplicates.isEmpty() ? null
+                            : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")));
         }
     }
 
@@ -505,7 +510,8 @@ public class InvoiceController {
     }
 
     private InvoiceDetail detail(Invoice i) {
-        return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()), today.date(), invoices.approval(i));
+        return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()), today.date(), invoices.approval(i),
+                invoices.possibleDuplicateOf(i));
     }
 
     @GetMapping("/api/clients/{clientId}/invoices")

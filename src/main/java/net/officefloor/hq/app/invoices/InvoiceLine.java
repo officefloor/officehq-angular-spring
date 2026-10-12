@@ -383,6 +383,21 @@ public class InvoiceLine {
         return minUnits != null && billed.compareTo(minUnits) < 0 ? minUnits : billed;
     }
 
+    /**
+     * The line as it counts towards its invoice's fingerprint: description,quantity,unit price in cents — the
+     * description in lower case with runs of spaces made one and trimmed, the quantity without trailing zeros
+     * and the unit price it is charged at (0 when priced in tiers).
+     */
+    public String fingerprint() {
+        String text = description == null ? "" : description.toLowerCase(java.util.Locale.ROOT).replaceAll(" +", " ").trim();
+        BigDecimal cents = isTiered() || unitPrice == null ? BigDecimal.ZERO : chargedUnitPrice().movePointRight(2);
+        return text + "," + plain(qty) + "," + plain(cents);
+    }
+
+    private static String plain(BigDecimal value) {
+        return value == null || value.signum() == 0 ? "0" : value.stripTrailingZeros().toPlainString();
+    }
+
     /** Whether the line is priced in progressive tiers rather than at its unit price. */
     public boolean isTiered() {
         return tiers != null;

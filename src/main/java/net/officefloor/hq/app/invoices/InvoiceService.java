@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.CardSurcharge;
+import net.officefloor.hq.app.DuplicateWindow;
 import net.officefloor.hq.app.ExchangeRates;
 import net.officefloor.hq.app.FxFee;
 import net.officefloor.hq.app.LateInterestRate;
@@ -57,11 +58,14 @@ public class InvoiceService {
 
     private final RegionTerms regionTerms;
 
+    private final DuplicateWindow duplicateWindow;
+
     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
             LateInterestRate lateInterestRate, CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList,
-            RegionTerms regionTerms) {
+            RegionTerms regionTerms, DuplicateWindow duplicateWindow) {
         this.regionTerms = regionTerms;
+        this.duplicateWindow = duplicateWindow;
         this.priceList = priceList;
         this.cardSurcharge = cardSurcharge;
         this.fxFee = fxFee;
@@ -1156,6 +1160,10 @@ public class InvoiceService {
                 throw new InvoiceRejectedException(
                         invoice.discountIsLarge()
                                 ? "The discount is more than 20% of the subtotal; approve the invoice before sending it."
+                                : !possibleDuplicateOf(invoice).isEmpty()
+                                        ? "This invoice may be a duplicate of " + possibleDuplicateOf(invoice).stream()
+                                                .map(Invoice::number).collect(java.util.stream.Collectors.joining(", "))
+                                                + "; approve the invoice before sending it."
                                 : riskOf(invoice.getClientId()).band() == RiskBand.HIGH
                                         ? "The client pays slowly (HIGH payment risk); approve the invoice before sending it."
                                         : wouldGoOverLimit(invoice)
@@ -1195,7 +1203,7 @@ public class InvoiceService {
             if (approval != Invoice.Approval.NEEDS_APPROVAL) {
                 throw new InvoiceRejectedException(approval == Invoice.Approval.APPROVED
                         ? "This invoice is already approved."
-                        : "This invoice is within the approval limit, its discount is not over 20%, its client is not a HIGH payment risk and it would not take the client over its credit limit, so it needs no approval.");
+                        : "This invoice is within the approval limit, its discount is not over 20%, its client is not a HIGH payment risk, it would not take the client over its credit limit and it is not a possible duplicate, so it needs no approval.");
             }
             BigDecimal total = invoice.approvalTotal(rate);
             invoice.approve(total, on);
@@ -1302,7 +1310,7 @@ public class InvoiceService {
         LocalDate on = today.date();
         return loadForClient(clientId).stream()
                 .filter(i -> i.isDraft() && !i.isCreditNote() && !i.getId().equals(excludeId)
-                        && i.approval(rate, on, false, true) == Invoice.Approval.APPROVED)
+                        && i.approval(rate, on, false, true, false) == Invoice.Approval.APPROVED)
                 .map(i -> i.owedTotal(rate))
                 .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
     }
@@ -2523,7 +2531,30 @@ public class InvoiceService {
         boolean highRisk = invoice.isDraft() && !invoice.isCreditNote() && band == RiskBand.HIGH;
         invoice.markHighRisk(highRisk);
         boolean overCreditLimit = invoice.isDraft() && !invoice.isCreditNote() && wouldGoOverLimit(invoice);
-        return invoice.approval(taxRate.percent(), today.date(), highRisk, overCreditLimit);
+        boolean duplicate = !possibleDuplicateOf(invoice).isEmpty();
+        return invoice.approval(taxRate.percent(), today.date(), highRisk, overCreditLimit, duplicate);
+    }
+
+    /**
+     * The invoices the draft is a possible duplicate of, lowest id first: its client's sent invoices (not
+     * void, not credit notes) issued within the workspace's duplicate window of days before today whose
+     * {@link Invoice#fingerprint fingerprint} is the draft's. Empty for anything but a draft with lines, or
+     * when the workspace has no duplicate window.
+     */
+    @Transactional(readOnly = true)
+    public List<Invoice> possibleDuplicateOf(Invoice invoice) {
+        Integer days = duplicateWindow.days();
+        String fingerprint = invoice.fingerprint();
+        if (days == null || fingerprint == null || !invoice.isDraft() || invoice.isCreditNote()) {
+            return List.of();
+        }
+        LocalDate on = today.date();
+        LocalDate from = on.minusDays(days);
+        return invoices.findByClientIdOrderByIdAsc(invoice.getClientId()).stream()
+                .filter(i -> !i.getId().equals(invoice.getId()) && !i.isDraft() && !i.isVoid() && !i.isCreditNote())
+                .filter(i -> i.getIssueDate() != null && !i.getIssueDate().isBefore(from) && !i.getIssueDate().isAfter(on))
+                .filter(i -> fingerprint.equals(i.fingerprint()))
+                .toList();
     }
 
     /**

@@ -1369,9 +1369,11 @@ public class Invoice {
      * Once sent, an invoice is as it was approved. Every draft of a client with a HIGH payment risk (highRisk)
      * needs approval, whatever its size, as does every draft that would take its client over its credit limit
      * (overCreditLimit). A draft whose grand total is more than one and a half times the approval limit, or
-     * of a HIGH payment risk client, needs {@link #approvalsRequired two approvals} of that same total.
+     * of a HIGH payment risk client, needs {@link #approvalsRequired two approvals} of that same total. So does
+     * a draft that is a possible duplicate of an invoice recently sent to its client (possibleDuplicate).
      */
-    public Approval approval(BigDecimal taxRate, LocalDate today, boolean highRisk, boolean overCreditLimit) {
+    public Approval approval(BigDecimal taxRate, LocalDate today, boolean highRisk, boolean overCreditLimit,
+            boolean possibleDuplicate) {
         if (isCreditNote()) {
             return Approval.NOT_NEEDED;
         }
@@ -1380,7 +1382,7 @@ public class Invoice {
         }
         BigDecimal limit = approvalLimit();
         BigDecimal total = approvalTotal(taxRate);
-        if (!highRisk && !overCreditLimit && !discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
+        if (!highRisk && !overCreditLimit && !possibleDuplicate && !discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
             return Approval.NOT_NEEDED;
         }
         return approvalsAt(total, today) < approvalsRequired(taxRate) ? Approval.NEEDS_APPROVAL : Approval.APPROVED;
@@ -2276,6 +2278,25 @@ public class Invoice {
 
     public List<InvoiceLine> getLines() {
         return lines;
+    }
+
+    /**
+     * The invoice's fingerprint, to spot the same work billed twice: the SHA-256 hash (hex, in capitals) of
+     * the client's id, a '|', then its lines (see {@link InvoiceLine#fingerprint}) sorted and joined with ';'.
+     * Null when it has no lines.
+     */
+    public String fingerprint() {
+        if (lines.isEmpty()) {
+            return null;
+        }
+        String text = clientId + "|" + String.join(";", lines.stream().map(InvoiceLine::fingerprint).sorted().toList());
+        try {
+            byte[] hash = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().withUpperCase().formatHex(hash);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** Whether lines can still be added: only a draft is still being written. */

@@ -799,6 +799,18 @@ function problemWith(line: NewLine): string {
           <p role="alert" data-testid="invoice-dispute-error">{{ disputeError() }}</p>
         }
 
+        @if (inv.fingerprint !== null) {
+          <p>
+            Fingerprint:
+            <span data-testid="invoice-fingerprint">{{ inv.fingerprint }}</span>
+          </p>
+        }
+        @if (inv.duplicateOf !== null) {
+          <p role="status">
+            Possible duplicate of
+            <span data-testid="invoice-duplicate-of">{{ inv.duplicateOf }}</span>
+          </p>
+        }
         @if (inv.creditOf === null) {
           <p>
             Approval:
