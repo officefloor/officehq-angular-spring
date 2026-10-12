@@ -1,0 +1,222 @@
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 53accee..f2af58c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -57,7 +57,7 @@ public class TestSupportController {
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "interestWaivedOn", "writtenOffOn", "surchargePct", "supplyRegion", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "adjustmentOf", "promiseAmount", "promiseDate", "promisedOn", "lineItems", "milestones");
+     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
+-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct");
++    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct", "interestOf");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "heldFor", "allocations", "currency", "method", "remittance", "deposit");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
+@@ -514,7 +514,7 @@ public class TestSupportController {
+                     throw refuse("invoices[].lineItems[].periodEnd must not be before periodStart");
+                 }
+                 insert("invoice_line", line.get("id"),
+-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end", "disputed", "percent_complete", "billed_pct"},
++                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end", "disputed", "percent_complete", "billed_pct", "interest_of"},
+                         invoiceId, text(line, "description"),
+                         adjustmentCredit ? cents(line.get("qty"), "invoices[].lineItems[].qty").negate()
+                                 : cents(line.get("qty"), "invoices[].lineItems[].qty"),
+@@ -530,7 +530,8 @@ public class TestSupportController {
+                         period[0], period[1],
+                         flag(line.get("disputed"), "invoices[].lineItems[].disputed"),
+                         percentComplete(line.get("percentComplete"), "invoices[].lineItems[].percentComplete"),
+-                        line.get("billedPct") == null ? null : percent(line.get("billedPct"), "invoices[].lineItems[].billedPct"));
++                        line.get("billedPct") == null ? null : percent(line.get("billedPct"), "invoices[].lineItems[].billedPct"),
++                        line.get("interestOf") == null ? null : id(line.get("interestOf")));
+             }
+             BigDecimal pctSum = BigDecimal.ZERO;
+             for (Map<String, Object> milestone : rows(row.get("milestones"), "invoices[].milestones")) {
+@@ -926,7 +927,7 @@ public class TestSupportController {
+                                 return milestone;
+                             }).toList());
+                     row.put("lineItems", jdbc.queryForList(
+-                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end, disputed, percent_complete, billed_pct FROM invoice_line WHERE invoice_id = ? ORDER BY id",
++                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end, disputed, percent_complete, billed_pct, interest_of FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+                                 Map<String, Object> line = new LinkedHashMap<>();
+                                 line.put("id", l.get("ID"));
+@@ -958,6 +959,9 @@ public class TestSupportController {
+                                 if (l.get("BILLED_PCT") != null) {
+                                     line.put("billedPct", l.get("BILLED_PCT"));
+                                 }
++                                if (l.get("INTEREST_OF") != null) {
++                                    line.put("interestOf", l.get("INTEREST_OF"));
++                                }
+                                 return line;
+                             }).toList());
+                     return row;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index aa87c1e..cfbe303 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -2577,10 +2577,11 @@ public class Invoice {
+ 
+     /**
+      * The part of the subtotal the invoice discount is worked out on and shared over: the amounts of the lines not
+-     * priced from the rates (a rate card or the price list), whose prices are already negotiated.
++     * priced from the rates (a rate card or the price list), whose prices are already negotiated, nor carrying a rebilled
++     * invoice's late interest.
+      */
+     public BigDecimal discountableSubtotal() {
+-        return lines.stream().filter(l -> !l.isRatePriced()).map(l -> l.amount(scale()))
++        return lines.stream().filter(l -> !l.isRatePriced() && !l.isInterest()).map(l -> l.amount(scale()))
+                 .reduce(zero(), BigDecimal::add);
+     }
+ 
+@@ -2644,7 +2645,7 @@ public class Invoice {
+         BigInteger[] leftovers = new BigInteger[n];
+         BigInteger given = BigInteger.ZERO;
+         for (int i = 0; i < n; i++) {
+-            if (subtotalCents.signum() == 0 || lines.get(i).isRatePriced()) {
++            if (subtotalCents.signum() == 0 || lines.get(i).isRatePriced() || lines.get(i).isInterest()) {
+                 shares[i] = BigInteger.ZERO;
+                 leftovers[i] = BigInteger.ZERO;
+             } else {
+@@ -3058,12 +3059,15 @@ public class Invoice {
+     }
+ 
+     /**
+-     * The rush surcharge: the surcharge percentage of the amount after the discounts, rounded down to
++     * The rush surcharge: the surcharge percentage of the amount after the discounts (less the lines carrying a rebilled
++     * invoice's late interest, which take none), rounded down to
+      * the cent. It is not discounted and is taxed at the client's rate. A credit note carries its
+      * original's percentage on what it credits, so gives back the surcharge on that part.
+      */
+     public BigDecimal surcharge() {
+-        return discounted().multiply(chargedSurchargePct()).movePointLeft(2).setScale(scale(), RoundingMode.DOWN);
++        BigDecimal interest = lines.stream().filter(InvoiceLine::isInterest).map(l -> l.amount(scale()))
++                .reduce(zero(), BigDecimal::add);
++        return discounted().subtract(interest).multiply(chargedSurchargePct()).movePointLeft(2).setScale(scale(), RoundingMode.DOWN);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index ff08b4a..1826358 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -143,6 +143,13 @@ public class InvoiceLine {
+     @Column(name = "billed_pct")
+     private BigDecimal billedPct;
+ 
++    /**
++     * The rebilled invoice whose late interest the line carries onto its replacement (see {@link #lateInterest}); null for an
++     * ordinary line. It takes no tax, no share of the invoice discount and no surcharge.
++     */
++    @Column(name = "interest_of")
++    private Long interestOf;
++
+     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
+     @ManyToOne(fetch = FetchType.LAZY)
+     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
+@@ -185,9 +192,31 @@ public class InvoiceLine {
+         copy.periodEnd = periodEnd;
+         copy.percentComplete = percentComplete;
+         copy.billedPct = billedPct;
++        copy.interestOf = interestOf;
+         return copy;
+     }
+ 
++    /**
++     * A line carrying the late interest of the rebilled invoice onto its replacement: "Late interest <its number>",
++     * quantity 1, for the amount, with no tax.
++     */
++    public static InvoiceLine lateInterest(Long invoiceId, BigDecimal amount) {
++        InvoiceLine line = new InvoiceLine("Late interest " + InvoiceNumber.of(invoiceId), BigDecimal.ONE, amount, true,
++                BigDecimal.ZERO, null);
++        line.interestOf = invoiceId;
++        return line;
++    }
++
++    /** The rebilled invoice whose late interest the line carries; null for an ordinary line. */
++    public Long getInterestOf() {
++        return interestOf;
++    }
++
++    /** Whether the line carries a rebilled invoice's late interest, and so takes no invoice discount or surcharge. */
++    public boolean isInterest() {
++        return interestOf != null;
++    }
++
+     /** A copy of this line for the next progress claim: its percent complete so far is what it has already billed. */
+     public InvoiceLine claimCopy() {
+         InvoiceLine claim = copy();
+@@ -216,7 +245,7 @@ public class InvoiceLine {
+                 && overtime == other.overtime && taxExempt == other.taxExempt
+                 && same(discountPct, other.discountPct) && same(taxRate, other.taxRate)
+                 && Objects.equals(periodStart, other.periodStart) && Objects.equals(periodEnd, other.periodEnd)
+-                && same(percentComplete, other.percentComplete);
++                && same(percentComplete, other.percentComplete) && Objects.equals(interestOf, other.interestOf);
+     }
+ 
+     /** Whether two amounts are the same: both none, or equal in value. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index e820649..4250f19 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -241,8 +241,10 @@ public class InvoiceService {
+      * made to the invoice has come off it; then a draft replacing it (see {@link Invoice#rebill}), issued today and due
+      * as any new invoice is, gets those payments held for it as credit, used on it first when it is sent. The draft takes
+      * over the invoice's open dispute, milestones and recurring plan (the invoice's dispute closes and it stops recurring),
+-     * and is approved already when its grand total is no more than the invoice was sent for. Records
+-     * INVOICE_REBILLED in the audit. A draft, a credit note, a void or written-off invoice, or one already credited is
++     * and is approved already when its grand total is no more than the invoice was sent for plus the late interest it
++     * carries. The late interest the invoice owes (once past any threshold) is carried: it is waived on the invoice today, so
++     * stops there, and the draft bills it as a line of its own (see {@link InvoiceLine#lateInterest}), recorded as
++     * INTEREST_CARRIED in the audit. Records INVOICE_REBILLED in the audit. A draft, a credit note, a void or written-off invoice, or one already credited is
+      * refused.
+      */
+     @Transactional
+@@ -266,6 +268,8 @@ public class InvoiceService {
+             }
+             LocalDate on = today.date();
+             BigDecimal rate = taxRate.percent();
++            withInterest(List.of(invoice));
++            BigDecimal interest = invoice.getLateInterest();
+             List<Payment> paidBy = payments.findForInvoice(invoice.getId()).stream()
+                     .filter(p -> !p.isReversed()).toList();
+             paidBy.forEach(p -> {
+@@ -282,13 +286,18 @@ public class InvoiceService {
+             invoice.markRebilled(on);
+             invoices.saveAndFlush(invoice);
+             BigDecimal sentFor = invoice.total(rate);
+-            Invoice next = invoices.saveAndFlush(invoice.rebill(on, dueDateFor(invoice.getClientId(), on)));
++            Invoice replacement = invoice.rebill(on, dueDateFor(invoice.getClientId(), on));
++            if (interest.signum() > 0) {
++                replacement.addLine(InvoiceLine.lateInterest(invoice.getId(), interest));
++                invoice.waiveInterest(on);
++            }
++            Invoice next = invoices.saveAndFlush(replacement);
+             invoice.handOver(on);
+             invoices.saveAndFlush(invoice);
+             // Read again how far through the bands a copied tiered line's units reach.
+             entityManager.refresh(next);
+             if (approval(next) == Invoice.Approval.NEEDS_APPROVAL) {
+-                if (next.total(rate).compareTo(sentFor) <= 0) {
++                if (next.total(rate).compareTo(sentFor.add(interest)) <= 0) {
+                     next.approveInFull(next.approvalTotal(rate), on, rate);
+                     invoices.saveAndFlush(next);
+                 }
+@@ -298,6 +307,10 @@ public class InvoiceService {
+                 payments.saveAndFlush(p);
+             });
+             audit.record("INVOICE_REBILLED from=" + invoice.number() + " to=" + next.number());
++            if (interest.signum() > 0) {
++                audit.record("INTEREST_CARRIED from=" + invoice.number() + " to=" + next.number()
++                        + " amount=" + interest.toPlainString());
++            }
+             entityManager.refresh(invoice);
+             withInterest(List.of(invoice));
+         });
+diff --git a/src/main/resources/db/migration/V92__line_interest_of.sql b/src/main/resources/db/migration/V92__line_interest_of.sql
+new file mode 100644
+index 0000000..d1018f6
+--- /dev/null
++++ b/src/main/resources/db/migration/V92__line_interest_of.sql
+@@ -0,0 +1,3 @@
++-- The rebilled invoice whose late interest the line carries onto its replacement; null for an ordinary line. Such a
++-- line takes no tax, no share of the invoice discount and no surcharge.
++ALTER TABLE invoice_line ADD COLUMN interest_of BIGINT;
