@@ -228,7 +228,8 @@ function problemWith(line: NewLine): string {
 // payment, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
 // cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
 // be duplicated into a new draft for the same client, which then opens. An invoice can be marked as
-// recurring; a sent recurring invoice generates the next period's draft once, which then opens. A draft's due date can be set
+// recurring, until an end date its generated drafts keep; a sent recurring invoice generates the next period's draft once
+// (its period stopping on the end date), which then opens. A draft's due date can be set
 // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
 // server refuses to send it once that date is past. A draft can hold back retention, a percentage of
 // the amount before tax, the subtotal less the discount (0 to 20); while held it is not part of the amount due, and once nothing else is due
@@ -816,6 +817,15 @@ function problemWith(line: NewLine): string {
           @if (recurringError()) {
             <p role="alert" data-testid="invoice-recurring-error">{{ recurringError() }}</p>
           }
+          <form [formGroup]="recurUntilForm" (ngSubmit)="setRecurUntil(inv.id)" aria-label="Recurring until" novalidate>
+            <label for="invoice-recur-until">
+              Recurring until (currently {{ inv.recurUntil ?? 'no end' }}; leave blank for no end)
+            </label>
+            <input id="invoice-recur-until" type="date" data-testid="invoice-recur-until" formControlName="recurUntil" />
+            <button type="submit" data-testid="invoice-recur-until-submit" [disabled]="savingRecurring()">
+              Set end date
+            </button>
+          </form>
           <button type="button" data-testid="invoice-generate" [disabled]="generating()" (click)="generate(inv.id)">
             Generate next period
           </button>
@@ -1024,6 +1034,9 @@ export class InvoicePanel {
   protected readonly recurringError = signal('');
   protected readonly generating = signal(false);
   protected readonly generateError = signal('');
+  protected readonly recurUntilForm = new FormGroup({
+    recurUntil: new FormControl('', { nonNullable: true }),
+  });
   // An invoice to generate the next period of once its recurring box has been saved; null for none.
   private generateAfterSave: number | null = null;
   protected readonly crediting = signal(false);
@@ -1133,6 +1146,7 @@ export class InvoicePanel {
       this.voidError.set('');
       this.duplicateError.set('');
       this.recurringError.set('');
+      this.recurUntilForm.reset();
       this.generateError.set('');
       this.creditError.set('');
       this.reverseError.set('');
@@ -1679,6 +1693,30 @@ export class InvoicePanel {
         const detail: unknown = e.error?.detail;
         this.recurringError.set(
           typeof detail === 'string' && detail ? detail : 'The invoice could not be marked as recurring.',
+        );
+        this.savingRecurring.set(false);
+        this.generateWaiting();
+      },
+    });
+  }
+
+  // Saves the recurring invoice's end date; a generate asked for meanwhile waits for it.
+  protected setRecurUntil(invoiceId: number): void {
+    this.savingRecurring.set(true);
+    this.recurringError.set('');
+    const recurUntil = this.recurUntilForm.getRawValue().recurUntil.trim();
+    this.service.setRecurUntil(invoiceId, recurUntil || null).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.recurUntilForm.reset();
+        this.savingRecurring.set(false);
+        this.generateWaiting();
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.recurringError.set(
+          typeof detail === 'string' && detail ? detail : 'The end date could not be set.',
         );
         this.savingRecurring.set(false);
         this.generateWaiting();

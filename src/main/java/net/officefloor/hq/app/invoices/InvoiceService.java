@@ -185,9 +185,26 @@ public class InvoiceService {
     }
 
     /**
+     * Sets the last day the recurring invoice bills for (null for no end); empty if no such invoice. A credit note is refused.
+     */
+    @Transactional
+    public Optional<Invoice> setRecurUntil(Long invoiceId, LocalDate recurUntil) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note cannot be recurring.");
+            }
+            invoice.setRecurUntil(recurUntil);
+            invoices.saveAndFlush(invoice);
+        });
+        return found;
+    }
+
+    /**
      * Generates the next period's draft of a sent recurring invoice (see {@link Invoice#nextPeriod}), issued today and
      * due as any new invoice is, and records it in the audit; empty if no such invoice. A draft, an invoice that is
-     * not recurring or has no line with a service period, or one that has already generated its next period is refused.
+     * not recurring or has no line with a service period, one that has already generated its next period, one whose next
+     * period would start after its end date, or one for a client on hold is refused.
      */
     @Transactional
     public Optional<Invoice> generateNext(Long invoiceId) {
@@ -206,6 +223,12 @@ public class InvoiceService {
             }
             if (invoices.existsByRecurringFrom(original.getId())) {
                 throw new InvoiceRejectedException("The invoice has already generated its next period.");
+            }
+            if (original.getRecurUntil() != null && original.nextPeriodStart().isAfter(original.getRecurUntil())) {
+                throw new InvoiceRejectedException("The invoice's recurrence ended on " + original.getRecurUntil() + ".");
+            }
+            if (onHold(original.getClientId())) {
+                throw new InvoiceRejectedException("The client is on hold: nothing is generated for them.");
             }
             LocalDate issued = today.date();
             Invoice next = invoices.saveAndFlush(original.nextPeriod(issued, dueDateFor(original.getClientId(), issued)));

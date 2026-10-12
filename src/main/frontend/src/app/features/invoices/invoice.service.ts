@@ -249,6 +249,8 @@ export interface InvoiceDetail {
   recurring: boolean;
   // The id of the recurring invoice this draft was generated from as its next period; null when it was not.
   recurringFrom: number | null;
+  // The last day a recurring invoice bills for (yyyy-mm-dd): a generated period stops on it; null for no end.
+  recurUntil: string | null;
   // The client's purchase order number for the invoice; null when none was given.
   poNumber: string | null;
 }
@@ -489,6 +491,11 @@ export class InvoiceService {
   // Marks an invoice as recurring, or not; answers the invoice.
   setRecurring(invoiceId: number, recurring: boolean): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/recurring`, { recurring });
+  }
+
+  // Sets the last day a recurring invoice bills for (null for no end); answers the invoice.
+  setRecurUntil(invoiceId: number, recurUntil: string | null): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/recur-until`, { recurUntil });
   }
 
   // Generates the next period's draft of a sent recurring invoice: its lines with a service period moved

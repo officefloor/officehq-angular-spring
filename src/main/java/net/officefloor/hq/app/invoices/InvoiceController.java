@@ -157,7 +157,8 @@ public class InvoiceController {
      * left out of the amount due; nothing when reverse charged. {@code withholdingPct} (without trailing zeros)
      * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
      * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not).
-     * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not).
+     * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not);
+     * {@code recurUntil} is the last day it bills for when recurring (null for no end).
      * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open);
      * {@code disputed} is the amount in dispute (see {@link Invoice#disputedAmount}), 0 when none is.
      * {@code poNumber} is the client's purchase order number (null when none).
@@ -172,7 +173,7 @@ public class InvoiceController {
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
-            boolean recurring, Long recurringFrom, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber) {
+            boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -217,7 +218,7 @@ public class InvoiceController {
                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
                     i.getSupplyRegion(), approval,
                     i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
-                    i.isRecurring(), i.getRecurringFrom(), i.getDisputedOn(), i.getDisputeResolvedOn(),
+                    i.isRecurring(), i.getRecurringFrom(), i.getRecurUntil(), i.getDisputedOn(), i.getDisputeResolvedOn(),
                     i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber());
         }
     }
@@ -715,6 +716,17 @@ public class InvoiceController {
     @PutMapping("/api/invoices/{id}/recurring")
     public InvoiceDetail setRecurring(@PathVariable Long id, @Valid @RequestBody NewRecurring body) {
         return invoices.setRecurring(id, body.recurring())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** The last day a recurring invoice bills for; null for no end. */
+    public record NewRecurUntil(LocalDate recurUntil) {
+    }
+
+    @PutMapping("/api/invoices/{id}/recur-until")
+    public InvoiceDetail setRecurUntil(@PathVariable Long id, @RequestBody NewRecurUntil body) {
+        return invoices.setRecurUntil(id, body.recurUntil())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

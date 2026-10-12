@@ -197,6 +197,10 @@ public class Invoice {
     @Column(name = "recurring_from")
     private Long recurringFrom;
 
+    /** The last day the recurring invoice bills for: a generated period stops on it; null when it has no end. */
+    @Column(name = "recur_until")
+    private LocalDate recurUntil;
+
     /**
      * The number of the instalment the client skipped: it pays only its interest and the instalments
      * after it are worked out again (see {@link #schedule}); null when none was.
@@ -536,7 +540,8 @@ public class Invoice {
      * The next period's draft of this recurring invoice for the same client, issued and due on the given dates: a copy of
      * each line with a service period, moved to the whole calendar month after the latest period end on the invoice (lines
      * without a period are one-off charges and are not copied), with this invoice's percentage discount and surcharge.
-     * The draft is recurring too and remembers it was generated from this invoice.
+     * The period stops on the end date when it falls inside that month (and is prorated as usual).
+     * The draft is recurring too, keeps the end date and remembers it was generated from this invoice.
      */
     public Invoice nextPeriod(LocalDate issueDate, LocalDate dueDate) {
         Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
@@ -545,8 +550,12 @@ public class Invoice {
         next.surchargePct = surchargePct;
         next.recurring = true;
         next.recurringFrom = id;
-        LocalDate start = latestPeriodEnd().plusMonths(1).withDayOfMonth(1);
+        next.recurUntil = recurUntil;
+        LocalDate start = nextPeriodStart();
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
+        if (recurUntil != null && recurUntil.isBefore(end)) {
+            end = recurUntil;
+        }
         for (InvoiceLine line : lines) {
             if (line.hasPeriod()) {
                 InvoiceLine copy = line.copy();
@@ -555,6 +564,11 @@ public class Invoice {
             }
         }
         return next;
+    }
+
+    /** The first day of the next period: the first of the month after the latest period end. */
+    public LocalDate nextPeriodStart() {
+        return latestPeriodEnd().plusMonths(1).withDayOfMonth(1);
     }
 
     /** The latest service period end of the invoice's lines; null when no line has a period. */
@@ -570,6 +584,15 @@ public class Invoice {
 
     public void setRecurring(boolean recurring) {
         this.recurring = recurring;
+    }
+
+    /** The last day the recurring invoice bills for; null when it has no end. */
+    public LocalDate getRecurUntil() {
+        return recurUntil;
+    }
+
+    public void setRecurUntil(LocalDate recurUntil) {
+        this.recurUntil = recurUntil;
     }
 
     /** The id of the recurring invoice this draft was generated from; null when it was not. */
