@@ -264,8 +264,14 @@ export class ClientInvoices {
     this.changed.emit();
   }
 
-  // An invoice changed in the panel: show its new status, dates and total in the list.
+  // An invoice changed in the panel: show its new status, dates and total in the list. A sent
+  // invoice's change is made by adjustment notes, so list the client's invoices again.
   protected totalChanged(detail: InvoiceDetail): void {
+    if (detail.status !== 'DRAFT') {
+      this.service.forClient(this.clientId()).subscribe((list) => this.invoices.set(list));
+      this.changed.emit();
+      return;
+    }
     this.invoices.update((list) =>
       list.map((i) =>
         i.id === detail.id

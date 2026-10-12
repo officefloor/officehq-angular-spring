@@ -56,7 +56,7 @@ public class TestSupportController {
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier", "upliftPct");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "lineItems", "milestones");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "adjustmentOf", "lineItems", "milestones");
     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "heldFor", "allocations", "currency", "method", "remittance");
@@ -443,15 +443,24 @@ public class TestSupportController {
             if ("CREDIT_NOTE".equals(status) && row.get("creditOf") == null) {
                 throw refuse("an invoices[] row with status CREDIT_NOTE needs creditOf");
             }
+            // An adjustment note taking lines off (with negative quantities) is a credit note against the invoice it adjusts,
+            // stored with the quantities it credits.
+            Object creditOf = row.get("creditOf");
+            boolean adjustmentCredit = row.get("adjustmentOf") != null
+                    && rows(row.get("lineItems"), "invoices[].lineItems").stream()
+                            .anyMatch(l -> l.get("qty") != null && new BigDecimal(l.get("qty").toString()).signum() < 0);
+            if (adjustmentCredit && creditOf == null) {
+                creditOf = row.get("adjustmentOf");
+            }
             // A credit note that has been sent is an issued credit note.
-            if ("SENT".equals(status) && row.get("creditOf") != null) {
+            if ("SENT".equals(status) && creditOf != null) {
                 status = "CREDIT_NOTE";
             }
             if (row.get("clientId") == null) {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since", "sent_total", "sent_tax", "rebilled_on", "replaces"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since", "sent_total", "sent_tax", "rebilled_on", "replaces", "adjustment_of"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
@@ -460,7 +469,7 @@ public class TestSupportController {
                     row.get("discountCap") == null ? null : money(row.get("discountCap"), "invoices[].discountCap"),
                     row.get("discountReason") == null ? null : row.get("discountReason").toString(),
                     flag(row.get("manualDueDate"), "invoices[].manualDueDate"),
-                    row.get("creditOf") == null ? null : id(row.get("creditOf")),
+                    creditOf == null ? null : id(creditOf),
                     instalments(row.get("instalments"), "invoices[].instalments"),
                     instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"),
                     planDownPct(row.get("planDownPct"), "invoices[].planDownPct"),
@@ -489,7 +498,8 @@ public class TestSupportController {
                     row.get("sentTotal") == null ? null : cents(row.get("sentTotal"), "invoices[].sentTotal"),
                     row.get("sentTax") == null ? null : cents(row.get("sentTax"), "invoices[].sentTax"),
                     row.get("rebilledOn") == null ? null : date(row.get("rebilledOn"), "invoices[].rebilledOn"),
-                    row.get("replaces") == null ? null : id(row.get("replaces")));
+                    row.get("replaces") == null ? null : id(row.get("replaces")),
+                    row.get("adjustmentOf") == null ? null : id(row.get("adjustmentOf")));
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 Object[] price = linePrice(invoiceId, line);
@@ -505,7 +515,8 @@ public class TestSupportController {
                 insert("invoice_line", line.get("id"),
                         new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end", "disputed", "percent_complete", "billed_pct"},
                         invoiceId, text(line, "description"),
-                        cents(line.get("qty"), "invoices[].lineItems[].qty"),
+                        adjustmentCredit ? cents(line.get("qty"), "invoices[].lineItems[].qty").negate()
+                                : cents(line.get("qty"), "invoices[].lineItems[].qty"),
                         price[0], price[1],
                         flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"),
                         percent(line.get("discountPct"), "invoices[].lineItems[].discountPct"),
@@ -816,7 +827,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since, sent_total, sent_tax, rebilled_on, replaces FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since, sent_total, sent_tax, rebilled_on, replaces, adjustment_of FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -883,6 +894,9 @@ public class TestSupportController {
                     if (r.get("REPLACES") != null) {
                         row.put("replaces", r.get("REPLACES"));
                     }
+                    if (r.get("ADJUSTMENT_OF") != null) {
+                        row.put("adjustmentOf", r.get("ADJUSTMENT_OF"));
+                    }
                     if (r.get("SKIPPED_INSTALMENT") != null) {
                         row.put("skippedInstalment", r.get("SKIPPED_INSTALMENT"));
                     }
@@ -919,7 +933,9 @@ public class TestSupportController {
                                 Map<String, Object> line = new LinkedHashMap<>();
                                 line.put("id", l.get("ID"));
                                 line.put("description", l.get("DESCRIPTION"));
-                                line.put("qty", l.get("QTY"));
+                                // A credit note adjusting an invoice takes its lines off: their quantities read back negative.
+                                line.put("qty", r.get("ADJUSTMENT_OF") != null && r.get("CREDIT_OF") != null
+                                        ? ((BigDecimal) l.get("QTY")).negate() : l.get("QTY"));
                                 if (l.get("UNIT_TYPE") != null) {
                                     line.put("unitType", l.get("UNIT_TYPE"));
                                 }

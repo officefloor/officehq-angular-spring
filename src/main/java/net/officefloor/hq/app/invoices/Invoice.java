@@ -290,8 +290,8 @@ public class Invoice {
             + " AND o.credit_of IS NULL AND o.issue_date IS NOT NULL AND l.invoice_id = o.id AND l.tiers IS NOT NULL AND l.unit_type IS NOT NULL)")
     private String clientTieredUnits;
 
-    /** The issue date of the invoice this credit note credits; null for an ordinary invoice. */
-    @Formula("(SELECT o.issue_date FROM invoice o WHERE o.id = credit_of)")
+    /** The issue date of the invoice this credit note credits, or this adjustment note adjusts; null for an ordinary invoice. */
+    @Formula("(SELECT o.issue_date FROM invoice o WHERE o.id = COALESCE(adjustment_of, credit_of))")
     private LocalDate creditedIssueDate;
 
     /** The surcharge percentage of the invoice this credit note credits; null for an ordinary invoice. */
@@ -312,6 +312,18 @@ public class Invoice {
     /** The id of the invoice this credit note credits; null for an ordinary invoice. */
     @Column(name = "credit_of")
     private Long creditOf;
+
+    /**
+     * The id of the sent invoice this adjustment note adjusts (see {@link #debitNote} and {@link #adjustmentCreditNote});
+     * null for any other invoice.
+     */
+    @Column(name = "adjustment_of")
+    private Long adjustmentOf;
+
+    /** What the adjustment notes issued against this invoice add up to: debit notes less credit notes; read from them. */
+    @Formula("(SELECT COALESCE(SUM(CASE WHEN a.credit_of IS NULL THEN a.sent_total ELSE -a.credit_total END), 0) FROM invoice a"
+            + " WHERE a.adjustment_of = id AND a.status <> 'DRAFT' AND a.status <> 'VOID')")
+    private BigDecimal adjusted = BigDecimal.ZERO;
 
     /** The code of the currency the invoice's client is billed in; read from the client. */
     @Formula("(SELECT c.currency FROM client c WHERE c.id = client_id)")
@@ -465,7 +477,7 @@ public class Invoice {
     private BigDecimal credited = BigDecimal.ZERO;
 
     /** How many credit notes have been issued against this invoice; read from them. */
-    @Formula("(SELECT COUNT(*) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
+    @Formula("(SELECT COUNT(*) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE' AND cn.adjustment_of IS NULL)")
     private int creditNotesIssued;
 
     /**
@@ -790,6 +802,44 @@ public class Invoice {
         return note;
     }
 
+    /**
+     * A new, empty draft debit note adjusting this sent invoice, issued on the given date and due on the date given: same
+     * client, no discount or charges, priced and taxed as of this invoice's issue date in its region.
+     */
+    public Invoice debitNote(LocalDate issueDate, LocalDate dueDate) {
+        Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+        note.adjustmentOf = id;
+        note.supplyRegion = supplyRegion;
+        note.creditedIssueDate = this.issueDate;
+        return note;
+    }
+
+    /**
+     * A new, empty draft credit note adjusting this sent invoice, issued on the given date: as {@link #creditNote}, but
+     * with no charges of its own.
+     */
+    public Invoice adjustmentCreditNote(LocalDate issueDate) {
+        Invoice note = creditNote(issueDate);
+        note.adjustmentOf = id;
+        note.creditedSurchargePct = null;
+        return note;
+    }
+
+    /** Whether this is an adjustment note (debit or credit) of another invoice. */
+    public boolean isAdjustment() {
+        return adjustmentOf != null;
+    }
+
+    /** The id of the invoice this adjustment note adjusts; null for any other invoice. */
+    public Long getAdjustmentOf() {
+        return adjustmentOf;
+    }
+
+    /** What the adjustment notes issued against this invoice add up to (credit notes negative), to the cent. */
+    public BigDecimal getAdjusted() {
+        return (adjusted == null ? BigDecimal.ZERO : adjusted).setScale(scale(), RoundingMode.HALF_UP);
+    }
+
     /** Tells the invoice what today is, the day a draft is priced and taxed as of (see {@link #pricingDate}). */
     public void priceAsOf(LocalDate today) {
         this.pricedToday = today;
@@ -800,12 +850,15 @@ public class Invoice {
      * (not a credit note), since it will be dated today when sent; otherwise its issue date.
      */
     public LocalDate pricingDate() {
+        if (adjustmentOf != null && creditedIssueDate != null) {
+            return creditedIssueDate;
+        }
         return isDraft() && !isCreditNote() && pricedToday != null ? pricedToday : issueDate;
     }
 
     /** The day the invoice is taxed as of: a credit note's original's issue date, otherwise {@link #pricingDate}. */
     private LocalDate taxDate() {
-        return creditOf != null ? creditedIssueDate : pricingDate();
+        return creditOf != null || adjustmentOf != null ? creditedIssueDate : pricingDate();
     }
 
     /** The currency the invoice is in: its client's. */
@@ -898,7 +951,8 @@ public class Invoice {
 
     /** The number shown: CN-... for a credit note, otherwise INV-... (see {@link InvoiceNumber}). */
     public String number() {
-        return isCreditNote() ? InvoiceNumber.creditNoteOf(id) : InvoiceNumber.of(id);
+        return isAdjustment() ? InvoiceNumber.adjustmentOf(id)
+                : isCreditNote() ? InvoiceNumber.creditNoteOf(id) : InvoiceNumber.of(id);
     }
 
     /** What the credit notes issued against this invoice add up to, to the cent. */
@@ -2786,7 +2840,7 @@ public class Invoice {
      * credit note.
      */
     public BigDecimal volumeDiscount() {
-        if (volumeDiscounts == null || isCreditNote()) {
+        if (volumeDiscounts == null || isCreditNote() || isAdjustment()) {
             return zero();
         }
         BigDecimal subtotal = subtotal();
@@ -3247,7 +3301,7 @@ public class Invoice {
      * credit note, or for an invoice with no lines.
      */
     public BigDecimal minimumCharge() {
-        if ((clientMinimumCharge == null && minimumChargeUsd == null) || isCreditNote() || lines.isEmpty()) {
+        if ((clientMinimumCharge == null && minimumChargeUsd == null) || isCreditNote() || isAdjustment() || lines.isEmpty()) {
             return zero();
         }
         BigDecimal minimum = clientMinimumCharge != null ? currency().divideDownToStep(clientMinimumCharge, BigDecimal.ONE)

@@ -178,6 +178,8 @@ public class InvoiceController {
      * {@code currentTotal} the grand total today's prices, rates and client details would give, only when that differs (else null).
      * {@code rebilledOn} is the day it was rebilled (null when it was not); {@code replaces} is the number of the rebilled
      * invoice it replaces and {@code replacedBy} the number of the invoice that replaces it (each null when none).
+     * {@code adjustmentOf} is the id of the sent invoice it is an adjustment note of (null when it is not) and {@code adjusted}
+     * what the adjustment notes issued against it add up to, a credit note's negative (0 when none).
      * {@code milestones} are the milestones it is billed by (empty when it is billed whole), each with its
      * amount and status (see {@link Invoice#milestoneProgress}); {@code milestonesPct} is what their percentages add up to.
      */
@@ -193,7 +195,8 @@ public class InvoiceController {
             int approvalsNeeded, int approvals,
             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate recurringSince, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
             List<MilestoneView> milestones, String milestonesPct, Long claimFrom, String sentTotal, String currentTotal,
-            String fingerprint, String duplicateOf, LocalDate rebilledOn, String replaces, String replacedBy) {
+            String fingerprint, String duplicateOf, LocalDate rebilledOn, String replaces, String replacedBy,
+            Long adjustmentOf, String adjusted) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval,
                 List<Invoice> duplicates) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
@@ -247,7 +250,8 @@ public class InvoiceController {
                     duplicates.isEmpty() ? null
                             : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")),
                     i.getRebilledOn(), i.getReplaces() == null ? null : InvoiceNumber.of(i.getReplaces()),
-                    i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()));
+                    i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()),
+                    i.getAdjustmentOf(), i.getAdjusted().toPlainString());
         }
     }
 

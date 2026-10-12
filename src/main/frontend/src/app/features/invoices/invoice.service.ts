@@ -274,6 +274,10 @@ export interface InvoiceDetail {
   replaces: string | null;
   // The number of the invoice that replaces this rebilled one; null when none does.
   replacedBy: string | null;
+  // The id of the sent invoice this is an adjustment note of; null when it is not.
+  adjustmentOf: number | null;
+  // What the adjustment notes issued against this invoice add up to, a credit note's negative.
+  adjusted: string;
   // The client's purchase order number for the invoice; null when none was given.
   poNumber: string | null;
   // The milestones it is billed by (empty when it is billed whole), and what their percentages add up

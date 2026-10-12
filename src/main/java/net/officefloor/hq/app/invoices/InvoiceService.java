@@ -503,7 +503,7 @@ public class InvoiceService {
 
     /**
      * Adds a line to an invoice; empty if no such invoice. The line has already been checked. A sent
-     * invoice with no payments goes back to draft; one with a payment refuses it.
+     * invoice is left as it was sent: the line is billed on a debit note instead (see {@link #issueDebitNote}).
      */
     @Transactional
     public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, String unitType,
@@ -511,26 +511,23 @@ public class InvoiceService {
             LocalDate periodStart, LocalDate periodEnd, BigDecimal percentComplete) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
-            LinePrice price = linePrice(invoice, unitType, unitPrice);
-            boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
-            InvoiceLine line = new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
-                    discountPct, taxRate);
-            line.setCardPriced(price.fromCard());
-            line.setPeriod(periodStart, periodEnd);
-            line.setPercentComplete(percentComplete);
+            boolean adjusting = adjustsByNotes(invoice);
+            InvoiceLine line = newLine(invoice, description, qty, unitType, unitPrice, overtime, taxExempt, discountPct,
+                    taxRate, periodStart, periodEnd, percentComplete);
+            if (adjusting) {
+                issueDebitNote(invoice, line);
+                return;
+            }
             invoice.addLine(line);
             invoices.saveAndFlush(invoice);
-            if (reopened) {
-                audit.record("INVOICE_REOPENED id=" + invoice.getId());
-            }
         });
         return found;
     }
 
     /**
      * Removes a line from an invoice; empty if no such invoice or line. Refused when what is left would
-     * be less than a fixed discount. A sent invoice with no payments goes back to draft; one with a
-     * payment refuses it.
+     * be less than a fixed discount. A sent invoice is left as it was sent: the line is taken off by a
+     * credit note instead (see {@link #issueAdjustmentCredit}).
      */
     @Transactional
     public Optional<Invoice> removeLine(Long invoiceId, Long lineId) {
@@ -542,19 +539,21 @@ public class InvoiceService {
         if (!invoice.hasLine(lineId)) {
             return Optional.empty();
         }
-        boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines removed.");
+        if (adjustsByNotes(invoice)) {
+            issueAdjustmentCredit(invoice, lineOf(invoice, lineId).creditCopy());
+            return found;
+        }
         invoice.removeLine(lineId);
         invoices.saveAndFlush(invoice);
-        if (reopened) {
-            audit.record("INVOICE_REOPENED id=" + invoice.getId());
-        }
         return found;
     }
 
     /**
      * Changes a line of an invoice; empty if no such invoice or line. The line has already been
-     * checked. Refused when the subtotal would be less than a fixed discount. A sent invoice with no
-     * payments goes back to draft; one with a payment refuses it.
+     * checked. Refused when the subtotal would be less than a fixed discount. A sent invoice is left as it
+     * was sent and the change is made by adjustment notes instead: a change of quantity alone by one note for
+     * the difference (a debit note for more, a credit note for less), any other change by a credit note taking
+     * the old line off and a debit note billing the new one.
      */
     @Transactional
     public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
@@ -569,23 +568,110 @@ public class InvoiceService {
             return Optional.empty();
         }
         requireWithinCreditedPeriod(invoice, lineId, periodStart, periodEnd);
+        if (adjustsByNotes(invoice)) {
+            InvoiceLine old = lineOf(invoice, lineId);
+            InvoiceLine changed = newLine(invoice, description, qty, unitType, unitPrice, overtime, taxExempt, discountPct,
+                    taxRate, periodStart, periodEnd, percentComplete);
+            if (!old.sameButQty(changed)) {
+                issueAdjustmentCredit(invoice, old.creditCopy());
+                issueDebitNote(invoice, changed);
+            } else if (qty.compareTo(old.getQty()) > 0) {
+                issueDebitNote(invoice, old.copy().withQty(qty.subtract(old.getQty())));
+            } else if (qty.compareTo(old.getQty()) < 0) {
+                issueAdjustmentCredit(invoice, old.creditCopy().withQty(old.getQty().subtract(qty)));
+            }
+            return found;
+        }
         LinePrice price = linePrice(invoice, unitType, unitPrice);
-        boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
         invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
                 discountPct, taxRate, periodStart, periodEnd, percentComplete);
         invoice.getLines().stream().filter(l -> lineId.equals(l.getId())).forEach(l -> l.setCardPriced(price.fromCard()));
         invoices.saveAndFlush(invoice);
-        if (reopened) {
-            audit.record("INVOICE_REOPENED id=" + invoice.getId());
-        }
         return found;
+    }
+
+    /** A new line for the invoice, priced as its lines are (see {@link #linePrice(Invoice, String, BigDecimal)}). */
+    private InvoiceLine newLine(Invoice invoice, String description, BigDecimal qty, String unitType, BigDecimal unitPrice,
+            boolean overtime, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate, LocalDate periodStart,
+            LocalDate periodEnd, BigDecimal percentComplete) {
+        LinePrice price = linePrice(invoice, unitType, unitPrice);
+        InvoiceLine line = new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
+                discountPct, taxRate);
+        line.setCardPriced(price.fromCard());
+        line.setPeriod(periodStart, periodEnd);
+        line.setPercentComplete(percentComplete);
+        return line;
+    }
+
+    private static InvoiceLine lineOf(Invoice invoice, Long lineId) {
+        return invoice.getLines().stream().filter(l -> lineId.equals(l.getId())).findFirst().orElseThrow();
+    }
+
+    /**
+     * Whether a change to the invoice's lines is made by adjustment notes, leaving the invoice as it was sent: it is
+     * not a draft. A void or written-off invoice, a credit note, or one already credited or rebilled is refused.
+     */
+    private boolean adjustsByNotes(Invoice invoice) {
+        if (invoice.isDraft()) {
+            return false;
+        }
+        if (invoice.isVoid()) {
+            throw new InvoiceRejectedException("A void invoice cannot be changed.");
+        }
+        if (invoice.isCreditNote()) {
+            throw new InvoiceRejectedException("An issued credit note cannot be changed.");
+        }
+        if (invoice.isWrittenOff()) {
+            throw new InvoiceRejectedException("A written-off invoice cannot be changed.");
+        }
+        if (invoice.hasCreditNotesIssued() || invoice.getRebilledOn() != null) {
+            throw new InvoiceRejectedException("An invoice with an issued credit note cannot be changed.");
+        }
+        return true;
+    }
+
+    /**
+     * Bills the line on a debit note adjusting the sent invoice: a new invoice for its client dated today, priced and
+     * taxed as the invoice is, with no discount or charges, sent at once as any invoice sent today is (see
+     * {@link #markSent}); records ADJUSTMENT_ISSUED in the audit.
+     */
+    private void issueDebitNote(Invoice invoice, InvoiceLine line) {
+        LocalDate on = today.date();
+        Invoice note = invoice.debitNote(on, dueDateFor(invoice.getClientId(), on));
+        note.addLine(line);
+        Invoice saved = invoices.saveAndFlush(note);
+        // Read again the original's issue date it is priced and taxed as of.
+        entityManager.refresh(saved);
+        audit.record("ADJUSTMENT_ISSUED id=" + saved.getId() + " number=" + saved.number() + " invoice="
+                + invoice.getId() + " total=" + saved.total(taxRate.percent()).toPlainString());
+        markSent(saved);
+        entityManager.refresh(invoice);
+        withInterest(List.of(invoice));
+    }
+
+    /**
+     * Takes the credited line off the sent invoice on a credit note adjusting it, dated today and taxed as the invoice
+     * is, with no charges, issued as any credit note is (see {@link #issue}): it comes off what the invoice owes and any
+     * rest is held as credit.
+     */
+    private void issueAdjustmentCredit(Invoice invoice, InvoiceLine credit) {
+        Invoice note = invoice.adjustmentCreditNote(today.date());
+        note.addLine(credit);
+        Invoice draft = invoices.saveAndFlush(note);
+        entityManager.refresh(draft);
+        String refusal = creditNoteRefusal(draft, false);
+        if (refusal != null) {
+            throw new InvoiceRejectedException(refusal);
+        }
+        issue(draft);
+        entityManager.refresh(invoice);
+        withInterest(List.of(invoice));
     }
 
     /**
      * Gives an invoice a percentage discount, or a fixed amount off when one is given; the one given
      * clears the other, and the cap (null for none) limits everything taken off, line discounts included. Empty if no such invoice. The values have already been checked; a fixed amount
-     * over the subtotal is refused; the reason is optional. A sent invoice with no payments goes back to draft; one with a
-     * payment refuses it.
+     * over the subtotal is refused; the reason is optional. A sent invoice's discount is fixed: it is refused.
      */
     @Transactional
     public Optional<Invoice> setDiscount(Long invoiceId, BigDecimal discountPct, BigDecimal discountAmount,
@@ -601,7 +687,9 @@ public class InvoiceService {
             if (discountCap != null) {
                 requireWhole(invoice.currency(), discountCap, "The discount cap");
             }
-            boolean reopened = reopenForChange(invoice, "A paid invoice cannot be given a discount.");
+            if (!invoice.isDraft()) {
+                throw new InvoiceRejectedException("The discount of a sent invoice cannot be changed.");
+            }
             if (discountAmount != null) {
                 invoice.setDiscountAmount(discountAmount);
             } else {
@@ -610,9 +698,6 @@ public class InvoiceService {
             invoice.setDiscountCap(discountCap);
             invoice.setDiscountReason(discountReason);
             invoices.saveAndFlush(invoice);
-            if (reopened) {
-                audit.record("INVOICE_REOPENED id=" + invoice.getId());
-            }
         });
         return found;
     }
@@ -1150,34 +1235,6 @@ public class InvoiceService {
     }
 
     /**
-     * Readies the invoice for a change: a draft stays as it is; a sent invoice with no payments goes
-     * back to draft, to be sent again; an invoice with any payment is refused with the message.
-     * Whether it went back to draft.
-     */
-    private boolean reopenForChange(Invoice invoice, String refusal) {
-        if (invoice.isDraft()) {
-            return false;
-        }
-        if (invoice.isVoid()) {
-            throw new InvoiceRejectedException("A void invoice cannot be changed.");
-        }
-        if (invoice.isCreditNote()) {
-            throw new InvoiceRejectedException("An issued credit note cannot be changed.");
-        }
-        if (invoice.isWrittenOff()) {
-            throw new InvoiceRejectedException("A written-off invoice cannot be changed.");
-        }
-        if (invoice.hasCreditNotesIssued()) {
-            throw new InvoiceRejectedException("An invoice with an issued credit note cannot be changed.");
-        }
-        if (!payments.findForInvoice(invoice.getId()).isEmpty()) {
-            throw new InvoiceRejectedException(refusal);
-        }
-        invoice.reopen();
-        return true;
-    }
-
-    /**
      * Sends a draft invoice, issuing it today and making it due on the client's terms (or keeping a due
      * date set by hand), and records it in the audit; empty if no such invoice. An invoice already
      * sent, with no lines, whose due date set by hand is before today, or that needs approval, is refused.
@@ -1509,8 +1566,13 @@ public class InvoiceService {
         BigDecimal taken = original.creditTaken(total, paid(List.of(original)).get(original.getId()), rate);
         note.markIssued(today.date(), rate, taken);
         invoices.saveAndFlush(note);
-        audit.record("CREDIT_NOTE_ISSUED id=" + note.getId() + " number=" + note.number() + " invoice="
-                + note.getCreditOf() + " total=" + total.toPlainString());
+        if (note.isAdjustment()) {
+            audit.record("ADJUSTMENT_ISSUED id=" + note.getId() + " number=" + note.number() + " invoice="
+                    + note.getCreditOf() + " total=" + total.negate().toPlainString());
+        } else {
+            audit.record("CREDIT_NOTE_ISSUED id=" + note.getId() + " number=" + note.number() + " invoice="
+                    + note.getCreditOf() + " total=" + total.toPlainString());
+        }
         BigDecimal rest = total.subtract(taken);
         if (rest.signum() > 0) {
             recordCreditHeld(payments.saveAndFlush(Payment.fromCreditNote(note, rest)));
@@ -1524,7 +1586,8 @@ public class InvoiceService {
      */
     private void markSent(Invoice invoice) {
         LocalDate issued = today.date();
-        repriceFromRates(invoice, null, issued);
+        // An adjustment note is priced as of the invoice it adjusts.
+        repriceFromRates(invoice, null, invoice.isAdjustment() ? invoice.pricingDate() : issued);
         invoice.markSent(issued, cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued)));
         invoice.keepSentFigures(taxRate.percent());
         invoices.saveAndFlush(invoice);

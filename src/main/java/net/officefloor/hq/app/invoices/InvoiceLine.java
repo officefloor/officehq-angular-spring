@@ -11,6 +11,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Formula;
 import java.math.BigDecimal;
+import java.util.Objects;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -199,6 +200,28 @@ public class InvoiceLine {
         InvoiceLine credit = copy();
         credit.creditOfLine = id;
         return credit;
+    }
+
+    /** Sets the line's quantity (of a copy for an adjustment note), answering the line. */
+    InvoiceLine withQty(BigDecimal qty) {
+        this.qty = qty;
+        return this;
+    }
+
+    /** Whether the other line bills the same thing as this one at the same price, discount and tax, whatever its quantity. */
+    boolean sameButQty(InvoiceLine other) {
+        return Objects.equals(description, other.description) && Objects.equals(unitType, other.unitType)
+                && same(unitPrice, other.unitPrice) && Objects.equals(tiers, other.tiers)
+                && same(increment, other.increment) && same(minUnits, other.minUnits)
+                && overtime == other.overtime && taxExempt == other.taxExempt
+                && same(discountPct, other.discountPct) && same(taxRate, other.taxRate)
+                && Objects.equals(periodStart, other.periodStart) && Objects.equals(periodEnd, other.periodEnd)
+                && same(percentComplete, other.percentComplete);
+    }
+
+    /** Whether two amounts are the same: both none, or equal in value. */
+    private static boolean same(BigDecimal a, BigDecimal b) {
+        return a == null ? b == null : b != null && a.compareTo(b) == 0;
     }
 
     /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
