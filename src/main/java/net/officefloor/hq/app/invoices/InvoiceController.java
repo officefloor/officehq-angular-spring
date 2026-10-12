@@ -176,6 +176,8 @@ public class InvoiceController {
      * {@code poNumber} is the client's purchase order number (null when none).
      * {@code sentTotal} is the grand total it was sent with, which it is worth (null for a draft, or when not kept), and
      * {@code currentTotal} the grand total today's prices, rates and client details would give, only when that differs (else null).
+     * {@code rebilledOn} is the day it was rebilled (null when it was not); {@code replaces} is the number of the rebilled
+     * invoice it replaces and {@code replacedBy} the number of the invoice that replaces it (each null when none).
      * {@code milestones} are the milestones it is billed by (empty when it is billed whole), each with its
      * amount and status (see {@link Invoice#milestoneProgress}); {@code milestonesPct} is what their percentages add up to.
      */
@@ -191,7 +193,7 @@ public class InvoiceController {
             int approvalsNeeded, int approvals,
             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate recurringSince, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
             List<MilestoneView> milestones, String milestonesPct, Long claimFrom, String sentTotal, String currentTotal,
-            String fingerprint, String duplicateOf) {
+            String fingerprint, String duplicateOf, LocalDate rebilledOn, String replaces, String replacedBy) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval,
                 List<Invoice> duplicates) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
@@ -243,7 +245,9 @@ public class InvoiceController {
                             ? i.currentTotal(taxRate).toPlainString() : null,
                     Optional.ofNullable(i.fingerprint()).map(f -> f.substring(0, 8)).orElse(null),
                     duplicates.isEmpty() ? null
-                            : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")));
+                            : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")),
+                    i.getRebilledOn(), i.getReplaces() == null ? null : InvoiceNumber.of(i.getReplaces()),
+                    i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()));
         }
     }
 
@@ -780,6 +784,16 @@ public class InvoiceController {
     @PutMapping("/api/invoices/{id}/recur-until")
     public InvoiceDetail setRecurUntil(@PathVariable Long id, @RequestBody NewRecurUntil body) {
         return invoices.setRecurUntil(id, body.recurUntil())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /**
+     * Rebills a sent invoice: credits it in full and starts a corrected draft replacing it; answers the rebilled invoice.
+     */
+    @PostMapping("/api/invoices/{id}/rebill")
+    public InvoiceDetail rebill(@PathVariable Long id) {
+        return invoices.rebill(id)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

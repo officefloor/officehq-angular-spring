@@ -210,6 +210,18 @@ public class Invoice {
     @Column(name = "recur_until")
     private LocalDate recurUntil;
 
+    /** The day the sent invoice was rebilled: cancelled with a full credit note and replaced (see {@link #rebill}); null when it was not. */
+    @Column(name = "rebilled_on")
+    private LocalDate rebilledOn;
+
+    /** The id of the rebilled invoice this one replaces (see {@link #rebill}); null when it replaces none. */
+    @Column(name = "replaces")
+    private Long replaces;
+
+    /** The id of the invoice that replaces this rebilled one; read from it, null when none does. */
+    @Formula("(SELECT MIN(r.id) FROM invoice r WHERE r.replaces = id)")
+    private Long replacedBy;
+
     /** The id of the sent invoice this draft was claimed from as its next progress claim (see {@link #nextClaim}); null when it was not. */
     @Column(name = "claim_from")
     private Long claimFrom;
@@ -636,6 +648,54 @@ public class Invoice {
         next.claimFrom = id;
         lines.stream().filter(InvoiceLine::isProgress).forEach(line -> next.addLine(line.claimCopy()));
         return next;
+    }
+
+    /**
+     * The corrected replacement of this rebilled invoice: a draft for the same client, issued and due on the given dates,
+     * with copies of its lines, its percentage discount, surcharge and purchase order number, worked out afresh. It
+     * remembers which invoice it replaces.
+     */
+    public Invoice rebill(LocalDate issueDate, LocalDate dueDate) {
+        Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+        next.supplyRegion = supplyRegion;
+        next.discountPct = discountPct;
+        next.surchargePct = surchargePct;
+        next.poNumber = poNumber;
+        next.replaces = id;
+        lines.forEach(line -> next.addLine(line.copy()));
+        return next;
+    }
+
+    /**
+     * A draft credit note for exactly what this sent invoice is worth, issued on the given date: a credit copy of each
+     * of its lines, with its grand total and tax at the tax rate (those it was sent with, when kept) as its own.
+     */
+    public Invoice creditNoteInFull(LocalDate issueDate, BigDecimal taxRate) {
+        Invoice note = creditNote(issueDate);
+        lines.forEach(line -> note.addLine(line.creditCopy()));
+        note.sentTotal = total(taxRate);
+        note.sentTax = tax(taxRate);
+        return note;
+    }
+
+    /** Notes that the invoice was rebilled on the day. */
+    public void markRebilled(LocalDate on) {
+        this.rebilledOn = on;
+    }
+
+    /** The day the invoice was rebilled; null when it was not. */
+    public LocalDate getRebilledOn() {
+        return rebilledOn;
+    }
+
+    /** The id of the rebilled invoice this one replaces; null when it replaces none. */
+    public Long getReplaces() {
+        return replaces;
+    }
+
+    /** The id of the invoice that replaces this rebilled one; null when none does. */
+    public Long getReplacedBy() {
+        return replacedBy;
     }
 
     /** Whether any line is billed by progress. */
@@ -3230,9 +3290,12 @@ public class Invoice {
         return amount.add(currentTax(taxRate));
     }
 
-    /** Whether the invoice is sent (not a draft) with the grand total and tax it was sent with kept. */
+    /**
+     * Whether the invoice is sent (not a draft) with the grand total and tax it was sent with kept, or is a credit note
+     * for exactly what its original was worth (see {@link #creditNoteInFull}).
+     */
     public boolean hasSentFigures() {
-        return status != InvoiceStatus.DRAFT && sentTotal != null && sentTax != null;
+        return (status != InvoiceStatus.DRAFT || creditOf != null) && sentTotal != null && sentTax != null;
     }
 
     /** The grand total the invoice was sent with; null for a draft or when it was not kept. */

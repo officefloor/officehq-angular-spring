@@ -268,6 +268,12 @@ export interface InvoiceDetail {
   duplicateOf: string | null;
   // The id of the sent invoice this draft was claimed from as its next progress claim; null when it was not.
   claimFrom: number | null;
+  // The day the invoice was rebilled (credited in full and replaced by a corrected draft); null when it was not.
+  rebilledOn: string | null;
+  // The number of the rebilled invoice this one replaces; null when it replaces none.
+  replaces: string | null;
+  // The number of the invoice that replaces this rebilled one; null when none does.
+  replacedBy: string | null;
   // The client's purchase order number for the invoice; null when none was given.
   poNumber: string | null;
   // The milestones it is billed by (empty when it is billed whole), and what their percentages add up
@@ -547,6 +553,13 @@ export class InvoiceService {
   // today and due as any new invoice; payments are not copied. Answers the new draft.
   duplicate(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/duplicate`, null);
+  }
+
+  // Rebills a sent invoice: a credit note for exactly what it was sent for, and a corrected draft for the same
+  // client with its lines, percentage discount, surcharge and purchase order, which what was paid on it is held
+  // for. Answers the rebilled invoice.
+  rebill(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/rebill`, null);
   }
 
   // Marks an invoice as recurring, or not; answers the invoice.

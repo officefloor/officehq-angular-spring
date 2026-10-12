@@ -210,7 +210,9 @@ function problemWith(line: NewLine): string {
 // client); the server refuses to void a draft or one with a recorded
 // payment, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
 // cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
-// be duplicated into a new draft for the same client, which then opens. An invoice can be marked as
+// be duplicated into a new draft for the same client, which then opens. A sent invoice can be rebilled: credited
+// in full and replaced by a corrected draft that what was paid on it is held for; each shows the other's number.
+// An invoice can be marked as
 // recurring, until an end date its generated drafts keep; a sent recurring invoice generates the next period's draft once
 // (its period stopping on the end date), which then opens. A sent invoice with percent-complete lines makes its
 // next progress claim once: a draft of those lines that bills only the progress since, which then opens. A draft's due date can be set
@@ -229,6 +231,12 @@ function problemWith(line: NewLine): string {
       </h2>
       @if (invoice(); as inv) {
         <p>Status: <span data-testid="invoice-panel-status">{{ statusLabel(inv.status) }}</span></p>
+        @if (inv.replaces !== null) {
+          <p>Replaces: <span data-testid="invoice-replaces">{{ inv.replaces }}</span></p>
+        }
+        @if (inv.replacedBy !== null) {
+          <p>Replaced by: <span data-testid="invoice-replaced-by">{{ inv.replacedBy }}</span></p>
+        }
         @if (inv.paidDate) {
           <p>Paid on: <span data-testid="invoice-paid-date">{{ inv.paidDate }}</span></p>
         }
@@ -887,6 +895,15 @@ function problemWith(line: NewLine): string {
           }
         }
 
+        @if (inv.creditOf === null) {
+          <button type="button" data-testid="invoice-rebill" [disabled]="rebilling()" (click)="rebill(inv.id)">
+            Rebill
+          </button>
+          @if (rebillError()) {
+            <p role="alert" data-testid="invoice-rebill-error">{{ rebillError() }}</p>
+          }
+        }
+
         <button
           type="button"
           data-testid="invoice-duplicate"
@@ -1101,6 +1118,8 @@ export class InvoicePanel {
   protected readonly generateError = signal('');
   protected readonly claiming = signal(false);
   protected readonly claimError = signal('');
+  protected readonly rebilling = signal(false);
+  protected readonly rebillError = signal('');
   protected readonly recurUntilForm = new FormGroup({
     recurUntil: new FormControl('', { nonNullable: true }),
   });
@@ -1213,6 +1232,7 @@ export class InvoicePanel {
       this.recurUntilForm.reset();
       this.generateError.set('');
       this.claimError.set('');
+      this.rebillError.set('');
       this.creditError.set('');
       this.reverseError.set('');
       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
@@ -1901,6 +1921,25 @@ export class InvoicePanel {
         const detail: unknown = e.error?.detail;
         this.claimError.set(typeof detail === 'string' && detail ? detail : 'The next claim could not be made.');
         this.claiming.set(false);
+      },
+    });
+  }
+
+  // Rebills the invoice: it is credited in full and a corrected draft replaces it, so the client's invoices and
+  // credit changed.
+  protected rebill(invoiceId: number): void {
+    this.rebilling.set(true);
+    this.rebillError.set('');
+    this.service.rebill(invoiceId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.rebilling.set(false);
+        this.creditIssued.emit(detail);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.rebillError.set(typeof detail === 'string' && detail ? detail : 'The invoice could not be rebilled.');
+        this.rebilling.set(false);
       },
     });
   }

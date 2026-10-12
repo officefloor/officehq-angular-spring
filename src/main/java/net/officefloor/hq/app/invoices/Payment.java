@@ -55,6 +55,10 @@ public class Payment {
     @Column(name = "credit_note")
     private Long creditNote;
 
+    /** The draft this payment's credit is held for, moved off the invoice it replaces when that was rebilled; null for none. */
+    @Column(name = "held_for")
+    private Long heldFor;
+
     /** How much of the payment's unused credit has been refunded to the client; it is no longer credit. */
     private BigDecimal refunded = BigDecimal.ZERO;
 
@@ -220,6 +224,16 @@ public class Payment {
     /** The credit note whose rest this payment holds as credit; null for a payment from the client. */
     public Long getCreditNote() {
         return creditNote;
+    }
+
+    /** The draft this payment's credit is held for (see {@link #holdFor}); null for none. */
+    public Long getHeldFor() {
+        return heldFor;
+    }
+
+    /** Holds this payment's credit for the draft, used on it first when it is sent. */
+    public void holdFor(Long invoiceId) {
+        this.heldFor = invoiceId;
     }
 
     public Long getId() {

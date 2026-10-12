@@ -203,6 +203,64 @@ public class InvoiceService {
     }
 
     /**
+     * Rebills the sent invoice, answering it; empty if no such invoice. A credit note dated today credits every line for
+     * exactly what the invoice is worth (what it was sent for) and is issued as any credit note is, after every payment
+     * made to the invoice has come off it; then a draft replacing it (see {@link Invoice#rebill}), issued today and due
+     * as any new invoice is, gets those payments held for it as credit, used on it first when it is sent. Records
+     * INVOICE_REBILLED in the audit. A draft, a credit note, a void or written-off invoice, or one already credited is
+     * refused.
+     */
+    @Transactional
+    public Optional<Invoice> rebill(Long invoiceId) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note cannot be rebilled.");
+            }
+            if (invoice.isDraft()) {
+                throw new InvoiceRejectedException("Only a sent invoice can be rebilled.");
+            }
+            if (invoice.isVoid()) {
+                throw new InvoiceRejectedException("A void invoice cannot be rebilled.");
+            }
+            if (invoice.isWrittenOff()) {
+                throw new InvoiceRejectedException("A written-off invoice cannot be rebilled.");
+            }
+            if (invoice.hasCreditNotesIssued() || invoice.getRebilledOn() != null) {
+                throw new InvoiceRejectedException("An invoice already credited cannot be rebilled.");
+            }
+            LocalDate on = today.date();
+            BigDecimal rate = taxRate.percent();
+            List<Payment> paidBy = payments.findForInvoice(invoice.getId()).stream()
+                    .filter(p -> !p.isReversed()).toList();
+            paidBy.forEach(p -> {
+                p.returnCredit(invoice.getId());
+                payments.saveAndFlush(p);
+            });
+            Invoice note = invoices.saveAndFlush(invoice.creditNoteInFull(on, rate));
+            entityManager.refresh(note);
+            String refusal = creditNoteRefusal(note, false);
+            if (refusal != null) {
+                throw new InvoiceRejectedException(refusal);
+            }
+            issue(note);
+            invoice.markRebilled(on);
+            invoices.saveAndFlush(invoice);
+            Invoice next = invoices.saveAndFlush(invoice.rebill(on, dueDateFor(invoice.getClientId(), on)));
+            // Read again how far through the bands a copied tiered line's units reach.
+            entityManager.refresh(next);
+            paidBy.forEach(p -> {
+                p.holdFor(next.getId());
+                payments.saveAndFlush(p);
+            });
+            audit.record("INVOICE_REBILLED from=" + invoice.number() + " to=" + next.number());
+            entityManager.refresh(invoice);
+            withInterest(List.of(invoice));
+        });
+        return found;
+    }
+
+    /**
      * Marks the invoice as recurring, or not; empty if no such invoice. A credit note is refused. The invoice
      * is otherwise unchanged, so a sent one stays sent.
      */
@@ -2387,9 +2445,13 @@ public class InvoiceService {
     /**
      * The draft the payment is held for, or null when it is ordinary credit: a payment whose reference
      * (an RF reference or invoice number, as stored) is that of one of the client's drafts is a deposit
-     * held for it. Once that invoice has been sent the deposit's rest is ordinary credit.
+     * held for it, as is a payment moved onto the draft that replaces a rebilled invoice. Once that invoice has
+     * been sent the deposit's rest is ordinary credit.
      */
     private static Long heldFor(Payment payment, Map<String, Long> drafts) {
+        if (payment.getHeldFor() != null && drafts.containsValue(payment.getHeldFor())) {
+            return payment.getHeldFor();
+        }
         String reference = payment.getReference();
         if (reference == null || reference.isBlank()) {
             return null;
@@ -2537,7 +2599,7 @@ public class InvoiceService {
 
     /**
      * The invoices the draft is a possible duplicate of, lowest id first: its client's sent invoices (not
-     * void, not credit notes) issued within the workspace's duplicate window of days before today whose
+     * void, not credit notes, not rebilled or fully credited) issued within the workspace's duplicate window of days before today whose
      * {@link Invoice#fingerprint fingerprint} is the draft's. Empty for anything but a draft with lines, or
      * when the workspace has no duplicate window.
      */
@@ -2552,6 +2614,8 @@ public class InvoiceService {
         LocalDate from = on.minusDays(days);
         return invoices.findByClientIdOrderByIdAsc(invoice.getClientId()).stream()
                 .filter(i -> !i.getId().equals(invoice.getId()) && !i.isDraft() && !i.isVoid() && !i.isCreditNote())
+                // A rebilled or fully credited invoice is cancelled: nothing duplicates it.
+                .filter(i -> i.getRebilledOn() == null && i.getCredited().compareTo(i.total(taxRate.percent())) < 0)
                 .filter(i -> i.getIssueDate() != null && !i.getIssueDate().isBefore(from) && !i.getIssueDate().isAfter(on))
                 .filter(i -> fingerprint.equals(i.fingerprint()))
                 .toList();
