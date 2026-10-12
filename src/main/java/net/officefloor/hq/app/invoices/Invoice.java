@@ -582,6 +582,13 @@ public class Invoice {
     @Transient
     private boolean graceDropped;
 
+    /**
+     * Whether this is a debit adjustment note issued while the invoice it adjusts was overdue, so it has no grace
+     * period (see {@link #dueAtOnce}); not stored, worked out again each time the invoice is read.
+     */
+    @Transient
+    private boolean dueAtOnce;
+
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
@@ -1852,6 +1859,27 @@ public class Invoice {
     }
 
     /**
+     * Marks this debit adjustment note as issued while its invoice was overdue (or not): it is then due the day it is
+     * issued with no grace period, overdue from the next day and earning late interest from its due date.
+     */
+    public void dueAtOnce(boolean atOnce) {
+        this.dueAtOnce = atOnce;
+    }
+
+    /**
+     * Whether this sent invoice was overdue on the given day (a promise to pay held or not), judged on what had been
+     * paid against it by then from the payments (those not reversed count).
+     */
+    public boolean wasOverdueOn(List<Payment> payments, BigDecimal taxRate, LocalDate day) {
+        BigDecimal paidBy = payments.stream().filter(p -> !p.isReversed())
+                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
+                        .filter(a -> !received(a.getDate() == null ? p.getDate() : a.getDate()).isAfter(day))
+                        .map(PaymentAllocation::getAmount))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return statusIgnoringPromise(paidBy, null, taxRate, day) == InvoiceStatus.OVERDUE;
+    }
+
+    /**
      * The total a draft is judged and approved on at the tax rate: the grand total.
      */
     public BigDecimal approvalTotal(BigDecimal taxRate) {
@@ -2713,7 +2741,7 @@ public class Invoice {
      * period, else their region's, else the standard week; none for a HIGH payment risk client (see {@link #dropGrace}).
      */
     public int graceDays() {
-        if (graceDropped) {
+        if (graceDropped || dueAtOnce) {
             return 0;
         }
         return clientGraceDays == null ? GRACE_DAYS : clientGraceDays;

@@ -134,6 +134,10 @@ public class InvoiceService {
             if (i.isDraft() && !i.isCreditNote()) {
                 repriceWhereRated(i, ratesDate(i));
             }
+            // A debit note issued while its invoice was overdue has no grace.
+            i.dueAtOnce(isDebitNote(i) && !i.isDraft() && all.stream()
+                    .filter(o -> o.getId().equals(i.getAdjustmentOf())).findFirst()
+                    .map(o -> o.wasOverdueOn(found, rate, i.getIssueDate())).orElse(false));
             i.accrueLateInterest(found, rate, annual, now);
             i.notePromisePayments(found);
         });
@@ -1229,6 +1233,13 @@ public class InvoiceService {
         return invoice.dunningLevel(status, overdue, now);
     }
 
+    /** Whether the invoice is a debit adjustment note whose invoice is overdue on the day it is issued. */
+    private boolean dueAtOnce(Invoice invoice, LocalDate issued) {
+        return isDebitNote(invoice) && load(invoice.getAdjustmentOf())
+                .map(o -> o.wasOverdueOn(payments.findForInvoices(List.of(o.getId())), taxRate.percent(), issued))
+                .orElse(false);
+    }
+
     /** The invoice's issued debit adjustment notes that are overdue today, oldest first, with what is overdue on each. */
     private Map<Invoice, BigDecimal> overdueDebitNotes(Invoice invoice) {
         Map<Invoice, BigDecimal> overdue = new LinkedHashMap<>();
@@ -1881,7 +1892,9 @@ public class InvoiceService {
         repriceFromRates(invoice, null, invoice.isAdjustment() ? invoice.pricingDate() : issued);
         // A replacement carrying on the chasing keeps its due date (see Invoice#markSent). With a holiday
         // calendar a due date on a weekend or a holiday moves to the next business day.
-        invoice.markSent(issued, holidays.onBusinessDay(cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued))));
+        // A debit note on an invoice already overdue is due the day it is issued.
+        invoice.markSent(issued, dueAtOnce(invoice, issued) ? issued
+                : holidays.onBusinessDay(cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued))));
         invoice.keepSentFigures(taxRate.percent());
         invoices.saveAndFlush(invoice);
         if (invoice.isAdjustment()) {
