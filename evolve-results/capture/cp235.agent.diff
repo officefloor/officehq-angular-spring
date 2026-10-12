@@ -1,0 +1,47 @@
+diff --git a/src/main/java/net/officefloor/hq/app/Holidays.java b/src/main/java/net/officefloor/hq/app/Holidays.java
+index d3c7b91..6a51cbd 100644
+--- a/src/main/java/net/officefloor/hq/app/Holidays.java
++++ b/src/main/java/net/officefloor/hq/app/Holidays.java
+@@ -70,6 +70,26 @@ public class Holidays {
+         return day;
+     }
+ 
++    /**
++     * The given day, or when the workspace keeps a holiday calendar and it falls on a Saturday, a Sunday or a
++     * holiday (as observed), the next business day after it; the day itself without a calendar.
++     */
++    public LocalDate onBusinessDay(LocalDate day) {
++        return calendar().map(days -> onBusinessDay(day, days)).orElse(day);
++    }
++
++    /** The given day, or the next business day after it when it is not one with the given calendar. */
++    public static LocalDate onBusinessDay(LocalDate day, Set<LocalDate> holidays) {
++        Set<LocalDate> observed = new HashSet<>();
++        holidays.forEach(holiday -> observed.add(observed(holiday)));
++        LocalDate business = day;
++        while (business.getDayOfWeek() == DayOfWeek.SATURDAY || business.getDayOfWeek() == DayOfWeek.SUNDAY
++                || observed.contains(business)) {
++            business = business.plusDays(1);
++        }
++        return business;
++    }
++
+     /** The weekday a holiday is observed on: the Friday before a Saturday, the Monday after a Sunday. */
+     public static LocalDate observed(LocalDate holiday) {
+         return switch (holiday.getDayOfWeek()) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 63f4e97..71afeef 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1838,8 +1838,9 @@ public class InvoiceService {
+         LocalDate issued = today.date();
+         // An adjustment note is priced as of the invoice it adjusts.
+         repriceFromRates(invoice, null, invoice.isAdjustment() ? invoice.pricingDate() : issued);
+-        // A replacement carrying on the chasing keeps its due date (see Invoice#markSent).
+-        invoice.markSent(issued, cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued)));
++        // A replacement carrying on the chasing keeps its due date (see Invoice#markSent). With a holiday
++        // calendar a due date on a weekend or a holiday moves to the next business day.
++        invoice.markSent(issued, holidays.onBusinessDay(cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued))));
+         invoice.keepSentFigures(taxRate.percent());
+         invoices.saveAndFlush(invoice);
+         if (invoice.isAdjustment()) {
