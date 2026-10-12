@@ -4,7 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { ClientInvoices } from '../invoices/client-invoices';
 import { CURRENCIES, Currency, money } from '../invoices/invoice-format';
 import { ClientBalance, InvoiceService } from '../invoices/invoice.service';
-import { Client, ClientService, byName } from './client.service';
+import { Client, ClientService, ClientTier, byName } from './client.service';
 
 // A proper email address: a mailbox, an @, and a domain with at least one dot — name@company.com,
 // not name@company (a typo). The same rule the server applies.
@@ -275,6 +275,12 @@ function validTaxNumber(taxNumber: string): boolean {
             <option [value]="code">{{ code }}</option>
           }
         </select>
+        <label for="client-tier">Tier (a key or new client's approval limit can differ)</label>
+        <select id="client-tier" data-testid="client-form-tier" formControlName="tier">
+          @for (tier of tiers; track tier) {
+            <option [value]="tier">{{ tier }}</option>
+          }
+        </select>
         <input
           id="client-tax-exempt"
           data-testid="client-form-tax-exempt"
@@ -327,6 +333,7 @@ export class Clients {
   protected readonly money = money;
   protected readonly String = String;
   protected readonly currencies = CURRENCIES;
+  protected readonly tiers: readonly ClientTier[] = ['STANDARD', 'KEY', 'NEW'];
   protected readonly saving = signal(false);
   protected readonly holding = signal(false);
   protected readonly error = signal('');
@@ -367,6 +374,7 @@ export class Clients {
     exemptUntil: new FormControl('', { nonNullable: true }),
     pricesIncludeTax: new FormControl(false, { nonNullable: true }),
     currency: new FormControl<Currency>('USD', { nonNullable: true }),
+    tier: new FormControl<ClientTier>('STANDARD', { nonNullable: true }),
   });
 
   constructor() {
@@ -435,6 +443,7 @@ export class Clients {
     const exemptUntil = this.form.controls.exemptUntil.value;
     const pricesIncludeTax = this.form.controls.pricesIncludeTax.value;
     const currency = this.form.controls.currency.value;
+    const tier = this.form.controls.tier.value;
     const early = this.form.controls.earlyPct.value;
     const earlyPayPct = early === null || (early as unknown) === '' ? null : Number(early);
     const earlyDays = this.form.controls.earlyDays.value;
@@ -459,6 +468,7 @@ export class Clients {
       exemptUntil,
       pricesIncludeTax,
       currency,
+      tier,
     });
     const problem = exemptUntil && !taxExempt
       ? 'Only a tax-exempt client can have an exemption end date: tick tax exempt or clear the date.'
@@ -505,6 +515,7 @@ export class Clients {
       interestRate,
       region: region || null,
       taxNumber: taxNumber || null,
+      tier,
     };
     this.service.add(client).subscribe({
       next: (created) => {

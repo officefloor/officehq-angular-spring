@@ -62,7 +62,12 @@ export interface Client {
   // The payment risk band: LOW under 15 days, MEDIUM under 30, HIGH from 30. Every invoice of a HIGH
   // client needs approval, and deposits held for it worth at least 30% of its grand total, before it is sent.
   riskBand: 'LOW' | 'MEDIUM' | 'HIGH';
+  // The client's tier: a tier the workspace gives its own approval limit (in US dollars) uses it
+  // instead of the workspace's approval limit.
+  tier: ClientTier;
 }
+
+export type ClientTier = 'STANDARD' | 'KEY' | 'NEW';
 
 export type NewClient = Omit<Client, 'id' | 'onHold' | 'overLimit' | 'riskScore' | 'riskBand'>;
 

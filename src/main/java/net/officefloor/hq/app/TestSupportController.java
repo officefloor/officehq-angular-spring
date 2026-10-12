@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import jakarta.persistence.EntityManager;
 import net.officefloor.hq.app.clients.Client;
+import net.officefloor.hq.app.clients.ClientTier;
 import net.officefloor.hq.app.clients.Currency;
 import net.officefloor.hq.app.clients.RateDiscount;
 import net.officefloor.hq.app.clients.RateTiers;
@@ -40,7 +41,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown", "approvalLimit");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown", "approvalLimit", "tierApprovalLimits");
     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
@@ -53,7 +54,7 @@ public class TestSupportController {
     /** The setting holding the workspace's approval limit in US dollars (see Invoice#approval). */
     private static final String APPROVAL_LIMIT = "approval_limit";
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold");
+    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "poNumber", "lineItems");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed");
@@ -176,6 +177,20 @@ public class TestSupportController {
                 BigDecimal limit = money(values.get("approvalLimit"), "settings.approvalLimit");
                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                         APPROVAL_LIMIT, limit.toPlainString());
+            }
+            if (values.get("tierApprovalLimits") != null) {
+                if (!(values.get("tierApprovalLimits") instanceof Map<?, ?> limits)) {
+                    throw refuse("settings.tierApprovalLimits must be an object of US dollars by tier");
+                }
+                for (Map.Entry<?, ?> e : limits.entrySet()) {
+                    ClientTier tier = e.getKey() == null ? null : ClientTier.orStandard(e.getKey().toString());
+                    if (tier == null || e.getKey().toString().isBlank() || e.getValue() == null) {
+                        throw refuse("settings.tierApprovalLimits needs a tier (STANDARD, KEY or NEW) and a limit, not " + e.getKey() + ": " + e.getValue());
+                    }
+                    BigDecimal limit = money(e.getValue(), "settings.tierApprovalLimits." + tier);
+                    jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                            APPROVAL_LIMIT + "_" + tier.name(), limit.toPlainString());
+                }
             }
             if (values.get("planFee") != null) {
                 BigDecimal fee = money(values.get("planFee"), "settings.planFee");
@@ -361,7 +376,11 @@ public class TestSupportController {
             if (Currency.of(currency) == null) {
                 throw refuse("unsupported value of clients[].currency: " + currency);
             }
-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct", "minimum_charge", "rate_discount_pct", "tax_exempt_until", "credit_limit", "on_hold"},
+            ClientTier tier = ClientTier.orStandard(row.get("tier") == null ? null : row.get("tier").toString());
+            if (tier == null) {
+                throw refuse("unsupported value of clients[].tier: " + row.get("tier"));
+            }
+            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "retention_pct", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct", "minimum_charge", "rate_discount_pct", "tax_exempt_until", "credit_limit", "on_hold", "tier"},
                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
                     percent(row.get("discountPct"), "clients[].discountPct"),
                     flag(row.get("taxExempt"), "clients[].taxExempt"),
@@ -378,7 +397,7 @@ public class TestSupportController {
                     percent(row.get("rateDiscountPct"), "clients[].rateDiscountPct"),
                     row.get("taxExemptUntil") == null ? null : date(row.get("taxExemptUntil"), "clients[].taxExemptUntil"),
                     row.get("creditLimit") == null ? null : money(row.get("creditLimit"), "clients[].creditLimit"),
-                    flag(row.get("onHold"), "clients[].onHold"));
+                    flag(row.get("onHold"), "clients[].onHold"), tier.name());
             Long clientId = id(row.get("id") == null
                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
@@ -618,6 +637,14 @@ public class TestSupportController {
         if (!approvalLimit.isEmpty()) {
             settings.put("approvalLimit", new BigDecimal(approvalLimit.get(0)));
         }
+        Map<String, BigDecimal> tierApprovalLimits = new LinkedHashMap<>();
+        for (ClientTier tier : ClientTier.values()) {
+            jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?", String.class,
+                    APPROVAL_LIMIT + "_" + tier.name()).forEach(v -> tierApprovalLimits.put(tier.name(), new BigDecimal(v)));
+        }
+        if (!tierApprovalLimits.isEmpty()) {
+            settings.put("tierApprovalLimits", tierApprovalLimits);
+        }
         List<String> interestThreshold = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
                 String.class, INTEREST_THRESHOLD);
         if (!interestThreshold.isEmpty()) {
@@ -693,7 +720,7 @@ public class TestSupportController {
         if (!settings.isEmpty()) {
             out.put("settings", settings);
         }
-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number, withholding_pct, minimum_charge, rate_discount_pct, tax_exempt_until, credit_limit, on_hold FROM client ORDER BY id").stream()
+        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, retention_pct, grace_days, interest_rate, region, tax_number, withholding_pct, minimum_charge, rate_discount_pct, tax_exempt_until, credit_limit, on_hold, tier FROM client ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -714,6 +741,7 @@ public class TestSupportController {
                     row.put("withholdingPct", r.get("WITHHOLDING_PCT"));
                     row.put("rateDiscountPct", r.get("RATE_DISCOUNT_PCT"));
                     row.put("onHold", r.get("ON_HOLD"));
+                    row.put("tier", r.get("TIER"));
                     if (r.get("TAX_EXEMPT_UNTIL") != null) {
                         row.put("taxExemptUntil", r.get("TAX_EXEMPT_UNTIL").toString());
                     }

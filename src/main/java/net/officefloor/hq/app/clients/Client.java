@@ -124,6 +124,10 @@ public class Client {
     @Column(name = "on_hold")
     private boolean onHold;
 
+    /** The client's tier: its approval limit is the tier's when the workspace gives the tier one. */
+    @Enumerated(EnumType.STRING)
+    private ClientTier tier = ClientTier.STANDARD;
+
     /**
      * The percentage (0 to 100, 0 for none) taken off every price the client's lines take from its rate card or the
      * price list (see {@link RateDiscount}).
@@ -151,8 +155,9 @@ public class Client {
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
             Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge,
-            BigDecimal rateDiscountPct, LocalDate taxExemptUntil, BigDecimal creditLimit) {
+            BigDecimal rateDiscountPct, LocalDate taxExemptUntil, BigDecimal creditLimit, ClientTier tier) {
         this.name = name;
+        this.tier = tier == null ? ClientTier.STANDARD : tier;
         this.creditLimit = creditLimit;
         this.taxExemptUntil = taxExemptUntil;
         this.email = email;
@@ -235,6 +240,10 @@ public class Client {
 
     public BigDecimal getCreditLimit() {
         return creditLimit;
+    }
+
+    public ClientTier getTier() {
+        return tier;
     }
 
     public boolean isOnHold() {

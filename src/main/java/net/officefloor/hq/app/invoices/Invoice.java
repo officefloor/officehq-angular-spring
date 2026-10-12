@@ -377,10 +377,11 @@ public class Invoice {
     private String withholdingThresholdUsd;
 
     /**
-     * The workspace's approval limit in US dollars, as stored (the {@code approval_limit} setting); null
-     * when none is set.
+     * The approval limit in US dollars, as stored: the client's tier's ({@code approval_limit_<tier>} setting)
+     * when its tier has one, else the workspace's ({@code approval_limit} setting); null when neither is set.
      */
-    @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'approval_limit')")
+    @Formula("(SELECT COALESCE((SELECT t.setting_value FROM app_setting t, client c WHERE c.id = client_id AND t.name = 'approval_limit_' || c.tier),"
+            + " (SELECT s.setting_value FROM app_setting s WHERE s.name = 'approval_limit')))")
     private String approvalLimitUsd;
 
     /** The client's own annual late-interest rate, a percentage; null for the workspace's. Read from the client. */
@@ -1197,7 +1198,7 @@ public class Invoice {
     }
 
     /**
-     * The grand total above which a draft needs approval: the workspace's approval limit in US dollars
+     * The grand total above which a draft needs approval: the approval limit (the client tier's, else the workspace's) in US dollars
      * converted at the issue date's rate, rounded down to the step; null when none is set.
      */
     private BigDecimal approvalLimit() {
