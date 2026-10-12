@@ -534,6 +534,13 @@ public class Invoice {
     private BigDecimal lateWaived = BigDecimal.ZERO;
 
     /**
+     * The part of {@link #lateWaived} waived because the last promise to pay was kept (see
+     * {@link #accrueLateInterest}); not stored, worked out again each time the invoice is read.
+     */
+    @Transient
+    private BigDecimal promiseWaived = BigDecimal.ZERO;
+
+    /**
      * The late interest each reached milestone has been charged (see {@link #accrueLateInterest}), by the
      * milestone's id; empty when none is. Not stored, worked out again each time the invoice is read.
      */
@@ -1656,6 +1663,35 @@ public class Invoice {
         return lateWaived.setScale(scale(), RoundingMode.HALF_UP);
     }
 
+    /** The late interest waived because the last promise to pay was kept, to the cent; 0 when none was. */
+    public BigDecimal getPromiseWaived() {
+        return promiseWaived.setScale(scale(), RoundingMode.HALF_UP);
+    }
+
+    /**
+     * The day the last promise to pay was kept by the given day: the day payments (those not reversed) to this invoice
+     * from the day it was made reached the amount promised, no later than its date; null when it has not been kept.
+     */
+    private LocalDate promiseKeptOn(List<Payment> payments, LocalDate today) {
+        if (promiseAmount == null || promiseDate == null || promisedOn == null) {
+            return null;
+        }
+        LocalDate until = promiseDate.isBefore(today) ? promiseDate : today;
+        List<Map.Entry<LocalDate, BigDecimal>> paid = payments.stream().filter(p -> !p.isReversed())
+                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
+                        .map(a -> Map.entry(a.getDate() == null ? p.getDate() : a.getDate(), a.getAmount())))
+                .filter(e -> !e.getKey().isBefore(promisedOn) && !e.getKey().isAfter(until))
+                .sorted(Map.Entry.comparingByKey()).toList();
+        BigDecimal sum = BigDecimal.ZERO;
+        for (Map.Entry<LocalDate, BigDecimal> e : paid) {
+            sum = sum.add(e.getValue());
+            if (sum.compareTo(promiseAmount) >= 0) {
+                return e.getKey();
+            }
+        }
+        return null;
+    }
+
     /**
      * Works out the late interest charged by the given day, at the annual rate (a percentage), from the
      * payments (those not reversed count), and keeps it as part of what is payable. No late fee is
@@ -1693,6 +1729,7 @@ public class Invoice {
         LocalDate today = writtenOffOn != null && writtenOffOn.isBefore(asOf) ? writtenOffOn : asOf;
         this.lateInterest = BigDecimal.ZERO;
         this.lateWaived = BigDecimal.ZERO;
+        this.promiseWaived = BigDecimal.ZERO;
         this.milestoneInterest = Map.of();
         if (status == InvoiceStatus.SENT && !isCreditNote() && isBilledByMilestones()) {
             accrueMilestoneInterest(payments, taxRate, rates, today);
@@ -1706,6 +1743,7 @@ public class Invoice {
         if (getLateInterest().add(getLateWaived()).compareTo(interestThreshold()) < 0) {
             this.lateInterest = BigDecimal.ZERO;
             this.lateWaived = BigDecimal.ZERO;
+            this.promiseWaived = BigDecimal.ZERO;
         }
     }
 
@@ -1960,6 +1998,14 @@ public class Invoice {
                 inOrder.add(new Part(change, Long.MIN_VALUE + 2, BigDecimal.ZERO, false));
             }
         }
+        // A kept promise waives the interest that ran from the day it was made to the day it was kept: each of those
+        // days starts a period (before that day's payments); they pay nothing.
+        LocalDate keptOn = promiseKeptOn(payments, today);
+        boolean promiseKept = keptOn != null && promisedOn.isAfter(graceEnd(dueDate));
+        if (promiseKept) {
+            inOrder.add(new Part(promisedOn, PROMISE_MADE, BigDecimal.ZERO, false));
+            inOrder.add(new Part(received(keptOn), PROMISE_KEPT, BigDecimal.ZERO, false));
+        }
         inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
         BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.fee() && !p.on().isAfter(graceEnd(dueDate)))
                 .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -1974,6 +2020,8 @@ public class Invoice {
         LocalDate waiveOn = interestWaivedOn != null && !interestWaivedOn.isBefore(overdueOn)
                 && !interestWaivedOn.isAfter(today) ? interestWaivedOn : null;
         BigDecimal interestWaived = BigDecimal.ZERO;
+        BigDecimal chargedWhenPromised = null;
+        BigDecimal waivedForPromise = BigDecimal.ZERO;
         for (Part part : inOrder) {
             if (waiveOn != null && part.on().isAfter(waiveOn)) {
                 if (owed.signum() > 0) {
@@ -1991,6 +2039,17 @@ public class Invoice {
                 charged = charged.add(earned);
                 unpaidInterest = unpaidInterest.add(earned);
                 from = part.on();
+            }
+            if (promiseKept && part.paymentId() == PROMISE_MADE) {
+                chargedWhenPromised = charged;
+                continue;
+            }
+            if (promiseKept && part.paymentId() == PROMISE_KEPT) {
+                if (chargedWhenPromised != null) {
+                    waivedForPromise = charged.subtract(chargedWhenPromised).min(unpaidInterest).max(BigDecimal.ZERO);
+                    unpaidInterest = unpaidInterest.subtract(waivedForPromise);
+                }
+                continue;
             }
             if (part.credit()) {
                 owed = owed.subtract(part.amount());
@@ -2020,9 +2079,14 @@ public class Invoice {
         if (owed.signum() > 0) {
             charged = charged.add(earnedOn(owed, disputedLines, taxRate, rates.daily(from), from, today));
         }
-        this.lateInterest = charged.subtract(interestWaived);
-        this.lateWaived = interestWaived;
+        this.lateInterest = charged.subtract(interestWaived).subtract(waivedForPromise);
+        this.lateWaived = interestWaived.add(waivedForPromise);
+        this.promiseWaived = waivedForPromise;
     }
+
+    /** The order, among a day's parts, of the day a promise to pay was made and the day it was kept: before its payments. */
+    private static final long PROMISE_MADE = Long.MIN_VALUE + 3;
+    private static final long PROMISE_KEPT = Long.MIN_VALUE + 4;
 
     /**
      * Works out the late interest each reached milestone has been charged by the given day, at the annual

@@ -2199,6 +2199,7 @@ public class InvoiceService {
                 payOverdueThenHold(invoice.getClientId(), paidAmount, paidIn, date, method).remitted(remittance);
                 return;
             }
+            BigDecimal promiseWaivedBefore = invoice.getPromiseWaived();
             BigDecimal received = converted(paidAmount, paidIn, invoice.currency(), date);
             // Only what is left once the conversion fee and card surcharge are taken out pays the invoice.
             BigDecimal surcharge = surchargeOf(received, invoice.currency(), method, date);
@@ -2301,8 +2302,21 @@ public class InvoiceService {
                 recordWriteOff(note);
             });
             recordCreditHeld(payment);
+            recordPromiseKept(invoice, promiseWaivedBefore);
         });
         return found;
+    }
+
+    /**
+     * Records in the audit the late interest the payment waived on the invoice by keeping its promise to pay (see
+     * {@link Invoice#accrueLateInterest}): what is waived for the promise now beyond what was before it (before).
+     */
+    private void recordPromiseKept(Invoice invoice, BigDecimal before) {
+        withInterest(List.of(invoice));
+        BigDecimal waived = invoice.getPromiseWaived().subtract(before);
+        if (waived.signum() > 0) {
+            audit.record("INTEREST_WAIVED id=" + invoice.getId() + " amount=" + waived.toPlainString());
+        }
     }
 
     /**
