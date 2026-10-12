@@ -1626,7 +1626,7 @@ public class Invoice {
      * (kept as what was waived) and that day ends a period: interest starts again from it on what is
      * still owed. A written-off invoice is charged only up to the day it was
      * written off. From the day its final notice went out the rate is {@link #FINAL_NOTICE_PREMIUM} points
-     * higher (still within the region's legal maximum), and from the day its collections notice went out it
+     * higher (on top of the region's legal maximum), and from the day its collections notice went out it
      * earns no more interest: each of those days ends a period.
      */
     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate, LocalDate asOf) {
@@ -1635,7 +1635,7 @@ public class Invoice {
 
     /**
      * As {@link #accrueLateInterest(List, BigDecimal, BigDecimal, LocalDate)}, with the premium (percentage
-     * points) added to the rate before the region's legal maximum caps it (see {@link #lateInterestRate}).
+     * points) added on top of the rate once the region's legal maximum has capped it (see {@link #lateInterestRate}).
      */
     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate, BigDecimal premium,
             LocalDate asOf) {
@@ -1666,8 +1666,8 @@ public class Invoice {
     public static final BigDecimal FINAL_NOTICE_PREMIUM = BigDecimal.valueOf(2);
 
     /**
-     * The late-interest rates an invoice is charged (annual percentages, already capped by the region's legal
-     * maximum): the rate until its final notice goes out (finalOn, null when it has not), the raised rate from
+     * The late-interest rates an invoice is charged (annual percentages: the usual rate capped by the region's legal
+     * maximum, plus any premiums): the rate until its final notice goes out (finalOn, null when it has not), the raised rate from
      * then, and none from the day its collections notice goes out (stopOn, null when it has not).
      */
     private record InterestRates(BigDecimal rate, BigDecimal finalRate, LocalDate finalOn, LocalDate stopOn) {
@@ -2570,18 +2570,22 @@ public class Invoice {
 
     /**
      * The annual late-interest rate this invoice is charged: its client's own, else the workspace's,
-     * plus the premium in percentage points (for a HIGH payment risk client) when it is charged interest at
-     * all, but no more than the legal maximum of the client's region.
+     * capped at the legal maximum of the client's region, plus the premium in percentage points (for a
+     * HIGH payment risk client, after a final notice) on top of the capped rate when it is charged
+     * interest at all. The cap applies to the usual rate only; the premiums are penalties above it.
      */
     public BigDecimal lateInterestRate(BigDecimal workspaceRate, BigDecimal premium) {
         BigDecimal rate = clientInterestRate == null ? workspaceRate : clientInterestRate;
-        if (rate != null && rate.signum() > 0 && premium != null) {
+        if (rate == null) {
+            return null;
+        }
+        if (regionMaxInterest != null) {
+            rate = rate.min(new BigDecimal(regionMaxInterest.trim()));
+        }
+        if (rate.signum() > 0 && premium != null) {
             rate = rate.add(premium);
         }
-        if (regionMaxInterest == null || rate == null) {
-            return rate;
-        }
-        return rate.min(new BigDecimal(regionMaxInterest.trim()));
+        return rate;
     }
 
     /**

@@ -11,7 +11,8 @@ import org.springframework.stereotype.Service;
  * The workspace's annual late-interest rate: the stored {@code late_interest_rate} setting, a
  * percentage such as 12. With no rate set no late interest is charged, so the rate is 0. A region can
  * have a legal maximum annual rate, the {@code region_max_interest_<region>} setting: its clients are
- * charged late interest at no more than it (invoices read the cap themselves, see Invoice).
+ * charged a usual late-interest rate of no more than it, with any premiums (high risk, final notice)
+ * added on top (invoices read the cap themselves, see Invoice).
  */
 @Service
 public class LateInterestRate {
