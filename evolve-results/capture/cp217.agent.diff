@@ -1,0 +1,361 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index a75de9c..2d43830 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -664,6 +664,16 @@ function problemWith(line: NewLine): string {
+           <p role="alert" data-testid="invoice-waive-error">{{ waiveError() }}</p>
+         }
+ 
++        @if (inv.creditOf === null && inv.status !== 'DRAFT') {
++          <p>Dunning level: <span data-testid="invoice-dunning">{{ inv.dunning }}</span></p>
++          <button type="button" data-testid="invoice-remind" [disabled]="reminding()" (click)="remind(inv.id)">
++            Remind
++          </button>
++          @if (remindError()) {
++            <p role="alert" data-testid="invoice-remind-error">{{ remindError() }}</p>
++          }
++        }
++
+         @if (inv.creditOf === null && inv.status !== 'WRITTEN_OFF') {
+           <button type="button" data-testid="invoice-write-off" [disabled]="writingOff()" (click)="writeOff(inv.id)">
+             Write off
+@@ -998,6 +1008,8 @@ export class InvoicePanel {
+   protected readonly reachError = signal('');
+   protected readonly promising = signal(false);
+   protected readonly promiseError = signal('');
++  protected readonly reminding = signal(false);
++  protected readonly remindError = signal('');
+   protected readonly waiving = signal(false);
+   protected readonly waiveError = signal('');
+   protected readonly writingOff = signal(false);
+@@ -1118,6 +1130,7 @@ export class InvoicePanel {
+       this.reachError.set('');
+       this.promiseForm.reset();
+       this.promiseError.set('');
++      this.remindError.set('');
+       this.waiveError.set('');
+       this.writeOffError.set('');
+       this.disputeError.set('');
+@@ -1471,6 +1484,23 @@ export class InvoicePanel {
+     });
+   }
+ 
++  protected remind(invoiceId: number): void {
++    this.reminding.set(true);
++    this.remindError.set('');
++    this.service.remind(invoiceId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.reminding.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.remindError.set(typeof detail === 'string' && detail ? detail : 'The reminder could not be sent.');
++        this.reminding.set(false);
++      },
++    });
++  }
++
+   protected waiveInterest(invoiceId: number): void {
+     this.waiving.set(true);
+     this.waiveError.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index afcc171..3c10551 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -132,6 +132,9 @@ export interface InvoicePaymentView {
+ // `amountDue` is the total less that and less `writtenOff`: when payments leave less than $0.05 due (and no more than 1% of the grand total),
+ // the rest is written off ("0.00" when nothing is). `reference` is its ISO 11649 RF payment reference, made from
+ // the seven digits of its number, in groups of four (RF16 0000 075).
++// How far an overdue invoice is chased; each level after NONE is a reminder sent in turn.
++export type DunningLevel = 'NONE' | 'REMINDER_1' | 'REMINDER_2' | 'FINAL' | 'COLLECTIONS';
++
+ export interface InvoiceDetail {
+   id: number;
+   number: string;
+@@ -262,6 +265,9 @@ export interface InvoiceDetail {
+   adjustmentOf: number | null;
+   // What the adjustment notes issued against this invoice add up to, a credit note's negative.
+   adjusted: string;
++  // How far the invoice is chased (NONE unless it is overdue), and the days its reminders went out, earliest first.
++  dunning: DunningLevel;
++  reminders: string[];
+   // The client's purchase order number for the invoice; null when none was given.
+   poNumber: string | null;
+   // The milestones it is billed by (empty when it is billed whole), and what their percentages add up
+@@ -488,6 +494,13 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/promise`, { amount, date });
+   }
+ 
++  // Sends today the reminder for the dunning level an overdue invoice has reached; refused when it is at
++  // NONE or that reminder has already gone out.
++  remind(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/remind`, {});
++  }
++
++
+   // Waives the late interest still unpaid on an overdue invoice; interest starts again
+   // from today on what is still owed. Refused (409) when there is nothing to waive.
+   waiveInterest(invoiceId: number): Observable<InvoiceDetail> {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index f2af58c..a1b073f 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -55,7 +55,7 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier", "upliftPct");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "interestWaivedOn", "writtenOffOn", "surchargePct", "supplyRegion", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "adjustmentOf", "promiseAmount", "promiseDate", "promisedOn", "lineItems", "milestones");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "interestWaivedOn", "writtenOffOn", "surchargePct", "supplyRegion", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "adjustmentOf", "promiseAmount", "promiseDate", "promisedOn", "reminders", "lineItems", "milestones");
+     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct", "interestOf");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "heldFor", "allocations", "currency", "method", "remittance", "deposit");
+@@ -123,6 +123,7 @@ public class TestSupportController {
+         jdbc.execute("DELETE FROM client_rate");
+         jdbc.execute("DELETE FROM price_list_rate");
+         jdbc.execute("DELETE FROM holiday");
++        jdbc.execute("DELETE FROM invoice_reminder");
+         for (String table : List.of("payment", "invoice_milestone", "invoice_line", "invoice", "client")) {
+             jdbc.execute("DELETE FROM " + table);
+             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH 1");
+@@ -533,6 +534,15 @@ public class TestSupportController {
+                         line.get("billedPct") == null ? null : percent(line.get("billedPct"), "invoices[].lineItems[].billedPct"),
+                         line.get("interestOf") == null ? null : id(line.get("interestOf")));
+             }
++            if (row.get("reminders") != null) {
++                if (!(row.get("reminders") instanceof List<?> sent)) {
++                    throw refuse("invoices[].reminders must be a list of dates");
++                }
++                for (Object on : sent) {
++                    jdbc.update("INSERT INTO invoice_reminder (invoice_id, sent_on) VALUES (?, ?)", invoiceId,
++                            date(on, "invoices[].reminders[]"));
++                }
++            }
+             BigDecimal pctSum = BigDecimal.ZERO;
+             for (Map<String, Object> milestone : rows(row.get("milestones"), "invoices[].milestones")) {
+                 only(milestone, MILESTONE_FIELDS, "invoices[].milestones[]");
+@@ -911,6 +921,9 @@ public class TestSupportController {
+                     if (r.get("SUPPLY_REGION") != null) {
+                         row.put("supplyRegion", r.get("SUPPLY_REGION"));
+                     }
++                    row.put("reminders", jdbc.queryForList(
++                            "SELECT sent_on FROM invoice_reminder WHERE invoice_id = ? ORDER BY sent_on", LocalDate.class,
++                            r.get("ID")).stream().map(LocalDate::toString).toList());
+                     row.put("milestones", jdbc.queryForList(
+                             "SELECT id, description, pct, reached_on, disputed_on FROM invoice_milestone WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(m -> {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/DunningLevel.java b/src/main/java/net/officefloor/hq/app/invoices/DunningLevel.java
+new file mode 100644
+index 0000000..a203630
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/DunningLevel.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app.invoices;
++
++/**
++ * How far an overdue invoice is chased, worked out from the days since its due date and the reminders sent
++ * (see {@link Invoice#dunningLevel}); never stored. Each level after NONE is the reminder sent at it, in order:
++ * a level is never reached before the reminder of the one before it went out.
++ */
++public enum DunningLevel {
++    NONE, REMINDER_1, REMINDER_2, FINAL, COLLECTIONS;
++
++    /** The number of reminders sent once this level's reminder has gone out. */
++    public int reminders() {
++        return ordinal();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index dcd0131..8815e90 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1,6 +1,8 @@
+ package net.officefloor.hq.app.invoices;
+ 
+ import jakarta.persistence.CascadeType;
++import jakarta.persistence.CollectionTable;
++import jakarta.persistence.ElementCollection;
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.EnumType;
+@@ -14,6 +16,7 @@ import jakarta.persistence.OneToMany;
+ import jakarta.persistence.OrderBy;
+ import jakarta.persistence.Table;
+ import jakarta.persistence.Transient;
++import org.hibernate.Hibernate;
+ import org.hibernate.annotations.Fetch;
+ import org.hibernate.annotations.FetchMode;
+ import org.hibernate.annotations.Formula;
+@@ -547,6 +550,14 @@ public class Invoice {
+     @OrderBy("id")
+     private List<Milestone> milestones = new ArrayList<>();
+ 
++    /** The days the dunning reminders on this invoice went out, earliest first (see {@link #dunningLevel}). */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @Fetch(FetchMode.SUBSELECT)
++    @CollectionTable(name = "invoice_reminder", joinColumns = @JoinColumn(name = "invoice_id"))
++    @Column(name = "sent_on")
++    @OrderBy
++    private List<LocalDate> reminders = new ArrayList<>();
++
+     protected Invoice() {
+     }
+ 
+@@ -1108,6 +1119,47 @@ public class Invoice {
+         return promisedOn;
+     }
+ 
++    public List<LocalDate> getReminders() {
++        return List.copyOf(reminders);
++    }
++
++    /** Reads the reminders now, while the session is open. */
++    void initializeReminders() {
++        Hibernate.initialize(reminders);
++    }
++
++    /**
++     * The dunning level of the invoice at the given status on the given day: NONE unless it is overdue and at least
++     * 7 days past its due date; REMINDER_1 from 7 days; REMINDER_2 from 21 days once the first reminder went out at
++     * least 14 days before; FINAL from 45 days once the second went out; COLLECTIONS from 60 days once the final
++     * notice went out.
++     */
++    public DunningLevel dunningLevel(InvoiceStatus status, LocalDate today) {
++        if (status != InvoiceStatus.OVERDUE || dueDate == null) {
++            return DunningLevel.NONE;
++        }
++        long overdue = ChronoUnit.DAYS.between(dueDate, today);
++        int sent = reminders.size();
++        if (overdue < 7) {
++            return DunningLevel.NONE;
++        }
++        if (overdue < 21 || sent < 1 || ChronoUnit.DAYS.between(reminders.get(0), today) < 14) {
++            return DunningLevel.REMINDER_1;
++        }
++        if (overdue < 45 || sent < 2) {
++            return DunningLevel.REMINDER_2;
++        }
++        if (overdue < 60 || sent < 3) {
++            return DunningLevel.FINAL;
++        }
++        return DunningLevel.COLLECTIONS;
++    }
++
++    /** Records that the reminder for the next dunning level went out on the given day; it has already been checked. */
++    public void remind(LocalDate on) {
++        reminders.add(on);
++    }
++
+     /** Records a promise made on the given day to pay the amount by the date; it has already been checked. */
+     public void promise(BigDecimal amount, LocalDate by, LocalDate on) {
+         this.promiseAmount = amount;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 45f4f86..9a1812c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -188,7 +188,7 @@ public class InvoiceController {
+             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate recurringSince, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
+             List<MilestoneView> milestones, String milestonesPct, Long claimFrom, String sentTotal, String currentTotal,
+             String fingerprint, String duplicateOf, LocalDate rebilledOn, String replaces, String replacedBy,
+-            Long adjustmentOf, String adjusted) {
++            Long adjustmentOf, String adjusted, DunningLevel dunning, List<LocalDate> reminders) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval,
+                 List<Invoice> duplicates) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+@@ -200,9 +200,10 @@ public class InvoiceController {
+             List<LineView> lines = IntStream.range(0, shares.size())
+                     .mapToObj(n -> LineView.of(i.getLines().get(n), i.scale(), shares.get(n), taxes.get(n),
+                             inside.get(n), i.isDisputed())).toList();
++            InvoiceStatus status = i.statusWhenPaid(paid, paidOn, taxRate, today);
+             return new InvoiceDetail(i.getId(), i.number(),
+                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
+-                    i.statusWhenPaid(paid, paidOn, taxRate, today), i.getIssueDate(), i.getDueDate(),
++                    status, i.getIssueDate(), i.getDueDate(),
+                     lines, i.subtotal().toPlainString(),
+                     i.getDiscountPct().stripTrailingZeros().toPlainString(),
+                     i.getDiscountAmount().setScale(2).toPlainString(),
+@@ -238,7 +239,7 @@ public class InvoiceController {
+                             : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")),
+                     i.getRebilledOn(), i.getReplaces() == null ? null : InvoiceNumber.of(i.getReplaces()),
+                     i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()),
+-                    i.getAdjustmentOf(), i.getAdjusted().toPlainString());
++                    i.getAdjustmentOf(), i.getAdjusted().toPlainString(), i.dunningLevel(status, today), i.getReminders());
+         }
+     }
+ 
+@@ -675,6 +676,14 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /** Sends the dunning reminder for the level an overdue invoice has reached. */
++    @PostMapping("/api/invoices/{id}/remind")
++    public InvoiceDetail remind(@PathVariable Long id) {
++        return invoices.remind(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /** Waives the late interest still unpaid on an overdue invoice. */
+     @PostMapping("/api/invoices/{id}/waive-interest")
+     public InvoiceDetail waiveInterest(@PathVariable Long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 7bb1dcc..dfdc4b9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -127,8 +127,9 @@ public class InvoiceService {
+         BigDecimal annual = lateInterestRate.percent();
+         LocalDate now = today.date();
+         all.forEach(i -> {
+-            // Loaded with its lines only: read its milestones now, while the session is open.
++            // Loaded with its lines only: read its milestones and reminders now, while the session is open.
+             Hibernate.initialize(i.getMilestones());
++            i.initializeReminders();
+             i.priceAsOf(now);
+             if (i.isDraft() && !i.isCreditNote()) {
+                 repriceWhereRated(i, now);
+@@ -1117,6 +1118,32 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Sends today the reminder for the dunning level an invoice has reached, and records it in the audit; empty if
++     * no such invoice. Refused when the invoice is at NONE or the reminder for its level has already gone out.
++     */
++    @Transactional
++    public Optional<Invoice> remind(Long invoiceId) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            LocalDate now = today.date();
++            List<Invoice> one = List.of(invoice);
++            InvoiceStatus status = invoice.statusWhenPaid(paid(one).get(invoice.getId()),
++                    paidOn(one).get(invoice.getId()), taxRate.percent(), now);
++            DunningLevel level = invoice.dunningLevel(status, now);
++            if (level == DunningLevel.NONE) {
++                throw new InvoiceRejectedException("This invoice is not far enough overdue to be chased.");
++            }
++            if (invoice.getReminders().size() >= level.reminders()) {
++                throw new InvoiceRejectedException("The " + level + " reminder has already gone out.");
++            }
++            invoice.remind(now);
++            invoices.saveAndFlush(invoice);
++            audit.record("REMINDER_SENT id=" + invoice.getId() + " level=" + level);
++        });
++        return found;
++    }
++
+     /** The most days ahead a promise to pay can be kept by. */
+     static final int PROMISE_DAYS = 30;
+ 
+diff --git a/src/main/resources/db/migration/V93__invoice_reminder.sql b/src/main/resources/db/migration/V93__invoice_reminder.sql
+new file mode 100644
+index 0000000..e30f079
+--- /dev/null
++++ b/src/main/resources/db/migration/V93__invoice_reminder.sql
+@@ -0,0 +1,6 @@
++-- The dunning reminders sent on an overdue invoice: one row per reminder, the day it went out. The first is
++-- REMINDER_1, the second REMINDER_2, the third FINAL and the fourth COLLECTIONS.
++CREATE TABLE invoice_reminder (
++    invoice_id BIGINT NOT NULL REFERENCES invoice (id) ON DELETE CASCADE,
++    sent_on    DATE   NOT NULL
++);
