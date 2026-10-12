@@ -1,0 +1,247 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index d47bb62..dd0e51a 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -378,6 +378,18 @@ function problemWith(line: NewLine): string {
+               <th scope="row" colspan="11">Total</th>
+               <td data-testid="invoice-grand-total">{{ amount(inv.total) }}</td>
+             </tr>
++            @if (inv.sentTotal !== null) {
++              <tr>
++                <th scope="row" colspan="11">Sent total</th>
++                <td data-testid="invoice-sent-total">{{ amount(inv.sentTotal) }}</td>
++              </tr>
++            }
++            @if (inv.currentTotal !== null) {
++              <tr>
++                <th scope="row" colspan="11">Current total (at today's prices and rates)</th>
++                <td data-testid="invoice-current-total">{{ amount(inv.currentTotal) }}</td>
++              </tr>
++            }
+             @if (+inv.withholdingPct > 0) {
+               <tr>
+                 <th scope="row" colspan="11">Withheld by the client for its tax office</th>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 164afec..5c5df06 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -255,6 +255,12 @@ export interface InvoiceDetail {
+   recurUntil: string | null;
+   // The day a recurring invoice's plan began (yyyy-mm-dd), moved on a year at each yearly price rise; null for none.
+   recurringSince: string | null;
++  // The grand total a sent invoice was sent with, which it is worth whatever today's rules say; null for
++  // a draft (or a sent invoice whose figures were not kept).
++  sentTotal: string | null;
++  // The grand total today's prices, rates and client details would give a sent invoice, only when that
++  // differs from its sent total; otherwise null.
++  currentTotal: string | null;
+   // The id of the sent invoice this draft was claimed from as its next progress claim; null when it was not.
+   claimFrom: number | null;
+   // The client's purchase order number for the invoice; null when none was given.
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 8a6aa3c..2658865 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -56,7 +56,7 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier", "upliftPct");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "lineItems", "milestones");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "lineItems", "milestones");
+     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method", "remittance");
+@@ -446,7 +446,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since", "sent_total", "sent_tax"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -480,7 +480,9 @@ public class TestSupportController {
+                     flag(row.get("disputeCredit"), "invoices[].disputeCredit"),
+                     row.get("poNumber") == null ? null : row.get("poNumber").toString(),
+                     row.get("claimFrom") == null ? null : id(row.get("claimFrom")),
+-                    row.get("recurringSince") == null ? null : date(row.get("recurringSince"), "invoices[].recurringSince"));
++                    row.get("recurringSince") == null ? null : date(row.get("recurringSince"), "invoices[].recurringSince"),
++                    row.get("sentTotal") == null ? null : cents(row.get("sentTotal"), "invoices[].sentTotal"),
++                    row.get("sentTax") == null ? null : cents(row.get("sentTax"), "invoices[].sentTax"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -804,7 +806,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since, sent_total, sent_tax FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -853,6 +855,12 @@ public class TestSupportController {
+                     if (r.get("RECURRING_SINCE") != null) {
+                         row.put("recurringSince", r.get("RECURRING_SINCE").toString());
+                     }
++                    if (r.get("SENT_TOTAL") != null) {
++                        row.put("sentTotal", r.get("SENT_TOTAL"));
++                    }
++                    if (r.get("SENT_TAX") != null) {
++                        row.put("sentTax", r.get("SENT_TAX"));
++                    }
+                     if (r.get("RECURRING_FROM") != null) {
+                         row.put("recurringFrom", r.get("RECURRING_FROM"));
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 0d76167..7798d89 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -173,6 +173,16 @@ public class Invoice {
+     @Column(name = "approved_total")
+     private BigDecimal approvedTotal;
+ 
++    /**
++     * The grand total and tax the invoice was sent with: once sent, it is worth exactly that. Null for a
++     * draft, or for a sent invoice whose figures were not kept (worth what its lines work out to).
++     */
++    @Column(name = "sent_total")
++    private BigDecimal sentTotal;
++
++    @Column(name = "sent_tax")
++    private BigDecimal sentTax;
++
+     /** The day the invoice was approved; null while it has not been, or for an approval given before the day was kept. */
+     @Column(name = "approved_on")
+     private LocalDate approvedOn;
+@@ -2345,6 +2355,8 @@ public class Invoice {
+     /** Puts a sent invoice back to draft, so it has to be sent again. */
+     public void reopen() {
+         this.status = InvoiceStatus.DRAFT;
++        this.sentTotal = null;
++        this.sentTax = null;
+     }
+ 
+     /** The standard days past its due date an invoice is given before it becomes overdue: a week's grace. */
+@@ -2980,6 +2992,11 @@ public class Invoice {
+      * invoice tax is the total over the rates. It is what the line taxes add up to.
+      */
+     public BigDecimal tax(BigDecimal taxRate) {
++        return hasSentFigures() ? sentTax.setScale(scale(), RoundingMode.HALF_UP) : currentTax(taxRate);
++    }
++
++    /** As {@link #tax}, but always worked out with today's rules, even when the invoice was sent with other figures. */
++    public BigDecimal currentTax(BigDecimal taxRate) {
+         if (clientPricesIncludeTax) {
+             return isReverseCharge() ? zero() : inclusiveTax(taxRate);
+         }
+@@ -3162,6 +3179,11 @@ public class Invoice {
+      * it when the client's prices include tax (taken out even when reverse charged).
+      */
+     public BigDecimal beforeTax(BigDecimal taxRate) {
++        return hasSentFigures() ? total(taxRate).subtract(tax(taxRate)) : currentBeforeTax(taxRate);
++    }
++
++    /** As {@link #beforeTax}, but always worked out with today's rules. */
++    private BigDecimal currentBeforeTax(BigDecimal taxRate) {
+         BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
+         return clientPricesIncludeTax ? amount.subtract(inclusiveTax(taxRate)) : amount;
+     }
+@@ -3172,10 +3194,39 @@ public class Invoice {
+      * client whose prices include tax pays only the amount before tax.
+      */
+     public BigDecimal total(BigDecimal taxRate) {
++        return hasSentFigures() ? sentTotal.setScale(scale(), RoundingMode.HALF_UP) : currentTotal(taxRate);
++    }
++
++    /**
++     * As {@link #total}, but always worked out with today's prices, rates and client details, even when the
++     * invoice was sent with other figures.
++     */
++    public BigDecimal currentTotal(BigDecimal taxRate) {
+         BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
+         if (clientPricesIncludeTax) {
+-            return isReverseCharge() ? beforeTax(taxRate) : amount;
++            return isReverseCharge() ? currentBeforeTax(taxRate) : amount;
+         }
+-        return amount.add(tax(taxRate));
++        return amount.add(currentTax(taxRate));
++    }
++
++    /** Whether the invoice is sent (not a draft) with the grand total and tax it was sent with kept. */
++    public boolean hasSentFigures() {
++        return status != InvoiceStatus.DRAFT && sentTotal != null && sentTax != null;
++    }
++
++    /** The grand total the invoice was sent with; null for a draft or when it was not kept. */
++    public BigDecimal getSentTotal() {
++        return sentTotal;
++    }
++
++    /** The tax the invoice was sent with; null for a draft or when it was not kept. */
++    public BigDecimal getSentTax() {
++        return sentTax;
++    }
++
++    /** Keeps the grand total and tax the invoice works out to now at the tax rate as what it was sent with. */
++    public void keepSentFigures(BigDecimal taxRate) {
++        this.sentTotal = currentTotal(taxRate);
++        this.sentTax = currentTax(taxRate);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 3feae59..6befedb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -174,6 +174,8 @@ public class InvoiceController {
+      * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open);
+      * {@code disputed} is the amount in dispute (see {@link Invoice#disputedAmount}), 0 when none is.
+      * {@code poNumber} is the client's purchase order number (null when none).
++     * {@code sentTotal} is the grand total it was sent with, which it is worth (null for a draft, or when not kept), and
++     * {@code currentTotal} the grand total today's prices, rates and client details would give, only when that differs (else null).
+      * {@code milestones} are the milestones it is billed by (empty when it is billed whole), each with its
+      * amount and status (see {@link Invoice#milestoneProgress}); {@code milestonesPct} is what their percentages add up to.
+      */
+@@ -188,7 +190,7 @@ public class InvoiceController {
+             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
+             int approvalsNeeded, int approvals,
+             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate recurringSince, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
+-            List<MilestoneView> milestones, String milestonesPct, Long claimFrom) {
++            List<MilestoneView> milestones, String milestonesPct, Long claimFrom, String sentTotal, String currentTotal) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -233,7 +235,10 @@ public class InvoiceController {
+                     i.isRecurring(), i.getRecurringFrom(), i.getRecurUntil(), i.getRecurringSince(), i.getDisputedOn(), i.getDisputeResolvedOn(),
+                     i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber(),
+                     i.milestoneProgress(paid, taxRate, today).stream().map(MilestoneView::of).toList(),
+-                    i.milestonesPct().stripTrailingZeros().toPlainString(), i.getClaimFrom());
++                    i.milestonesPct().stripTrailingZeros().toPlainString(), i.getClaimFrom(),
++                    i.hasSentFigures() ? i.total(taxRate).toPlainString() : null,
++                    i.hasSentFigures() && i.currentTotal(taxRate).compareTo(i.total(taxRate)) != 0
++                            ? i.currentTotal(taxRate).toPlainString() : null);
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 4535483..8844147 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1460,6 +1460,7 @@ public class InvoiceService {
+         LocalDate issued = today.date();
+         repriceFromRates(invoice, null, issued);
+         invoice.markSent(issued, cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued)));
++        invoice.keepSentFigures(taxRate.percent());
+         invoices.saveAndFlush(invoice);
+         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
+                 + " total=" + invoice.total(taxRate.percent()).toPlainString());
+diff --git a/src/main/resources/db/migration/V85__invoice_sent_figures.sql b/src/main/resources/db/migration/V85__invoice_sent_figures.sql
+new file mode 100644
+index 0000000..b6b474e
+--- /dev/null
++++ b/src/main/resources/db/migration/V85__invoice_sent_figures.sql
+@@ -0,0 +1,4 @@
++-- The grand total and tax an invoice was sent with; the invoice is worth exactly that once sent.
++-- Null for a draft, or for a sent invoice whose figures were not kept (worth what its lines work out to).
++ALTER TABLE invoice ADD COLUMN sent_total DECIMAL(19, 2);
++ALTER TABLE invoice ADD COLUMN sent_tax DECIMAL(19, 2);
