@@ -1793,6 +1793,11 @@ public class Invoice {
         }
     }
 
+    /** The day this invoice's final notice (its third reminder) went out; null when it has not. */
+    public LocalDate finalNoticeOn() {
+        return reminderOn(DunningLevel.FINAL);
+    }
+
     /** The day the reminder of the given dunning level went out; null when it has not. */
     private LocalDate reminderOn(DunningLevel level) {
         int n = level.reminders() - 1;
