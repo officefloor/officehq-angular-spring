@@ -162,13 +162,22 @@ public class InvoiceService {
 
     /**
      * Tells each sent invoice and debit note what it is judged together with for withholding (see
-     * {@link Invoice#judgeWithholdingWith}): an invoice with its issued adjustment notes, credit notes taken off.
+     * {@link Invoice#judgeWithholdingWith}): an invoice with its issued adjustment notes, credit notes taken off; and each
+     * invoice what its credit notes and adjustment credit notes take off its amount before tax for its early-payment
+     * discount (see {@link Invoice#creditEarlyPayWith}).
      */
     private static void judgeWithholdingTogether(List<Invoice> all, BigDecimal rate) {
         Map<Long, BigDecimal> together = new HashMap<>();
         Map<Long, BigDecimal> credited = new HashMap<>();
+        Map<Long, BigDecimal> allCredited = new HashMap<>();
         for (Invoice i : all) {
-            if (i.isDraft() || i.isVoid() || (i.isCreditNote() && !i.isAdjustment())) {
+            if (i.isDraft() || i.isVoid()) {
+                continue;
+            }
+            if (i.isCreditNote()) {
+                allCredited.merge(i.isAdjustment() ? i.getAdjustmentOf() : i.getCreditOf(), i.beforeTax(rate), BigDecimal::add);
+            }
+            if (i.isCreditNote() && !i.isAdjustment()) {
                 continue;
             }
             Long group = i.isAdjustment() ? i.getAdjustmentOf() : i.getId();
@@ -185,6 +194,7 @@ public class InvoiceService {
             Long group = i.isAdjustment() ? i.getAdjustmentOf() : i.getId();
             BigDecimal others = together.getOrDefault(group, BigDecimal.ZERO).subtract(i.beforeTax(rate));
             i.judgeWithholdingWith(others, i.isAdjustment() ? BigDecimal.ZERO : credited.getOrDefault(group, BigDecimal.ZERO));
+            i.creditEarlyPayWith(i.isAdjustment() ? BigDecimal.ZERO : allCredited.getOrDefault(i.getId(), BigDecimal.ZERO));
         }
     }
 

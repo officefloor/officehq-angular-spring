@@ -391,6 +391,18 @@ public class Invoice {
         this.creditedBeforeTax = creditedBeforeTax;
     }
 
+    /**
+     * What the credit notes and adjustment credit notes of this invoice take off its amount before tax, for its
+     * early-payment discount; null when not worked out. Not stored.
+     */
+    @Transient
+    private BigDecimal earlyCreditedBeforeTax;
+
+    /** Tells the invoice what its credit notes and adjustment credit notes take off its amount before tax. */
+    public void creditEarlyPayWith(BigDecimal creditedBeforeTax) {
+        this.earlyCreditedBeforeTax = creditedBeforeTax;
+    }
+
     /** The percentage of the amount before tax the client withholds for its tax office; 0 when none. */
     public BigDecimal getWithholdingPct() {
         return withholdingPct == null ? BigDecimal.ZERO : withholdingPct;
@@ -2134,14 +2146,18 @@ public class Invoice {
 
     /**
      * The early-payment discount on offer: the client's early-payment percentage of the amount before
-     * tax (the subtotal less the discount), rounded down to the cent; nothing for a credit note, or one whose client is not a LOW payment risk (see {@link #withholdEarlyPay}).
+     * tax (the subtotal less the discount) less what its credit notes and adjustment credit notes take off it before tax,
+     * rounded down to the cent; nothing for a credit note or a debit note, or one whose client is not a LOW payment risk
+     * (see {@link #withholdEarlyPay}).
      */
     public BigDecimal earlyDiscount(BigDecimal taxRate) {
-        if (earlyPayWithheld || isCreditNote() || earlyPayDays == null
+        if (earlyPayWithheld || isCreditNote() || isAdjustment() || earlyPayDays == null
                 || earlyPayPct == null || earlyPayPct.signum() <= 0) {
             return zero();
         }
-        return beforeTax(taxRate).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
+        BigDecimal beforeTax = beforeTax(taxRate);
+        BigDecimal base = earlyCreditedBeforeTax == null ? beforeTax : beforeTax.subtract(earlyCreditedBeforeTax);
+        return base.max(zero()).multiply(earlyPayPct).divide(BigDecimal.valueOf(100)).setScale(scale(), RoundingMode.DOWN);
     }
 
     /**
