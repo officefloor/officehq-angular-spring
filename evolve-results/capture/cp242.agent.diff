@@ -1,0 +1,252 @@
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 25824d6..57c3e01 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -59,7 +59,7 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier", "upliftPct");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "interestWaivedOn", "writtenOffOn", "surchargePct", "supplyRegion", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "adjustmentOf", "promiseAmount", "promiseDate", "promisedOn", "reminders", "lineItems", "milestones");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "interestWaivedOn", "writtenOffOn", "surchargePct", "supplyRegion", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "adjustmentOf", "promiseAmount", "promiseDate", "promisedOn", "minimumKept", "reminders", "lineItems", "milestones");
+     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "disputeSettledOn", "percentComplete", "billedPct", "interestOf");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "heldFor", "allocations", "currency", "method", "remittance", "deposit");
+@@ -494,7 +494,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "interest_waived_on", "written_off_on", "surcharge_pct", "supply_region", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since", "sent_total", "sent_tax", "rebilled_on", "replaces", "adjustment_of", "promise_amount", "promise_date", "promised_on"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "interest_waived_on", "written_off_on", "surcharge_pct", "supply_region", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since", "sent_total", "sent_tax", "rebilled_on", "replaces", "adjustment_of", "promise_amount", "promise_date", "promised_on", "minimum_kept"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -531,7 +531,8 @@ public class TestSupportController {
+                     row.get("adjustmentOf") == null ? null : id(row.get("adjustmentOf")),
+                     row.get("promiseAmount") == null ? null : money(row.get("promiseAmount"), "invoices[].promiseAmount"),
+                     row.get("promiseDate") == null ? null : date(row.get("promiseDate"), "invoices[].promiseDate"),
+-                    row.get("promisedOn") == null ? null : date(row.get("promisedOn"), "invoices[].promisedOn"));
++                    row.get("promisedOn") == null ? null : date(row.get("promisedOn"), "invoices[].promisedOn"),
++                    row.get("minimumKept") == null ? BigDecimal.ZERO : money(row.get("minimumKept"), "invoices[].minimumKept"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -919,7 +920,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, interest_waived_on, written_off_on, surcharge_pct, supply_region, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since, sent_total, sent_tax, rebilled_on, replaces, adjustment_of, promise_amount, promise_date, promised_on FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, interest_waived_on, written_off_on, surcharge_pct, supply_region, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since, sent_total, sent_tax, rebilled_on, replaces, adjustment_of, promise_amount, promise_date, promised_on, minimum_kept FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -983,6 +984,9 @@ public class TestSupportController {
+                     if (r.get("ADJUSTMENT_OF") != null) {
+                         row.put("adjustmentOf", r.get("ADJUSTMENT_OF"));
+                     }
++                    if (r.get("MINIMUM_KEPT") != null && ((BigDecimal) r.get("MINIMUM_KEPT")).signum() != 0) {
++                        row.put("minimumKept", r.get("MINIMUM_KEPT"));
++                    }
+                     if (r.get("PROMISE_AMOUNT") != null) {
+                         row.put("promiseAmount", r.get("PROMISE_AMOUNT"));
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index b75b70c..c9ecab2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -485,6 +485,13 @@ public class Invoice {
+     @Column(name = "cash_rounding")
+     private BigDecimal cashRounding = BigDecimal.ZERO;
+ 
++    /**
++     * The part of what this adjustment credit note takes off that it keeps back as a minimum charge (see
++     * {@link #keepMinimum}); 0 for any other invoice.
++     */
++    @Column(name = "minimum_kept")
++    private BigDecimal minimumKept = BigDecimal.ZERO;
++
+     /** An issued credit note's grand total, kept when it is issued; null until then. */
+     @Column(name = "credit_total")
+     private BigDecimal creditTotal;
+@@ -3172,7 +3179,7 @@ public class Invoice {
+         for (int i = 0; i < lines.size(); i++) {
+             taxes.add(lines.get(i).amount(scale()).subtract(shares.get(i)).multiply(rates.get(i)).movePointLeft(2));
+         }
+-        taxes.add(surcharge().add(minimumCharge()).multiply(rates.get(lines.size())).movePointLeft(2));
++        taxes.add(surcharge().add(chargedMinimum()).multiply(rates.get(lines.size())).movePointLeft(2));
+         return taxes;
+     }
+ 
+@@ -3359,14 +3366,15 @@ public class Invoice {
+     /** As {@link #tax}, but always worked out with today's rules, even when the invoice was sent with other figures. */
+     public BigDecimal currentTax(BigDecimal taxRate) {
+         if (clientPricesIncludeTax) {
+-            return isReverseCharge() ? zero() : inclusiveTax(taxRate);
++            return isReverseCharge() ? zero() : inclusiveTax(taxRate).subtract(keptTax(taxRate));
+         }
+         List<BigDecimal> exact = exactLineTaxes(taxRate);
+         BigDecimal tax = zero();
+         for (List<Integer> group : byRate(taxRate, true).values()) {
+             tax = tax.add(roundTax(group.stream().map(exact::get).toList()));
+         }
+-        return tax;
++        // The minimum charge kept back is not credited, nor is its tax.
++        return isReverseCharge() ? tax : tax.subtract(keptTax(taxRate));
+     }
+ 
+     /**
+@@ -3425,7 +3433,7 @@ public class Invoice {
+         for (int i = 0; i < lines.size(); i++) {
+             amounts.add(lines.get(i).amount(scale()).subtract(shares.get(i)));
+         }
+-        amounts.add(surcharge().add(minimumCharge()));
++        amounts.add(surcharge().add(chargedMinimum()));
+         return amounts;
+     }
+ 
+@@ -3527,15 +3535,88 @@ public class Invoice {
+      * The minimum charge: what the subtotal less the discount plus the surcharge falls short of the client's own
+      * minimum charge (in its currency), or else the workspace's minimum charge, converted from US dollars at the
+      * pricing date's rate (see {@link #pricingDate}) and rounded down to the step. Nothing when no minimum is set (or the client's is 0), for a
+-     * credit note, or for an invoice with no lines.
++     * credit note, or for an invoice with no lines; on an adjustment credit note, the part it keeps back (see {@link #keepMinimum}),
++     * which does not come off and is taxed at the standard rate on its own.
+      */
+     public BigDecimal minimumCharge() {
+-        if ((clientMinimumCharge == null && minimumChargeUsd == null) || isCreditNote() || isAdjustment() || lines.isEmpty()) {
++        if (isKeepingMinimum()) {
++            return getMinimumKept();
++        }
++        if (isCreditNote() || isAdjustment() || lines.isEmpty()) {
+             return zero();
+         }
+-        BigDecimal minimum = clientMinimumCharge != null ? currency().divideDownToStep(clientMinimumCharge, BigDecimal.ONE)
++        BigDecimal minimum = minimum();
++        return minimum == null ? zero() : minimum.subtract(discounted().add(surcharge())).max(zero());
++    }
++
++    /** The minimum charge added to the amount: none on an adjustment credit note, which keeps its own back instead. */
++    private BigDecimal chargedMinimum() {
++        return isKeepingMinimum() ? zero() : minimumCharge();
++    }
++
++    /**
++     * The least the invoice is charged: the client's own minimum charge (in its currency), or else the workspace's,
++     * converted from US dollars at the pricing date's rate (see {@link #pricingDate}) and rounded down to the step; null
++     * when no minimum is set.
++     */
++    public BigDecimal minimum() {
++        if (clientMinimumCharge == null && minimumChargeUsd == null) {
++            return null;
++        }
++        return clientMinimumCharge != null ? currency().divideDownToStep(clientMinimumCharge, BigDecimal.ONE)
+                 : currency().divideDownToStep(new BigDecimal(minimumChargeUsd.trim()), usdPerOn(pricingDate()));
+-        return minimum.subtract(discounted().add(surcharge())).max(zero());
++    }
++
++    /** The minimum charge kept back, which does not come off: 0 when none is. */
++    private BigDecimal getMinimumKeptOff() {
++        return isKeepingMinimum() ? getMinimumKept() : zero();
++    }
++
++    /** Whether this is an adjustment credit note keeping back part of what it takes off as a minimum charge. */
++    private boolean isKeepingMinimum() {
++        return isCreditNote() && isAdjustment() && minimumKept != null && minimumKept.signum() > 0;
++    }
++
++    /** The part this adjustment credit note keeps back as a minimum charge, to the cent; 0 for any other invoice. */
++    public BigDecimal getMinimumKept() {
++        return (minimumKept == null ? BigDecimal.ZERO : minimumKept).setScale(scale(), RoundingMode.HALF_UP);
++    }
++
++    /** Sets the part this adjustment credit note keeps back as a minimum charge (as stored, for test data). */
++    public void setMinimumKept(BigDecimal minimumKept) {
++        this.minimumKept = minimumKept == null ? BigDecimal.ZERO : minimumKept;
++    }
++
++    /**
++     * What the invoice is charged for its lines after the discount, with the surcharge, as adjusted by the given
++     * adjustment notes issued against it: a debit note's adds, a credit note's (less what it kept back) comes off.
++     */
++    public BigDecimal chargedAsAdjusted(List<Invoice> notes) {
++        BigDecimal charged = discounted().add(surcharge());
++        for (Invoice note : notes) {
++            BigDecimal amount = note.discounted().add(note.surcharge());
++            charged = note.isCreditNote() ? charged.subtract(amount).add(note.getMinimumKept()) : charged.add(amount);
++        }
++        return charged;
++    }
++
++    /**
++     * Keeps back on this draft adjustment credit note the part of what it takes off that would leave its invoice, as
++     * charged with its earlier notes (see {@link #chargedAsAdjusted}), below the given minimum charge (null for none):
++     * at most all of it.
++     */
++    public void keepMinimum(BigDecimal charged, BigDecimal minimum) {
++        BigDecimal credited = discounted().add(surcharge());
++        BigDecimal kept = minimum == null ? zero() : minimum.subtract(charged.subtract(credited)).max(zero()).min(credited.max(zero()));
++        this.minimumKept = kept;
++    }
++
++    /** The tax on the minimum charge kept back: at the standard rate on its own, rounded half up to the cent. */
++    private BigDecimal keptTax(BigDecimal taxRate) {
++        if (!isKeepingMinimum()) {
++            return zero();
++        }
++        return getMinimumKept().multiply(taxRate).movePointLeft(2).setScale(scale(), RoundingMode.HALF_UP);
+     }
+ 
+     /**
+@@ -3548,7 +3629,7 @@ public class Invoice {
+ 
+     /** As {@link #beforeTax}, but always worked out with today's rules. */
+     private BigDecimal currentBeforeTax(BigDecimal taxRate) {
+-        BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
++        BigDecimal amount = discounted().add(surcharge()).add(chargedMinimum()).subtract(getMinimumKeptOff());
+         return clientPricesIncludeTax ? amount.subtract(inclusiveTax(taxRate)) : amount;
+     }
+ 
+@@ -3566,9 +3647,9 @@ public class Invoice {
+      * invoice was sent with other figures.
+      */
+     public BigDecimal currentTotal(BigDecimal taxRate) {
+-        BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
++        BigDecimal amount = discounted().add(surcharge()).add(chargedMinimum()).subtract(getMinimumKeptOff());
+         if (clientPricesIncludeTax) {
+-            return isReverseCharge() ? currentBeforeTax(taxRate) : amount;
++            return isReverseCharge() ? currentBeforeTax(taxRate) : amount.subtract(keptTax(taxRate));
+         }
+         return amount.add(currentTax(taxRate));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index c57c16e..f38e935 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -866,13 +866,18 @@ public class InvoiceService {
+     /**
+      * Takes the credited line off the sent invoice on a credit note adjusting it, dated today and taxed as the invoice
+      * is, with no charges, issued as any credit note is (see {@link #issue}): it comes off what the invoice owes and any
+-     * rest is held as credit.
++     * rest is held as credit. The part that would leave the invoice (with its earlier notes) below its minimum charge is
++     * kept back on the note as a minimum charge (see {@link Invoice#keepMinimum}), and only the rest is credited.
+      */
+     private void issueAdjustmentCredit(Invoice invoice, InvoiceLine credit) {
+         Invoice note = invoice.adjustmentCreditNote(today.date());
+         note.addLine(credit);
+         Invoice draft = invoices.saveAndFlush(note);
+         entityManager.refresh(draft);
++        // What would take the invoice (with its earlier notes) below its minimum charge is kept back on the note.
++        List<Invoice> earlier = notesOf(invoice, invoices.findByClientIdOrderByIdAsc(invoice.getClientId()));
++        draft.keepMinimum(invoice.chargedAsAdjusted(earlier), invoice.minimum());
++        invoices.saveAndFlush(draft);
+         String refusal = creditNoteRefusal(draft, false);
+         if (refusal != null) {
+             throw new InvoiceRejectedException(refusal);
+diff --git a/src/main/resources/db/migration/V96__adjustment_minimum_kept.sql b/src/main/resources/db/migration/V96__adjustment_minimum_kept.sql
+new file mode 100644
+index 0000000..2891d43
+--- /dev/null
++++ b/src/main/resources/db/migration/V96__adjustment_minimum_kept.sql
+@@ -0,0 +1,3 @@
++-- The part of what an adjustment credit note takes off that it keeps back as a minimum charge, so its invoice (with
++-- its earlier notes) is not taken below its minimum charge; 0 for any other invoice.
++ALTER TABLE invoice ADD COLUMN minimum_kept DECIMAL(19, 2) DEFAULT 0 NOT NULL;
