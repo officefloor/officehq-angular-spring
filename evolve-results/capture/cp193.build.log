@@ -1,0 +1,156 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610112340/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 1)
+yment › shows each invoice its part of a split payment
+[1A[2K[184/327] [chromium] › cp22_auto_allocation.spec.ts:14:7 › automatic allocation › applies a payment to the oldest invoices first
+[1A[2K[185/327] [chromium] › cp22_auto_allocation.spec.ts:49:7 › automatic allocation › holds what is paid beyond everything owed as credit
+[1A[2K[186/327] [chromium] › cp23_overdue.spec.ts:10:7 › overdue invoices › marks invoices still owing after their due date Overdue
+[1A[2K[187/327] [chromium] › cp23_overdue.spec.ts:47:7 › overdue invoices › a part payment leaves an overdue invoice Overdue
+[1A[2K[188/327] [chromium] › cp24_allocate_by_due_date.spec.ts:12:7 › allocate by due date › applies a payment to the earliest due date first
+[1A[2K[189/327] [chromium] › cp25_client_balance.spec.ts:7:7 › client balance › shows what each client owes and how much is overdue
+[1A[2K[190/327] [chromium] › cp25_client_balance.spec.ts:43:7 › client balance › a payment lowers the balance straight away
+[1A[2K[191/327] [chromium] › cp26_void_invoice.spec.ts:10:7 › void an invoice › voids an unpaid sent invoice
+[1A[2K[192/327] [chromium] › cp26_void_invoice.spec.ts:34:7 › void an invoice › refuses to void a draft or an invoice with payments
+[1A[2K[193/327] [chromium] › cp26_void_invoice.spec.ts:61:7 › void an invoice › a void invoice takes no payments
+[1A[2K[194/327] [chromium] › cp27_fixed_discount.spec.ts:8:7 › fixed discount › splits a fixed discount across the lines
+[1A[2K[195/327] [chromium] › cp27_fixed_discount.spec.ts:36:7 › fixed discount › one kind of discount replaces the other
+[1A[2K[196/327] [chromium] › cp27_fixed_discount.spec.ts:62:7 › fixed discount › refuses a fixed discount bigger than the subtotal
+[1A[2K[197/327] [chromium] › cp28_send_dates.spec.ts:8:7 › send sets the dates › sending moves the issue date to today
+[1A[2K[198/327] [chromium] › cp28_send_dates.spec.ts:29:7 › send sets the dates › an invoice sent in December is due at the end of January
+[1A[2K[199/327] [chromium] › cp29_discount_cap.spec.ts:11:7 › discount cap › caps a percentage discount at the maximum
+[1A[2K[200/327] [chromium] › cp29_discount_cap.spec.ts:41:7 › discount cap › caps alongside line discounts
+[1A[2K[201/327] [chromium] › cp29_discount_cap.spec.ts:63:7 › discount cap › caps alongside a fixed discount
+[1A[2K[202/327] [chromium] › cp29_discount_cap.spec.ts:80:7 › discount cap › sets a cap through the form
+[1A[2K[203/327] [chromium] › cp30_payment_reversal.spec.ts:10:7 › reverse a payment › reversing a split payment undoes it on every invoice
+[1A[2K[204/327] [chromium] › cp30_payment_reversal.spec.ts:43:7 › reverse a payment › a reversed payment does not count
+[1A[2K[205/327] [chromium] › cp31_remove_line.spec.ts:10:7 › remove a line › removing a line recalculates the discount and tax
+[1A[2K[206/327] [chromium] › cp31_remove_line.spec.ts:48:7 › remove a line › refuses to remove a line below a fixed discount
+[1A[2K[207/327] [chromium] › cp31_remove_line.spec.ts:72:7 › remove a line › removing a line from an unpaid sent invoice reopens it
+[1A[2K[208/327] [chromium] › cp32_cap_all_discounts.spec.ts:8:7 › cap covers every discount › the cap includes line discounts
+[1A[2K[209/327] [chromium] › cp33_line_tax_rate.spec.ts:8:7 › tax rate per line › taxes each line at its own rate
+[1A[2K[210/327] [chromium] › cp33_line_tax_rate.spec.ts:36:7 › tax rate per line › adds a line with its own rate
+[1A[2K[211/327] [chromium] › cp34_duplicate_invoice.spec.ts:10:7 › duplicate an invoice › duplicates an invoice as a new draft
+[1A[2K[212/327] [chromium] › cp35_client_terms.spec.ts:8:7 › client payment terms › uses a client's own terms for new invoices
+[1A[2K[213/327] [chromium] › cp35_client_terms.spec.ts:30:7 › client payment terms › sending uses the client's terms
+[1A[2K[214/327] [chromium] › cp35_client_terms.spec.ts:48:7 › client payment terms › sets terms when adding a client
+[1A[2K[215/327] [chromium] › cp36_discount_split_ties.spec.ts:7:7 › discount split ties › a tied leftover cent goes to the larger line
+[1A[2K[216/327] [chromium] › cp37_pay_by_reference.spec.ts:13:7 › pay by reference › applies a payment to the invoice its reference names
+[1A[2K[217/327] [chromium] › cp37_pay_by_reference.spec.ts:45:7 › pay by reference › refuses a mistyped or foreign reference
+[1A[2K[218/327] [chromium] › cp37_pay_by_reference.spec.ts:80:7 › pay by reference › keeps what a reference payment overpays as credit
+[1A[2K[219/327] [chromium] › cp38_send_all_drafts.spec.ts:9:7 › send all drafts › sends every one of the client's drafts that has lines
+[1A[2K[220/327] [chromium] › cp39_paid_date.spec.ts:8:7 › paid date › shows the date the clearing payment was made
+[1A[2K[221/327] [chromium] › cp39_paid_date.spec.ts:48:7 › paid date › reversing the clearing payment takes the paid date away
+[1A[2K[222/327] [chromium] › cp40_write_off_small_balance.spec.ts:13:7 › write off a small balance › more than 1% of the total stays due
+[1A[2K[223/327] [chromium] › cp40_write_off_small_balance.spec.ts:38:7 › write off a small balance › writes off less than five cents left due
+[1A[2K[224/327] [chromium] › cp41_discount_reason.spec.ts:13:7 › discount reason › a capped discount within a fifth needs no reason
+[1A[2K[225/327] [chromium] › cp41_discount_reason.spec.ts:33:7 › discount reason › a discount over a fifth of the subtotal needs approval
+[1A[2K[226/327] [chromium] › cp41_discount_reason.spec.ts:61:7 › discount reason › refuses to send an invoice whose discount needs approval until it is approved
+[1A[2K[227/327] [chromium] › cp42_edit_line.spec.ts:11:7 › edit a line › editing a line works the whole invoice out again
+[1A[2K[228/327] [chromium] › cp42_edit_line.spec.ts:54:7 › edit a line › editing a line of an unpaid sent invoice reopens it
+[1A[2K[229/327] [chromium] › cp42_edit_line.spec.ts:87:7 › edit a line › refuses an edit that breaks a rule
+[1A[2K[230/327] [chromium] › cp43_minimum_part_payment.spec.ts:13:7 › minimum part payment › a part payment must be at least a tenth of the total
+[1A[2K[231/327] [chromium] › cp43_minimum_part_payment.spec.ts:41:7 › minimum part payment › a smaller payment that settles the invoice is accepted
+[1A[2K[232/327] [chromium] › cp43_minimum_part_payment.spec.ts:79:7 › minimum part payment › a part payment must be a tenth of what is still due
+[1A[2K[233/327] [chromium] › cp44_overdue_grace.spec.ts:7:7 › overdue grace period › an invoice is overdue only after a week past its due date
+[1A[2K[234/327] [chromium] › cp45_number_as_reference.spec.ts:9:7 › invoice number as reference › accepts the invoice number as the reference
+[1A[2K[235/327] [chromium] › cp45_number_as_reference.spec.ts:30:7 › invoice number as reference › refuses an invoice number with a wrong check digit
+[1A[2K[236/327] [chromium] › cp45_number_as_reference.spec.ts:51:7 › invoice number as reference › pays the invoice a number names when none is open
+[1A[2K[237/327] [chromium] › cp46_due_date_edit.spec.ts:9:7 › set the due date by hand › sets a draft's due date and keeps it when sending
+[1A[2K[238/327] [chromium] › cp46_due_date_edit.spec.ts:31:7 › set the due date by hand › refuses a due date outside the allowed range
+[1A[2K[239/327] [chromium] › cp46_due_date_edit.spec.ts:52:7 › set the due date by hand › a hand-set due date already past stops the send
+[1A[2K[240/327] [chromium] › cp47_client_standard_discount.spec.ts:8:7 › client standard discount › a new invoice starts with the client's discount
+[1A[2K[241/327] [chromium] › cp47_client_standard_discount.spec.ts:29:7 › client standard discount › duplicating keeps the invoice's own discount
+[1A[2K[242/327] [chromium] › cp47_client_standard_discount.spec.ts:48:7 › client standard discount › sets a standard discount when adding a client
+[1A[2K[243/327] [chromium] › cp48_discounts_round_down.spec.ts:7:7 › discounts round down › percentage discounts round down to the cent
+[1A[2K[244/327] [chromium] › cp49_tax_exempt_client.spec.ts:9:7 › tax-exempt client › charges no tax on a tax-exempt client's invoices
+[1A[2K[245/327] [chromium] › cp49_tax_exempt_client.spec.ts:43:7 › tax-exempt client › marks a new client tax exempt
+[1A[2K[246/327] [chromium] › cp50_several_references.spec.ts:15:7 › several references › applies one payment to the invoices its references name
+[1A[2K[247/327] [chromium] › cp50_several_references.spec.ts:59:7 › several references › refuses a wrong reference and keeps an overpayment as credit
+[1A[2K[248/327] [chromium] › cp51_deposits.spec.ts:15:7 › deposits held as credit › holds a deposit as credit and uses it when an invoice is sent
+[1A[2K[249/327] [chromium] › cp51_deposits.spec.ts:61:7 › deposits held as credit › uses the oldest credit first and counts it as paid on the day it is applied
+[1A[2K[250/327] [chromium] › cp52_overpayment_credit.spec.ts:11:7 › overpayments held as credit › keeps what an open-invoice payment overpays as credit
+[1A[2K[251/327] [chromium] › cp52_overpayment_credit.spec.ts:48:7 › overpayments held as credit › a reference or automatic payment beyond what is owed is held as credit
+[1A[2K[252/327] [chromium] › cp53_refunds.spec.ts:13:7 › refund unused credit › refunds the oldest credit first
+[1A[2K[253/327] [chromium] › cp53_refunds.spec.ts:56:7 › refund unused credit › refuses a refund that breaks a rule, and reversing a refunded payment
+[1A[2K[254/327] [chromium] › cp54_credit_notes.spec.ts:21:7 › credit notes › issues a credit note against a part-paid invoice
+[1A[2K[255/327] [chromium] › cp54_credit_notes.spec.ts:71:7 › credit notes › a credit note for more than is owed leaves the rest as credit
+[1A[2K[256/327] [chromium] › cp54_credit_notes.spec.ts:102:7 › credit notes › a fully credited invoice is Credited and can no longer change
+[1A[2K[257/327] [chromium] › cp55_retention.spec.ts:11:7 › retention › an invoice holds nothing back
+[1A[2K[258/327] [chromium] › cp56_credit_note_excess.spec.ts:15:7 › credit notes beyond what is owed › a credit note for more than is owed leaves the rest as credit
+[1A[2K[259/327] [chromium] › cp56_credit_note_excess.spec.ts:59:7 › credit notes beyond what is owed › credit from an earlier credit note is used like any credit
+[1A[2K[260/327] [chromium] › cp57_instalment_plan.spec.ts:21:7 › instalment plans › spreads a draft over monthly instalments
+[1A[2K[261/327] [chromium] › cp57_instalment_plan.spec.ts:65:7 › instalment plans › sending dates the instalments from the day it is sent
+[1A[2K[262/327] [chromium] › cp57_instalment_plan.spec.ts:96:7 › instalment plans › refuses a plan that breaks a rule
+[1A[2K[263/327] [chromium] › cp58_instalment_payments.spec.ts:15:7 › paying instalments › pays instalments in order and goes overdue by instalment
+[1A[2K[264/327] [chromium] › cp58_instalment_payments.spec.ts:59:7 › paying instalments › a payment must cover the earliest unpaid instalment, not a tenth of the total
+[1A[2K[265/327] [chromium] › cp59_client_currency.spec.ts:17:7 › clients billed in their own currency › bills a yen client in whole yen
+[1A[2K[266/327] [chromium] › cp59_client_currency.spec.ts:69:7 › clients billed in their own currency › shows each client's money in their currency
+[1A[2K[267/327] [chromium] › cp60_retention_before_tax.spec.ts:10:7 › retention before tax › the whole invoice is due, tax included
+[1A[2K[268/327] [chromium] › cp61_foreign_payments.spec.ts:16:7 › payments in another currency › converts a payment in another currency through dollars
+[1A[2K[269/327] [chromium] › cp61_foreign_payments.spec.ts:60:7 › payments in another currency › checks and holds credit on the converted amount
+[1A[2K[270/327] [chromium] › cp62_early_payment_discount.spec.ts:18:7 › early-payment discount › settles early for the discounted amount
+[1A[2K[271/327] [chromium] › cp62_early_payment_discount.spec.ts:60:7 › early-payment discount › paying the full amount early leaves the discount as credit
+[1A[2K[272/327] [chromium] › cp62_early_payment_discount.spec.ts:90:7 › early-payment discount › sets early-payment terms when adding a client
+[1A[2K[273/327] [chromium] › cp63_late_interest.spec.ts:17:7 › late interest › charges daily compound interest on an overdue invoice
+[1A[2K[274/327] [chromium] › cp63_late_interest.spec.ts:60:7 › late interest › charges nothing when paid within the grace week
+[1A[2K[275/327] [chromium] › cp64_allocation_priority.spec.ts:13:7 › payment priority › pays overdue invoices first, then the smallest
+[1A[2K[276/327] [chromium] › cp64_allocation_priority.spec.ts:51:7 › payment priority › pays named invoices the same way
+[1A[2K[277/327] [chromium] › cp65_late_fee.spec.ts:10:7 › late fee › charges no fee within the grace week
+[1A[2K[278/327] [chromium] › cp65_late_fee.spec.ts:35:7 › late fee › charges interest but no late fee once an invoice is overdue
+[1A[2K[279/327] [chromium] › cp66_instalment_interest.spec.ts:15:7 › late interest on instalments › an overdue instalment earns late interest
+[1A[2K[280/327] [chromium] › cp67_held_deposits.spec.ts:11:7 › deposits held for an invoice › holds a deposit for one invoice
+[1A[2K[281/327] [chromium] › cp67_held_deposits.spec.ts:50:7 › deposits held for an invoice › refunds and other invoices can't touch a held deposit
+[1A[2K[282/327] [chromium] › cp68_interest_after_grace.spec.ts:10:7 › interest after the grace week › counts interest from the end of the grace week
+[1A[2K[283/327] [chromium] › cp69_void_returns_credit.spec.ts:10:7 › voiding returns used credit › voiding an invoice paid by credit puts the credit back
+[1A[2K[284/327] [chromium] › cp70_waive_interest.spec.ts:14:7 › waive late charges › interest starts again from the day it was waived
+[1A[2K[285/327] [chromium] › cp70_waive_interest.spec.ts:37:7 › waive late charges › waives the late interest charged so far
+[1A[2K[286/327] [chromium] › cp71_plan_payoff.spec.ts:14:7 › paying off a plan early › pays off a plan early without the future interest
+[1A[2K[287/327] [chromium] › cp71_plan_payoff.spec.ts:47:7 › paying off a plan early › the payoff includes the interest of instalments already due
+[1A[2K[288/327] [chromium] › cp72_tax_rounded_once.spec.ts:14:7 › tax rounded once › rounds the invoice tax once and shares it over the lines
+[1A[2K[289/327] [chromium] › cp72_tax_rounded_once.spec.ts:55:7 › tax rounded once › rounds each rate on its own
+[1A[2K[290/327] [chromium] › cp73_credit_note_on_plan.spec.ts:14:7 › credit notes on a plan › a credit note on a plan re-works the instalments still to come
+[1A[2K[291/327] [chromium] › cp73_credit_note_on_plan.spec.ts:55:7 › credit notes on a plan › refuses a credit note on a plan with an overdue instalment
+[1A[2K[292/327] [chromium] › cp74_dated_rates.spec.ts:11:7 › exchange rates by date › converts at the rate in force on the payment date
+[1A[2K[293/327] [chromium] › cp75_client_retention.spec.ts:10:7 › standard retention › duplicating keeps the plan
+[1A[2K[294/327] [chromium] › cp75_client_retention.spec.ts:34:7 › standard retention › new invoices hold nothing back
+[1A[2K[295/327] [chromium] › cp76_no_allocation_boxes.spec.ts:9:7 › no allocation boxes › invoices no longer have allocation boxes
+[1A[2K[296/327] [chromium] › cp77_reference_amounts.spec.ts:11:7 › references with amounts › a reference can carry the amount it gets
+[1A[2K[297/327] [chromium] › cp77_reference_amounts.spec.ts:51:7 › references with amounts › refuses amounts that do not fit
+[1A[2K[298/327] [chromium] › cp78_client_grace.spec.ts:11:7 › clients' own grace period › uses each client's own grace period
+[1A[2K[299/327] [chromium] › cp78_client_grace.spec.ts:50:7 › clients' own grace period › sets a grace period when adding a client
+[1A[2K[300/327] [chromium] › cp79_foreign_refunds.spec.ts:13:7 › refunds in another currency › refunds credit in another currency
+[1A[2K[301/327] [chromium] › cp80_interest_360.spec.ts:11:7 › interest on a 360-day year › counts interest on a 360-day year
+[1A[2K[302/327] [chromium] › cp81_apply_credit.spec.ts:14:7 › apply credit now › applies unused credit to what the client owes
+[1A[2K[303/327] [chromium] › cp81_apply_credit.spec.ts:56:7 › apply credit now › refuses when there is no credit or nothing owed
+[1A[2K[304/327] [chromium] › cp82_exchange_difference.spec.ts:11:7 › exchange difference › shows the exchange difference on a foreign invoice
+[1A[2K[305/327] [chromium] › cp83_retention_cap.spec.ts:10:7 › retention cap › there is no retention to cap
+[1A[2K[306/327] [chromium] › cp84_whole_dollar_instalments.spec.ts:9:7 › whole-dollar instalments › rounds the instalment up to a whole dollar
+[1A[2K[307/327] [chromium] › cp85_plan_down_payment.spec.ts:9:7 › down payment on a plan › takes a down payment before the instalments
+[1A[2K[308/327] [chromium] › cp85_plan_down_payment.spec.ts:38:7 › down payment on a plan › an unpaid down payment falls overdue like an instalment
+[1A[2K[309/327] [chromium] › cp86_write_off.spec.ts:14:7 › write off an invoice › writes off what is left of an invoice
+[1A[2K[310/327] [chromium] › cp86_write_off.spec.ts:49:7 › write off an invoice › a written-off invoice stops earning interest
+[1A[2K[311/327] [chromium] › cp87_client_interest_rate.spec.ts:8:7 › clients' own interest rate › charges each client's own interest rate
+[1A[2K[312/327] [chromium] › cp87_client_interest_rate.spec.ts:43:7 › clients' own interest rate › sets an interest rate when adding a client
+[1A[2K[313/327] [chromium] › cp88_conversions_round_down.spec.ts:8:7 › conversions round down › rounds a conversion down to the step
+[1A[2K[314/327] [chromium] › cp89_credit_a_line.spec.ts:10:7 › credit a line › credits one of an invoice's lines
+[1A[2K[315/327] [chromium] › cp89_credit_a_line.spec.ts:36:7 › credit a line › cannot credit more of a line than was invoiced
+[1A[2K[316/327] [chromium] › cp90_early_discount_on_credit.spec.ts:10:7 › early discount on credit used › credit used on sending settles early with the discount
+[1A[2K[317/327] [chromium] › cp91_late_fee_cap.spec.ts:10:7 › late fee cap › charges no late fee on an overdue invoice
+[1A[2K[318/327] [chromium] › cp92_write_off_threshold.spec.ts:12:7 › small balance write-off › keeps a small balance that is more than 1% of the total
+[1A[2K[319/327] [chromium] › cp92_write_off_threshold.spec.ts:34:7 › small balance write-off › writes off less than five cents that is no more than 1% of the total
+[1A[2K[320/327] [chromium] › cp93_partial_retention_release.spec.ts:11:7 › release part of the retention › there is no retention to release
+[1A[2K[321/327] [chromium] › cp94_minimum_instalment.spec.ts:6:7 › minimum instalment › refuses a plan whose instalment is worth under $25
+[1A[2K[322/327] [chromium] › cp95_instalment_late_fee.spec.ts:10:7 › late fee on instalments › charges no late fee on an overdue instalment
+[1A[2K[323/327] [chromium] › cp96_invoice_before_charges.spec.ts:10:7 › invoice paid before late charges › a payment pays the invoice before its late charges
+[1A[2K[324/327] [chromium] › cp97_credit_note_interest.spec.ts:8:7 › credit notes and late interest › a credit note cuts the interest only from its issue date
+[1A[2K[325/327] [chromium] › cp98_retention_interest.spec.ts:10:7 › interest on released retention › what is left unpaid earns interest from the end of grace
+[1A[2K[326/327] [chromium] › cp99_instalment_holiday.spec.ts:11:7 › instalment holiday › skips an instalment and spreads it over the rest
+[1A[2K[327/327] [chromium] › cp99_instalment_holiday.spec.ts:47:7 › instalment holiday › refuses to skip an overdue or the last instalment
+[1A[2K  2 failed
+    [chromium] › cp154_client_hold.spec.ts:16:7 › client hold › a client on hold gets no invoices and its payments wait as credit 
+    [chromium] › cp158_disputes.spec.ts:18:7 › disputes › puts an overdue invoice in dispute ───────
+  325 passed (3.5m)
