@@ -248,6 +248,36 @@ public class InvoiceLine {
                 && same(percentComplete, other.percentComplete) && Objects.equals(interestOf, other.interestOf);
     }
 
+    /**
+     * Whether the other line is this progress line with only its percent complete changed: both billed by progress, the
+     * same quantity and the same in every other way, but a different percentage.
+     */
+    boolean onlyPercentChanged(InvoiceLine other) {
+        return percentComplete != null && other.percentComplete != null
+                && percentComplete.compareTo(other.percentComplete) != 0 && same(qty, other.qty)
+                && Objects.equals(description, other.description) && Objects.equals(unitType, other.unitType)
+                && same(unitPrice, other.unitPrice) && Objects.equals(tiers, other.tiers)
+                && same(increment, other.increment) && same(minUnits, other.minUnits)
+                && overtime == other.overtime && taxExempt == other.taxExempt
+                && same(discountPct, other.discountPct) && same(taxRate, other.taxRate)
+                && Objects.equals(periodStart, other.periodStart) && Objects.equals(periodEnd, other.periodEnd)
+                && Objects.equals(interestOf, other.interestOf);
+    }
+
+    /**
+     * A line for an adjustment note billing the change of this progress line's percent complete to the given one: a copy
+     * billing the higher percentage of its full amount less the lower, each rounded half up on its own (what was billed
+     * before is left alone). It is billed on a debit note when the percentage went up, or a credited copy taken off on a
+     * credit note when it went down.
+     */
+    InvoiceLine percentChange(BigDecimal newPct) {
+        boolean up = newPct.compareTo(percentComplete) > 0;
+        InvoiceLine change = up ? copy() : creditCopy();
+        change.percentComplete = up ? newPct : percentComplete;
+        change.billedPct = up ? percentComplete : newPct;
+        return change;
+    }
+
     /** Whether two amounts are the same: both none, or equal in value. */
     private static boolean same(BigDecimal a, BigDecimal b) {
         return a == null ? b == null : b != null && a.compareTo(b) == 0;

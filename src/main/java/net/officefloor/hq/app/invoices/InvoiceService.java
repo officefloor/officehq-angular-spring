@@ -681,7 +681,8 @@ public class InvoiceService {
      * Changes a line of an invoice; empty if no such invoice or line. The line has already been
      * checked. Refused when the subtotal would be less than a fixed discount. A sent invoice is left as it
      * was sent and the change is made by adjustment notes instead: a change of quantity alone by one note for
-     * the difference (a debit note for more, a credit note for less), any other change by a credit note taking
+     * the difference (a debit note for more, a credit note for less), a change of percent complete alone likewise by one
+     * note for the difference of the two percentages' amounts (see {@link InvoiceLine#percentChange}), any other change by a credit note taking
      * the old line off and a debit note billing the new one.
      */
     @Transactional
@@ -701,7 +702,16 @@ public class InvoiceService {
             InvoiceLine old = lineOf(invoice, lineId);
             InvoiceLine changed = newLine(invoice, description, qty, unitType, unitPrice, overtime, taxExempt, discountPct,
                     taxRate, periodStart, periodEnd, percentComplete);
-            if (!old.sameButQty(changed)) {
+            if (old.onlyPercentChanged(changed)) {
+                InvoiceLine change = old.percentChange(percentComplete);
+                if (percentComplete.compareTo(old.getPercentComplete()) > 0) {
+                    refuseDuplicateAdjustment(invoice, List.of(change), List.of());
+                    issueDebitNote(invoice, change);
+                } else {
+                    refuseDuplicateAdjustment(invoice, List.of(), List.of(change));
+                    issueAdjustmentCredit(invoice, change);
+                }
+            } else if (!old.sameButQty(changed)) {
                 refuseDuplicateAdjustment(invoice, List.of(changed), List.of(old.creditCopy()));
                 issueAdjustmentCredit(invoice, old.creditCopy());
                 issueDebitNote(invoice, changed);
